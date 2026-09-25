@@ -63,7 +63,7 @@ beside what you typed beside what ran — regenerable from the raw logs at any t
 
 ### A real local judge, offline
 
-![Local run: both example cases passed in 67 ms](docs/images/local-run.png)
+![Local run: both example cases passed in 64 ms](docs/images/local-run.png)
 
 `⌘'` runs your code against the example cases in a fresh temp directory under macOS
 `sandbox-exec` with the network denied, a wall-clock timeout, an output cap, and a
