@@ -32,7 +32,7 @@ photograph of them.
 
 ### A coach that sees the whole session
 
-![The coach tracing the candidate's algorithm and naming the missing argument](docs/images/coach.png)
+![Mid-attempt: the coach traces the code as a flowchart, notes the off-by-one from a previous session is fixed, and names the invariant still unexplained](docs/images/coach.png)
 
 Every coach turn is assembled from the live editor buffer, a diff since your last run,
 per-case run results (with tracebacks rewritten to point at *your* lines), elapsed time,

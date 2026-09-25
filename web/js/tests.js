@@ -437,6 +437,14 @@ check('parseLink reads the three link spellings', (() => {
   const a = parseLink('A --> B'), b = parseLink('A -->|yes| B'), c = parseLink('A -- no --> B');
   return a.right === 'B' && b.label === 'yes' && c.label === 'no';
 })());
+check('a chained link becomes one edge per hop', (() => {
+  const c = parseMermaid('flowchart TD\n S[Start] --> A --> B -->|done| C');
+  return c.ok && c.edges.map(e => e.from + e.to).join() === 'SA,AB,BC' && c.edges[2].label === 'done';
+})());
+check('a chain reuses nodes declared on earlier lines', (() => {
+  const c = parseMermaid('flowchart TD\n S["l=0, r=11"]\n A["h[0]=0 > h[11]=1?"]\n S --> A --> S');
+  return c.ok && c.nodes.length === 2 && c.edges.length === 2 && c.nodes[0].label === 'l=0, r=11';
+})());
 check('graph LR is accepted as well as flowchart', parseMermaid('graph LR\n A --> B').ok === true);
 check('the direction is kept', parseMermaid('flowchart LR\n A --> B').direction === 'LR');
 check('TB is normalised to TD', parseMermaid('flowchart TB\n A --> B').direction === 'TD');

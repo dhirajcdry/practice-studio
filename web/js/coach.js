@@ -129,7 +129,7 @@ const STARTERS = [
   { label: 'Where do I start?', text: 'I have read the problem and I am not sure where to start. Ask me one question that would unblock me — do not give me the approach.' },
   { label: 'Check my approach', text: 'Here is the approach I am about to write. Tell me where it breaks before I spend twenty minutes on it.' },
   { label: 'Why is this wrong?', text: 'My code fails one of the example cases. Point me at the reasoning error rather than the fix.' },
-  { label: 'Draw it', text: 'Draw what my algorithm is doing on the first example as a mermaid flowchart, then say in one sentence what I am missing.' },
+  { label: 'Draw it', text: 'Draw what my algorithm is doing on the first example as a plain mermaid flowchart (one node per step, no subgraphs or styling), then say in one sentence what I am missing.' },
 ];
 
 /* ============================== the panel ============================== */

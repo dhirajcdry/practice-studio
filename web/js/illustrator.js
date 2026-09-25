@@ -272,12 +272,17 @@ const LINK_PLAIN = new RegExp(String.raw`^(.+?)\s*(${CONN})\s*(.+)$`);
 /** Pull one edge out of a line, or null when the line is not a connection. */
 export function parseLink(line) {
   const pipe = LINK_PIPE.exec(line);
-  if (pipe) return { left: pipe[1], right: pipe[4], label: pipe[3].trim(), conn: pipe[2] };
   const inline = LINK_INLINE.exec(line);
-  if (inline) return { left: inline[1], right: inline[4], label: inline[2].trim(), conn: inline[3] };
   const plain = LINK_PLAIN.exec(line);
-  if (plain) return { left: plain[1], right: plain[3], label: '', conn: plain[2] };
-  return null;
+  // In a chain (`A --> B -->|x| C`) each spelling can match a different connector;
+  // the first connector wins, and on a tie the more specific spelling does.
+  const found = [
+    pipe && { left: pipe[1], right: pipe[4], label: pipe[3].trim(), conn: pipe[2] },
+    inline && { left: inline[1], right: inline[4], label: inline[2].trim(), conn: inline[3] },
+    plain && { left: plain[1], right: plain[3], label: '', conn: plain[2] },
+  ].filter(Boolean);
+  if (!found.length) return null;
+  return found.reduce((best, link) => (link.left.length < best.left.length ? link : best));
 }
 
 function parseNodeRef(rawText, nodes, order) {
@@ -349,18 +354,24 @@ export function parseMermaid(source) {
     const trimmed = line.trim().replace(/;$/, '');
     if (trimmed === '') continue;
 
-    const link = parseLink(trimmed);
+    let link = parseLink(trimmed);
     if (link) {
-      const from = parseNodeRef(link.left, nodes, order);
-      const to = parseNodeRef(link.right, nodes, order);
-      if (!from || !to) return { ok: false, reason: 'A connection in this diagram could not be read.' };
-      edges.push({
-        from: from.id,
-        to: to.id,
-        label: link.label.replace(/^["']|["']$/g, ''),
-        dashed: link.conn.includes('.'),
-        arrow: link.conn.endsWith('>'),
-      });
+      // `A --> B --> C` is a chain: each step's right side may itself be a link.
+      let from = parseNodeRef(link.left, nodes, order);
+      while (link) {
+        const next = parseLink(link.right);
+        const to = parseNodeRef(next ? next.left : link.right, nodes, order);
+        if (!from || !to) return { ok: false, reason: 'A connection in this diagram could not be read.' };
+        edges.push({
+          from: from.id,
+          to: to.id,
+          label: link.label.replace(/^["']|["']$/g, ''),
+          dashed: link.conn.includes('.'),
+          arrow: link.conn.endsWith('>'),
+        });
+        from = to;
+        link = next;
+      }
       continue;
     }
 

@@ -929,7 +929,9 @@ body.coach-open .coach-launch{display:none}
 /* ---- the illustrator ---- */
 .ill{margin:0 0 14px;border:1px solid var(--hair-10);border-radius:10px;background:var(--card);overflow:hidden}
 .ill figcaption{padding:7px 11px 0;font-size:9.5px;letter-spacing:.16em}
-.ill-canvas{padding:12px 12px 14px;overflow-x:auto}
+/* The drawing is ink on paper (illustrator.js), so it keeps a paper surface in dark
+   themes too; on a dark card its hairline arrows would vanish. */
+.ill-canvas{padding:12px 12px 14px;overflow-x:auto;background:#FAFAF7;margin:8px 11px 11px;border-radius:7px}
 .ill-canvas svg{display:block;max-width:100%;height:auto;margin:0 auto}
 .ill-pending{padding:22px 12px;text-align:center;letter-spacing:.16em}
 .ill-source{margin:8px 11px 11px !important;font-size:11.5px !important;max-height:260px;overflow:auto}
