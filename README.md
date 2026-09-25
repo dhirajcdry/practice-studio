@@ -106,44 +106,12 @@ editor theme. Practice is repetitive; the room you practise in doesn't have to b
 
 ## How it works
 
-```mermaid
-flowchart LR
-  subgraph Browser["Browser — web/"]
-    ED["Monaco editor"]
-    CP["Coach panel"]
-    WB["Excalidraw whiteboard"]
-    MIC["Mic recorder"]
-  end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
+  <img alt="Architecture: the browser (Monaco, coach panel, Excalidraw, mic) talks to a loopback-only Node server (runner, judge client, scene-to-graph, context builder, claude CLI coach, stats), which reads and writes plain files in ~/LeetCodeTutor/ alongside on-device speech recognition and the macOS Keychain; judge submissions to leetcode.com are the only network hop." src="docs/images/architecture-light.png">
+</picture>
 
-  subgraph Server["Node server — 127.0.0.1 only, zero dependencies"]
-    RUN["Runner<br/>sandbox-exec · python3"]
-    CTX["Context builder<br/>code · diff · runs · timeline · speech"]
-    CLI["Coach / interviewer<br/>claude CLI, streamed over SSE"]
-    GR["Scene → graph"]
-    JUD["Judge client"]
-    ST["Stats & attempt documents"]
-  end
-
-  ASR["studio-asr<br/>Swift · CoreML · on-device"]
-  KC[("macOS Keychain<br/>LeetCode cookies")]
-  WS[("~/LeetCodeTutor/<br/>append-only logs, code snapshots,<br/>notes, transcripts")]
-  LC(["leetcode.com"])
-
-  ED -- "⌘' run" --> RUN
-  ED -- "⌘↵ submit" --> JUD
-  MIC -- audio --> ASR
-  WB -- scene --> GR
-  CP <--> CLI
-  CTX --> CLI
-  GR --> CLI
-  ASR --> WS
-  RUN --> WS
-  JUD --> WS
-  WS --> CTX
-  WS --> ST
-  KC -.-> JUD
-  JUD -.-> LC
-```
+<sub>Source: [`docs/architecture.excalidraw`](docs/architecture.excalidraw) — open it at [excalidraw.com](https://excalidraw.com) to edit.</sub>
 
 Everything the app knows lives in `~/LeetCodeTutor/` as plain files: append-only session
 logs, every code version you ran, transcripts with word timings, coach notes. Raw logs are
