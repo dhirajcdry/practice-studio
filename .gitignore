@@ -1,0 +1,17 @@
+node_modules/
+
+# Vendored upstream repo — re-clone with scripts/index-solutions.mjs, never commit it here.
+# Anchored: an unanchored "vendor/" would also swallow web/vendor/, which holds Monaco and
+# MUST be committed, since the app has no build step and no CDN.
+/vendor/
+
+# Downloaded upstream bundles used to regenerate data/catalog.json.
+*.bundle.js
+
+# Never commit the LeetCode session cookie. It is read from the OS keychain
+# or a local file that lives outside this repo.
+.env
+.env.local
+session.json
+
+.DS_Store

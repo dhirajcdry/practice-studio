@@ -1,0 +1,241 @@
+/* Practice Studio — Phase 6, the progress dashboard.
+   Same design language as app.css and the approved dashboard-v3: light canvas,
+   white cards, serif display, mono uppercase micro-labels, boxed digits, one
+   accent. Everything here is namespaced `dash-` so it cannot collide with the
+   shared sheet, which another agent is editing.
+
+   One visual rule specific to this screen: a number the data cannot support is
+   never drawn as a number. It is drawn as a dashed, quiet "needs more evidence"
+   block, which is a deliberate state rather than a broken one. */
+
+.dash{display:flex;flex-direction:column;gap:16px}
+
+/* ---------------- head ---------------- */
+.dash-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.dash-head h1{font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.15}
+.dash-head .sub{color:var(--ink-50);font-size:14px;margin-top:3px;max-width:64ch}
+.dash-refresh{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:7px;padding:6px 12px;background:var(--card);color:var(--ink-50);
+}
+.dash-refresh:hover{border-color:var(--ink);color:var(--ink)}
+.dash-refresh:disabled{opacity:.5;cursor:default}
+
+/* A tiny "where did this number come from" marker. Every stat carries one. */
+.dash-src{
+  font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-35);border:1px solid var(--hair-10);border-radius:3px;
+  padding:1px 5px;cursor:help;white-space:nowrap;flex:0 0 auto;
+}
+
+/* ---------------- stat row ---------------- */
+.dash-stats{
+  display:grid;grid-template-columns:repeat(5,1fr);
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  border:1px solid var(--hair-10);overflow:hidden;
+}
+.dash-stat{padding:14px 16px 12px;border-left:1px solid var(--hair-10);min-width:0}
+.dash-stat:first-child{border-left:0}
+.dash-stat .v{
+  font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.03em;
+  line-height:1.15;font-variant-numeric:tabular-nums;
+}
+.dash-stat .v small{font-size:.5em;font-weight:500;color:var(--ink-50)}
+.dash-stat .v.none{color:var(--ink-35)}
+.dash-stat .l{margin-top:3px;color:var(--ink-50);display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+@media (max-width:860px){
+  .dash-stats{grid-template-columns:repeat(3,1fr)}
+  .dash-stat:nth-child(4){border-left:0}
+  .dash-stat:nth-child(n+4){border-top:1px solid var(--hair-10)}
+}
+@media (max-width:560px){
+  .dash-stats{grid-template-columns:repeat(2,1fr)}
+  .dash-stat:nth-child(odd){border-left:0}
+  .dash-stat:nth-child(even){border-left:1px solid var(--hair-10)}
+  .dash-stat:nth-child(n+3){border-top:1px solid var(--hair-10)}
+}
+
+/* ---------------- cards ---------------- */
+.dash-card{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  border:1px solid var(--hair-10);overflow:hidden;
+}
+.dash-card > header{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 16px;border-bottom:1px solid var(--hair-10);flex-wrap:wrap;
+}
+.dash-card > header .hgroup{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
+.dash-card > header h2{font-weight:700;font-size:15px;letter-spacing:-.02em}
+.dash-card > header .note{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-35);white-space:nowrap}
+.dash-pad{padding:14px 16px}
+
+.dash-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
+.dash-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+@media (max-width:900px){ .dash-grid{grid-template-columns:1fr} }
+
+/* ---------------- the honest header block ---------------- */
+.dash-truth{
+  border:1px solid rgba(var(--med-rgb),.28);background:var(--med-soft);
+  border-radius:var(--radius);padding:14px 16px;
+}
+.dash-truth h2{
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:600;color:var(--med);margin-bottom:7px;
+}
+.dash-truth p{font-size:14.5px;color:var(--ink-70);max-width:72ch}
+.dash-truth p + p{margin-top:7px}
+.dash-truth b{font-weight:700;color:var(--ink)}
+.dash-truth ul{margin:9px 0 0 18px}
+.dash-truth li{font-size:14px;color:var(--ink-70);margin:4px 0;max-width:70ch}
+
+/* ---------------- coverage meters ---------------- */
+.dash-lists{display:flex;flex-direction:column;gap:0}
+.dash-listrow{padding:12px 16px;border-top:1px solid var(--hair-10)}
+.dash-listrow:first-child{border-top:0}
+.dash-listrow .top{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap}
+.dash-listrow .name{font-weight:700;font-size:14.5px;letter-spacing:-.01em;flex:1;min-width:0}
+.dash-listrow .count{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-50);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dash-listrow .count b{color:var(--ink);font-weight:600}
+
+.dash-meter{
+  height:8px;border-radius:3px;background:rgba(var(--ink-rgb),.055);
+  overflow:hidden;display:flex;
+}
+.dash-meter i{display:block;height:100%}
+.dash-meter i.solved{background:rgba(var(--ink-rgb),.62)}
+.dash-meter i.tried{background:rgba(var(--ink-rgb),.22)}
+.dash-meterkey{display:flex;gap:14px;flex-wrap:wrap;margin-top:7px}
+.dash-meterkey span{display:inline-flex;align-items:center;gap:6px}
+.dash-meterkey i{width:10px;height:8px;border-radius:2px;display:inline-block;flex:0 0 auto}
+.dash-meterkey i.solved{background:rgba(var(--ink-rgb),.62)}
+.dash-meterkey i.tried{background:rgba(var(--ink-rgb),.22)}
+.dash-meterkey i.rest{background:rgba(var(--ink-rgb),.055);border:1px solid var(--hair-10)}
+
+/* ---------------- pattern table ---------------- */
+.dash-patterns{list-style:none}
+.dash-patterns li{border-top:1px solid var(--hair-06)}
+.dash-patterns li:first-child{border-top:0}
+/* The name column gets whatever is left: "2-D Dynamic Programming" must never be
+   truncated to make room for a meter that is mostly empty track. */
+.dash-prow{
+  display:grid;grid-template-columns:22px minmax(150px,1fr) minmax(56px,190px) 52px;
+  align-items:center;gap:10px;padding:9px 16px;
+}
+.dash-prow.zero .pname{color:var(--ink-50);font-weight:600}
+.dash-prow:hover{background:rgba(var(--ink-rgb),.025)}
+.dash-prow .pidx{font-family:var(--mono);font-size:11px;color:var(--ink-35);font-variant-numeric:tabular-nums;text-align:right}
+.dash-prow .pname{font-size:14px;font-weight:700;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-prow .pcount{font-family:var(--mono);font-size:11px;color:var(--ink-50);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.dash-prow .pcount b{color:var(--ink);font-weight:600}
+.dash-prow.zero .pcount{color:var(--ink-35)}
+.dash-prow .dash-meter{height:6px}
+@media (max-width:640px){
+  .dash-prow{grid-template-columns:24px minmax(0,1fr) 58px;gap:10px}
+  .dash-prow .dash-meter{display:none}
+}
+
+/* ---------------- signals / weakness view ---------------- */
+.dash-signal{padding:13px 16px;border-top:1px solid var(--hair-10)}
+.dash-signal:first-child{border-top:0}
+.dash-signal .shead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:5px}
+.dash-signal .sname{font-weight:700;font-size:14.5px;letter-spacing:-.01em;flex:1;min-width:0}
+.dash-signal .swhat{font-size:13px;color:var(--ink-50);max-width:66ch;line-height:1.55}
+.dash-signal .sval{
+  font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;margin-top:8px;
+}
+
+/* the deliberate "not enough evidence yet" block */
+.dash-need{
+  margin-top:9px;border:1px dashed var(--hair-20);border-radius:9px;
+  padding:11px 13px;background:rgba(var(--ink-rgb),.014);
+}
+.dash-need .nhead{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-35);font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;
+}
+.dash-need .nbar{flex:0 0 62px;height:5px;border-radius:2px;background:rgba(var(--ink-rgb),.08);overflow:hidden}
+.dash-need .nbar i{display:block;height:100%;background:var(--ink-35)}
+.dash-need p{font-size:13.5px;color:var(--ink-70);max-width:64ch}
+.dash-need p + p{margin-top:5px}
+.dash-need .how{font-size:13px;color:var(--ink-50);margin-top:6px}
+
+/* ---------------- activity strip ---------------- */
+.dash-strip{padding:14px 16px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.dash-days{display:flex;gap:4px;align-items:flex-end;flex-wrap:wrap}
+.dash-day{width:22px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.dash-day .box{width:16px;height:16px;border:1px solid var(--hair-20);border-radius:3px;background:var(--card)}
+.dash-day .box.f1{background:rgba(var(--ink-rgb),.22);border-color:rgba(var(--ink-rgb),.28)}
+.dash-day .box.f2{background:rgba(var(--ink-rgb),.62);border-color:rgba(var(--ink-rgb),.62)}
+.dash-day .d{font-family:var(--mono);font-size:8px;letter-spacing:.04em;color:var(--ink-35)}
+.dash-legend{display:flex;gap:12px;align-items:center;margin-left:auto;flex-wrap:wrap}
+.dash-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid var(--hair-20);vertical-align:-1px;margin-right:5px}
+
+/* ---------------- lists of things that happened ---------------- */
+.dash-recent{list-style:none}
+.dash-recent li{border-top:1px solid var(--hair-06);display:flex;gap:12px;align-items:baseline;padding:9px 16px}
+.dash-recent li:first-child{border-top:0}
+.dash-recent .when{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-35);flex:0 0 96px;white-space:nowrap}
+.dash-recent .what{flex:1;font-size:14px;min-width:0}
+.dash-recent .what b{font-weight:600}
+.dash-recent .what .ev{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-50)}
+.dash-recent .what .sm{display:block;color:var(--ink-50);font-size:13px;margin-top:2px}
+@media (max-width:640px){
+  .dash-recent li{flex-direction:column;gap:3px}
+  .dash-recent .when{flex:0 0 auto}
+}
+
+/* ---------------- the problems-on-disk table ---------------- */
+.dash-tablewrap{overflow-x:auto}
+table.dash-table{width:100%;border-collapse:collapse;min-width:620px}
+table.dash-table th{
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:500;color:var(--ink-50);text-align:left;
+  padding:9px 14px;border-bottom:1px solid var(--hair-20);white-space:nowrap;
+}
+table.dash-table td{
+  padding:10px 14px;border-bottom:1px solid var(--hair-06);font-size:14px;vertical-align:middle;white-space:nowrap;
+}
+table.dash-table tr:last-child td{border-bottom:0}
+table.dash-table .name{font-weight:600;letter-spacing:-.01em}
+table.dash-table .num{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink-50)}
+table.dash-table .num.zero{color:var(--ink-35)}
+table.dash-table .evid{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-35);white-space:normal;max-width:26ch}
+
+/* status tags — reusing the shared .tag shapes, adding only what is new here */
+.tag.dash-accepted{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.tag.dash-local{color:var(--med);border-color:rgba(var(--med-rgb),.4);background:var(--med-soft)}
+.tag.dash-attempted{color:var(--ink-70)}
+.tag.dash-notes,.tag.dash-empty{color:var(--ink-35);border-color:var(--hair-10)}
+
+/* ---------------- empty / error states ---------------- */
+.dash-empty{padding:22px 18px;max-width:74ch}
+.dash-empty h3{font-weight:700;font-size:16px;letter-spacing:-.02em;margin-bottom:7px}
+.dash-empty p{font-size:14.5px;color:var(--ink-70);line-height:1.6}
+.dash-empty p + p{margin-top:8px}
+.dash-empty b{font-weight:600;color:var(--ink)}
+.dash-empty ul{margin:9px 0 0 18px}
+.dash-empty li{font-size:14px;color:var(--ink-70);margin:5px 0}
+.dash-quiet{padding:14px 16px;color:var(--ink-50);font-size:14px;font-style:italic;max-width:70ch}
+
+.dash-warn{
+  border-top:1px solid var(--hair-10);padding:11px 16px;
+  font-size:13px;color:var(--ink-50);line-height:1.6;
+}
+.dash-warn b{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--med);font-weight:600;display:block;margin-bottom:4px}
+.dash-warn li{margin:3px 0 3px 16px}
+
+.dash-foot{
+  margin-top:4px;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-35);text-align:center;line-height:1.8;
+}
+
+/* self-test output, only ever rendered with ?dashtest=1 */
+.dash-selftest{font-family:var(--mono);font-size:12px;line-height:1.7;padding:14px 16px}
+.dash-selftest .ok{color:var(--easy)}
+.dash-selftest .bad{color:var(--hard);font-weight:700}
+
+@media (max-width:700px){
+  .dash-head h1{font-size:23px}
+  .dash-pad,.dash-signal,.dash-listrow{padding-left:14px;padding-right:14px}
+}

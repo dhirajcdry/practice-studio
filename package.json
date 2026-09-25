@@ -1,0 +1,24 @@
+{
+  "name": "practice-studio",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Local-first interview practice studio: own editor, own judge loop, Claude Code CLI as the coach.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "test": "node --test \"server/**/*.test.mjs\"",
+    "catalog": "node scripts/extract-catalog.mjs",
+    "warm": "node scripts/warm-cache.mjs",
+    "warm:check": "node scripts/warm-cache.mjs --check",
+    "attempts": "node scripts/rebuild-attempts.mjs",
+    "solutions": "node scripts/index-solutions.mjs",
+    "check:layout": "node scripts/check-layout.mjs",
+    "check:shortcuts": "node scripts/check-shortcuts.mjs",
+    "check": "node scripts/check-layout.mjs && node scripts/check-coach-stream.mjs && node scripts/check-shortcuts.mjs && node scripts/check-toolbar.mjs && node scripts/check-lanes.mjs && node scripts/check-coach-reload.mjs && node scripts/check-runchip.mjs && node scripts/check-find.mjs && node scripts/check-design.mjs",
+    "vendor:excalidraw": "node scripts/vendor-excalidraw.mjs"
+  }
+}

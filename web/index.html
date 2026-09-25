@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Studio — NeetCode 250</title>
+<link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/design.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="wordmark" href="#/" aria-label="Practice Studio — home">
+    <span class="solid">Practice</span><span class="outline">Studio</span>
+  </a>
+
+  <!-- Two products, not one list. Problems and Progress are both the LeetCode
+       practice loop and collapse into one menu; a system design interview shares
+       nothing with them but the app it lives in, so it keeps its own place in the bar
+       rather than hiding one click inside a menu about something else.
+       The links stay real anchors, so every route is still middle-clickable. -->
+  <nav class="topnav" aria-label="Sections">
+    <button class="navbtn" id="navbtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="navmenu">
+      <span class="mono" id="navlabel">Problems</span>
+      <svg class="navcaret" width="9" height="6" viewBox="0 0 9 6" fill="none" aria-hidden="true">
+        <path d="M1 1.4 4.5 4.6 8 1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="navmenu" id="navmenu" role="menu" aria-labelledby="navbtn" hidden>
+      <a href="#/" data-route="#/" role="menuitem" class="mono">Problems</a>
+      <a href="#/progress" data-route="#/progress" role="menuitem" class="mono">Progress</a>
+    </div>
+    <a class="navlink mono" href="#/design" data-route="#/design">System Design</a>
+  </nav>
+
+  <div class="searchwrap">
+    <label class="searchbox" for="q">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <circle cx="5" cy="5" r="3.6" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M8 8 L11 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      <input id="q" type="search" placeholder="Search title or pattern" autocomplete="off" spellcheck="false" aria-label="Search problems by title or pattern">
+      <kbd>/</kbd>
+    </label>
+  </div>
+
+  <div class="topmeta">
+    <div class="recmount" id="recmount"></div>
+    <div class="setmount" id="setmount"></div>
+    <div class="cell"><span class="srcdot" id="srcDot" data-state="boot"></span><span class="mono" id="srcLabel">Connecting</span></div>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main id="app" tabindex="-1"></main>
+
+<aside id="drawer" class="drawer" hidden aria-hidden="true" aria-label="Reference panel"></aside>
+<div id="scrim" class="scrim" hidden></div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

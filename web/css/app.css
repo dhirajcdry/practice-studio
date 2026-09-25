@@ -1,0 +1,1525 @@
+/* Practice Studio — Phase 1 (browse).
+   Design language inherited from the approved dashboard-v3: light canvas, serif
+   display + body, mono uppercase micro-labels, boxed digits, restraint. */
+
+:root{
+  /* Themes redefine these. Everything else in this file is written in terms of them,
+     so a theme is a block of variables rather than a second stylesheet. --ink-rgb is a
+     bare triple on purpose: every wash and hairline is rgba() of it, which is what lets
+     a dark theme invert all of them at once instead of listing them again. */
+  --ink-rgb:0,0,0;
+  --on-ink-rgb:255,255,255;
+  --on-ink:#FFFFFF;
+  --texture:none;
+  --canvas:#F7F7F7;
+  --card:#FFFFFF;
+  --ink:#111111;
+  --ink-70:rgba(var(--ink-rgb),.7);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.35);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.1);
+  --hair-06:rgba(var(--ink-rgb),.06);
+  --accent:#C4401C;
+  --accent-rgb:196,64,28;
+  --accent-soft:rgba(var(--accent-rgb),.08);
+
+  /* The "solid" button — pressed toggles, Run, Ask, the submission band. On a light
+     theme that is ink on paper and needs no thought. On a dark one it CANNOT be the
+     same trick inverted: --ink is near-white there, so every pressed button became a
+     glaring white slab, brighter than the code it sat next to. A dark theme wants a
+     RAISED surface, not an inverted one, so the emphasis reads as "nearer" rather
+     than "louder". Each dark theme picks its own; nothing else in the file needs to
+     know which is which. */
+  --solid-bg:var(--ink);
+  --solid-fg:var(--on-ink);
+  --solid-edge:var(--ink);
+  --solid-hover:#000;
+
+  /* Difficulty — tight, calm, three hues only. The -rgb triples exist because a hex
+     cannot be given an alpha, and half the rules below want these hues at 30% for a
+     border or 9% for a wash. Without them every one of those was a hardcoded literal
+     that a theme could not touch. */
+  --easy:#2E6B4F;   --easy-rgb:46,107,79;    --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#93650B;    --med-rgb:147,101,11;    --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B33A1A;   --hard-rgb:179,58,26;    --hard-soft:rgba(var(--hard-rgb),.09);
+
+  /* The fallback highlighter's tokens. Monaco has its own themes; this is the plain
+     <pre> path, and it was painting purple and blue on every theme including the ones
+     where those hues are not in the palette at all. */
+  --tok-kw:#7A3E8F;
+  --tok-def:#1E5A8A;
+
+  --serif:ui-serif, Georgia, 'Times New Roman', serif;
+  --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(var(--ink-rgb),.04), 0 6px 18px rgba(var(--ink-rgb),.05);
+  --shadow-lift:0 2px 6px rgba(var(--ink-rgb),.06), 0 24px 60px rgba(var(--ink-rgb),.14);
+  --topbar-h:56px;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+/* Several components below set `display`, which would otherwise beat the UA's
+   [hidden] rule and leave an empty strip or an invisible click-blocking layer. */
+[hidden]{display:none !important}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  background:var(--canvas);color:var(--ink);
+  font-family:var(--serif);font-size:15px;line-height:1.55;
+  overflow-x:hidden;-webkit-font-smoothing:antialiased;min-height:100vh;
+}
+::selection{background:var(--ink);color:var(--canvas)}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:3px}
+
+.mono{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:500;line-height:1.5}
+.mono.dim{color:var(--ink-50)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* boxed digits — used sparingly, for headline counts only */
+.digits{display:inline-flex;gap:3px;vertical-align:-3px}
+.digits b{
+  font-family:var(--mono);font-weight:500;font-style:normal;font-size:12px;letter-spacing:0;
+  height:18px;min-width:14px;padding:0 4px;border:1px solid currentColor;
+  display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;
+}
+
+.tag{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:500;
+  padding:2px 7px;border:1px solid var(--hair-20);border-radius:3px;color:var(--ink-70);white-space:nowrap;
+}
+.tag.solid{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.tag.quiet{color:var(--ink-35);border-color:var(--hair-10)}
+.tag.alert{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.tag.easy{color:var(--easy);border-color:rgba(var(--easy-rgb),.35);background:var(--easy-soft)}
+.tag.medium{color:var(--med);border-color:rgba(var(--med-rgb),.35);background:var(--med-soft)}
+.tag.hard{color:var(--hard);border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
+
+/* ---------------- top bar ---------------- */
+/* Section nav. One button in the topbar naming the section you are on, with the other
+   three in a menu under it; the current route is marked from main.js so neither the
+   button's label nor the tick in the menu can drift from the hash. */
+.topnav{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:6px}
+/* System design is its own product, so it sits beside the LeetCode menu rather than
+   inside it. Same height and baseline as the button next to it. */
+.navlink{
+  display:inline-flex;align-items:center;height:30px;padding:0 12px;
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid transparent;border-radius:999px;color:var(--ink-50);text-decoration:none;
+}
+.navlink:hover{color:var(--ink);border-color:var(--hair-20)}
+.navlink[aria-current="page"]{color:var(--solid-fg);background:var(--solid-bg);border-color:var(--solid-edge)}
+/* When you are not in the LeetCode group the button names the group, and should not
+   compete with whichever section actually is current. */
+.navbtn.quiet{color:var(--ink-35)}
+.navbtn.quiet:hover{color:var(--ink-70)}
+.navbtn{
+  display:flex;align-items:center;gap:8px;white-space:nowrap;
+  color:var(--ink-70);padding:6px 11px;border-radius:6px;
+  border:1px solid var(--hair-10);background:var(--card);
+}
+.navbtn:hover{color:var(--ink);border-color:var(--hair-20)}
+.navbtn[aria-expanded="true"]{color:var(--ink);border-color:var(--ink)}
+.navcaret{flex:0 0 auto;opacity:.55;transition:transform .12s ease}
+.navbtn[aria-expanded="true"] .navcaret{transform:rotate(180deg)}
+body.reduce-motion .navcaret{transition:none}
+
+.navmenu{
+  position:absolute;top:calc(100% + 7px);left:0;z-index:70;min-width:178px;padding:5px;
+  background:var(--card);border:1px solid var(--hair-20);border-radius:9px;box-shadow:var(--shadow-lift);
+}
+.navmenu a{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  color:var(--ink-70);text-decoration:none;padding:7px 9px;border-radius:5px;white-space:nowrap;
+}
+.navmenu a:hover,.navmenu a:focus-visible{color:var(--ink);background:rgba(var(--ink-rgb),.05)}
+.navmenu a[aria-current="page"]{color:var(--ink);background:rgba(var(--ink-rgb),.07)}
+/* The tick, rather than the highlight alone, so the current section reads as current
+   and not merely as the row the pointer happens to be over. */
+.navmenu a[aria-current="page"]::after{content:"✓";font-size:10px;opacity:.6}
+
+.topbar{
+  position:sticky;top:0;z-index:60;height:var(--topbar-h);
+  background:var(--canvas);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--hair-20);
+  /* Four links became one control, and the room that freed up goes into the gaps
+     rather than into making anything bigger. */
+  display:flex;align-items:center;gap:28px;padding:0 26px;
+}
+.wordmark{display:flex;align-items:baseline;gap:5px;text-decoration:none;flex:0 0 auto}
+.wordmark .solid{font-family:var(--serif);font-weight:700;font-size:17px;letter-spacing:-.03em}
+.wordmark .outline{
+  font-family:var(--serif);font-weight:600;font-size:17px;letter-spacing:.02em;
+  color:transparent;-webkit-text-stroke:.9px var(--ink);
+  display:inline-block;transform:rotate(-2.5deg) translateY(-1px);
+}
+.searchwrap{flex:1 1 auto;display:flex;justify-content:center;min-width:0}
+.searchbox{
+  display:flex;align-items:center;gap:9px;width:min(400px,100%);
+  background:var(--card);border:1px solid var(--hair-20);border-radius:8px;padding:6px 11px;
+}
+.searchbox:focus-within{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.searchbox svg{flex:0 0 auto;opacity:.4}
+.searchbox input{
+  border:0;outline:0;background:none;flex:1;min-width:0;
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--ink);
+}
+.searchbox input::-webkit-search-cancel-button{-webkit-appearance:none}
+.searchbox input::placeholder{color:var(--ink-35);letter-spacing:.1em;text-transform:uppercase;font-size:11px}
+.searchbox kbd{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--ink-35);border:1px solid var(--hair-10);border-radius:3px;padding:1px 5px}
+.topmeta{display:flex;gap:14px;align-items:center;flex:0 0 auto}
+/* The theme toggle and the gear sat on different centre lines to each other and to
+   the rest of the bar — 26.5px and 29.0px against everything else at 27.5px — because
+   their mount was not a flex row and the buttons had no shared box. One box, one
+   centre line, measured rather than eyeballed. */
+.setmount{display:flex;align-items:center;gap:6px}
+.setmount .set-open{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;padding:0;border-radius:7px;color:var(--ink-50);
+}
+.setmount .set-open:hover{color:var(--ink);background:rgba(var(--ink-rgb),.06)}
+.setmount .set-open svg{display:block}
+.topmeta .cell{display:flex;gap:7px;align-items:center;white-space:nowrap}
+.srcdot{width:7px;height:7px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
+.srcdot[data-state="live"]{background:var(--easy)}
+.srcdot[data-state="mock"]{background:var(--med)}
+.srcdot[data-state="boot"]{background:var(--ink-35)}
+
+/* ---------------- honest banner ---------------- */
+.banner{
+  position:sticky;top:var(--topbar-h);z-index:50;
+  background:var(--med-soft);border-bottom:1px solid rgba(var(--med-rgb),.28);
+  padding:9px 20px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;
+}
+.banner .bhead{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--med);font-weight:600}
+.banner .btext{font-size:13.5px;color:var(--ink-70);flex:1;min-width:220px}
+.banner button.blink{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--med);text-decoration:underline;text-underline-offset:3px}
+
+/* ---------------- page frame ---------------- */
+main{max-width:1440px;margin:0 auto;padding:26px 20px 96px}
+main:focus{outline:none}
+@media (prefers-reduced-motion:no-preference){
+  .view{animation:rise .18s ease-out}
+  @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+}
+.viewhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.viewhead h1{font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.15}
+.viewhead .sub{color:var(--ink-50);font-size:14px;margin-top:3px}
+.legend{display:flex;align-items:center;gap:14px;padding-bottom:3px;flex-wrap:wrap}
+.legend .lg{display:inline-flex;align-items:center;gap:6px}
+.legend .lg i{width:14px;height:5px;border-radius:2px;display:inline-block}
+.legend .lg i.e{background:var(--easy)}
+.legend .lg i.m{background:var(--med)}
+.legend .lg i.h{background:var(--hard)}
+@media (max-width:720px){ .legend{display:none} }
+
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--hair-10);overflow:hidden}
+
+/* ---------------- the filter bar ---------------- */
+/* This was `.controls` and it was reaching into the code editor. Monaco's find widget
+   builds its three option toggles inside a `<div class="controls">` of its own, so a bare
+   `.controls` rule in this file was not a rule about the problem list — it was a rule
+   about every element in the app with that name. Pressing ⌘F painted an opaque
+   var(--canvas) slab over the search field, threw a 100vw band across the editor via
+   ::before, and left three floating glyphs where a search box should be.
+   Nothing here is generic enough to deserve a generic name; the prefix is the fix. */
+.filterbar{
+  position:sticky;top:var(--topbar-h);z-index:30;
+  background:var(--canvas);
+  margin:0 -20px 16px;padding:10px 20px;border-bottom:1px solid var(--hair-10);
+  display:flex;gap:10px 18px;align-items:center;flex-wrap:wrap;
+}
+/* The bar spans the window; only its contents stay in the column. Without this it is a
+   1080px island floating on the page texture, with two hard edges and nothing holding
+   them — which is what it looked like. The band is drawn behind, so the flex layout of
+   the chips is untouched. */
+.filterbar::before{
+  content:'';position:absolute;top:0;bottom:0;z-index:-1;
+  left:50%;transform:translateX(-50%);width:100vw;
+  background:inherit;border-bottom:1px solid var(--hair-10);
+}
+body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
+.fgroup{display:flex;align-items:center;gap:8px;min-width:0}
+.fgroup > .mono.dim{flex:0 0 auto}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  padding:5px 11px;border:1px solid var(--hair-20);border-radius:999px;
+  background:var(--card);color:var(--ink-50);white-space:nowrap;transition:background .12s,color .12s,border-color .12s;
+}
+.chip:hover{border-color:var(--ink);color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.chip.easy[aria-pressed="true"]{background:var(--easy);border-color:var(--easy)}
+.chip.medium[aria-pressed="true"]{background:var(--med);border-color:var(--med)}
+.chip.hard[aria-pressed="true"]{background:var(--hard);border-color:var(--hard)}
+.filterbar .spacer{flex:1 1 auto}
+.linkbtn{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-50);
+  padding:5px 2px;
+}
+.linkbtn:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.countpill{display:flex;align-items:center;gap:8px;white-space:nowrap}
+
+/* ---------------- pattern sections ---------------- */
+.sections{display:flex;flex-direction:column;gap:10px}
+.psec{background:var(--card);border:1px solid var(--hair-10);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.psec.open{box-shadow:var(--shadow-lift)}
+.phead{
+  width:100%;display:grid;
+  grid-template-columns:14px 30px minmax(0,1fr) auto auto;
+  align-items:center;gap:14px;text-align:left;padding:13px 16px;
+}
+.phead:hover{background:rgba(var(--ink-rgb),.028)}
+.phead .caret{color:var(--ink-35);font-size:10px;line-height:1;transition:transform .16s ease;justify-self:center}
+@media (prefers-reduced-motion:reduce){.phead .caret{transition:none}}
+.phead[aria-expanded="true"] .caret{transform:rotate(90deg)}
+.phead .pidx{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-35);font-variant-numeric:tabular-nums}
+.phead .pname{font-weight:700;font-size:16px;letter-spacing:-.02em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.phead .pcount{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-50);font-variant-numeric:tabular-nums;white-space:nowrap}
+.phead .pcount b{color:var(--ink);font-weight:600}
+.mixbar{display:flex;gap:2px;width:132px;height:6px;flex:0 0 auto}
+.mixbar span{height:100%;border-radius:2px;min-width:2px}
+.mixbar .e{background:var(--easy)}
+.mixbar .m{background:var(--med)}
+.mixbar .h{background:var(--hard)}
+@media (max-width:720px){ .mixbar{display:none} }
+
+.plist{list-style:none;border-top:1px solid var(--hair-10)}
+.psec:not(.open) .plist{display:none}
+.prow{
+  width:100%;display:grid;grid-template-columns:44px minmax(0,1fr) auto 84px 44px;
+  align-items:center;gap:14px;text-align:left;padding:9px 16px 9px 12px;
+  border-left:2px solid transparent;
+}
+.plist li + li .prow{border-top:1px solid var(--hair-06)}
+.prow:hover{background:rgba(var(--ink-rgb),.03)}
+.prow.sel{background:rgba(var(--ink-rgb),.05);border-left-color:var(--ink)}
+.prow .pnum{font-family:var(--mono);font-size:11px;color:var(--ink-35);font-variant-numeric:tabular-nums;text-align:right}
+.prow .ptitle{font-size:14.5px;font-weight:600;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow .ptitle mark{background:rgba(var(--accent-rgb),.16);color:inherit;border-radius:2px;padding:0 1px}
+.prow .plists{display:flex;gap:5px;flex:0 0 auto}
+.prow .assets{display:flex;gap:5px;flex:0 0 auto;width:44px;justify-content:flex-end}
+.assetdot{
+  font-family:var(--mono);font-size:9px;letter-spacing:0;width:18px;height:18px;border-radius:3px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--hair-20);color:var(--ink-50);
+}
+.assetdot.off{border-style:dashed;border-color:var(--hair-10);color:var(--ink-35);opacity:.55}
+.prow .pdiff{display:flex;justify-content:flex-end}
+@media (max-width:640px){
+  .prow{grid-template-columns:38px minmax(0,1fr) 78px}
+  .prow .assets,.prow .plists{display:none}
+}
+
+.emptynote{padding:22px 18px;color:var(--ink-50);font-size:14.5px;font-style:italic;max-width:70ch}
+.emptynote b{font-style:normal;font-weight:600;color:var(--ink)}
+.hint{margin-top:22px;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-35)}
+.hint kbd{border:1px solid var(--hair-10);border-radius:3px;padding:1px 5px;margin:0 2px}
+
+/* ---------------- problem view ---------------- */
+.crumb{margin-bottom:14px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.crumb a,.crumb button{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-50);text-decoration:none}
+.crumb a:hover,.crumb button:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+
+.phero{padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+.phero .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.phero h1{font-weight:700;font-size:24px;letter-spacing:-.03em;line-height:1.2;margin-right:4px}
+.phero .pno{font-family:var(--mono);font-size:13px;color:var(--ink-35);font-variant-numeric:tabular-nums}
+.phero .meta{display:flex;gap:18px;flex-wrap:wrap}
+.phero .meta .cell{display:flex;gap:8px;align-items:baseline;white-space:nowrap;min-width:0}
+.phero .meta .cell .v{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink)}
+
+.paneltoggles{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.015);align-items:center}
+.ptoggle{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  padding:7px 14px;border:1px solid var(--hair-20);border-radius:8px;background:var(--card);color:var(--ink-70);
+  transition:background .12s,color .12s,border-color .12s;
+}
+.ptoggle:hover{border-color:var(--ink);color:var(--ink)}
+.ptoggle[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.ptoggle kbd{font-family:var(--mono);font-size:9px;border:1px solid currentColor;opacity:.5;border-radius:3px;padding:0 4px}
+.ptoggle.miss{border-style:dashed;color:var(--ink-35)}
+.ptoggle .ptag{font-size:9px;letter-spacing:.12em;opacity:.7;font-style:normal}
+
+.pbody{display:grid;grid-template-columns:minmax(0,1fr) 244px;gap:16px;margin-top:16px;align-items:start}
+@media (max-width:900px){ .pbody{grid-template-columns:minmax(0,1fr)} }
+.prail{display:flex;flex-direction:column;gap:12px;position:sticky;top:calc(var(--topbar-h) + 16px)}
+body.has-banner .prail{top:calc(var(--topbar-h) + 55px)}
+@media (max-width:900px){ .prail{position:static} }
+.railcard{padding:13px 15px}
+.railcard h3{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-50);font-weight:500;margin-bottom:9px}
+.taglist{display:flex;gap:6px;flex-wrap:wrap}
+.railcard pre{
+  font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--canvas);
+  border:1px solid var(--hair-10);border-radius:7px;padding:9px 11px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;
+}
+.railcard .extlink{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-50);text-decoration:none;padding:3px 0}
+.railcard .extlink:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+
+.desc{padding:20px 24px 26px;max-width:74ch}
+/* LeetCode's examples contain lines longer than this column. Horizontal scrolling
+   "works" but macOS hides the scrollbar, so the text simply looks cut off — which is
+   how it was reported. Wrapping shows all of it; these lines are arithmetic and prose,
+   not code whose indentation carries meaning. */
+.desc pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+.statehead{display:flex;align-items:center;gap:10px;padding:16px 20px 0}
+
+/* rich text rendered from sanitized HTML / markdown */
+.rich{font-size:15.5px;line-height:1.68;color:var(--ink-70)}
+.rich > *:first-child{margin-top:0}
+.rich p{margin:0 0 13px}
+.rich strong,.rich b{font-weight:700;color:var(--ink)}
+.rich em,.rich i{font-style:italic}
+.rich ul,.rich ol{margin:0 0 13px 22px}
+.rich li{margin:5px 0}
+.rich code{font-family:var(--mono);font-size:.84em;background:rgba(var(--ink-rgb),.045);border:1px solid var(--hair-06);border-radius:4px;padding:1px 5px;color:var(--ink)}
+.rich pre{
+  font-family:var(--mono);font-size:12.8px;line-height:1.75;background:var(--canvas);
+  border:1px solid var(--hair-10);border-radius:9px;padding:12px 14px;overflow-x:auto;margin:0 0 14px;font-variant-ligatures:none;
+}
+.rich pre code{background:none;border:0;padding:0;font-size:inherit}
+.rich img{max-width:100%;height:auto;border:1px solid var(--hair-10);border-radius:8px;margin:6px 0}
+.rich a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.rich table{border-collapse:collapse;margin:0 0 14px;font-size:13.5px;width:100%}
+.rich th,.rich td{border:1px solid var(--hair-10);padding:6px 10px;text-align:left}
+.rich th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-50);font-weight:500;background:rgba(var(--ink-rgb),.02)}
+.rich h1,.rich h2,.rich h3,.rich h4{font-weight:700;letter-spacing:-.02em;color:var(--ink);line-height:1.25;margin:22px 0 9px}
+.rich h1{font-size:21px}
+.rich h2{font-size:18px}
+.rich h3{font-size:15.5px}
+.rich h4{font-size:14px}
+.rich hr{border:0;border-top:1px solid var(--hair-10);margin:20px 0}
+.rich blockquote{border-left:2px solid var(--hair-20);padding-left:14px;margin:0 0 13px;color:var(--ink-50);font-style:italic}
+.rich .tabsnote{
+  font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-35);
+  margin:0 0 5px;
+}
+
+/* python token colours — muted, same family as the difficulty hues */
+.tok-kw{color:var(--tok-kw)}
+.tok-str{color:var(--easy)}
+.tok-num{color:var(--med)}
+.tok-com{color:var(--ink-35);font-style:italic}
+.tok-def{color:var(--tok-def);font-weight:600}
+.tok-bi{color:var(--tok-def)}
+
+/* ---------------- drawer ---------------- */
+.scrim{position:fixed;inset:0;z-index:70;background:rgba(var(--ink-rgb),.16);opacity:0;transition:opacity .2s ease}
+.scrim.show{opacity:1}
+@media (prefers-reduced-motion:reduce){.scrim{transition:none}}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(760px,100vw);
+  background:var(--card);border-left:1px solid var(--hair-20);box-shadow:var(--shadow-lift);
+  display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .24s cubic-bezier(.22,.68,.28,1);
+}
+.drawer.show{transform:translateX(0)}
+@media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+.dhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--hair-10);flex:0 0 auto;flex-wrap:wrap}
+.dtabs{display:flex;gap:2px;border:1px solid var(--hair-20);border-radius:8px;padding:2px;background:var(--canvas)}
+.dtab{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  padding:5px 12px;border-radius:6px;color:var(--ink-50);white-space:nowrap;
+}
+.dtab:hover{color:var(--ink)}
+.dtab[aria-selected="true"]{background:var(--solid-bg);color:var(--solid-fg)}
+.dhead .dtitle{flex:1;min-width:0;font-size:14px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dclose{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-50);border:1px solid var(--hair-20);border-radius:6px;padding:5px 10px}
+.dclose:hover{color:var(--ink);border-color:var(--ink)}
+.dbody{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:18px 20px 24px}
+.dfoot{
+  flex:0 0 auto;border-top:1px solid var(--hair-10);padding:9px 16px;background:rgba(var(--ink-rgb),.015);
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-35);line-height:1.6;
+}
+.dfoot a{color:var(--ink-50)}
+.codewrap{position:relative}
+.codewrap .copy{
+  position:absolute;top:8px;right:8px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:5px;padding:3px 8px;background:var(--card);color:var(--ink-50);
+}
+.codewrap .copy:hover{color:var(--ink);border-color:var(--ink)}
+
+/* honest state blocks */
+.state{border:1px dashed var(--hair-20);border-radius:10px;padding:18px 18px;background:rgba(var(--ink-rgb),.012)}
+.state.warn{border-color:rgba(var(--med-rgb),.4);background:var(--med-soft)}
+.state.err{border-color:rgba(var(--hard-rgb),.4);background:var(--hard-soft)}
+.state h3{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;margin-bottom:8px;color:var(--ink-50)}
+.state.warn h3{color:var(--med)}
+.state.err h3{color:var(--hard)}
+.state p{font-size:14.5px;color:var(--ink-70);max-width:62ch}
+.state p + p{margin-top:8px}
+.state .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+.state .act{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:7px;padding:6px 12px;background:var(--card);color:var(--ink-70);
+}
+.state .act:hover{border-color:var(--ink);color:var(--ink)}
+
+/* skeleton — bounded, never an infinite spinner */
+.skel{display:flex;flex-direction:column;gap:9px}
+.skel i{display:block;height:12px;border-radius:4px;background:linear-gradient(90deg,rgba(var(--ink-rgb),.05),rgba(var(--ink-rgb),.09),rgba(var(--ink-rgb),.05));background-size:200% 100%;animation:sweep 1.1s linear infinite}
+@keyframes sweep{from{background-position:100% 0}to{background-position:-100% 0}}
+@media (prefers-reduced-motion:reduce){.skel i{animation:none}}
+
+@media (max-width:700px){
+  .topbar{height:auto;flex-wrap:wrap;padding:8px 14px;gap:8px 14px}
+  .searchwrap{order:3;flex-basis:100%}
+  .topmeta .hide-m{display:none}
+  main{padding:20px 14px 90px}
+  .filterbar{margin:0 -14px 14px;padding:10px 14px;position:static}
+  .viewhead h1{font-size:23px}
+  .desc{padding:16px 16px 20px}
+  .phero{padding:15px 16px}
+  .paneltoggles{padding:11px 16px}
+  .dbody{padding:15px 15px 20px}
+}
+
+/* ======================= Phase 2 — the code workspace =======================
+   Same vocabulary as everything above: white card on the light canvas, mono
+   micro-labels, the three difficulty hues doing double duty as pass / caution /
+   fail. The editor is pinned beside the statement so reading and writing are
+   one glance apart, and `f` collapses the statement when they are not. */
+
+/* The problem screen earns more width once there is an editor on it. */
+/* The workspace takes the window. Its columns have their own minimums and their
+   own drag handles, so the width is the user's to spend. */
+body.ws-wide main{max-width:none}
+
+/* ---------------------------------------------------------------------------
+   The problem screen is a workspace, not a document.
+
+   It used to be one long page: three columns of wildly different heights, the
+   editor and coach pinned with position:sticky, and the *page* scrolling to fit
+   the tallest column — the statement. Scrolling to read example 3 therefore
+   dragged the editor off the top of the screen, and the editor only ever got
+   whatever height the viewport had left over.
+
+   Now the screen is locked to the viewport and each column scrolls inside
+   itself, so the editor is always full height and always where you left it.
+   --------------------------------------------------------------------------- */
+/* Only where the columns actually sit side by side. Below 1080px they stack, and a
+   stack has to scroll as a page like anything else. */
+@media (min-width:1081px){
+  body.ws-wide{overflow:hidden}
+  body.ws-wide main{
+    height:calc(100vh - var(--topbar-h));
+    padding:14px 20px 0;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  body.ws-wide.has-banner main{height:calc(100vh - var(--topbar-h) - 39px)}
+  body.ws-wide main > .view{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+  .pbody.with-workspace{flex:1 1 auto;min-height:0;align-items:stretch;padding-bottom:14px}
+  .pcol{overflow-y:auto;overscroll-behavior:contain;height:100%}
+}
+
+.pbody.with-workspace{grid-template-columns:minmax(0,1.04fr) minmax(0,1fr);margin-top:0}
+/* Block flow, not a flex column: this scrolls, and a scrolling flex column
+   shrinks its children below their own content in WebKit. Same rule as the
+   coach log — see server/test/css-rules.test.mjs. */
+.pcol{display:block;min-width:0;min-height:0}
+.pcol > * + *{margin-top:12px}
+.pbody.with-workspace .prail{position:static;flex-direction:row;flex-wrap:wrap;gap:12px}
+.pbody.with-workspace .prail > *{flex:1 1 190px;min-width:0}
+body.hide-problem .pbody.with-workspace{grid-template-columns:minmax(0,1fr)}
+body.hide-problem .pcol{display:none}
+/* Full width is not the same as usable width — a 1400px line of Python is not
+   something anyone reads. Focus mode centres a column instead. */
+body.hide-problem .ws{max-width:1060px;width:100%;justify-self:center}
+.ws-probtitle{display:none}
+/* Shown only when the statement is collapsed — never be in an editor without knowing
+   which problem it belongs to. ONE line: it wrapped to four on a long title and pushed
+   the whole toolbar down with it, which is a reminder charging headline rent. */
+body.hide-problem .ws-probtitle{
+  display:block;font-family:var(--serif);font-size:14.5px;font-weight:700;
+  letter-spacing:-.01em;text-transform:none;color:var(--ink);
+  flex:0 1 auto;min-width:0;max-width:38ch;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+.ws{
+  /* Fills its grid cell, which the workspace has already sized to the viewport.
+     No sticky offsets and no viewport arithmetic of its own — one thing owns the
+     height, and it is the container. */
+  height:100%;min-height:0;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+
+/* ---- toolbar ---- */
+.ws-bar{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:8px 10px 8px 14px;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.015);
+}
+.ws-bar .spacer{flex:1 1 auto}
+.ws-title{flex:0 0 auto}
+/* Reset is rare and it throws work away, so it does not sit shoulder to shoulder with
+   Run. Quiet, and separated from the two toggles beside it. */
+.ws-reset{margin-right:6px;color:var(--ink-35)}
+.ws-reset:hover{color:var(--hard);border-color:var(--hard)}
+/* Armed: it is about to throw away everything you wrote, and says so in the one colour
+   this page uses for that. */
+.ws-reset.is-arming{color:var(--hard);border-color:var(--hard);background:rgba(var(--hard-rgb),.10)}
+/* Adding Submit crowded this bar: the status label ran under the Focus chip and clipped
+   mid-word. It may shrink and ellipsize — the buttons must not. */
+.ws-status{
+  display:inline-flex;align-items:baseline;gap:8px;
+  flex:0 1 auto;min-width:0;overflow:hidden;
+  color:var(--ink-50);white-space:nowrap;
+}
+.ws-status > *{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ws-bar .btn,.ws-bar .ws-mini,.ws-bar .ws-submit{flex:0 0 auto}
+.ws-status[data-tone="ok"]{color:var(--easy)}
+.ws-status[data-tone="warn"]{color:var(--med)}
+.ws-status[data-tone="bad"]{color:var(--hard)}
+.ws-status-why{
+  font-family:var(--serif);font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--ink-50);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32ch;
+}
+.ws-retry{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:inherit;text-decoration:underline;text-underline-offset:3px}
+
+.ws-mini{
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:8px;padding:6px 11px;background:var(--card);color:var(--ink-50);
+  transition:background .12s,color .12s,border-color .12s;
+}
+.ws-mini:hover{color:var(--ink);border-color:var(--ink)}
+.ws-mini[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.ws-mini kbd{font-family:var(--mono);font-size:9px;border:1px solid currentColor;opacity:.5;border-radius:3px;padding:0 4px}
+
+.ws-run{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:500;
+  background:var(--solid-bg);color:var(--solid-fg);border:1px solid var(--solid-edge);border-radius:8px;padding:7px 14px;
+}
+.ws-run:hover{background:var(--solid-hover)}
+.ws-run kbd{font-family:var(--mono);font-size:9px;letter-spacing:.04em;border:1px solid currentColor;border-radius:3px;padding:0 4px;opacity:.55}
+.ws-run:disabled{cursor:default}
+/* Working, not inverted. --ink-70 is a TEXT colour; using it as a background made the
+   button a pale slab on every dark theme — brighter while busy than while idle, which
+   is backwards. Busy is the same surface, dimmed. */
+.ws-run.busy{background:var(--solid-bg);border-color:var(--solid-edge);opacity:.65;cursor:progress}
+
+/* ---- honest one-line notice, above the code ---- */
+.ws-notice{
+  flex:0 0 auto;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  padding:8px 10px 8px 14px;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.02);
+}
+.ws-notice.warn{background:var(--med-soft);border-bottom-color:rgba(var(--med-rgb),.28)}
+.ws-noticehead{font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:var(--med);flex:0 0 auto}
+.ws-noticebody{font-size:13px;color:var(--ink-70);flex:1 1 240px;min-width:0}
+.ws-noticex{font-family:var(--mono);font-size:15px;line-height:1;color:var(--ink-35);padding:0 3px}
+.ws-noticex:hover{color:var(--ink)}
+
+/* ---- the editor itself ---- */
+.ws-host{flex:1 1 auto;min-height:150px;position:relative;overflow:hidden;background:var(--card)}
+.ws-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.ws-host textarea:focus-visible{outline:none}
+.ws-fallback{
+  width:100%;height:100%;display:block;border:0;outline:0;resize:none;padding:14px 16px;
+  font-family:var(--mono);font-size:13px;line-height:22px;color:var(--ink);background:var(--card);tab-size:4;
+}
+/* Monaco paints its own focus ring; the app's global one would double it up. */
+.ws-host .monaco-editor .overflow-guard{border-radius:0}
+
+/* ---- results ---- */
+/* ⌘J takes the whole lane away, the way ⌘J takes the terminal away. Collapsing it to a
+   header would still cost the editor the rows, which is the reason to close it at all. */
+body.hide-results .ws-results{display:none}
+.ws-results{
+  flex:0 1 auto;max-height:56%;overflow-y:auto;overscroll-behavior:contain;
+  border-top:1px solid var(--hair-20);background:rgba(var(--ink-rgb),.016);
+}
+.rr-body > .state{border-style:solid}
+.rr-body > .state{margin:14px 16px}
+.rr-idle{padding:13px 16px 16px}
+.rr-idle p{font-size:13px;color:var(--ink-50);max-width:58ch;margin-top:5px}
+
+.rr-running{padding:0 0 13px}
+.rr-bar{height:2px;background:var(--hair-10);overflow:hidden}
+.rr-bar i{display:block;height:100%;width:36%;background:var(--accent);animation:rr-slide 1.05s ease-in-out infinite}
+@keyframes rr-slide{from{transform:translateX(-110%)}to{transform:translateX(320%)}}
+@media (prefers-reduced-motion:reduce){.rr-bar i{animation:none;width:100%;opacity:.25}}
+.rr-runrow{display:flex;align-items:center;gap:12px;padding:13px 16px 0}
+.rr-runrow .spacer{flex:1 1 auto}
+.rr-running .rr-msg{padding:8px 16px 0;margin:0;font-size:12.5px;color:var(--ink-35)}
+
+.rr-summary{
+  display:flex;align-items:center;gap:10px;padding:11px 16px;
+  border-bottom:1px solid var(--hair-10);position:sticky;top:0;z-index:2;
+  /* Sticky, so it must be opaque — the cases scroll under it. Derived from the ink,
+     not from a grey someone eyedropped off the Paper theme: that literal was a white
+     bar across every dark theme, which is what made a passing run look like an error. */
+  background:var(--card);
+  box-shadow:0 1px 0 var(--hair-06);
+}
+.rr-summary .spacer{flex:1 1 auto}
+.rr-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
+.rr-headline{font-weight:700;font-size:15px;letter-spacing:-.02em}
+.rr-summary.s-pass .rr-dot{background:var(--easy)}
+.rr-summary.s-pass .rr-headline{color:var(--easy)}
+.rr-summary.s-fail .rr-dot{background:var(--hard)}
+.rr-summary.s-fail .rr-headline{color:var(--hard)}
+.rr-summary.s-unclear .rr-dot{background:var(--med)}
+.rr-summary.s-unclear .rr-headline{color:var(--med)}
+
+.rr-case + .rr-case{border-top:1px solid var(--hair-06)}
+.rr-casehead{width:100%;display:flex;align-items:center;gap:10px;padding:8px 16px;text-align:left}
+.rr-casehead:hover{background:rgba(var(--ink-rgb),.028)}
+.rr-caret{color:var(--ink-35);font-size:12px;line-height:1;flex:0 0 auto;transition:transform .16s ease}
+@media (prefers-reduced-motion:reduce){.rr-caret{transition:none}}
+.rr-casehead[aria-expanded="true"] .rr-caret{transform:rotate(90deg)}
+.rr-caseno{flex:0 0 auto;font-size:10px;letter-spacing:.12em}
+.rr-preview{
+  flex:1 1 auto;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--ink-35);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rr-verdict{flex:0 0 auto}
+.rr-verdict.k-pass{color:var(--easy);border-color:rgba(var(--easy-rgb),.35);background:var(--easy-soft)}
+.rr-verdict.k-fail,.rr-verdict.k-runtime{color:var(--hard);border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
+.rr-verdict.k-timeout,.rr-verdict.k-unknown{color:var(--med);border-color:rgba(var(--med-rgb),.35);background:var(--med-soft)}
+.rr-ms{flex:0 0 auto;width:58px;text-align:right;font-size:10px;letter-spacing:.06em}
+
+.rr-casebody{padding:2px 16px 16px}
+.rr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.rr-field > .mono{margin-bottom:4px}
+.rr-field pre{
+  font-family:var(--mono);font-size:12px;line-height:1.65;background:var(--card);
+  border:1px solid var(--hair-10);border-radius:7px;padding:8px 10px;
+  white-space:pre-wrap;word-break:break-word;max-height:170px;overflow:auto;
+}
+.rr-field.bad pre{border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
+.rr-field.wide{margin-top:10px}
+.rr-field.trace pre{border-color:rgba(var(--hard-rgb),.3);background:var(--hard-soft);white-space:pre;max-height:230px}
+.rr-msg{font-size:13.5px;color:var(--ink-70);margin:0 0 10px;max-width:70ch}
+.rr-note{font-size:13px;color:var(--med);margin:0 0 10px}
+.rr-trace{
+  font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--card);
+  border:1px solid var(--hair-20);border-radius:8px;padding:10px 12px;margin-top:11px;
+  white-space:pre;overflow:auto;max-height:240px;
+}
+
+/* ---- narrow: the two panes stack and the editor gets a real height ---- */
+@media (max-width:1080px){
+  body.ws-wide main{max-width:1080px}
+  .pbody.with-workspace{grid-template-columns:minmax(0,1fr)}
+  /* Stacked, the editor belongs directly under the statement — the quick-facts
+     cards are reference, and reference can wait until after the code. */
+  .pbody.with-workspace .pcol{display:contents}
+  body.hide-problem .pbody.with-workspace .pcol{display:none}
+  .pbody.with-workspace .ws{order:1}
+  .pbody.with-workspace .prail{order:2}
+  .ws{height:auto;min-height:0;max-width:none}
+  body.hide-problem .ws{max-width:none}
+  .ws-host{flex:0 0 auto;height:46vh;min-height:260px}
+  .ws-results{max-height:none}
+}
+@media (max-width:700px){
+  .ws-bar{flex-wrap:wrap;gap:8px}
+  .ws-status{order:3;flex-basis:100%}
+  .ws-host{height:46vh;min-height:240px}
+  .rr-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/* ================== Phase 3 & 5 — the coach, voice, diagrams ==================
+   Same vocabulary as everything above: a white card on the light canvas, mono
+   micro-labels with wide tracking, serif prose, the three hues doing duty as
+   calm / caution / stop. The coach sits beside the editor as a third column and
+   is closed until asked for, because the panel that gives you the answer must
+   never be the panel that is already open. */
+
+/* ---- the launcher: quiet until you want it ---- */
+.coach-launch{
+  position:fixed;right:20px;bottom:20px;z-index:65;
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  background:var(--card);border:1px solid var(--hair-20);border-radius:999px;padding:9px 16px;
+  color:var(--ink-70);box-shadow:var(--shadow);
+  transition:background .12s,color .12s,border-color .12s,transform .12s;
+}
+.coach-launch:hover{border-color:var(--ink);color:var(--ink);transform:translateY(-1px)}
+.coach-launch kbd{font-family:var(--mono);font-size:9px;border:1px solid var(--hair-20);border-radius:3px;padding:0 4px;opacity:.7}
+.coach-launch[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.coach-launch[aria-pressed="true"] kbd{border-color:currentColor;opacity:.55}
+@media (prefers-reduced-motion:reduce){.coach-launch{transition:none}}
+
+/* ---- the panel, as a third column beside the editor ---- */
+.coach{
+  display:none;flex-direction:column;overflow:hidden;
+  height:100%;min-height:0;
+}
+body.coach-open .coach{display:flex}
+body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.82fr) minmax(0,1.06fr) minmax(300px,.86fr)}
+body.coach-open.hide-problem .pbody.with-workspace{grid-template-columns:minmax(0,1fr) minmax(320px,.5fr)}
+body.coach-open.hide-problem .ws{max-width:none}
+body.coach-open .coach-launch{display:none}
+
+.coach-bar .coach-state{white-space:nowrap}
+.coach-hide{padding:5px 10px}
+
+.coach-log{
+  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;
+  padding:16px 18px 10px;
+  /* BLOCK, not flex. A scrolling list of stacked messages has no business being a flex
+     column: flex items shrink to fit their container before the container agrees to
+     scroll, so once the conversation outgrew the panel every message was squeezed
+     shorter than its own text and the lines drew through each other. Patching that with
+     flex-shrink:0 fixed the children I remembered and left the grandchildren free to do
+     it again. Block flow cannot express "shrink below your own content", so the class of
+     bug is gone rather than suppressed. */
+  display:block;
+}
+.coach-log > * + *{margin-top:18px}
+
+/* empty state — says what the coach is for, and offers a first move */
+.coach-empty{display:block}
+.coach-empty > * + *{margin-top:13px}
+.coach-empty p{font-size:14px;line-height:1.6;color:var(--ink-50);max-width:46ch}
+.coach-starters{display:flex;gap:6px;flex-wrap:wrap}
+.coach-privacy{letter-spacing:.12em;color:var(--ink-35);margin-top:2px}
+
+.cmsg{display:block}
+.cmsg > * + *{margin-top:6px}
+/* The app speaking, not either party — an attempt closing, and why the coach is about
+   to answer a question nobody typed. */
+.cmsg-note{
+  align-self:center;text-align:center;font-size:10px;letter-spacing:.1em;
+  border-top:1px solid var(--hair-06);border-bottom:1px solid var(--hair-06);
+  padding:7px 0;width:100%;
+}
+.cmsg-who{letter-spacing:.18em}
+.cmsg.you .cmsg-body{
+  background:rgba(var(--ink-rgb),.035);border:1px solid var(--hair-06);border-radius:10px;
+  padding:10px 13px;font-size:14px;color:var(--ink);
+}
+.cmsg.you .cmsg-body p{margin:0}
+.cmsg.reply .cmsg-body{font-size:14.5px;line-height:1.62}
+.cmsg.reply .cmsg-body > *:last-child{margin-bottom:0}
+.cmsg .state{margin-top:8px}
+.cmsg .state p{font-size:13.5px}
+
+/* ---- history: submissions and past conversations, inside the coach panel ---- */
+.coach-tabs{display:inline-flex;gap:2px}
+.coach-tab{
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  padding:4px 9px;border-radius:5px;color:var(--ink-35);
+}
+.coach-tab:hover{color:var(--ink-70)}
+.coach-tab[aria-pressed="true"]{color:var(--ink);background:rgba(var(--ink-rgb),.05)}
+
+.coach-history{
+  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;
+  padding:14px 16px 16px;display:block;   /* block: it scrolls — see css-rules.test.mjs */
+}
+.hist-section{margin:16px 0 8px;letter-spacing:.16em}
+.hist-section:first-child{margin-top:0}
+.hist-item{border-top:1px solid var(--hair-06)}
+.hist-head{
+  display:flex;align-items:center;gap:6px 8px;width:100%;text-align:left;
+  padding:9px 2px;min-width:0;flex-wrap:wrap;   /* a narrow panel wraps rather than clips */
+}
+.hist-head:hover{background:rgba(var(--ink-rgb),.02)}
+.hist-when{flex:0 0 auto;font-size:10px}
+.hist-title{flex:1 1 auto;min-width:0;font-size:13px;color:var(--ink-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-detail{flex:0 1 auto;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis}
+.hist-body{padding:2px 2px 14px}
+.hist-code{
+  font-family:var(--mono);font-size:11.5px;line-height:1.55;
+  background:rgba(var(--ink-rgb),.035);border:1px solid var(--hair-06);border-radius:8px;
+  padding:11px 13px;overflow-x:auto;margin-bottom:8px;
+}
+.hist-link{font-size:10px;color:var(--ink-50);text-decoration:underline;text-underline-offset:3px}
+.hist-ask{
+  background:rgba(var(--ink-rgb),.035);border:1px solid var(--hair-06);border-radius:9px;
+  padding:8px 11px;font-size:13px;margin-bottom:8px;
+}
+.hist-ask p{margin:0}
+.hist-answer{font-size:13.5px;line-height:1.6;margin-bottom:14px}
+.hist-answer > *:last-child{margin-bottom:0}
+.hist-marker{font-size:10px;margin-bottom:6px}
+.hist-note{font-size:12.5px;color:var(--ink-50);padding:4px 0}
+.hist-loading{font-size:10px;padding:4px 0}
+/* The head and its action share a row; the head takes whatever is left. */
+.hist-row{display:flex;align-items:stretch;gap:6px}
+.hist-row .hist-head{flex:1 1 auto;min-width:0}
+.hist-resume{flex:0 0 auto;align-self:center;margin-right:2px}
+.hist-thread{padding-top:2px}
+
+/* the example cases, shown before you run so you know what "Run" will do */
+.rr-idle{display:flex;flex-direction:column;gap:9px}
+.rr-idlecases{display:flex;flex-direction:column;gap:9px}
+.rr-idlecase{display:flex;flex-direction:column;gap:5px}
+
+/* tool calls: one quiet line each, never a wall of JSON */
+.cmsg-tools:not(:empty){margin-bottom:2px}
+.cmsg-tool + .cmsg-tool{margin-top:3px}
+.cmsg-tool{
+  font-size:10px;letter-spacing:.1em;color:var(--ink-35);
+  padding-left:13px;position:relative;text-transform:none;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cmsg-tool::before{content:'';position:absolute;left:2px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--hair-20)}
+
+.coach-thinking{display:flex;align-items:center;gap:8px;color:var(--ink-35)}
+.coach-thinking i{width:5px;height:5px;border-radius:50%;background:var(--ink-35);animation:coach-pulse 1.1s ease-in-out infinite}
+@keyframes coach-pulse{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.coach-thinking i{animation:none}}
+
+/* ---- composer ---- */
+.coach-compose{
+  flex:0 0 auto;border-top:1px solid var(--hair-20);background:rgba(var(--ink-rgb),.015);
+  padding:10px 12px 11px;display:flex;flex-direction:column;gap:9px;
+}
+.coach-input{
+  width:100%;resize:none;border:1px solid var(--hair-20);border-radius:9px;background:var(--card);
+  padding:10px 12px;font-family:var(--serif);font-size:14.5px;line-height:1.5;color:var(--ink);
+  outline:none;min-height:46px;max-height:180px;
+}
+.coach-input::placeholder{color:var(--ink-35)}
+.coach-input:focus{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.coach-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0}
+/* The voice control sits inline with Ask now, so it must not claim a whole row. */
+.coach-actions .vc{flex:0 1 auto;min-width:0}
+.coach-actions .vc-row{gap:6px}
+.coach-actions .vc-row .spacer{display:none}
+.coach-actions .spacer{flex:1 1 auto}
+.coach-hint{font-size:9.5px;letter-spacing:.1em;color:var(--ink-35);max-width:24ch;line-height:1.4}
+.coach-send{padding:7px 13px}
+.coach-send.busy{background:var(--solid-bg);border-color:var(--solid-edge);opacity:.65;cursor:progress}
+
+/* ---- voice: the microphone is never subtle while it is live ---- */
+.vc{display:flex;flex-direction:column;gap:7px}
+.vc-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vc-row .spacer{flex:1 1 auto}
+.vc-talk{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:8px;padding:6px 12px;background:var(--card);color:var(--ink-70);
+  touch-action:none;user-select:none;-webkit-user-select:none;
+  transition:background .12s,color .12s,border-color .12s;
+}
+.vc-talk:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
+.vc-talk:disabled{color:var(--ink-35);border-style:dashed;cursor:default}
+.vc.is-recording .vc-talk{background:var(--hard);border-color:var(--hard);color:var(--on-ink)}
+
+.vc-rec{display:inline-flex;align-items:center;gap:7px;color:var(--hard)}
+.vc-rec .mono{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+.vc-dot{width:8px;height:8px;border-radius:50%;background:var(--hard);animation:vc-blink 1s steps(2,start) infinite}
+@keyframes vc-blink{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.vc-dot{animation:none}}
+.vc-clock{font-size:10px;color:var(--hard)}
+/* The live microphone is marked on the BUTTON that opened it, and nowhere else.
+   Washing the whole composer red made the thing you are reading — your own words,
+   arriving as you speak — sit inside a warning. A red Stop button, a blinking dot and
+   a running clock are already impossible to miss; the wash only made them harder to
+   read past. */
+
+.vc-status{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12.5px;color:var(--ink-50);line-height:1.5}
+.vc-status .vc-statushead{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-50);flex:0 0 auto}
+.vc-status .vc-statusbody{flex:1 1 180px;min-width:0}
+.vc-status.warn .vc-statushead{color:var(--med)}
+.vc-status.warn .vc-statusbody{color:var(--ink-70)}
+.vc-status.err .vc-statushead{color:var(--hard)}
+.vc-status.err .vc-statusbody{color:var(--hard)}
+
+/* ---- the illustrator ---- */
+.ill{margin:0 0 14px;border:1px solid var(--hair-10);border-radius:10px;background:var(--card);overflow:hidden}
+.ill figcaption{padding:7px 11px 0;font-size:9.5px;letter-spacing:.16em}
+.ill-canvas{padding:12px 12px 14px;overflow-x:auto}
+.ill-canvas svg{display:block;max-width:100%;height:auto;margin:0 auto}
+.ill-pending{padding:22px 12px;text-align:center;letter-spacing:.16em}
+.ill-source{margin:8px 11px 11px !important;font-size:11.5px !important;max-height:260px;overflow:auto}
+.ill-note{
+  padding:0 11px 10px;font-size:12.5px;color:var(--ink-50);line-height:1.5;
+}
+
+/* ---- narrow: the coach stacks under the editor rather than squeezing it ---- */
+@media (max-width:1180px){
+  body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  body.coach-open .coach{grid-column:1 / -1}
+}
+@media (max-width:1080px){
+  body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,1fr)}
+  .pbody.with-workspace .coach{order:3}
+  .coach{height:auto;min-height:0}
+  .coach-log{max-height:52vh;min-height:220px}
+}
+@media (max-width:700px){
+  .coach-launch{right:14px;bottom:14px}
+  .coach-log{padding:14px 14px 8px}
+  .coach-hint{display:none}
+}
+
+/* Refinements after looking at the rendered panel at 1440 and at 860. */
+.coach-sep{width:3px;height:3px;border-radius:50%;background:var(--hair-20);flex:0 0 auto}
+.coach-hint{max-width:none;white-space:nowrap}
+/* The editor is the reason this screen exists; the coach gives width back to it. */
+body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minmax(0,1.12fr) minmax(300px,.8fr)}
+/* With nothing said yet, the invitation sits in the middle of the panel rather
+   than clinging to the top of an empty column. */
+.coach-log:has(.coach-empty){display:flex;flex-direction:column;justify-content:center}
+
+/* ========================= Phase 4 — Run vs Submit =========================
+   Same vocabulary as everything above, spent on one job: making two actions
+   that look similar in every other tool look nothing alike here.
+
+   Run   — solid ink, a shortcut on its face, results on the grey canvas under a
+           quiet grey lane label. The thing you press fifty times an hour.
+   Submit— terracotta and outlined, no shortcut, and a verdict that arrives in a
+           white panel under a solid ink band. Deliberate, consequential, and
+           impossible to mistake for the lane below it. */
+
+.ws-submit{
+  display:inline-flex;align-items:baseline;gap:7px;white-space:nowrap;
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:500;
+  background:var(--card);color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:7px 13px;
+  transition:background .12s,color .12s;
+}
+.ws-submit:hover:not(:disabled){background:var(--accent);color:var(--on-ink)}
+.ws-submit:hover:not(:disabled) .ws-submitscope{color:rgba(var(--on-ink-rgb),.72)}
+.ws-submitscope{
+  font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:none;
+  color:rgba(var(--accent-rgb),.74);
+}
+.ws-submit:disabled{cursor:default;background:var(--accent-soft)}
+.ws-submit.busy{border-style:dashed}
+@media (prefers-reduced-motion:reduce){.ws-submit{transition:none}}
+
+/* ---- the collapsed lane ---- */
+/* The pane shows one lane. The other is this: a single line saying what it holds, so a
+   verdict from twenty minutes ago is findable without sitting on top of the run you just
+   asked for. It reads as a lane header, not as a button, because that is what it is —
+   a header with the body folded away. */
+.ws-stub{
+  display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;
+  padding:9px 16px 8px;border:0;border-bottom:1px solid var(--hair-10);
+  background:rgba(var(--ink-rgb),.03);color:inherit;font:inherit;cursor:pointer;
+}
+.ws-stub:hover{background:rgba(var(--ink-rgb),.06)}
+.ws-stub:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ws-stubmark{color:var(--ink-70);font-weight:600;letter-spacing:.2em;font-size:10px;flex:0 0 auto}
+.ws-stubline{font-size:12.5px;color:var(--ink-50);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-stub[data-tone="ok"] .ws-stubline{color:var(--easy)}
+.ws-stub[data-tone="err"] .ws-stubline{color:var(--hard)}
+.ws-stub[data-tone="warn"] .ws-stubline{color:var(--medium)}
+
+/* ---- the lane label over the local results ---- */
+.rr-lane{
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  padding:9px 16px 8px;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.022);
+}
+.rr-lanemark{color:var(--ink-70);font-weight:600;letter-spacing:.2em;font-size:10px}
+.rr-lanescope{font-size:9.5px;letter-spacing:.12em;text-transform:none}
+
+/* ---- the verdict panel ---- */
+/* Scoped to the workspace. As a bare `.sub` this collided with `.viewhead .sub`, the
+   one-line description under every view heading — same name, different component — and
+   painted a card background and a rule behind it on every screen that has one. */
+.ws .sub{border-bottom:1px solid var(--hair-20);background:var(--card)}
+.sub-head{
+  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  padding:8px 16px;background:var(--solid-bg);color:var(--solid-fg);
+}
+.sub-mark{color:var(--solid-fg);font-weight:600;letter-spacing:.2em;font-size:10px}
+.sub-scope{color:var(--solid-fg);opacity:.62;font-size:9.5px;letter-spacing:.12em;text-transform:none}
+.sub-body{padding:0 0 14px}
+.sub-body > .state{margin:14px 16px 0;border-style:solid}
+.sub-msg{font-size:13.5px;color:var(--ink-70);margin:0 16px 10px;max-width:70ch;line-height:1.55}
+.sub-check{margin-top:10px}
+.sub-check .sub-link{margin-left:2px}
+
+/* judging — determinate against the cap, so it can never spin forever */
+.sub-judging{padding:0 0 2px}
+.sub-progress{height:3px;background:rgba(var(--ink-rgb),.09)}
+.sub-progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s linear}
+@media (prefers-reduced-motion:reduce){.sub-progress i{transition:none}}
+.sub-runrow{display:flex;align-items:center;gap:12px;padding:13px 16px 0}
+.sub-runrow .spacer{flex:1 1 auto}
+.sub-runrow .act{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:7px;padding:6px 12px;background:var(--card);color:var(--ink-70);
+}
+.sub-runrow .act:hover{border-color:var(--ink);color:var(--ink)}
+.sub-clock{color:var(--ink-50);font-size:11px;letter-spacing:.06em}
+.sub-judging .sub-msg{padding-top:9px;margin-bottom:0;font-size:12.5px;color:var(--ink-50)}
+
+/* the verdict itself — the judge's word, in the judge's terms */
+.sub-verdict{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:14px 16px 4px}
+.sub-verdict .spacer{flex:1 1 auto}
+.sub-vdot{width:9px;height:9px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
+.sub-vname{font-family:var(--serif);font-weight:700;font-size:21px;letter-spacing:-.03em;line-height:1.1}
+.sub-vcount{font-size:10.5px;letter-spacing:.12em;color:var(--ink-70);white-space:nowrap}
+.sub-verdict.v-accepted .sub-vdot{background:var(--easy)}
+.sub-verdict.v-accepted .sub-vname{color:var(--easy)}
+.sub-verdict.v-rejected .sub-vdot{background:var(--hard)}
+.sub-verdict.v-rejected .sub-vname{color:var(--hard)}
+
+.sub-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:10px 16px 0}
+.sub-stat{border:1px solid var(--hair-10);border-radius:8px;padding:8px 11px 9px;background:var(--canvas)}
+.sub-stat .mono.dim{font-size:9.5px;letter-spacing:.14em}
+.sub-statv{font-family:var(--mono);font-size:15px;letter-spacing:-.01em;margin-top:4px;color:var(--ink)}
+.sub-statsub{font-size:9px;letter-spacing:.1em;text-transform:none;margin-top:3px}
+
+.sub-judge{margin:16px 16px 0;border-top:1px solid var(--hair-10);padding-top:12px}
+/* The section head has to out-rank the field labels under it, or "the judge's
+   own words" reads as just another box label. */
+.sub-judgehead{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.2em;font-weight:600;color:var(--ink-70);margin-bottom:11px}
+.sub-judgehead .spacer{flex:1 1 auto}
+.sub-judge .sub-msg{margin-left:0;margin-right:0}
+.sub-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.sub-detail.wide{grid-column:1 / -1}
+.sub-detail > .mono{margin-bottom:4px;font-size:9.5px;letter-spacing:.14em}
+.sub-detail pre{
+  font-family:var(--mono);font-size:12px;line-height:1.65;background:var(--canvas);
+  border:1px solid var(--hair-10);border-radius:7px;padding:8px 10px;
+  white-space:pre-wrap;word-break:break-word;max-height:210px;overflow:auto;
+}
+.sub-detail.bad pre{border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
+
+.sub-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 16px 0;padding-top:11px;border-top:1px solid var(--hair-10)}
+.sub-foot .spacer{flex:1 1 auto}
+.sub-foot .act{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--hair-20);border-radius:7px;padding:6px 12px;background:var(--card);color:var(--ink-70);
+}
+.sub-foot .act:hover{border-color:var(--ink);color:var(--ink)}
+.sub-link{
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+  text-decoration:underline;text-underline-offset:3px;
+}
+.sub-link:hover{color:var(--ink)}
+
+@media (max-width:700px){
+  .sub-stats{grid-template-columns:minmax(0,1fr)}
+  .sub-details{grid-template-columns:minmax(0,1fr)}
+  .ws-submitscope{display:none}
+}
+
+/* ---------------------------------------------------------------------------
+   Resizable splits
+
+   The handles sit over the gaps rather than in the grid, so the column count
+   does not change when the coach opens. They are invisible until you approach
+   them — a page covered in visible dividers reads as heavier than it is.
+   --------------------------------------------------------------------------- */
+
+.split{
+  position:absolute;z-index:5;
+  background:transparent;border:0;padding:0;
+  transition:background .12s ease;
+}
+.split[hidden]{display:none}
+
+.split-col{
+  width:11px;margin-left:-5.5px;
+  cursor:col-resize;
+}
+.split-row{
+  left:0;right:0;height:11px;margin-top:-5.5px;
+  cursor:row-resize;
+}
+
+/* The grip: a hairline that thickens on approach. */
+.split::after{
+  content:"";position:absolute;border-radius:2px;
+  background:var(--hair-20);opacity:0;transition:opacity .12s ease,background .12s ease;
+}
+.split-col::after{left:50%;transform:translateX(-50%);top:10px;bottom:10px;width:2px}
+.split-row::after{top:50%;transform:translateY(-50%);left:14px;right:14px;height:2px}
+
+.split:hover::after,.split:focus-visible::after{opacity:1;background:var(--ink-30)}
+.split:focus-visible{outline:none}
+.split:focus-visible::after{background:var(--ink)}
+
+/* While dragging, nothing else should select, and the pointer must not change
+   as it crosses a pane it is not interacting with. */
+body.is-splitting{cursor:col-resize;user-select:none}
+body.is-splitting .split::after{opacity:1;background:var(--ink)}
+body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
+
+@media (max-width:1080px){ .split{display:none} }
+
+/* ---------------------------------------------------------------------------
+   The think-aloud recorder
+
+   Deliberately not the coach's microphone. That one is dictation — you read it
+   before it sends. This one runs while you work and files itself away, so it
+   lives in the top bar with a clock instead of a text box — always visible,
+   never on top of the problem you are reading.
+   --------------------------------------------------------------------------- */
+
+.rec{
+  position:relative;
+  display:flex;align-items:center;
+}
+.rec-row{display:flex;align-items:center;gap:6px}
+
+.rec-toggle{
+  display:inline-flex;align-items:center;gap:9px;
+  background:var(--card);border:1px solid var(--hair-20);border-radius:999px;
+  padding:8px 15px;box-shadow:var(--shadow);
+  transition:border-color .14s ease,box-shadow .14s ease;
+}
+.rec-toggle:hover{border-color:var(--ink-35)}
+
+.rec-label{color:var(--ink-70)}
+.rec-clock{
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-35);
+  min-width:34px;text-align:right;
+}
+
+.rec-dot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--ink-35);flex:0 0 auto;transition:background .14s ease;
+}
+
+
+/* Live. Unmistakable, because a microphone you forgot is on is a real problem. */
+.rec.is-live .rec-toggle{border-color:var(--accent);background:var(--accent-soft)}
+.rec.is-live .rec-label{color:var(--accent)}
+.rec.is-live .rec-clock{color:var(--accent)}
+.rec.is-live .rec-dot{background:var(--accent);animation:recpulse 1.4s ease-in-out infinite}
+@keyframes recpulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){ .rec.is-live .rec-dot{animation:none} }
+
+/* Hangs below the control rather than displacing the bar, which has a fixed height. */
+.rec-note{
+  position:absolute;top:calc(100% + 7px);right:0;z-index:80;
+  /* One line, clipped. The transcript tail can be any length and must never grow a
+     panel that sits over the page. */
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(46ch,60vw);
+  font-size:12.5px;color:var(--ink-50);background:var(--card);
+  border:1px solid var(--hair-10);border-radius:9px;padding:7px 11px;box-shadow:var(--shadow);
+}
+.rec-note[data-tone="ok"]{color:var(--easy)}
+.rec-note[data-tone="warn"]{color:var(--med)}
+.rec-note[data-tone="err"]{color:var(--hard);border-color:rgba(var(--hard-rgb),.3)}
+/* It floats over the page, so it may not stay there once it has been read. */
+.rec-note.fade{opacity:0;transition:opacity .5s ease;pointer-events:none}
+
+.recmount{display:flex;align-items:center}
+.recmount:not(:empty){margin-right:4px}
+
+/* The statement column collapses out of the grid entirely — not to a sliver, and not
+   to an overlay lying on top of the Run button. ⌘B, from anywhere. */
+.prob-toggle{margin-right:2px}
+
+/* ===========================================================================
+   Settings
+   =========================================================================== */
+.set-open{
+  font-size:14px;line-height:1;color:var(--ink-50);
+  padding:5px 7px;border:1px solid transparent;border-radius:6px;
+}
+.set-open:hover{color:var(--ink);border-color:var(--hair-20)}
+
+.set-scrim{position:fixed;inset:0;background:rgba(var(--ink-rgb),.18);z-index:90}
+.settings{
+  position:fixed;top:0;right:0;z-index:91;
+  width:min(420px,94vw);height:100vh;
+  background:var(--card);border-left:1px solid var(--hair-20);box-shadow:var(--shadow-lift);
+  display:flex;flex-direction:column;
+}
+.set-head{
+  display:flex;align-items:center;gap:10px;
+  padding:0 16px;height:var(--topbar-h);flex:0 0 auto;
+  border-bottom:1px solid var(--hair-10);
+}
+.set-head .spacer{flex:1 1 auto}
+/* Block flow: this scrolls — see server/test/css-rules.test.mjs. */
+.set-body{flex:1 1 auto;overflow-y:auto;display:block;padding:18px 16px 40px}
+.set-label{margin:22px 0 10px;letter-spacing:.16em}
+.set-label:first-child{margin-top:0}
+
+.set-cards{display:grid;grid-template-columns:1fr;gap:9px}
+.set-card{
+  display:block;text-align:left;width:100%;
+  border:1px solid var(--hair-20);border-radius:10px;padding:11px 12px;background:var(--card);
+  transition:border-color .12s ease,background .12s ease;
+}
+.set-card:hover{border-color:var(--ink-35)}
+.set-card[aria-pressed="true"]{border-color:var(--ink);background:rgba(var(--ink-rgb),.03)}
+.set-cardname{margin-top:9px;color:var(--ink)}
+.set-cardblurb{font-size:12.5px;line-height:1.5;color:var(--ink-50);margin-top:3px}
+
+
+.set-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--hair-06)}
+.set-rowname{font-size:13.5px;color:var(--ink-70);flex:0 0 auto}
+.set-row .spacer{flex:1 1 auto}
+.set-range{flex:1 1 auto;min-width:0;accent-color:var(--ink)}
+.set-value{flex:0 0 auto;font-size:10px}
+.set-check{width:16px;height:16px;accent-color:var(--ink)}
+
+body.reduce-motion *{animation:none !important;transition:none !important}
+
+/* ===========================================================================
+   Themes
+
+   A theme is a block of variables, not a second stylesheet — everything above is
+   written in terms of these, so nothing has to be restyled per theme. Each one
+   changes four things, because changing only colour makes four versions of the
+   same page: palette, type, geometry (radius and rules), and a texture.
+
+   The textures are hand-written SVG, inlined as data URIs. No CDN, no image
+   files, nothing to 404, and they scale to any display.
+   =========================================================================== */
+
+body{background-image:var(--texture);background-attachment:fixed}
+
+/* ---- Blueprint — drafting table. Mono throughout, cyan on deep navy. ------ */
+body.theme-blueprint{
+  --ink-rgb:210,236,255; --on-ink-rgb:6,20,38; --on-ink:#061426;
+  --canvas:#0B1B2E; --card:#0F2237; --ink:#DCEEFF;
+  --ink-70:rgba(220,238,255,.72); --ink-50:rgba(220,238,255,.52);
+  --ink-35:rgba(220,238,255,.36);
+  --hair-20:rgba(120,190,240,.28); --hair-10:rgba(120,190,240,.16); --hair-06:rgba(120,190,240,.1);
+  --accent:#5FD3F3; --accent-rgb:95,211,243;  --accent-soft:rgba(var(--accent-rgb),.14);
+  --easy:#63E6A8;   --easy-rgb:99,230,168;    --easy-soft:rgba(var(--easy-rgb),.12);
+  --med:#F2C86B;    --med-rgb:242,200,107;    --med-soft:rgba(var(--med-rgb),.12);
+  --hard:#FF8A7A;   --hard-rgb:255,138,122;   --hard-soft:rgba(var(--hard-rgb),.12);
+  --tok-kw:#A9C6F5; --tok-def:#8FE3C0;
+  --serif:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:3px;
+  --shadow:0 0 0 1px rgba(95,211,243,.06);
+  --shadow-lift:0 8px 40px rgba(0,0,0,.5);
+  /* Raised navy with a cyan edge, not a sheet of white. */
+  --solid-bg:#17395A; --solid-fg:#DCEEFF; --solid-edge:#5FD3F3; --solid-hover:#1E4970;
+  /* Drafting grid: 1px lines every 24px, heavier every 120. */
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><g fill='none' stroke='%235FD3F3' stroke-opacity='0.07'><path d='M0 24h120M0 48h120M0 72h120M0 96h120M24 0v120M48 0v120M72 0v120M96 0v120'/></g><g fill='none' stroke='%235FD3F3' stroke-opacity='0.14'><path d='M0 0h120M0 0v120'/></g></svg>");
+}
+body.theme-blueprint .wordmark .solid{letter-spacing:.06em}
+body.theme-blueprint .card{backdrop-filter:blur(2px)}
+
+/* ---- Phosphor — a terminal that happens to teach. ------------------------- */
+body.theme-phosphor{
+  --ink-rgb:126,255,168; --on-ink-rgb:2,12,6; --on-ink:#020C06;
+  --canvas:#050B07; --card:#08130C; --ink:#7EFFA8;
+  --ink-70:rgba(126,255,168,.7); --ink-50:rgba(126,255,168,.48);
+  --ink-35:rgba(126,255,168,.32);
+  --hair-20:rgba(126,255,168,.26); --hair-10:rgba(126,255,168,.14); --hair-06:rgba(126,255,168,.08);
+  --accent:#FFC24B; --accent-rgb:255,194,75;  --accent-soft:rgba(var(--accent-rgb),.14);
+  --easy:#7EFFA8;   --easy-rgb:126,255,168;   --easy-soft:rgba(var(--easy-rgb),.1);
+  --med:#FFC24B;    --med-rgb:255,194,75;     --med-soft:rgba(var(--med-rgb),.1);
+  --hard:#FF6B6B;   --hard-rgb:255,107,107;   --hard-soft:rgba(var(--hard-rgb),.12);
+  --tok-kw:#CFFFDF; --tok-def:#A8FFC8;
+  --serif:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:0px;
+  --shadow:none;
+  --shadow-lift:0 0 60px rgba(126,255,168,.09);
+  /* A lit cell on the tube, which is what a highlighted key looked like. */
+  --solid-bg:#0F2A19; --solid-fg:#7EFFA8; --solid-edge:#7EFFA8; --solid-hover:#163A23;
+  /* Scanlines, plus the faint bloom of a curved tube. */
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'><rect width='4' height='1' fill='%237EFFA8' fill-opacity='0.045'/></svg>");
+}
+body.theme-phosphor .card{border-color:var(--hair-20)}
+body.theme-phosphor h1,body.theme-phosphor h2,body.theme-phosphor h3{text-transform:uppercase;letter-spacing:.04em}
+body.theme-phosphor .wordmark .outline{-webkit-text-stroke-width:.8px}
+body.theme-phosphor ::selection{background:var(--ink);color:var(--canvas)}
+
+/* ---- Slate — Paper after dark. ---------------------------------------------
+   Not a fifth character: the same typography, spacing and shapes as Paper, with
+   the light turned round. That is what a dark MODE is, as opposed to a dark
+   theme — Blueprint and Phosphor are themes, and they look nothing like this. */
+body.theme-slate{
+  --ink-rgb:232,234,237; --on-ink-rgb:15,17,20; --on-ink:#0F1114;
+  --canvas:#131518; --card:#1B1E22; --ink:#E8EAED;
+  --ink-70:rgba(232,234,237,.72); --ink-50:rgba(232,234,237,.5);
+  --ink-35:rgba(232,234,237,.34);
+  --hair-20:rgba(232,234,237,.2); --hair-10:rgba(232,234,237,.11); --hair-06:rgba(232,234,237,.07);
+  /* The terracotta of Paper, lifted until it carries on a dark ground. A hue that
+     reads as "stop" at 40% luminance reads as dried blood at 15%. */
+  --accent:#FF8256; --accent-rgb:255,130,86;  --accent-soft:rgba(var(--accent-rgb),.13);
+  --easy:#5FCF97;   --easy-rgb:95,207,151;    --easy-soft:rgba(var(--easy-rgb),.13);
+  --med:#E3B457;    --med-rgb:227,180,87;     --med-soft:rgba(var(--med-rgb),.13);
+  --hard:#FF7A6B;   --hard-rgb:255,122,107;   --hard-soft:rgba(var(--hard-rgb),.13);
+  --tok-kw:#C7A0E8; --tok-def:#86C2EC;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --texture:none;
+  /* One step up from the card, with a hairline — near, not loud. */
+  --solid-bg:#2C3138; --solid-fg:#F3F5F7; --solid-edge:rgba(232,234,237,.22); --solid-hover:#353B44;
+}
+/* Hairlines that read as edges on white disappear on charcoal; cards need their
+   own faint lift instead of relying on a border alone. */
+body.theme-slate .card{border-color:rgba(255,255,255,.08);background-image:linear-gradient(rgba(255,255,255,.02),rgba(255,255,255,0))}
+body.theme-slate .ws-host{background:#15181C}
+body.theme-slate ::selection{background:rgba(255,130,86,.3)}
+
+/* ---- Editorial — a printed weekly. Generous, warm, serif-forward. --------- */
+body.theme-editorial{
+  --canvas:#F4EFE6; --card:#FBF8F2; --ink:#1A1614;
+  --ink-70:rgba(26,22,20,.74); --ink-50:rgba(26,22,20,.54); --ink-35:rgba(26,22,20,.38);
+  --hair-20:rgba(26,22,20,.2); --hair-10:rgba(26,22,20,.11); --hair-06:rgba(26,22,20,.07);
+  --ink-rgb:26,22,20;
+  --accent:#9B2C2C; --accent-rgb:155,44,44;   --accent-soft:rgba(var(--accent-rgb),.08);
+  --easy:#2F6B4F;   --easy-rgb:47,107,79;
+  --med:#8A6212;    --med-rgb:138,98,18;
+  --hard:#9B2C2C;   --hard-rgb:155,44,44;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#6B3F86; --tok-def:#1F5175;
+  --serif:Palatino,"Palatino Linotype","Book Antiqua",Georgia,serif;
+  --radius:2px;
+  --shadow:0 1px 0 rgba(26,22,20,.06);
+  --shadow-lift:0 10px 46px rgba(26,22,20,.16);
+  /* Laid paper: faint horizontal chain lines, the way stock actually looks. */
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><g stroke='%231A1614' stroke-opacity='0.035'><path d='M0 7h28M0 14h28M0 21h28M0 28h28'/></g><g stroke='%231A1614' stroke-opacity='0.02'><path d='M7 0v28M21 0v28'/></g></svg>");
+}
+body.theme-editorial .viewhead h1{font-weight:400;letter-spacing:-.01em}
+body.theme-editorial .desc{font-size:16px;line-height:1.72}
+body.theme-editorial .rich{line-height:1.75}
+body.theme-editorial .card{border-color:var(--hair-10)}
+
+/* ---- Ink — high contrast, near-monochrome, heavy rules. ------------------- */
+body.theme-ink{
+  --canvas:#EDEDEA; --card:#FFFFFF; --ink:#0A0A0A;
+  --ink-70:rgba(10,10,10,.78); --ink-50:rgba(10,10,10,.55); --ink-35:rgba(10,10,10,.4);
+  --hair-20:rgba(10,10,10,.4); --hair-10:rgba(10,10,10,.22); --hair-06:rgba(10,10,10,.14);
+  --ink-rgb:10,10,10;
+  --accent:#1B49F5; --accent-rgb:27,73,245;   --accent-soft:rgba(var(--accent-rgb),.09);
+  --easy:#0A6B3D;   --easy-rgb:10,107,61;
+  --med:#7A5200;    --med-rgb:122,82,0;
+  --hard:#B4160F;   --hard-rgb:180,22,15;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#5B21A8; --tok-def:#0B4A82;
+  --serif:"Helvetica Neue",Helvetica,Inter,system-ui,sans-serif;
+  --radius:0px;
+  --shadow:3px 3px 0 rgba(10,10,10,.9);
+  --shadow-lift:6px 6px 0 rgba(10,10,10,.9);
+  --texture:none;
+}
+body.theme-ink .card{border:1.5px solid var(--ink)}
+body.theme-ink .viewhead h1{font-weight:800;letter-spacing:-.04em;text-transform:uppercase}
+body.theme-ink .tag{border-width:1.5px;font-weight:600}
+body.theme-ink .ws-run,body.theme-ink .ws-submit{border-width:1.5px}
+
+/* Dark themes: the editor and its chrome have to come with them. */
+body.theme-blueprint .ws-host,body.theme-phosphor .ws-host{background:var(--card)}
+body.theme-blueprint .searchbox input,body.theme-phosphor .searchbox input{color:var(--ink)}
+
+/* Theme swatches: the real palette, three stops — canvas, ink, accent. */
+.set-swatch{display:flex;height:34px;border:1px solid var(--hair-10);border-radius:5px;overflow:hidden}
+.set-swatch i{flex:1}
+.set-swatch i:first-child{flex:1.6}
+.set-themes .set-card{padding:9px 10px}
+
+/* The key list in Settings — a reference, not a control panel. */
+.set-keys{display:flex;flex-direction:column;gap:1px}
+.set-keyrow{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair-06)}
+.set-keyrow:last-child{border-bottom:0}
+.set-keyrow kbd{
+  flex:0 0 46px;font-size:11px;letter-spacing:.04em;color:var(--ink-70);
+  border:1px solid var(--hair-20);border-radius:5px;padding:2px 0;text-align:center;
+}
+.set-keywhat{font-size:13px;color:var(--ink-50)}
+
+/* ---- turns still running on other problems ---- */
+.coach-runs{
+  position:fixed;right:20px;bottom:64px;z-index:66;
+  display:flex;flex-direction:column;gap:6px;align-items:flex-end;
+}
+/* The pill is the row; the two buttons inside it carry the padding, so following it and
+   dismissing it have their own hit areas and neither is a sliver. */
+.coach-run{
+  display:inline-flex;align-items:stretch;
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--card);border:1px solid var(--hair-20);border-radius:999px;
+  color:var(--ink-70);box-shadow:var(--shadow);max-width:min(340px,70vw);
+}
+.coach-run:hover{border-color:var(--ink);color:var(--ink)}
+.coach-run-go{
+  display:inline-flex;align-items:center;gap:9px;min-width:0;
+  border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;
+  text-transform:inherit;padding:7px 4px 7px 14px;cursor:pointer;border-radius:999px 0 0 999px;
+}
+.coach-run-x{
+  border:0;background:none;color:var(--ink-35);cursor:pointer;
+  font:inherit;font-size:15px;line-height:1;letter-spacing:0;
+  padding:0 12px 0 8px;border-radius:0 999px 999px 0;flex:0 0 auto;
+}
+.coach-run-x:hover{color:var(--ink)}
+.coach-run-go:focus-visible,.coach-run-x:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.coach-run-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;text-transform:none;letter-spacing:0;font-size:12px}
+.coach-run-state{color:var(--ink-35);flex:0 0 auto}
+.coach-run-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 auto;
+  animation:vc-blink 1.2s steps(2,start) infinite;
+}
+.coach-run-dot.is-done{background:var(--easy);animation:none}
+@media (prefers-reduced-motion:reduce){.coach-run-dot{animation:none}}
+body.coach-open .coach-runs{bottom:20px}
+
+/* ================== the test case editor — tabs, like LeetCode ==================
+   Examples read as printed matter (they are LeetCode's words); the ones you added
+   carry the accent, because the difference between "the problem says" and "I think"
+   is the whole reason both are here. */
+.rr-tabs{
+  display:flex;align-items:center;gap:2px;padding:6px 10px 0;
+  border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.012);
+}
+.rr-tab{
+  font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  padding:7px 12px;border-radius:7px 7px 0 0;color:var(--ink-35);
+  border:1px solid transparent;border-bottom:none;
+}
+.rr-tab[aria-pressed="true"]{background:var(--card);border-color:var(--hair-10);color:var(--ink)}
+.rr-tab:hover{color:var(--ink-70)}
+.rr-pane{min-height:0}
+
+.tc{display:flex;flex-direction:column}
+.tc-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:11px 14px 0}
+.tc-tab{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  border:1px solid var(--hair-20);border-radius:7px;padding:5px 11px;
+  color:var(--ink-50);background:var(--card);
+}
+.tc-tab:hover{border-color:var(--ink-35);color:var(--ink-70)}
+.tc-tab.is-on{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+.tc-tab.is-mine{border-style:dashed}
+.tc-tab.is-mine.is-on{border-style:solid}
+.tc-mark{color:var(--accent);font-weight:700}
+.tc-tab.is-on .tc-mark{color:var(--solid-fg)}
+.tc-add{
+  font-family:var(--mono);font-size:13px;line-height:1;color:var(--ink-35);
+  border:1px dashed var(--hair-20);border-radius:7px;padding:4px 10px;
+}
+.tc-add:hover{border-color:var(--ink);color:var(--ink)}
+
+.tc-panel{padding:11px 14px 13px}
+.tc-fields{display:flex;flex-direction:column;gap:8px}
+.tc-field{display:flex;flex-direction:column;gap:3px}
+.tc-label{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase}
+.tc-input{
+  width:100%;resize:none;border:1px solid var(--hair-20);border-radius:7px;
+  background:var(--card);padding:7px 10px;font-size:12.5px;line-height:1.45;
+  color:var(--ink);outline:none;min-height:30px;
+  /* .mono is uppercased for labels elsewhere; a value must be shown as it is stored,
+     or `true` reads back as `TRUE` and looks like something you did not type. */
+  text-transform:none;letter-spacing:0;
+}
+.tc-input:focus{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.tc-input[readonly]{background:rgba(var(--ink-rgb),.025);color:var(--ink-70);border-style:dashed}
+.tc-input::placeholder{color:var(--ink-35)}
+.tc-foot{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.tc-origin{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase}
+.tc-run{padding:5px 14px}
+.tc-empty{padding:14px 4px;font-size:13px;color:var(--ink-50);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tc-notice{margin:8px 14px 0;font-size:12px;color:var(--ink-50)}
+.tc-notice.warn{color:var(--med)}
+
+/* ---- the light/dark switch, next to the gear ---- */
+.set-daynight{display:inline-flex;align-items:center;justify-content:center;padding:5px 6px}
+.set-dayglyph{display:block}
+/* One glyph, two states: whichever half is not current is not drawn at all, so there
+   is never a moment where both a sun and a moon are on screen. */
+.set-daynight .is-moon{display:none}
+.set-daynight[aria-pressed="true"] .is-sun{display:none}
+.set-daynight[aria-pressed="true"] .is-moon{display:block}
