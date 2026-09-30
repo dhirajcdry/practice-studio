@@ -332,7 +332,7 @@ function mountReview(host, data, { onBack }) {
       root = ex.createRoot(canvasHost);
       canvasHost.querySelector('.dz-loading')?.remove();
       root.render(ex.createElement(ex.Excalidraw, {
-        theme: document.body.classList.contains('theme-light') ? 'light' : 'dark',
+        theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
         viewModeEnabled: true,
         initialData: { elements: data.elements, scrollToContent: true },
         UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, export: false } },
@@ -716,7 +716,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       const root = ex.createRoot(canvasHost);
       canvasHost.querySelector('.dz-loading')?.remove();
       root.render(ex.createElement(ex.Excalidraw, {
-        theme: document.body.classList.contains('theme-light') ? 'light' : 'dark',
+        theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
         excalidrawAPI: (instance) => { api = instance; },
         onChange: (next) => onSceneChange(next),
         // Resuming means finding the room as you left it, so the saved scene is the
