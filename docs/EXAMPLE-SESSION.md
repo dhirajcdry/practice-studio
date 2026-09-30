@@ -63,16 +63,15 @@ The scripted coach connects the answer to the actual edit and earlier failure:
 > **Both local cases pass. Now defend the order of those two lines.**
 >
 > Before each iteration, `seen` contains exactly the values at earlier positions.
-> A match means two different positions have the same value.
+> A match means two different positions hold the same value.
 >
-> In your first version, you added the current value before checking. Every value then
-> matched itself. The all-distinct case exposed that bug.
+> Your first version added before checking, so every value matched itself. The
+> all-distinct case caught it.
 >
-> **Your next explanation:** why does reaching the final `return False` prove the whole
+> **Your next explanation:** why does reaching `return False` prove the whole
 > input is distinct?
 >
-> State the expected **O(n) time** and **O(n) space**, then try an adjacent repeat and a
-> repeat at the last position.
+> Then state the expected **O(n) time** and **O(n) space**.
 
 ![Actual coding UI, with the corrected solution, real local results, and scripted feedback](images/coach.png)
 

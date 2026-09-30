@@ -64,7 +64,7 @@ try {
   } else {
     await fsp.access(CHROME);
     chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${path.join(work, 'chrome')}`, '--window-size=1600,1000', 'about:blank'], { stdio: 'ignore' });
+      `--user-data-dir=${path.join(work, 'chrome')}`, '--window-size=1280,800', 'about:blank'], { stdio: 'ignore' });
     chrome.on('error', (error) => console.error(error.message));
     // Trust only the DevTools endpoint written by our fresh, unique Chrome profile.
     await until(async () => {
@@ -114,9 +114,9 @@ try {
     // navigation is confined to this server; the scripted CLI never uses the network.
     await send('Network.setBlockedURLs', { urls: ['https://*', 'http://leetcode.com/*',
       `${origin}/api/submit*`, `${origin}/api/asr*`] });
-    await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
     await send('Page.addScriptToEvaluateOnNewDocument', { source: `
-      localStorage.setItem('studio.settings.v1', JSON.stringify({ theme:'slate', codeSize:16, motion:false }));
+      localStorage.setItem('studio.settings.v1', JSON.stringify({ theme:'slate', codeSize:18, motion:false }));
     ` });
     await send('Page.navigate', { url: `${origin}/#/p/${SLUG}` });
     await until(() => evaluate(`Boolean(window.monaco?.editor.getModels().length && document.querySelector('.ws-run'))`), 'Editor did not mount');
@@ -149,7 +149,7 @@ try {
     await evaluate(`window.monaco.editor.getModels()[0].setValue(${JSON.stringify(WRONG_CODE)})`);
     await frame('02  Write a first approach');
     await evaluate(`document.querySelector('.ws-run').click()`);
-    await until(() => evaluate(`!document.querySelector('.ws-run').disabled && /failed/i.test(document.querySelector('.ws-results')?.innerText || '')`), 'First run did not report the intended failure');
+    await until(() => evaluate(`!document.querySelector('.ws-run').disabled && document.querySelectorAll('.rr-case').length === 2 && document.querySelectorAll('.rr-case')[0].classList.contains('k-pass') && document.querySelectorAll('.rr-case')[1].classList.contains('k-fail')`), 'First run did not report the intended failure');
     await frame('03  An all-distinct case exposes the bug');
     await evaluate(`window.monaco.editor.getModels()[0].setValue(${JSON.stringify(CODE)})`);
     await evaluate(`document.querySelector('.ws-run').click()`);

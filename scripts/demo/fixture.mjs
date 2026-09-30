@@ -28,13 +28,13 @@ export const CODE = `class Solution:
 export const EXPLANATION = 'The set holds the values from earlier positions. I check before adding this value. The examples pass; what should I defend in an interview?';
 export const COACH = `**Both local cases pass. Now defend the order of those two lines.**
 
-Before each iteration, \`seen\` contains exactly the values at earlier positions. A match means two different positions have the same value.
+Before each iteration, \`seen\` contains exactly the values at earlier positions. A match means two different positions hold the same value.
 
-In your first version, you added the current value before checking. Every value then matched itself. The all-distinct case exposed that bug.
+Your first version added before checking, so every value matched itself. The all-distinct case caught it.
 
-**Your next explanation:** why does reaching the final \`return False\` prove the whole input is distinct?
+**Your next explanation:** why does reaching \`return False\` prove the whole input is distinct?
 
-State the expected **O(n) time** and **O(n) space**, then try an adjacent repeat and a repeat at the last position.`;
+Then state the expected **O(n) time** and **O(n) space**.`;
 export const DESIGN_PROMPT = 'Design a URL shortener with a fast redirect path.';
 export const DESIGN_ANSWER = 'The redirect API checks Redis, then reads Postgres on a miss. The creation service stores the mapping in Postgres and populates the cache.';
 export const DESIGN_QUESTION = 'You said the creation service populates Redis, but the board only connects it to Postgres. Where does that cache write happen, and what does the first redirect see if it fails?';
@@ -82,6 +82,12 @@ export function board() {
       ...elements.filter((e) => e.type === 'arrow' &&
         [e.startBinding.elementId, e.endBinding.elementId].includes(element.id))
         .map((e) => ({ id: e.id, type: 'arrow' }))];
+  }
+  // Fit the demo board at the same viewport as the coding screenshot.
+  for (const element of elements) {
+    for (const key of ['x', 'y', 'width', 'height']) element[key] *= 0.75;
+    if (element.points) element.points = element.points.map(point => point.map(value => value * 0.75));
+    if (element.fontSize) element.fontSize *= 0.9;
   }
   return elements;
 }
