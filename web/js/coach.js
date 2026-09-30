@@ -513,15 +513,13 @@ export function createCoachPanel(entry) {
     const message = ask !== null ? ask : input.value.trim();
     if (!review && message === '') { input.focus(); return; }
 
-    if (review) {
-      // Nobody typed anything — stopping the recording was the request. Say so plainly
-      // rather than faking a question in his voice that he never asked.
-      addNote(lead || 'Attempt ended. Reviewing it end to end.');
-    } else {
-      addMessage('you', message);
+    if (!review) {
       input.value = '';
       autosize();
     }
+    // attachRun owns both the question/review note and the reply. startRun announces
+    // synchronously, so showPendingRun may attach before the explicit call below.
+    // Printing the question here as well would display the same submission twice.
 
     turns++;
     following = true; // a new question always follows, whatever was scrolled last time
@@ -547,7 +545,7 @@ export function createCoachPanel(entry) {
       resumeSessionId,
       lead,
     });
-    attachRun(run, { printAsk: false });
+    attachRun(run, { printAsk: true });
   }
 
   /* ---- keyboard ---- */

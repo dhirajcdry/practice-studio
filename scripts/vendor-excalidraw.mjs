@@ -75,6 +75,9 @@ export { createElement, useCallback, useEffect, useRef, useState } from 'react';
 
   // 3. Bundle. NODE_ENV=production is what strips React's dev warnings and Excalidraw's
   //    dev-only paths; without it the bundle is roughly twice the size and slower.
+  //    Disable UMD's AMD detection inside this ESM bundle: Monaco exposes define.amd
+  //    globally, which otherwise steals es6-promise-pool's CommonJS export and breaks
+  //    Excalidraw's font loading when a populated board follows the code editor.
   console.log('  bundling (this takes a moment)…');
   await fsp.rm(OUT, { recursive: true, force: true });
   await fsp.mkdir(OUT, { recursive: true });
@@ -84,6 +87,7 @@ export { createElement, useCallback, useEffect, useRef, useState } from 'react';
     '--minify', '--legal-comments=none',
     '--define:process.env.NODE_ENV="production"',
     '--define:process.env.IS_PREACT="false"',
+    '--define:define=undefined',
     '--loader:.woff2=file', '--loader:.woff=file', '--loader:.ttf=file',
     '--loader:.png=file', '--loader:.svg=file',
     '--asset-names=assets/[name]-[hash]',

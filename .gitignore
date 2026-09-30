@@ -9,7 +9,7 @@ node_modules/
 *.bundle.js
 
 # Never commit the LeetCode session cookie. It is read from the OS keychain
-# or a local file that lives outside this repo.
+# and must never be written to plaintext configuration.
 .env
 .env.local
 session.json

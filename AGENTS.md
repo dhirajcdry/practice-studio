@@ -11,10 +11,12 @@ buffer, diff, test results, elapsed time — rather than a screenshot. It also r
 system-design mock interviews on an Excalidraw whiteboard, with a voice mode where the
 interviewer speaks and going quiet is what submits your answer.
 
-Everything runs on `127.0.0.1`. No account, no backend, no API keys of its own — the coach
-is a local Claude Code CLI subprocess, speech is on-device (FluidAudio/Parakeet for STT,
-the browser's own `speechSynthesis` for TTS), and the only outbound network calls are to
-LeetCode itself (for problem content and, optionally, submission).
+The browser talks to a local Node server on `127.0.0.1`; there is no hosted Studio
+backend or Studio account. The local Claude Code CLI subprocess uses its configured
+authentication and online service, sending session context there. Speech recognition is
+on-device after its model download (FluidAudio/Parakeet); speech output uses browser
+`speechSynthesis`, whose voice behavior depends on browser/OS. LeetCode content fetches
+and optional submissions also use the network. See `docs/PRIVACY.md` for the boundary.
 
 No build step. `web/` is served as-is; anything the browser can't import bare (Monaco,
 Excalidraw) is pre-bundled once by a vendoring script and the *output* is committed under
@@ -33,7 +35,8 @@ Everything else in `package.json`'s `scripts` is a generator (`catalog`, `warm`,
 `attempts`, `solutions`, `vendor:excalidraw`) — re-run the script rather than
 hand-editing its output; see "Generated vs hand-written" below.
 
-There is no CI configured yet. Before calling anything done: `npm test`, then the
+CI runs the Node unit/integration suite on macOS (`.github/workflows/ci.yml`). Before
+calling anything done: `npm test`, then the
 relevant `npm run check:*` (or the full `npm run check` if the change touches shared UI
 like `web/js/dom.js`, `web/css/app.css`, or navigation), then a manual pass in an actual
 browser for anything visual — type-checking and the test suite verify correctness, not
@@ -94,9 +97,11 @@ violating one of these, stop and say so rather than finding a workaround.
 - **The dashboard and any progress mirror must never fabricate a statistic.** A missing
   debrief, an empty board, or a silent answer is stated as such ("— said nothing —", "The
   board was empty") rather than smoothed over, defaulted, or left blank.
-- **No bulk pre-fetching against LeetCode.** Problem content is fetched lazily on open and
-  cached forever (`~/LeetCodeTutor/cache/leetcode/`) — walking the catalog at speed buys
-  nothing and is the one thing that would plausibly trip Cloudflare.
+- **No automatic or concurrent bulk pre-fetching against LeetCode.** The app fetches
+  lazily on open and caches content in `STUDIO_HOME/cache/leetcode/`. The existing
+  `npm run warm` is a deliberate user-invoked, sequential preparation tool; preserve its
+  delays, challenge/rate-limit stop behavior, and bounded network-error retries. Never
+  run it automatically in startup, tests, CI, or documentation capture.
 
 ## Conventions worth knowing before you touch the UI
 

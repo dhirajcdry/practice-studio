@@ -77,8 +77,18 @@ const SEED = [
       id: 'seed-rect', type: 'rectangle', x: 120, y: 90, width: 240, height: 110,
       angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid',
       strokeWidth: 2, strokeStyle: 'solid', roughness: 1, opacity: 100, groupIds: [],
-      seed: 1, version: 1, versionNonce: 1, isDeleted: false, boundElements: null,
+      seed: 1, version: 1, versionNonce: 1, isDeleted: false,
+      boundElements: [{ id: 'seed-label', type: 'text' }],
       updated: 1, link: null, locked: false, roundness: null, frameId: null,
+    }, {
+      id: 'seed-label', type: 'text', x: 160, y: 130, width: 160, height: 25,
+      angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid',
+      strokeWidth: 2, strokeStyle: 'solid', roughness: 1, opacity: 100, groupIds: [],
+      seed: 2, version: 1, versionNonce: 2, isDeleted: false, boundElements: null,
+      updated: 1, link: null, locked: false, roundness: null, frameId: null,
+      text: 'Leaderboard', originalText: 'Leaderboard', fontSize: 20, fontFamily: 1,
+      textAlign: 'center', verticalAlign: 'middle', containerId: 'seed-rect',
+      lineHeight: 1.25, autoResize: true,
     }],
   },
   {
@@ -217,6 +227,11 @@ try {
   else if (board.w < 200 || board.h < 150) bad('the whiteboard has room to draw in', `${board.w}x${board.h}`);
   else ok(`Excalidraw is on the page, ${board.w}x${board.h}`);
 
+  const themeMatches = await evaluate(`document.body.classList.contains('is-dark') ===
+    Boolean(document.querySelector('.excalidraw.theme--dark'))`);
+  if (themeMatches) ok('the whiteboard theme matches the page');
+  else bad('the whiteboard theme matches the page', 'light/dark modes disagree');
+
   /* ---- 4. the pieces of the interview column ---- */
 
   const parts = await evaluate(`(() => ({
@@ -308,6 +323,17 @@ try {
 
   /* ---- 6. resuming restores the board, the transcript and the phase ---- */
 
+  // Reproduce the code-editor → whiteboard path without relying on a cached problem.
+  // Monaco's real loader exposes define.amd; UMD dependencies in the Excalidraw bundle
+  // must still return their CommonJS exports rather than register with that loader.
+  await evaluate(`new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = '/vendor/monaco/vs/loader.js';
+    script.onload = () => window.define?.amd ? resolve(true) : reject(new Error('No Monaco AMD loader'));
+    script.onerror = () => reject(new Error('Monaco loader failed'));
+    document.head.append(script);
+  })`);
+
   // Both unfinished seeds now offer Resume; this row is the one seeded with a live
   // thread and a paused clock, which is what the transcript/phase/clock assertions
   // below actually check. The threadless one is covered separately below.
@@ -349,6 +375,16 @@ try {
   );
   if (/^1[12]:/.test(reading)) ok(`the clock picks up at the time already spent (${reading}), not at the time away`);
   else bad('the resumed clock is the time spent', `reads ${reading}, expected about 11:00`);
+
+  const fontLoaded = await evaluate(`(async () => {
+    for (let i = 0; i < 100; i++) {
+      if ([...document.fonts].some(font => /Virgil/.test(font.family) && font.status === 'loaded')) return true;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return false;
+  })()`);
+  if (fontLoaded) ok('the restored text loads its font with Monaco’s AMD loader present');
+  else bad('the populated board loads its font', 'Virgil did not load after 10s');
 
   const resumeShot = await send('Page.captureScreenshot', { format: 'png' });
   if (process.env.STUDIO_SHOT) {

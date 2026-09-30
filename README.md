@@ -1,257 +1,152 @@
 # Practice Studio
 
-**A local-first interview practice studio with an AI coach that watches *how* you solve, not just whether you passed.**
+**A quieter way to practise coding and system-design interviews.**
 
-You solve LeetCode problems in your own editor, against your own sandboxed runner, with
-your voice optionally narrating your reasoning. A Claude-powered coach sees all of it — every
-code version, every run, how long you took to start, what you said out loud — and coaches
-the way a good interviewer would. It also runs full spoken system-design mock interviews
-on a live whiteboard.
+![Practice Studio — a focused room for code, diagrams, and better follow-up questions](docs/images/masthead.svg)
 
-It all runs on your machine. No server, no account, and it keeps working on a plane.
+Practice Studio keeps the work in one room: write Python, run real local cases, explain
+your choices, and get a follow-up that can see the attempt. It is a macOS app you run
+on your own machine, with local session records, optional voice, and optional Claude
+coaching.
 
-![Practice Studio: search, open a problem, run it locally, check history, switch themes](docs/images/demo.gif)
+[Quick start](#quick-start) · [First session](docs/FIRST-SESSION.md) · [Example session](docs/EXAMPLE-SESSION.md) · [Privacy & offline use](docs/PRIVACY.md)
 
----
+![Practice Studio showing a Python solution, local test results, and a coaching follow-up](docs/images/coach.png)
 
-## Why this exists
+*An illustrative session in the actual app. Code runs locally; the coaching in this
+image is scripted for the demo. [See the full example and how the images are made.](docs/EXAMPLE-SESSION.md)*
 
-Grinding LeetCode tells you one thing: pass or fail. Interviews grade something else —
-whether you can reason out loud, start without flailing, state complexity, and defend why
-your approach is correct. None of that shows up in a green checkmark.
+## Six ways to make it yours
 
-The obvious way to add an AI tutor is to point it at the LeetCode tab: screenshot the page,
-scrape the verdict, guess what you typed. That is reverse-engineering a surface you do not
-control, and every failure mode ends in silently wrong data.
+The interface has six distinct moods, from a warm paper desk to a glowing terminal.
+Open the gear, then choose a theme under **Settings → Theme**. Your choice is stored
+locally and applied before the first paint.
 
-So Studio **owns the loop**. The editor is ours, the runner is ours, the timeline is ours.
-The coach gets the exact code, the exact timings, and every intermediate version — not a
-photograph of them.
+<table>
+<tr>
+<td><a href="docs/images/theme-paper.png"><img src="docs/images/theme-paper.png" alt="Paper theme" width="100%"></a><br><strong>Paper</strong><br><sub>Warm off-white, serif display, quiet terracotta.</sub></td>
+<td><a href="docs/images/theme-editorial.png"><img src="docs/images/theme-editorial.png" alt="Editorial theme" width="100%"></a><br><strong>Editorial</strong><br><sub>Laid paper, Palatino, and a deep red accent.</sub></td>
+</tr>
+<tr>
+<td><a href="docs/images/theme-ink.png"><img src="docs/images/theme-ink.png" alt="Ink theme" width="100%"></a><br><strong>Ink</strong><br><sub>High contrast, hard rules, electric blue.</sub></td>
+<td><a href="docs/images/theme-slate.png"><img src="docs/images/theme-slate.png" alt="Slate theme" width="100%"></a><br><strong>Slate</strong><br><sub>Paper after dark, with softened charcoal edges.</sub></td>
+</tr>
+<tr>
+<td><a href="docs/images/theme-blueprint.png"><img src="docs/images/theme-blueprint.png" alt="Blueprint theme" width="100%"></a><br><strong>Blueprint</strong><br><sub>Cyan drafting marks on a deep navy grid.</sub></td>
+<td><a href="docs/images/theme-phosphor.png"><img src="docs/images/theme-phosphor.png" alt="Phosphor theme" width="100%"></a><br><strong>Phosphor</strong><br><sub>Green terminal light, amber signal, scanlines.</sub></td>
+</tr>
+</table>
 
-## What it does
+## The practice loop
 
-### A coach that sees the whole session
+### Code until the evidence is useful
 
-![Mid-attempt: the coach traces the code as a flowchart, notes the off-by-one from a previous session is fixed, and names the invariant still unexplained](docs/images/coach.png)
+Browse the NeetCode 250 curriculum, write Python in Monaco, and run example or custom
+cases in a fresh local runner. The result is part of the attempt, so the coach can ask
+about the invariant you used, the case you missed, or the complexity you can defend.
 
-Every coach turn is assembled from the live editor buffer, a diff since your last run,
-per-case run results (with tracebacks rewritten to point at *your* lines), elapsed time,
-time-to-first-keystroke, and a merged timeline of what you **did** and what you **said**.
+![A local coding run with the editor, problem statement, and result](docs/images/local-run.png)
 
-It keeps notes per problem and a running picture of your habits across days, so feedback
-compounds. From real coach notes:
+### Explain the thinking, not just the answer
 
-> *"Instrumented instead of guessing … verifying one pass at a time — the exact habit
-> missing on 07-25."*
->
-> *"Never mentioned the O(1)-space two-pointer solution — on the Two Pointers track. This
-> is the follow-up an interviewer asks immediately."*
+Narrate an attempt or ask a typed question. The coach can receive your buffer, code
+changes, run results, elapsed time, and available transcripts. Voice mode uses the
+on-device transcriber after its model is downloaded; spoken responses use the browser's
+speech synthesis. [Read the voice setup and boundaries.](docs/SETUP.md#voice-input)
 
-The coach can also draw — recursion trees, pointer motion, DP tables — as Mermaid or SVG,
-rendered inline after sanitisation.
+### Draw the design you would defend
 
-### Think out loud, get graded like an interview
+Use the Excalidraw board for a full system-design mock interview. The interviewer can
+probe requirements, estimates, and tradeoffs while the board graph becomes part of the
+next answer.
 
-Press **Start attempt** (`⌥R`) and talk while you solve. Speech is transcribed **on-device**
-(Parakeet TDT 0.6B via CoreML, ~489× realtime) and stitched into the timeline next to
-your edits and runs. Press **End attempt** and the coach delivers an interviewer's verdict
-unprompted: would this have passed a real screen, and the two things that would most
-change your next attempt.
+![System-design practice with a URL-shortener diagram and an interviewer follow-up](docs/images/system-design.png)
 
-Every attempt is also written out as a readable document — minute by minute, what you said
-beside what you typed beside what ran — regenerable from the raw logs at any time.
+<details>
+<summary>Watch a short coding walkthrough</summary>
 
-### A real local judge, offline
+![A short walkthrough of opening a problem, running code, and receiving a follow-up](docs/images/demo.gif)
 
-![Local run: both example cases passed in 64 ms](docs/images/local-run.png)
+The walkthrough uses a temporary demo workspace and scripted coaching. No account,
+Claude request, or LeetCode submission is used to produce it.
 
-`⌘'` runs your code against the example cases in a fresh temp directory under macOS
-`sandbox-exec` with the network denied, a wall-clock timeout, an output cap, and a
-process-group kill so a runaway child cannot outlive the run. Comparison is semantic
-(float tolerance, order-insensitive where the problem allows it). All 250 NeetCode problems
-have a runnable recipe — linked lists, trees and in-place problems included.
+</details>
 
-When you are ready, `⌘↵` submits to LeetCode's real judge and shows its verdict verbatim.
-A local pass and an accepted submission are never conflated.
+## Quick start
 
-### Spoken system-design mock interviews
+**Requirements:** macOS, Node.js 22+, and Python 3. The editor and local runner work
+without Claude Code. Voice additionally requires macOS 14+, Swift 6, and the downloaded
+speech model.
 
-![A fresh system-design interview: whiteboard, phase tracker, and the interviewer's opening question](docs/images/system-design.png)
-
-A 45-minute interview across seven phases — requirements, entities, API, estimates,
-design, deep dive, bottlenecks — with a curveball partway through and Socratic follow-ups
-that make you find your own gaps.
-
-- **The interviewer reads your diagram, not a picture of it.** The Excalidraw scene is
-  converted into a component-and-connection graph after every edit, and the interviewer
-  reasons about the difference between what you drew and what you claimed.
-- **Voice mode.** The interviewer speaks; you answer out loud; going quiet ends your turn.
-  Turn-taking tells a mid-sentence breath from a finished answer.
-- **It never speaks for you.** A streaming guard cuts the reply mid-token the moment it
-  could become "Candidate:" or a stage direction — before it is shown or spoken.
-
-### Progress that never makes up a number
-
-![Progress dashboard: solved counts, weakness view, list and pattern coverage](docs/images/progress.png)
-
-Every metric is computed from files on disk and carries a minimum-sample threshold.
-Below it, the dashboard says *"need N more"* instead of showing a number it cannot back.
-
-### Six themes
-
-![All six themes: Paper, Editorial, Ink, Slate, Blueprint, Phosphor](docs/images/themes.png)
-
-Paper, Editorial, Ink, Slate, Blueprint and Phosphor — each with a matching, hand-built
-editor theme. Practice is repetitive; the room you practise in doesn't have to be.
-
-## How it works
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
-  <img alt="Architecture: the browser (Monaco, coach panel, Excalidraw, mic) talks to a loopback-only Node server (runner, judge client, scene-to-graph, context builder, claude CLI coach, stats), which reads and writes plain files in ~/LeetCodeTutor/ alongside on-device speech recognition and the macOS Keychain; judge submissions to leetcode.com are the only network hop." src="docs/images/architecture-light.png">
-</picture>
-
-<sub>Source: [`docs/architecture.excalidraw`](docs/architecture.excalidraw) — open it at [excalidraw.com](https://excalidraw.com) to edit.</sub>
-
-Everything the app knows lives in `~/LeetCodeTutor/` as plain files: append-only session
-logs, every code version you ran, transcripts with word timings, coach notes. Raw logs are
-the record; everything rendered from them is disposable and regenerable.
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) has the full design.
-
-## Engineering decisions worth a look
-
-- **Zero runtime dependencies.** `package.json` has no `dependencies`. HTTP, SSE and
-  process management are Node built-ins; Monaco and Excalidraw are vendored static assets.
-  A machine that holds a session cookie is a bad place for a supply chain.
-- **The coach is least-privilege, enforced by the CLI.** It runs with
-  `--permission-mode manual`, can read only the workspace, and is denied writes to your
-  solutions, session logs and code history — deny rules win over allow rules. Bash, web
-  fetch and search are off. It cannot overwrite your work or the record of what happened.
-- **Prompt-injection fencing.** Untrusted content — LeetCode HTML, articles, your own code —
-  is wrapped in a fence whose marker is a fresh random token every turn, so fenced text
-  cannot forge its own closing fence.
-- **Streaming filters that cut mid-token.** The impersonation guard and the phase-tag
-  stripper hold back any fragment that *could* become a forbidden pattern, because by the
-  time a full line exists it has already been shown or spoken.
-- **Credentials never touch disk.** LeetCode cookies live only in the macOS Keychain, and
-  the credentials object refuses to serialise itself — `JSON.stringify`, `console.log` and
-  string interpolation all print a redacted placeholder.
-- **Loopback only, origin-checked.** The server executes code, so it binds `127.0.0.1` and
-  checks `Origin`/`Host` on every request to blunt DNS rebinding.
-- **Crash-safe logs.** Every reader tolerates a torn last line from a killed process —
-  skipped and counted, never fatal.
-- **Layout tests that look.** `scripts/check-*.mjs` drive headless Chrome over raw CDP and
-  measure real `getBoundingClientRect()` boxes, catching overlap bugs no unit test can see.
-- **Claims are labelled.** Design docs mark each technical claim `[VERIFIED <date>]` or
-  `[UNVERIFIED]`, with the evidence.
-
-## Getting started
-
-**Requirements:** macOS, Node 22+, Python 3. Optional: the
-[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) for the coach and the
-system-design interviewer; Swift 6 for voice.
-
-```bash
+```sh
 git clone https://github.com/dhirajcdry/practice-studio.git
 cd practice-studio
-
-# Reference solutions and articles (MIT, from neetcode-gh/leetcode) — optional
-git clone --depth 1 https://github.com/neetcode-gh/leetcode.git vendor/neetcode-solutions
-
-npm start          # → http://127.0.0.1:4173
+npm start
 ```
 
-What needs what:
+Open **http://127.0.0.1:4173**. There is no npm install or frontend build step. Search
+for a problem, open it while online to cache its statement and starter code, then write
+your solution and press **Run**. Local results cover the cases shown; they are separate
+from an accepted LeetCode submission.
 
-| Feature | Needs |
+| Optional piece | Setup |
 | --- | --- |
-| Browse, read, write code, run locally | Nothing beyond the above — works offline once a problem is cached |
-| AI coach, system-design interviewer | `claude` on your `PATH`, signed in. Without it the rest of the app works and the panel says why |
-| Voice (narration, dictation, voice interviews) | `swift build -c release --package-path asr` |
-| Submit to LeetCode | Three cookies in the Keychain (see below) |
+| AI coach and system-design interviewer | Install and sign in to the Claude Code CLI; `claude` must be on your `PATH`. Coaching uses its configured online service. |
+| Voice input | Run `swift build -c release --package-path asr`. The first transcription downloads the model; allow microphone access in your browser. |
+| Reference solutions and articles | `git clone --depth 1 https://github.com/neetcode-gh/leetcode.git vendor/neetcode-solutions` |
+| LeetCode submissions | Store session cookies in macOS Keychain. [Submission setup](docs/SETUP.md#leetcode-submissions). |
 
-To submit, store your LeetCode cookies in the Keychain under account `studio`:
+[First session](docs/FIRST-SESSION.md) walks through the screens and expected results.
+[Setup & troubleshooting](docs/SETUP.md) covers optional features, environment
+variables, and keyboard shortcuts.
 
-```bash
-security add-generic-password -a studio -s studio-leetcode-session     -w '<LEETCODE_SESSION>'
-security add-generic-password -a studio -s studio-leetcode-csrf        -w '<csrftoken>'
-security add-generic-password -a studio -s studio-leetcode-cfclearance -w '<cf_clearance>'
+## Local storage, connected coaching
+
+The browser talks to a Node server bound to `127.0.0.1`. Solutions, logs, transcripts,
+and notes are stored in `~/LeetCodeTutor/` (configurable with `STUDIO_HOME`). Monaco and
+Excalidraw are bundled in the repository.
+
+Cached problems and the Python runner work offline. Claude coaching needs connectivity
+and sends session context to its configured service. Fetching new problem statements and
+submitting solutions contact LeetCode. Speech recognition runs on-device after its model
+is downloaded. [Privacy & offline use](docs/PRIVACY.md) explains the boundary in full.
+
+## Project notes
+
+[Architecture](docs/ARCHITECTURE.md) explains the processes, storage, and boundaries.
+[Engineering decisions](docs/ENGINEERING.md) links the implementation and tests behind
+them. [Current limitations](docs/LIMITATIONS.md) · [Roadmap](docs/ROADMAP.md) ·
+[Contributing](CONTRIBUTING.md).
+
+## Development
+
+Clone the optional reference repository above before running the full test suite:
+
+```sh
+npm test           # Node unit and integration tests; fake coach and judge
+npm run check      # Chrome checks; see CONTRIBUTING.md for scratch-workspace setup
 ```
 
-`cf_clearance` is bound to the browser that minted it; set `STUDIO_LEETCODE_UA` to that
-browser's user agent if submissions are challenged.
-
-### Configuration
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `STUDIO_HOME` | `~/LeetCodeTutor` | The workspace: solutions, logs, notes, transcripts |
-| `STUDIO_PORT` | `4173` | Server port (always loopback) |
-| `STUDIO_COACH_BINARY` | `claude` | Path to the Claude Code CLI |
-| `STUDIO_PYTHON` | `python3` | Python used by the local runner |
-| `STUDIO_NO_SANDBOX` | unset | `1` disables `sandbox-exec` |
-| `STUDIO_LEETCODE_UA` | pinned | User agent for submissions |
-| `STUDIO_MIRROR_DIR` | unset | Folder for a live daily Markdown summary — point it at iCloud Drive to read your day on your phone |
-
-### Keyboard
-
-| Keys | Action |
+| Directory | Purpose |
 | --- | --- |
-| `/` · `j` `k` · `Enter` | Search · move · open |
-| `⌘'` · `⌘↵` · `⌘S` | Run locally · submit · save |
-| `⌘B` · `⌘J` · `⌘\` | Toggle problem · results · coach |
-| `⌥R` | Start / end an attempt |
-| `s` · `a` | Reveal solution · article (logged, so the dashboard can tell you your reveal rate) |
+| `server/` | Routes, Python runner, coach, judge client, attempt records, and stats |
+| `web/` | Browser UI and committed Monaco/Excalidraw assets |
+| `asr/` | Optional Swift/CoreML speech recognizer |
+| `data/` | Generated curriculum and reference index |
+| `scripts/` | Generators, browser checks, and reproducible demo capture |
+| `docs/` | User guides, architecture, API contracts, and protocol research |
 
-## Working offline
+Working with a coding agent? Start with [AGENTS.md](AGENTS.md).
 
-Everything except two things is on disk already: the curriculum, the reference solutions,
-the articles, Monaco, and the runner. The two that are not are **problem content** and
-**the judge**.
+## Credits & license
 
-The judge cannot be helped — submitting is a request to LeetCode by definition. Problem
-content can: statements, starting stubs and example cases are cached permanently in
-`~/LeetCodeTutor/cache/leetcode/` the first time you open a problem. A problem you have
-*never opened* is the one that fails on a plane, so:
+Curriculum and list membership come from [NeetCode](https://neetcode.io); optional
+reference solutions and articles from [neetcode-gh/leetcode](https://github.com/neetcode-gh/leetcode)
+(MIT). LeetCode problem statements are fetched into your local cache and aren't
+distributed with this repository. Demo statements are original illustrative fixtures.
 
-```bash
-npm run warm:check     # what would work right now with the wifi off — never touches the network
-npm run warm           # fetch the rest, one every 1.5s, resumable
-```
+Built with [Monaco Editor](https://github.com/microsoft/monaco-editor),
+[Excalidraw](https://github.com/excalidraw/excalidraw), and
+[FluidAudio](https://github.com/FluidInference/FluidAudio).
 
-`warm` is deliberate and human-paced: sequential, and it stops the moment LeetCode signals
-a challenge rather than carrying on into a block. Ctrl-C is safe; each problem is written
-as it arrives.
-
-## Project layout
-
-| Path | What it is |
-| --- | --- |
-| `server/` | Node server. One directory per feature (`coach/`, `runner/`, `judge/`, `design/`, `asr/`, `stats/`, `attempts/`), each exporting a plain route table |
-| `web/` | The UI — plain ES modules, no build step. `web/vendor/` holds Monaco and Excalidraw |
-| `asr/` | `studio-asr`, the on-device speech-to-text CLI (Swift, FluidAudio) |
-| `scripts/` | Generators (`catalog`, `solutions`, `warm`, `attempts`) and headless-Chrome layout checks |
-| `data/` | Generated catalog and solutions index — regenerate with their scripts, never hand-edit |
-| `docs/` | Architecture, API contracts, and the verified LeetCode protocol notes |
-
-```bash
-npm test           # 440+ unit and integration tests, node:test
-npm run check      # headless-Chrome layout checks against a running server
-```
-
-Working on this with an AI coding agent? Read [`AGENTS.md`](AGENTS.md) first — the layout,
-the constraints that don't bend, and the conventions that aren't obvious from the code.
-
-## Credits
-
-- Curriculum and list membership (Blind 75, NeetCode 150/250) from [neetcode.io](https://neetcode.io);
-  reference solutions from [neetcode-gh/leetcode](https://github.com/neetcode-gh/leetcode) (MIT).
-- Problem content and the judge are LeetCode's, fetched with your own session and cached
-  only on your machine — none of it is in this repository.
-- [Monaco Editor](https://github.com/microsoft/monaco-editor),
-  [Excalidraw](https://github.com/excalidraw/excalidraw),
-  [FluidAudio](https://github.com/FluidInference/FluidAudio).
-
-## License
-
-[MIT](LICENSE)
+[MIT license](LICENSE).
