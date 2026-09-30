@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">Practice Studio — Make your thinking visible.</title>
+  <desc id="desc">An editorial masthead in warm paper and orange, with six color strips representing Paper, Editorial, Ink, Slate, Blueprint, and Phosphor.</desc>
+  <rect width="1280" height="400" fill="#F4EFE6"/>
+  <path d="M48 72h1184M48 340h1184" stroke="#1A1614" stroke-width="1"/>
+  <text x="48" y="46" fill="#1A1614" font-family="monospace" font-size="16" letter-spacing="3">PRACTICE STUDIO</text>
+  <text x="1232" y="46" fill="#5E5750" font-family="monospace" font-size="13" text-anchor="end" letter-spacing="2">CODE · EXPLAIN · DESIGN</text>
+  <text x="44" y="170" fill="#1A1614" font-family="Georgia,serif" font-size="82" letter-spacing="-3">Make your thinking</text>
+  <text x="44" y="260" fill="#C4401C" font-family="Georgia,serif" font-size="82" font-style="italic" letter-spacing="-3">visible.</text>
+  <text x="50" y="309" fill="#5E5750" font-family="monospace" font-size="16">A workspace for the whole interview.</text>
+  <g transform="translate(960 111)">
+    <path d="M20 0H0v176h20M222 0h20v176h-20" fill="none" stroke="#1A1614" stroke-width="2"/>
+    <rect x="38" y="0" width="166" height="22" fill="#F7F7F7" stroke="#D4CBC0"/><rect x="166" width="38" height="22" fill="#C4401C"/>
+    <rect x="38" y="31" width="166" height="22" fill="#E5D9C6"/><rect x="166" y="31" width="38" height="22" fill="#9B2C2C"/>
+    <rect x="38" y="62" width="166" height="22" fill="#EDEDEA" stroke="#0A0A0A"/><rect x="166" y="62" width="38" height="22" fill="#1B49F5"/>
+    <rect x="38" y="93" width="166" height="22" fill="#131518"/><rect x="166" y="93" width="38" height="22" fill="#FF8256"/>
+    <rect x="38" y="124" width="166" height="22" fill="#0B1B2E"/><rect x="166" y="124" width="38" height="22" fill="#5FD3F3"/>
+    <rect x="38" y="155" width="166" height="22" fill="#050B07"/><rect x="166" y="155" width="38" height="22" fill="#7EFFA8"/>
+  </g>
+  <text x="48" y="374" fill="#5E5750" font-family="monospace" font-size="13" letter-spacing="1">SIX THEMES. ONE PRACTICE LOOP.</text>
+  <text x="1232" y="374" fill="#5E5750" font-family="monospace" font-size="13" text-anchor="end">BUILT FOR macOS</text>
+</svg>

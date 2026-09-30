@@ -140,7 +140,9 @@ npm run demo:capture
 
 The capture runs both code versions, verifies the expected failure and two-case pass,
 drives the real composer, and opens the saved diagram in the real Excalidraw view. It
-blocks external browser URLs and submission/transcription endpoints while capturing.
+also captures the same corrected attempt in all six built-in themes, using the app's
+settings API. Theme images change the appearance, not the underlying session.
+It blocks external browser URLs and submission/transcription endpoints while capturing.
 The demo server also disables connected integrations, and all content needed for the
 selected routes is pre-seeded. Chrome is expected at
 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`; override with

@@ -173,6 +173,20 @@ try {
     await frame('06  Get a specific follow-up after passing');
     await evaluate(`document.getElementById('demo-disclosure')?.remove()`);
     await shot('coach.png');
+    // The same attempt in every built-in theme: only appearance changes.
+    const themes = await evaluate(`(async () => {
+      const { THEMES } = await import('/js/settings.js');
+      return THEMES.map(({ id, name }) => ({ id, name }));
+    })()`);
+    for (const theme of themes) {
+      await evaluate(`(async () => {
+        const { setSetting } = await import('/js/settings.js');
+        setSetting('theme', ${JSON.stringify(theme.id)});
+      })()`);
+      await until(() => evaluate(`document.body.classList.contains('theme-${theme.id}') && window.monaco.editor.getModels().length > 0`), `${theme.name} did not apply`);
+      await shot(`theme-${theme.id}.png`);
+    }
+    await evaluate(`(async () => { const { setSetting } = await import('/js/settings.js'); setSetting('theme', 'slate'); })()`);
     await send('Page.navigate', { url: `${origin}/#/design/${id}` });
     await until(() => evaluate(`Boolean(document.querySelector('.dz-canvas canvas') && /Where does that cache write/.test(document.querySelector('.dz-log')?.innerText || ''))`), 'Design replay did not mount');
     await sleep(1200);
@@ -187,7 +201,7 @@ try {
     const [code] = await once(ffmpeg, 'exit');
     if (code !== 0) throw new Error(ffmpegError || 'ffmpeg failed');
     if (errors.length) throw new Error(errors.join('\n'));
-    console.log('Captured actual app: coach.png, local-run.png, system-design.png, demo.gif. Both corrected local cases passed. Coaching is scripted.');
+    console.log('Captured actual app: coach.png, local-run.png, system-design.png, all six theme screenshots, demo.gif. Both corrected local cases passed. Coaching is scripted.');
   }
 } finally {
   await cleanup();
