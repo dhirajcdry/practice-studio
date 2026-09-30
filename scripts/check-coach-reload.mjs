@@ -114,6 +114,9 @@ try {
   })()`);
   if (asked !== 'streaming') throw new Error(`the coach never started: ${asked}`);
   ok('the coach is mid-answer');
+  const questionCount = await evaluate(`document.querySelectorAll('.coach-log .cmsg.you').length`);
+  if (questionCount === 1) ok('one submission renders one question');
+  else bad('one submission renders one question', `${questionCount} question cards for one submit`);
 
   // The whole point: refresh, right now.
   await send('Page.reload', { ignoreCache: true });
