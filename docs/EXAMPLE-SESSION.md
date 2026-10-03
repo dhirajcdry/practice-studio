@@ -1,10 +1,15 @@
-# Example session: the tests pass; explain why
+# Example session: evidence in, follow-up out
 
 **This is an illustrative session, not a transcript of a real learner or an AI evaluation.**
 Its statement, code, candidate explanation, and coach replies are checked-in demo
 fixtures. The screenshots show the actual app. The capture script executes the code
 through the real Python runner and checks the outcomes; the coach is a scripted local
 executable. No private practice record, model request, or LeetCode submission is used.
+
+This example demonstrates the product boundary: the coach answers an explicit question
+or reviews an attempt when you end it. It is not an always-talking assistant. Microphone
+input is opt-in and transcribed locally; the system-design interviewer receives a board
+graph derived from Excalidraw elements, not a screenshot of your desktop.
 
 ## The task
 
@@ -125,14 +130,20 @@ From the repo root on macOS with Node 22+, Python 3, and Google Chrome:
 npm run demo
 ```
 
-The command prints two local URLs and keeps a separate demo server open. It creates a
+The command prints the local showcase URL, including
+`http://127.0.0.1:4196/showcase/showcase.html`, and keeps a separate demo server open. It creates a
 new temporary workspace, uses original cached content and scripted coaching, and removes
 its data when stopped with Ctrl-C. Your regular practice workspace isn't read or changed.
 Explore the seeded **Contains Duplicate** and saved design interview. This demo server
 disables live content fetching, real submissions, and microphone transcription; clicking
 those controls explains that they are unavailable in the demo.
 
-To regenerate the checked-in screenshots and GIF, additionally install `ffmpeg`:
+The checked-in [interactive showcase](http://127.0.0.1:4196/showcase/showcase.html) is
+the quickest way to browse the scenes once the server is running. The [GIF](images/demo.gif)
+is 1600px wide for a quick scan; the [MP4](images/demo.mp4) is 1920×1200 for a full-quality
+walkthrough. Supporting screenshots are captured at 3200×2000.
+
+To regenerate the checked-in screenshots, GIF, and MP4, additionally install `ffmpeg`:
 
 ```sh
 npm run demo:capture
@@ -152,3 +163,22 @@ Chrome gets a free port automatically.
 
 Sources: [fixture](../scripts/demo/fixture.mjs), [scripted coach](../scripts/demo/coach.mjs),
 and [capture script](../scripts/capture-demo.mjs).
+
+## A real transcription sample
+
+The showcase includes a synthetic macOS Samantha voice explaining the membership-check
+invariant. `docs/media/reasoning.wav` is the input; `reasoning.json` is the unedited text
+and word timings returned by the actual Studio ASR binary (plus provenance and source text).
+The showcase highlights these timestamps as the audio plays. It does not request a
+microphone or run recognition in the browser. No personal voice recording is distributed.
+
+Regenerate this pair on macOS with `ffmpeg` and the speech model available:
+
+```sh
+swift build -c release --package-path asr
+npm run demo:voice
+```
+
+The first ASR invocation may download the model. The normal screenshot capture reuses
+this checked-in result, so `npm run demo:capture` does not need Swift or a model download.
+The walkthrough includes a transcription chapter showing the same real output.

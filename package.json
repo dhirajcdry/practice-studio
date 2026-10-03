@@ -21,6 +21,7 @@
     "check": "node scripts/check-layout.mjs && node scripts/check-coach-stream.mjs && node scripts/check-shortcuts.mjs && node scripts/check-toolbar.mjs && node scripts/check-lanes.mjs && node scripts/check-coach-reload.mjs && node scripts/check-runchip.mjs && node scripts/check-find.mjs && node scripts/check-design.mjs",
     "vendor:excalidraw": "node scripts/vendor-excalidraw.mjs",
     "demo": "node scripts/capture-demo.mjs --serve",
-    "demo:capture": "node scripts/capture-demo.mjs"
+    "demo:capture": "node scripts/capture-demo.mjs",
+    "demo:voice": "node scripts/demo/transcribe-sample.mjs"
   }
 }

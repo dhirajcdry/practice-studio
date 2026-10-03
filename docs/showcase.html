@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Practice Studio: a local-first interview workspace with a context-aware AI coach, on-device transcription, and a whiteboard-aware interviewer.">
+<title>Practice Studio — Stay in the problem.</title>
+<link rel="stylesheet" href="showcase.css">
+</head>
+<body>
+<nav class="nav"><a class="brand" href="#">Practice <em>Studio</em><span class="brand-dot"></span></a><a href="https://github.com/dhirajcdry/practice-studio">Source on GitHub <span aria-hidden="true">↗</span></a></nav>
+<main>
+<header class="hero">
+  <div class="edition">Independent software / Built by Dhiraj / 01</div>
+  <div class="hero-grid"><h1>Stay in<br>the <em>problem.</em></h1><div class="hero-aside"><span class="signal">A coach beside your work</span><p>Your code. Your thinking. Your whiteboard.<br>One interview workspace that connects them.</p><p class="muted">An AI practice partner with the context to ask a better next question. Built for your Mac, with your work stored locally.</p><a class="button" href="#film">Watch the walkthrough <span>↓</span></a><a class="text-link" href="#start">Run it yourself ↗</a></div></div>
+  <div class="hero-proof"><span>01 / Context-aware coaching</span><span>02 / On-device transcription</span><span>03 / Whiteboard awareness</span></div>
+</header>
+<section class="product-stage" aria-label="Actual Practice Studio interface">
+  <div class="stage-bar"><span><i></i> THE WORKSPACE</span><span>Real app · illustrative session</span></div>
+  <img src="images/coach.png" width="3200" height="2000" alt="Practice Studio with a Python editor, real local test results, and a context-aware coaching follow-up" fetchpriority="high">
+  <div class="stage-foot"><b>Keep your train of thought.</b><span>The coach stays beside the editor. No copying your attempt into another chat.</span></div>
+</section>
+<section class="manifesto"><span class="eyebrow">The idea</span><h2>The answer is only<br><em>half the interview.</em></h2><p>How you got there matters. Studio connects what you write, what you run, what you say, and what you draw—so the follow-up can meet you where you actually are.</p></section>
+<section class="feature feature-code" id="coach">
+  <div class="feature-copy"><span class="eyebrow">01 / The coach</span><h2>Present for<br>the whole attempt.</h2><p>Keep a conversation beside your code. Each question brings the current buffer, changes, recent run results, elapsed time, and available transcripts.</p><p>Think aloud during a recorded attempt. End it, and the coach reviews the session. Leave the problem, and an answer can keep streaming in the background.</p><div class="receipt"><span>Context, with each turn</span><code>buffer → diff → tests → reasoning</code></div><p class="fine">You choose when to ask or record. The coach does not independently watch your desktop or interrupt.</p></div>
+  <figure><img src="images/local-run.png" width="3200" height="2000" loading="lazy" alt="Real Python runner after correcting the order of a membership check"><figcaption>Tests pass. Now defend why the order is correct.</figcaption></figure>
+</section>
+<section class="voice-section" id="voice">
+  <div><span class="eyebrow">02 / Your voice, part of the evidence</span><h2>Think out loud.<br><em>Keep the thought.</em></h2><p>On-device speech recognition turns your explanation into text. Dictate a question, or record the whole attempt while you code. In system-design Voice mode, a pause hands the turn back to the interviewer.</p><p class="fine">Parakeet / FluidAudio · recognition runs on your Mac after model download. Coaching uses Claude's connected service.</p></div>
+  <div class="voice-object" aria-label="Actual on-device transcription sample"><div class="voice-top"><span>THE PATH OF A THOUGHT</span><span>INPUT → CONTEXT</span></div><div class="wave" aria-hidden="true"></div><audio id="voice-sample" controls preload="metadata" aria-label="Synthetic voice input used for the transcription sample" src="media/reasoning.wav"></audio><blockquote id="voice-transcript">I check for the value before adding it to the set, otherwise the current value would match itself. The set contains only values from earlier positions</blockquote><div class="voice-chain"><span>Your speech</span><b>→</b><span>Local transcript</span><b>→</b><span>Coach context</span></div><p class="fine">Synthetic voice input · actual on-device transcript. Play to follow the recognized word timings. <a href="media/reasoning.json">Inspect the output ↗</a></p><a class="text-link" href="SETUP.md#voice-input">Voice setup ↗</a></div>
+</section>
+<section class="feature feature-board" id="board">
+  <div class="feature-copy"><span class="eyebrow">03 / The board is part of the conversation</span><h2>It follows<br>your architecture.</h2><p>Draw on a real Excalidraw canvas. Studio turns components and connections into a graph for the interviewer, including what changed since the last turn.</p><blockquote>“You said the creation service populates Redis, but the board only connects it to Postgres.”</blockquote><p class="fine">Scripted demo response. In real interviews, the latest board graph accompanies your next answer.</p></div>
+  <figure><img src="images/system-design.png" width="3200" height="2000" loading="lazy" alt="URL-shortener whiteboard beside an interviewer challenging a missing cache-write connection"><figcaption>A missing arrow becomes a question about failure behavior.</figcaption></figure>
+</section>
+<section class="film" id="film"><div class="section-head"><div><span class="eyebrow">See the loop</span><h2>From first attempt<br>to a better explanation.</h2></div><p>Actual app. Real local Python runs.<br>Scripted coaching and original fixtures.</p></div><video controls preload="none" poster="images/coach.png" playsinline aria-label="Practice Studio walkthrough"><source src="images/demo.mp4" type="video/mp4"><a href="images/demo.gif">View the animated walkthrough</a></video><p class="fine">Silent walkthrough with on-screen captions. No private practice data or model requests are used. <a href="EXAMPLE-SESSION.md">How it is made ↗</a></p></section>
+<section class="themes" id="themes"><div class="section-head"><div><span class="eyebrow">Six rooms. One practice.</span><h2>Find your atmosphere.</h2></div><p>A printed journal. A drafting table.<br>A terminal after midnight. Make it yours.</p></div><div class="theme-controls" role="group" aria-label="Preview a workspace theme"></div><figure class="theme-stage"><img id="theme-image" src="images/theme-slate.png" width="3200" height="2000" loading="lazy" alt="Slate theme: graphite surfaces and warm orange details"><figcaption id="theme-caption">Slate — graphite surfaces, warm orange details.</figcaption></figure></section>
+<section class="start" id="start"><span class="eyebrow">Local first. Source available.</span><h2>Your machine.<br><em>Your practice.</em></h2><div class="start-grid"><div><p>No Studio account. No hosted Studio backend. Your solutions, transcripts, and session records live on disk.</p><p class="fine">macOS · Node 22+ · Python 3. Claude Code is optional for coaching; voice additionally needs Swift 6, macOS 14+, and the speech model.</p><a class="button" href="https://github.com/dhirajcdry/practice-studio">Explore the repository ↗</a></div><pre><code>git clone https://github.com/dhirajcdry/practice-studio.git
+cd practice-studio
+npm start
+
+# No frontend build. No npm install.
+# Open http://127.0.0.1:4173</code></pre></div></section>
+</main>
+<footer><a class="brand" href="#">Practice <em>Studio</em></a><span>Designed and built by <a href="https://github.com/dhirajcdry">Dhiraj</a>.</span><a href="PRIVACY.md">Privacy & boundaries ↗</a></footer>
+<script src="showcase.js"></script>
+</body></html>

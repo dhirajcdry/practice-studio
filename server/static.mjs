@@ -19,6 +19,8 @@ const MIME = new Map(
     '.jpeg': 'image/jpeg',
     '.gif': 'image/gif',
     '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.wav': 'audio/wav',
     '.ico': 'image/x-icon',
     '.woff': 'font/woff',
     '.woff2': 'font/woff2',

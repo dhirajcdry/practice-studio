@@ -1,20 +1,75 @@
 # Practice Studio
 
-**A quieter way to practise coding and system-design interviews.**
+**Your AI coach, right beside your work.**
 
-![Practice Studio — a focused room for code, diagrams, and better follow-up questions](docs/images/masthead.svg)
+![Practice Studio — Stay in the problem. A coach beside your work.](docs/images/showcase.png)
 
-Practice Studio keeps the work in one room: write Python, run real local cases, explain
-your choices, and get a follow-up that can see the attempt. It is a macOS app you run
-on your own machine, with local session records, optional voice, and optional Claude
-coaching.
+Write code. Run it. Explain your thinking. Draw the architecture. Practice Studio
+connects the whole attempt so your AI coach can ask a better next question.
+
+- **Context-aware coaching:** current code, changes, run results, elapsed time, and saved speech.
+- **On-device transcription:** dictate a question or think aloud through a recorded attempt.
+- **Whiteboard-aware interviews:** Excalidraw components and connections inform the next follow-up.
+
+Runs locally on your Mac, with Claude Code for connected coaching. The coach answers
+when you ask or end an attempt for review; recording starts only when you choose it.
 
 [Quick start](#quick-start) · [First session](docs/FIRST-SESSION.md) · [Example session](docs/EXAMPLE-SESSION.md) · [Privacy & offline use](docs/PRIVACY.md)
 
-![Practice Studio showing a Python solution, local test results, and a coaching follow-up](docs/images/coach.png)
+[![Watch the coding, coaching, board-awareness, and transcription walkthrough](docs/images/demo.gif)](docs/images/demo.mp4)
+
+The checked-in walkthrough is also available as [high-quality MP4](docs/images/demo.mp4).
+Run `npm run demo` to start the local showcase server, then open
+<http://127.0.0.1:4196/showcase/showcase.html>.
 
 *An illustrative session in the actual app. Code runs locally; the coaching in this
-image is scripted for the demo. [See the full example and how the images are made.](docs/EXAMPLE-SESSION.md)*
+walkthrough is scripted for the demo. [See the full example and how the images are made.](docs/EXAMPLE-SESSION.md)*
+
+## The core loop
+
+### Code until the evidence is useful
+
+Browse the NeetCode 250 curriculum, write Python in Monaco, and run example or custom
+cases in a fresh local runner. The result is part of the attempt, so the coach can ask
+about the invariant you used, the case you missed, or the complexity you can defend.
+
+![A local coding run with the editor, problem statement, and result](docs/images/local-run.png)
+
+### A coach beside you for the whole attempt
+
+Ask a typed question, dictate a draft, or press Start Attempt and think aloud. The coach
+can receive your buffer, code changes, run results, elapsed time, and available
+transcripts. It responds to an explicit question or when you end the attempt for review.
+Voice mode uses the on-device transcriber after its model is downloaded; spoken responses
+use the browser's speech synthesis. [Read the voice setup and boundaries.](docs/SETUP.md#voice-input)
+
+### Hear it become text
+
+Play the synthetic voice sample in the [interactive showcase](docs/showcase.html),
+then follow the **actual on-device recognizer’s word timings**. The sample is generated
+with macOS speech synthesis and transcribed by Studio’s real Parakeet pipeline—no
+personal recording and no cloud speech service.
+
+[Listen to the input](docs/media/reasoning.wav) · [Inspect the transcript and timings](docs/media/reasoning.json)
+
+### Draw the design you would defend
+
+Use the Excalidraw board for a full system-design mock interview. Studio turns labeled
+shapes, arrows, and canvas notes into a semantic graph, then includes that graph and its
+meaningful changes in the next interviewer turn. The interviewer works from the
+board’s semantic data, including missing connections and changes between turns.
+
+![System-design practice with a URL-shortener diagram and an interviewer follow-up](docs/images/system-design.png)
+
+<details>
+<summary>Watch a short coding walkthrough</summary>
+
+![A short walkthrough of opening a problem, running code, and receiving a follow-up](docs/images/demo.gif)
+
+The walkthrough uses a temporary demo workspace and scripted coaching. No account,
+Claude request, or LeetCode submission is used to produce it.
+
+</details>
 
 ## Six ways to make it yours
 
@@ -29,48 +84,13 @@ locally and applied before the first paint.
 </tr>
 <tr>
 <td><a href="docs/images/theme-ink.png"><img src="docs/images/theme-ink.png" alt="Ink theme" width="100%"></a><br><strong>Ink</strong><br><sub>High contrast, hard rules, electric blue.</sub></td>
-<td><a href="docs/images/theme-slate.png"><img src="docs/images/theme-slate.png" alt="Slate theme" width="100%"></a><br><strong>Slate</strong><br><sub>Paper after dark, with softened charcoal edges.</sub></td>
+<td><a href="docs/images/theme-slate.png"><img src="docs/images/theme-slate.png" alt="Slate theme" width="100%"></a><br><strong>Slate</strong><br><sub>Graphite surfaces, warm orange focus, quiet depth.</sub></td>
 </tr>
 <tr>
 <td><a href="docs/images/theme-blueprint.png"><img src="docs/images/theme-blueprint.png" alt="Blueprint theme" width="100%"></a><br><strong>Blueprint</strong><br><sub>Cyan drafting marks on a deep navy grid.</sub></td>
 <td><a href="docs/images/theme-phosphor.png"><img src="docs/images/theme-phosphor.png" alt="Phosphor theme" width="100%"></a><br><strong>Phosphor</strong><br><sub>Green terminal light, amber signal, scanlines.</sub></td>
 </tr>
 </table>
-
-## The practice loop
-
-### Code until the evidence is useful
-
-Browse the NeetCode 250 curriculum, write Python in Monaco, and run example or custom
-cases in a fresh local runner. The result is part of the attempt, so the coach can ask
-about the invariant you used, the case you missed, or the complexity you can defend.
-
-![A local coding run with the editor, problem statement, and result](docs/images/local-run.png)
-
-### Explain the thinking, not just the answer
-
-Narrate an attempt or ask a typed question. The coach can receive your buffer, code
-changes, run results, elapsed time, and available transcripts. Voice mode uses the
-on-device transcriber after its model is downloaded; spoken responses use the browser's
-speech synthesis. [Read the voice setup and boundaries.](docs/SETUP.md#voice-input)
-
-### Draw the design you would defend
-
-Use the Excalidraw board for a full system-design mock interview. The interviewer can
-probe requirements, estimates, and tradeoffs while the board graph becomes part of the
-next answer.
-
-![System-design practice with a URL-shortener diagram and an interviewer follow-up](docs/images/system-design.png)
-
-<details>
-<summary>Watch a short coding walkthrough</summary>
-
-![A short walkthrough of opening a problem, running code, and receiving a follow-up](docs/images/demo.gif)
-
-The walkthrough uses a temporary demo workspace and scripted coaching. No account,
-Claude request, or LeetCode submission is used to produce it.
-
-</details>
 
 ## Quick start
 
