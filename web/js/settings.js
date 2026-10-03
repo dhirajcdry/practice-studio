@@ -24,7 +24,7 @@ export const THEMES = [
     swatch: ['#F4EFE6', '#1A1614', '#9B2C2C'], mono: false, dark: false },
   { id: 'ink', name: 'Ink', blurb: 'High contrast. Hard rules, hard shadows, electric blue.',
     swatch: ['#EDEDEA', '#0A0A0A', '#1B49F5'], mono: false, dark: false },
-  { id: 'slate', name: 'Slate', blurb: 'Paper after dark. Same shapes, the light turned round.',
+  { id: 'slate', name: 'Slate', blurb: 'Graphite workspace. Warm orange focus, quiet depth.',
     swatch: ['#131518', '#E8EAED', '#FF8256'], mono: false, dark: true },
   { id: 'blueprint', name: 'Blueprint', blurb: 'Drafting table. Cyan on navy, on a printed grid.',
     swatch: ['#0B1B2E', '#DCEEFF', '#5FD3F3'], mono: true, dark: true },
@@ -112,8 +112,12 @@ function themeCard(theme, onPick) {
     class: 'set-card set-theme', type: 'button', 'aria-pressed': String(chosen),
     onclick: () => onPick(theme.id),
   }, [
-    // The swatch is the actual palette, not an approximation of it: canvas, ink, accent.
-    el('div', { class: 'set-swatch' }, theme.swatch.map((hex) => el('i', { style: `background:${hex}` }))),
+    el('div', { class: `set-swatch theme-preview theme-preview-${theme.id}`, 'aria-hidden': 'true', style: `--preview-paper:${theme.swatch[0]};--preview-ink:${theme.swatch[1]};--preview-accent:${theme.swatch[2]}` }, [
+      el('i', { class: 'preview-top' }, [el('b'), el('b'), el('b')]),
+      el('i', { class: 'preview-rail' }),
+      el('i', { class: 'preview-main' }, [el('b'), el('b'), el('b'), el('b')]),
+      el('i', { class: 'preview-accent' }),
+    ]),
     el('div', { class: 'set-cardname mono', text: theme.name }),
     el('div', { class: 'set-cardblurb', text: theme.blurb }),
   ]);

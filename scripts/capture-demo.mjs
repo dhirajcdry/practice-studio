@@ -58,13 +58,13 @@ try {
     try { return (await (await fetch(`${origin}/api/demo`)).json()).token === demoToken; } catch { return false; }
   }, 'Demo server did not start');
   if (serve) {
-    console.log(`Illustrative demo · scripted coach · disposable workspace\n${origin}/#/p/${SLUG}\n${origin}/#/design/${id}\nPress Ctrl-C to stop and remove demo data.`);
+    console.log(`Illustrative demo · scripted coach · disposable workspace\n${origin}/showcase/showcase.html\n${origin}/#/p/${SLUG}\n${origin}/#/design/${id}\nPress Ctrl-C to stop and remove demo data.`);
     await once(server, 'exit');
     if (!interrupted) throw new Error('Demo server stopped unexpectedly');
   } else {
     await fsp.access(CHROME);
     chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${path.join(work, 'chrome')}`, '--window-size=1280,800', 'about:blank'], { stdio: 'ignore' });
+      `--user-data-dir=${path.join(work, 'chrome')}`, '--window-size=1600,1000', 'about:blank'], { stdio: 'ignore' });
     chrome.on('error', (error) => console.error(error.message));
     // Trust only the DevTools endpoint written by our fresh, unique Chrome profile.
     await until(async () => {
@@ -114,7 +114,8 @@ try {
     // navigation is confined to this server; the scripted CLI never uses the network.
     await send('Network.setBlockedURLs', { urls: ['https://*', 'http://leetcode.com/*',
       `${origin}/api/submit*`, `${origin}/api/asr*`] });
-    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+    // Retina master images; video/GIF are downsampled once from these originals.
+    await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 2, mobile: false });
     await send('Page.addScriptToEvaluateOnNewDocument', { source: `
       localStorage.setItem('studio.settings.v1', JSON.stringify({ theme:'slate', codeSize:18, motion:false }));
     ` });
@@ -136,11 +137,12 @@ try {
         let badge = document.getElementById('demo-disclosure');
         if (!badge) {
           badge = document.createElement('div'); badge.id = 'demo-disclosure';
-          badge.style.cssText = 'position:fixed;bottom:12px;left:24px;z-index:10000;padding:10px 16px;background:#e8eaed;color:#131518;border:1px solid #68717d;border-radius:6px;font:13px ui-monospace,monospace;pointer-events:none;box-shadow:0 2px 12px #0004';
+          badge.style.cssText = 'position:fixed;bottom:18px;left:36px;z-index:10000;padding:14px 22px;background:#d5f58b;color:#17210c;border:1px solid #17210c33;border-radius:4px;font:13px ui-monospace,monospace;pointer-events:none;box-shadow:0 4px 24px #0004';
           document.body.append(badge);
         }
         badge.textContent = ${JSON.stringify(`ILLUSTRATIVE DEMO · SCRIPTED COACH  /  ${label}`)};
       })()`);
+      await sleep(150);
       const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       const file = path.join(work, `frame-${String(frames.length).padStart(2, '0')}.png`);
       await fsp.writeFile(file, Buffer.from(data, 'base64')); frames.push(file);
@@ -191,17 +193,57 @@ try {
     await until(() => evaluate(`Boolean(document.querySelector('.dz-canvas canvas') && /Where does that cache write/.test(document.querySelector('.dz-log')?.innerText || ''))`), 'Design replay did not mount');
     await sleep(1200);
     await shot('system-design.png');
+    await frame('07  The interviewer sees the board graph with your next answer');
+    await evaluate(`document.getElementById('demo-disclosure')?.remove()`);
+    await send('Page.navigate', { url: `${origin}/showcase/showcase.html#voice` });
+    await until(() => evaluate(`document.querySelector('#voice-transcript')?.children.length > 0`), 'Actual speech transcript did not load');
+    await evaluate(`document.getElementById('voice').scrollIntoView({behavior:'instant', block:'start'})`);
+    await shot('transcription.png');
+    await frame('08  Synthetic voice in · actual on-device transcription out');
+    await evaluate(`document.getElementById('demo-disclosure')?.remove()`);
     // Six deliberate frames, each held long enough to read. No personal recordings.
     const list = path.join(work, 'frames.txt');
     await fsp.writeFile(list, frames.map((file) => `file '${file}'\nduration 3\n`).join('') + `file '${frames.at(-1)}'\n`);
     const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list,
-      '-filter_complex', '[0:v]fps=5,scale=1120:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer',
+      '-filter_complex', '[0:v]fps=10,scale=1600:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a',
       '-loop', '0', path.join(output, 'demo.gif')], { stdio: ['ignore', 'ignore', 'pipe'] });
     let ffmpegError = ''; ffmpeg.stderr.on('data', (chunk) => { ffmpegError += chunk; });
     const [code] = await once(ffmpeg, 'exit');
     if (code !== 0) throw new Error(ffmpegError || 'ffmpeg failed');
+    const video = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list,
+      '-vf', 'scale=1920:1200:flags=lanczos,fps=30', '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart', path.join(output, 'demo.mp4')], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let videoError = ''; video.stderr.on('data', chunk => { videoError += chunk; });
+    const [videoCode] = await once(video, 'exit');
+    if (videoCode !== 0) throw new Error(videoError || 'Video encoding failed');
+    await send('Page.navigate', { url: `${origin}/showcase/showcase.html` });
+    await until(() => evaluate(`document.querySelector('.product-stage img')?.complete && document.querySelector('.theme-controls')?.children.length === 6`), 'Showcase did not load');
+    await shot('showcase.png');
+    // Check the public experience as well as the app shown inside it.
+    await evaluate(`document.querySelector('video').load()`);
+    await until(() => evaluate(`document.querySelector('video').readyState >= 2`), 'Walkthrough video did not decode');
+    const media = await evaluate(`({ width:document.querySelector('video').videoWidth, height:document.querySelector('video').videoHeight, duration:document.querySelector('video').duration })`);
+    if (media.width !== 1920 || media.height !== 1200 || media.duration < 20) throw new Error(`Unexpected video: ${JSON.stringify(media)}`);
+    await until(() => evaluate(`document.querySelector('#voice-sample').readyState >= 1 && document.querySelector('#voice-transcript').children.length > 0`), 'Audio sample did not decode');
+    await evaluate(`document.querySelector('#voice-sample').currentTime = 1.2`);
+    await until(() => evaluate(`Boolean(document.querySelector('#voice-transcript .is-current'))`), 'Transcript did not track audio time');
+    await evaluate(`document.getElementById('themes').scrollIntoView({behavior:'instant'})`);
+    for (const theme of themes) {
+      await evaluate(`Array.from(document.querySelectorAll('.theme-controls button')).find(button => button.textContent === ${JSON.stringify(theme.name)}).click()`);
+      await until(() => evaluate(`document.getElementById('theme-image').complete && document.getElementById('theme-image').naturalWidth === 3200 && document.getElementById('theme-image').src.endsWith('theme-${theme.id}.png')`), `Showcase preview failed: ${theme.name}`);
+    }
+    for (const width of [390, 768, 1600]) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 2, mobile: false });
+      await evaluate(`window.scrollTo({top:0,behavior:'instant'})`);
+      const overflow = await evaluate(`document.documentElement.scrollWidth > innerWidth`);
+      if (width === 390) await shot('showcase-mobile.png');
+      if (overflow) {
+        const offenders = await evaluate(`Array.from(document.querySelectorAll('body *')).filter(node => node.getBoundingClientRect().right > innerWidth + 1).map(node => node.className || node.tagName).slice(0,12)`);
+        throw new Error(`Showcase overflows at ${width}px: ${offenders.join(', ')}`);
+      }
+    }
     if (errors.length) throw new Error(errors.join('\n'));
-    console.log('Captured actual app: coach.png, local-run.png, system-design.png, all six theme screenshots, demo.gif. Both corrected local cases passed. Coaching is scripted.');
+    console.log('Captured 3200×2000 PNG masters, six themes, showcase.png, 1600px GIF, and 1920×1200 MP4. Both corrected local cases passed. Coaching is scripted.');
   }
 } finally {
   await cleanup();

@@ -1,0 +1,139 @@
+{
+  "provenance": "Synthetic macOS Samantha voice; actual output of Studio’s on-device transcriber. Not a personal recording.",
+  "sourceText": "I check for the value before adding it to the set. Otherwise the current value would match itself. The set contains only values from earlier positions.",
+  "durationSeconds": 8.575875,
+  "modelId": "FluidInference/parakeet-tdt-0.6b-v2-coreml",
+  "text": "I check for the value before adding it to the set, otherwise the current value would match itself. The set contains only values from earlier positions",
+  "words": [
+    {
+      "end": 0.24,
+      "start": 0,
+      "word": "I"
+    },
+    {
+      "end": 0.4,
+      "start": 0.16,
+      "word": "check"
+    },
+    {
+      "end": 0.56,
+      "start": 0.4,
+      "word": "for"
+    },
+    {
+      "end": 0.64,
+      "start": 0.56,
+      "word": "the"
+    },
+    {
+      "end": 1.12,
+      "start": 0.64,
+      "word": "value"
+    },
+    {
+      "end": 1.36,
+      "start": 1.12,
+      "word": "before"
+    },
+    {
+      "end": 1.68,
+      "start": 1.36,
+      "word": "adding"
+    },
+    {
+      "end": 1.8399999999999999,
+      "start": 1.68,
+      "word": "it"
+    },
+    {
+      "end": 2,
+      "start": 1.84,
+      "word": "to"
+    },
+    {
+      "end": 2.16,
+      "start": 2,
+      "word": "the"
+    },
+    {
+      "end": 2.7199999999999998,
+      "start": 2.16,
+      "word": "set,"
+    },
+    {
+      "end": 3.2,
+      "start": 2.72,
+      "word": "otherwise"
+    },
+    {
+      "end": 3.3600000000000003,
+      "start": 3.2,
+      "word": "the"
+    },
+    {
+      "end": 3.7600000000000002,
+      "start": 3.36,
+      "word": "current"
+    },
+    {
+      "end": 4.08,
+      "start": 3.7600000000000002,
+      "word": "value"
+    },
+    {
+      "end": 4.32,
+      "start": 4.08,
+      "word": "would"
+    },
+    {
+      "end": 4.640000000000001,
+      "start": 4.32,
+      "word": "match"
+    },
+    {
+      "end": 5.36,
+      "start": 4.64,
+      "word": "itself."
+    },
+    {
+      "end": 5.6000000000000005,
+      "start": 5.36,
+      "word": "The"
+    },
+    {
+      "end": 5.840000000000001,
+      "start": 5.6000000000000005,
+      "word": "set"
+    },
+    {
+      "end": 6.32,
+      "start": 5.84,
+      "word": "contains"
+    },
+    {
+      "end": 6.5600000000000005,
+      "start": 6.32,
+      "word": "only"
+    },
+    {
+      "end": 7.04,
+      "start": 6.5600000000000005,
+      "word": "values"
+    },
+    {
+      "end": 7.2,
+      "start": 7.04,
+      "word": "from"
+    },
+    {
+      "end": 7.680000000000001,
+      "start": 7.2,
+      "word": "earlier"
+    },
+    {
+      "end": 8.24,
+      "start": 7.68,
+      "word": "positions"
+    }
+  ]
+}

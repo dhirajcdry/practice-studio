@@ -246,6 +246,16 @@ export function createCoachPanel(entry) {
   tabHistory.addEventListener('click', () => showTab('history'));
 
   const root = el('section', { class: 'card coach', 'aria-label': 'Coach' }, [
+    el('div', { class: 'coach-identity' }, [
+      el('span', { class: 'coach-eyebrow mono', text: 'Your practice partner' }),
+      el('div', { class: 'coach-title', text: 'Keep your train of thought.' }),
+      el('div', { class: 'coach-context', 'aria-label': 'Context available with each question',
+        title: 'Each question includes your current code, recent runs and available transcripts. Microphone recording starts only when you choose it.' }, [
+        el('span', { text: 'Code + changes' }),
+        el('span', { text: 'Run results' }),
+        el('span', { text: 'Saved speech' }),
+      ]),
+    ]),
     el('div', { class: 'ws-bar coach-bar' }, [
       el('span', { class: 'coach-tabs' }, [tabChat, tabHistory]),
       el('span', { class: 'coach-sep', 'aria-hidden': 'true' }),
