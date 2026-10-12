@@ -600,14 +600,7 @@ export function mountWorkspace(entry, options = {}) {
     class: 'ws-stub', type: 'button', hidden: true,
     onclick: () => showResults('run'),
   });
-  const runLane = el('div', { class: 'ws-lane' }, [
-    // "Local run" stays: it is what stops these results being read as LeetCode's
-    // verdict. The sentence explaining what local means does not need to be permanent.
-    el('div', { class: 'rr-lane' }, [
-      el('span', { class: 'mono rr-lanemark', text: 'Local run' }),
-    ]),
-    panel.root,
-  ]);
+  const runLane = el('div', { class: 'ws-lane' }, panel.root);
   const judgeLane = el('div', { class: 'ws-lane', hidden: true }, judge.root);
   const results = el('div', { class: 'ws-results' }, [
     judgeStub, judgeLane, runStub, runLane,

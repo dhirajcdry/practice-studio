@@ -637,6 +637,7 @@ body.hide-results .ws-results{display:none}
 }
 .rr-body > .state{border-style:solid}
 .rr-body > .state{margin:14px 16px}
+.rr-empty{margin:0;padding:18px 16px;font-size:12.5px;color:var(--ink-50)}
 .rr-idle{padding:13px 16px 16px}
 .rr-idle p{font-size:13px;color:var(--ink-50);max-width:58ch;margin-top:5px}
 
@@ -1019,13 +1020,6 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 .ws-stub[data-tone="err"] .ws-stubline{color:var(--hard)}
 .ws-stub[data-tone="warn"] .ws-stubline{color:var(--medium)}
 
-/* ---- the lane label over the local results ---- */
-.rr-lane{
-  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
-  padding:9px 16px 8px;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.022);
-}
-.rr-lanemark{color:var(--ink-70);font-weight:600;letter-spacing:.2em;font-size:10px}
-.rr-lanescope{font-size:9.5px;letter-spacing:.12em;text-transform:none}
 
 /* ---- the verdict panel ---- */
 /* Scoped to the workspace. As a bare `.sub` this collided with `.viewhead .sub`, the
@@ -1143,10 +1137,10 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 .split-col::after{left:50%;transform:translateX(-50%);top:10px;bottom:10px;width:2px}
 .split-row::after{top:50%;transform:translateY(-50%);left:14px;right:14px;height:2px}
 
-/* The editor/results divider is a control, not an invisible seam. Keep a faint grip
-   visible so a short results panel still advertises where it can be dragged. */
-.split-row::before{content:"";position:absolute;inset:0 10px;border-radius:4px;background:var(--hair-06)}
-.split-row:hover::before,.split-row:focus-visible::before{background:var(--hair-10)}
+/* The editor/results divider is the panel's own border; a short centred grip says it
+   can be dragged without laying a second, thicker bar over that border. */
+.split-row::before{content:"";position:absolute;top:50%;left:50%;width:36px;height:3px;transform:translate(-50%,-50%);border-radius:2px;background:var(--hair-20)}
+.split-row:hover::before,.split-row:focus-visible::before{background:var(--ink-35)}
 
 .split:hover::after,.split:focus-visible::after{opacity:1;background:var(--ink-30)}
 .split:focus-visible{outline:none}
@@ -1536,6 +1530,7 @@ body.coach-open .coach-runs{bottom:20px}
 }
 .rr-tab[aria-pressed="true"]{background:var(--card);border-color:var(--hair-10);color:var(--ink)}
 .rr-tab:hover{color:var(--ink-70)}
+.rr-tabmark{margin-left:auto;align-self:center;padding:0 6px;font-size:10.5px;color:var(--ink-35);cursor:default}
 .rr-pane{min-height:0}
 
 .tc{display:flex;flex-direction:column}

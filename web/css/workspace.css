@@ -84,12 +84,20 @@ body.ws-wide .ws-run{background:var(--solid-bg);color:var(--solid-fg);border-col
 body.ws-wide .ws-submit{background:transparent;color:var(--accent);border-color:var(--hair-10)}
 body.ws-wide .ws-mini kbd,body.ws-wide .ws-run kbd{font-size:9px;letter-spacing:0;border:0;padding:0;margin-left:2px}
 body.ws-wide .ws-results{background:var(--card)}
-body.ws-wide .rr-lane{padding:9px 14px;border-bottom:1px solid var(--hair-10);background:var(--canvas)}
-body.ws-wide .rr-lanemark{font:600 10px var(--ui);text-transform:uppercase;letter-spacing:.06em}
+body.ws-wide .rr-tabmark{font:11px var(--ui)}
 body.ws-wide .rr-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;padding:7px 10px;border-radius:0;border:0;border-bottom:2px solid transparent}
 body.ws-wide .rr-tab[aria-pressed="true"]{border-bottom-color:var(--accent);background:transparent}
 body.ws-wide .rr-summary{font:500 13px var(--ui)}
 body.ws-wide .tc-tab{font:11px var(--ui);letter-spacing:0;border-radius:4px}
+/* One solid button per bar. The selected case and the case editor's own Run are
+   quiet, so the toolbar's Run stays the obvious action. */
+body.ws-wide .tc-tab.is-on{background:rgba(var(--ink-rgb),.08);border-color:var(--hair-20);color:var(--ink)}
+body.ws-wide .tc-tab.is-on .tc-mark{color:inherit}
+body.ws-wide .ws-run.tc-run{background:transparent;color:var(--ink);border-color:var(--hair-20)}
+body.ws-wide .ws-run.tc-run:hover{border-color:var(--ink-35)}
+body.ws-wide .tc-label,body.ws-wide .tc-origin{font:11px var(--ui);letter-spacing:0;text-transform:none}
+/* Read-only is said by the note under the fields; a dashed edge read as a drop zone. */
+body.ws-wide .tc-input[readonly]{border-style:solid;border-color:var(--hair-10)}
 .editor-statusline{display:flex;align-items:center;gap:18px;min-height:32px;flex-shrink:0;padding:0 16px;border-top:1px solid var(--hair-10);background:var(--canvas);font:10px var(--ui);color:var(--ink-50)}
 .editor-cursor{margin-left:auto;font-family:var(--mono)}
 

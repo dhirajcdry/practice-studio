@@ -363,7 +363,8 @@ const HARD_CAP_MS = 30000;
  * what is on screen right now.
  */
 export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
-  const body = el('div', { class: 'rr-body' });
+  // Until the first run the Result tab says what will appear there, not nothing.
+  const body = el('div', { class: 'rr-body' }, el('p', { class: 'rr-empty', text: 'Run your code to see each case\u2019s output here. Runs stay on this machine.' }));
 
   // Two tabs, the way LeetCode has them: the cases you are going to run, and what
   // happened when you ran them. The editor stays alive behind the results, so fixing a
@@ -374,7 +375,12 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
 
   const tabCases = el('button', { class: 'rr-tab mono', type: 'button', 'aria-pressed': 'true', text: 'Testcase' });
   const tabResult = el('button', { class: 'rr-tab mono', type: 'button', 'aria-pressed': 'false', text: 'Result' });
-  const bar = el('div', { class: 'rr-tabs' }, [tabCases, tabResult]);
+  // "Local run" rides on the tab row: it is what stops these results being read as
+  // LeetCode's verdict, and a band of its own only pushed the cases further down.
+  const bar = el('div', { class: 'rr-tabs' }, [
+    tabCases, tabResult,
+    el('span', { class: 'rr-tabmark', text: 'Local run', title: 'Runs on this machine against the visible cases. LeetCode judges only on Submit.' }),
+  ]);
 
   function showTab(which) {
     const onResult = which === 'result';
