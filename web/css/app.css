@@ -202,7 +202,7 @@ body.reduce-motion .navcaret{transition:none}
 .banner button.blink{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--med);text-decoration:underline;text-underline-offset:3px}
 
 /* ---------------- page frame ---------------- */
-main{max-width:1440px;margin:0 auto;padding:26px 20px 96px}
+main{max-width:1680px;margin:0 auto;padding:32px 28px 96px}
 main:focus{outline:none}
 /* Views update immediately: replaying an opacity entrance on every filter or
    navigation made the whole screen blink. Motion belongs to individual controls. */

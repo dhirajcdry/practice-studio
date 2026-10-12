@@ -782,17 +782,24 @@ export function mountWorkspace(entry, options = {}) {
   const isProblemHidden = () => document.body.classList.contains('hide-problem');
   const isResultsHidden = () => document.body.classList.contains('hide-results');
 
+  // Focus hides both panes on its own. That is the view's choice, not the user's, so it
+  // is never saved: saving it left Workbench and Review with no statement after a reload.
+  function remember(key, on) {
+    if (workspace === 'focus') return;
+    try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* noop */ }
+  }
+
   function setProblemHidden(on) {
     document.body.classList.toggle('hide-problem', on);
     probButton.setAttribute('aria-pressed', String(!on));
-    try { localStorage.setItem(FOCUS_KEY, on ? '1' : '0'); } catch { /* noop */ }
+    remember(FOCUS_KEY, on);
     // The editor is a fixed-size canvas that does not notice its box changed.
     if (editor) setTimeout(() => editor.layout?.(), 0);
   }
 
   function setResultsHidden(on) {
     document.body.classList.toggle('hide-results', on);
-    try { localStorage.setItem(PANEL_KEY, on ? '1' : '0'); } catch { /* noop */ }
+    remember(PANEL_KEY, on);
     if (editor) setTimeout(() => editor.layout?.(), 0);
   }
 
@@ -845,13 +852,11 @@ export function mountWorkspace(entry, options = {}) {
   }
 
   const stored = (key) => { try { return localStorage.getItem(key) === '1'; } catch { return false; } };
-  if (workspace === 'focus') {
-    setProblemHidden(true);
-    setResultsHidden(true);
-  } else {
-    setProblemHidden(stored(FOCUS_KEY));
-    setResultsHidden(stored(PANEL_KEY));
+  function applyWorkspacePanes() {
+    setProblemHidden(workspace === 'focus' || stored(FOCUS_KEY));
+    setResultsHidden(workspace === 'focus' || stored(PANEL_KEY));
   }
+  applyWorkspacePanes();
 
   releaseChords.push(onChord('problem', () => setProblemHidden(!isProblemHidden())));
   releaseChords.push(onChord('results', () => setResultsHidden(!isResultsHidden())));
@@ -900,8 +905,7 @@ export function mountWorkspace(entry, options = {}) {
   const stopWatchingSettings = onSettingsChange((settings) => {
     if (settings.workspace !== workspace) {
       workspace = settings.workspace;
-      setProblemHidden(workspace === 'focus');
-      setResultsHidden(workspace === 'focus');
+      applyWorkspacePanes();
     }
     if (!editor) return;
     editor.setFontSize?.(settings.codeSize);

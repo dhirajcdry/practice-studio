@@ -15,8 +15,8 @@
 .dash-head h1{font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.15}
 .dash-head .sub{color:var(--ink-50);font-size:14px;margin-top:3px;max-width:64ch}
 .dash-refresh{
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  border:1px solid var(--hair-20);border-radius:7px;padding:6px 12px;background:var(--card);color:var(--ink-50);
+  font:500 12px var(--ui);
+  border:1px solid var(--hair-20);border-radius:6px;padding:7px 12px;background:var(--card);color:var(--ink-50);
 }
 .dash-refresh:hover{border-color:var(--ink);color:var(--ink)}
 .dash-refresh:disabled{opacity:.5;cursor:default}

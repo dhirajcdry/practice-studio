@@ -2,11 +2,6 @@
    for progress. The directory remains useful when the local stats service is absent. */
 body.browse-page{font-family:var(--ui);background-image:none}
 body.browse-page main{max-width:1680px;padding:32px 28px 48px}
-body.browse-page .topbar{padding-inline:24px;box-shadow:none;background:var(--canvas)}
-body.browse-page .wordmark .solid,body.browse-page .wordmark .outline{font-family:var(--ui);font-size:16px;letter-spacing:-.04em}
-body.browse-page .wordmark .outline{-webkit-text-stroke:0;color:var(--ink-50);font-weight:500}
-body.browse-page .navbtn,body.browse-page .navlink{font:12px var(--ui);text-transform:none;letter-spacing:0;border:0;border-radius:5px}
-body.browse-page .navbtn .mono{font:12px var(--ui);text-transform:none;letter-spacing:0}
 .catalog .viewhead{margin-bottom:24px;align-items:center}
 .catalog .viewhead h1{font:600 30px/1.2 var(--ui);letter-spacing:-.045em}
 .catalog .viewhead .sub{font:13px/1.6 var(--ui);margin-top:8px;color:var(--ink-70)}
