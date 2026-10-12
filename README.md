@@ -16,14 +16,11 @@ when you ask or end an attempt for review; recording starts only when you choose
 
 [Quick start](#quick-start) · [First session](docs/FIRST-SESSION.md) · [Example session](docs/EXAMPLE-SESSION.md) · [Privacy & offline use](docs/PRIVACY.md)
 
-[![Watch the coding, coaching, board-awareness, and transcription walkthrough](docs/images/demo.gif)](docs/images/demo.mp4)
-
-The checked-in walkthrough is also available as [high-quality MP4](docs/images/demo.mp4).
 Run `npm run demo` to start the local showcase server, then open
 <http://127.0.0.1:4196/showcase/showcase.html>.
 
-*An illustrative session in the actual app. Code runs locally; the coaching in this
-walkthrough is scripted for the demo. [See the full example and how the images are made.](docs/EXAMPLE-SESSION.md)*
+*An illustrative session in the actual app. Code runs locally; the coaching is scripted
+for the demo. [See the full example and how the images are made.](docs/EXAMPLE-SESSION.md)*
 
 ## The core loop
 
@@ -34,6 +31,34 @@ cases in a fresh local runner. The result is part of the attempt, so the coach c
 about the invariant you used, the case you missed, or the complexity you can defend.
 
 ![A local coding run with the editor, problem statement, and result](docs/images/local-run.png)
+
+### Browse by pattern, with evidence
+
+The problem explorer groups the catalog by pattern and shows recorded progress beside
+each problem. Accepted submissions, locally passed examples, and work in progress remain
+separate; a missing record stays “Not started” rather than becoming a guessed statistic.
+
+[![Problem explorer grouped by pattern](docs/images/explorer.png)](docs/showcase.html#explorer)
+
+Switch to the roadmap to explore suggested study connections between all 18 patterns.
+Select a node to see its problems and recorded progress; pan, zoom, or fit the map
+without leaving your place. Connections guide study without locking any problem.
+
+![Study roadmap with pattern connections and a problem panel](docs/images/roadmap.png)
+
+### Three views for one attempt
+
+Workbench keeps the problem, editor, evidence, and coach together. Focus clears the
+surrounding panes so you can think in the code. Review brings the latest run and its
+implications forward after a change. Switch views as the attempt moves from solving to
+explaining.
+
+The six themes change the information treatment as well as the surface: Slate groups
+rows, Paper stays quiet and clean, Editorial adds annotations and dashed rules with
+serif prose, Ink uses strong rules, Blueprint reads like a navy-and-cyan engineering
+surface, and Phosphor compresses results into compact mono logs.
+
+![Workbench view](docs/images/workspace-workbench.png) ![Focus view](docs/images/workspace-focus.png) ![Review view](docs/images/workspace-review.png)
 
 ### A coach beside you for the whole attempt
 
@@ -61,34 +86,25 @@ board’s semantic data, including missing connections and changes between turns
 
 ![System-design practice with a URL-shortener diagram and an interviewer follow-up](docs/images/system-design.png)
 
-<details>
-<summary>Watch a short coding walkthrough</summary>
-
-![A short walkthrough of opening a problem, running code, and receiving a follow-up](docs/images/demo.gif)
-
-The walkthrough uses a temporary demo workspace and scripted coaching. No account,
-Claude request, or LeetCode submission is used to produce it.
-
-</details>
-
 ## Six ways to make it yours
 
 The interface has six distinct moods, from a warm paper desk to a glowing terminal.
 Open the gear, then choose a theme under **Settings → Theme**. Your choice is stored
-locally and applied before the first paint.
+locally and stays the same across Workbench, Focus, Review, and the problem explorer.
+Switching views changes the layout, not your chosen theme.
 
 <table>
 <tr>
-<td><a href="docs/images/theme-paper.png"><img src="docs/images/theme-paper.png" alt="Paper theme" width="100%"></a><br><strong>Paper</strong><br><sub>Warm off-white, serif display, quiet terracotta.</sub></td>
+<td><a href="docs/images/theme-paper.png"><img src="docs/images/theme-paper.png" alt="Paper theme" width="100%"></a><br><strong>Paper</strong><br><sub>Clean type, soft surfaces, quiet blue focus.</sub></td>
 <td><a href="docs/images/theme-editorial.png"><img src="docs/images/theme-editorial.png" alt="Editorial theme" width="100%"></a><br><strong>Editorial</strong><br><sub>Laid paper, Palatino, and a deep red accent.</sub></td>
 </tr>
 <tr>
 <td><a href="docs/images/theme-ink.png"><img src="docs/images/theme-ink.png" alt="Ink theme" width="100%"></a><br><strong>Ink</strong><br><sub>High contrast, hard rules, electric blue.</sub></td>
-<td><a href="docs/images/theme-slate.png"><img src="docs/images/theme-slate.png" alt="Slate theme" width="100%"></a><br><strong>Slate</strong><br><sub>Graphite surfaces, warm orange focus, quiet depth.</sub></td>
+<td><a href="docs/images/theme-slate.png"><img src="docs/images/theme-slate.png" alt="Slate theme" width="100%"></a><br><strong>Slate</strong><br><sub>Graphite surfaces, blue focus, quiet depth.</sub></td>
 </tr>
 <tr>
-<td><a href="docs/images/theme-blueprint.png"><img src="docs/images/theme-blueprint.png" alt="Blueprint theme" width="100%"></a><br><strong>Blueprint</strong><br><sub>Cyan drafting marks on a deep navy grid.</sub></td>
-<td><a href="docs/images/theme-phosphor.png"><img src="docs/images/theme-phosphor.png" alt="Phosphor theme" width="100%"></a><br><strong>Phosphor</strong><br><sub>Green terminal light, amber signal, scanlines.</sub></td>
+<td><a href="docs/images/theme-blueprint.png"><img src="docs/images/theme-blueprint.png" alt="Blueprint theme" width="100%"></a><br><strong>Blueprint</strong><br><sub>Cyan engineering marks on deep navy surfaces.</sub></td>
+<td><a href="docs/images/theme-phosphor.png"><img src="docs/images/theme-phosphor.png" alt="Phosphor theme" width="100%"></a><br><strong>Phosphor</strong><br><sub>Compact mono logs, green text, amber signal.</sub></td>
 </tr>
 </table>
 
@@ -114,7 +130,7 @@ from an accepted LeetCode submission.
 | AI coach and system-design interviewer | Install and sign in to the Claude Code CLI; `claude` must be on your `PATH`. Coaching uses its configured online service. |
 | Voice input | Run `swift build -c release --package-path asr`. The first transcription downloads the model; allow microphone access in your browser. |
 | Reference solutions and articles | `git clone --depth 1 https://github.com/neetcode-gh/leetcode.git vendor/neetcode-solutions` |
-| LeetCode submissions | Store session cookies in macOS Keychain. [Submission setup](docs/SETUP.md#leetcode-submissions). |
+| LeetCode submissions | Load the bundled `extension/` in your browser, signed in to LeetCode. No cookies to copy. [Submitting to LeetCode](docs/SUBMITTING.md). |
 
 [First session](docs/FIRST-SESSION.md) walks through the screens and expected results.
 [Setup & troubleshooting](docs/SETUP.md) covers optional features, environment
@@ -170,3 +186,12 @@ Built with [Monaco Editor](https://github.com/microsoft/monaco-editor),
 [FluidAudio](https://github.com/FluidInference/FluidAudio).
 
 [MIT license](LICENSE).
+
+### Choose the coach
+
+Use **Coach model** in the coach header or **Settings → Coach** to choose Codex CLI
+or Claude Code. The choice also applies to system-design interviews and persists in
+your local workspace. Codex defaults to Astra (`gpt-6-astra`) and uses `codex login`
+with ChatGPT; Claude uses its own CLI sign-in. Each provider's limits still apply.
+Codex preserves chat history and reads supplied notes; automatic note edits are
+currently available only through Claude. No API key is required for the Codex path.

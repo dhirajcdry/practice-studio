@@ -132,18 +132,27 @@ npm run demo
 
 The command prints the local showcase URL, including
 `http://127.0.0.1:4196/showcase/showcase.html`, and keeps a separate demo server open. It creates a
-new temporary workspace, uses original cached content and scripted coaching, and removes
-its data when stopped with Ctrl-C. Your regular practice workspace isn't read or changed.
-Explore the seeded **Contains Duplicate** and saved design interview. This demo server
-disables live content fetching, real submissions, and microphone transcription; clicking
-those controls explains that they are unavailable in the demo.
+new temporary workspace, uses an original Contains Duplicate fixture and scripted coaching,
+and removes its data when stopped with Ctrl-C. Other public problem statements already
+cached on this machine are copied into the demo, so the library is usable offline.
+Personal code, notes, activity, sessions, and credentials are never copied.
+Explore the problem library and saved design interview. This demo server
+disables live content fetching, real submissions, and microphone transcription. The
+demo cannot submit to the real judge, and the coach omits its microphone control.
+Use the normal Studio on port 4173, with the [Studio Connector](SUBMITTING.md) installed, for real submissions.
+Use `npm start` and `http://127.0.0.1:4173/` for the regular Studio with real integrations.
 
 The checked-in [interactive showcase](http://127.0.0.1:4196/showcase/showcase.html) is
-the quickest way to browse the scenes once the server is running. The [GIF](images/demo.gif)
-is 1600px wide for a quick scan; the [MP4](images/demo.mp4) is 1920×1200 for a full-quality
-walkthrough. Supporting screenshots are captured at 3200×2000.
+the quickest way to browse the scenes once the server is running. Supporting screenshots
+are captured at 3200×2000.
 
-To regenerate the checked-in screenshots, GIF, and MP4, additionally install `ffmpeg`:
+The showcase also compares the three workspace views: Workbench keeps context together,
+Focus clears the editor, and Review brings run evidence forward. The six themes change
+the information treatment from Slate's grouped rows to Paper's quiet surface, Editorial's
+annotations and dashed rules, Ink's strong rules, Blueprint's engineering navy and cyan,
+and Phosphor's compact mono logs.
+
+To regenerate the checked-in screenshots:
 
 ```sh
 npm run demo:capture
@@ -181,4 +190,4 @@ npm run demo:voice
 
 The first ASR invocation may download the model. The normal screenshot capture reuses
 this checked-in result, so `npm run demo:capture` does not need Swift or a model download.
-The walkthrough includes a transcription chapter showing the same real output.
+The showcase includes a transcription chapter showing the same real output.

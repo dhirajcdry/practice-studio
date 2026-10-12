@@ -260,8 +260,8 @@ export function createApp({ catalog, solutions, leetcode, site, log = console, h
       if (err instanceof LeetCodeError) {
         throw new HttpError(
           503,
-          'LEETCODE_UNREACHABLE',
-          `${err.message} The description could not be loaded — everything else in the app still works.`,
+          err.kind === 'demo-unavailable' ? 'DEMO_CONTENT_UNAVAILABLE' : 'LEETCODE_UNREACHABLE',
+          err.message,
         );
       }
       throw err;

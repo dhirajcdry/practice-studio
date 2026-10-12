@@ -11,21 +11,22 @@ flowchart TB
   browser["Browser · Monaco · Excalidraw · microphone"]
   server["Node server · 127.0.0.1 only"]
   runner["Python runner · temporary workspace"]
-  asr["Optional Swift / CoreML transcriber"]
-  cli["Claude Code CLI · scoped tools"]
+  asr["Optional Swift / WhisperKit 0.18.0 transcriber"]
+  cli["Codex CLI · read-only / Claude Code · scoped tools"]
   files["STUDIO_HOME · solutions / logs / transcripts / notes"]
-  keychain["macOS Keychain · LeetCode cookies"]
-  model["Configured Claude service"]
+  connector["Studio Connector extension · in the same browser"]
+  model["Selected provider service"]
   leetcode["LeetCode · problem content / judge"]
   browser <-->|"HTTP + SSE"| server
   server --> runner
   server --> asr
   server --> cli
   server <--> files
-  server --> keychain
+  browser <-->|"postMessage"| connector
   cli <--> files
   cli <-->|"Prompt and session context"| model
-  server <-->|"Fetch / explicit submission"| leetcode
+  server <-->|"Problem content fetch"| leetcode
+  connector -->|"Explicit submission · your sign-in"| leetcode
 ```
 
 The app has a **local Node server**, not a hosted backend. `server/paths.mjs` fixes the
@@ -46,8 +47,11 @@ a build step. Monaco and Excalidraw are committed under `web/vendor/`, including
 bundled library code. Excalidraw is loaded when the design view opens.
 
 Python 3 is an external runtime. Claude Code is an optional external executable, with its
-own authentication and service. The optional Swift target pins FluidAudio in
-`asr/Package.swift`; its CoreML model is downloaded and cached separately. "No npm runtime
+own authentication and service. The optional Swift target pins WhisperKit 0.18.0 in
+`asr/Package.swift`. It reads the selected `modelName` from the `com.justwisper.app`
+UserDefaults domain (default `small.en`), unless `STUDIO_ASR_MODEL` overrides it. Existing
+Wispr `Models` and `Tokenizers` are reused read-only; missing models are downloaded under
+`~/Library/Application Support/PracticeStudio/ASRModels/`. "No npm runtime
 dependencies" doesn't mean the entire system is dependency-free.
 
 ## Storage
@@ -138,16 +142,16 @@ Typed and voice answers are separate modes. The optional Swift transcriber handl
 locally; browser `speechSynthesis` reads interviewer replies. Leaving the view pauses its
 clock. The library supports resuming unfinished interviews and reading completed records.
 
-## Real judge and credentials
+## Real judge
 
-The judge routes send one submission per explicit user action. Polling reads the result
-of that submission; it doesn't create new submissions. Responses are normalized while
-preserving the distinction between a local result, submission state, and actual verdict.
-
-Credentials are fetched from macOS Keychain at use time. `LeetCodeCredentials` redacts
-ordinary serialization/inspection, and errors scrub known secret values. Keychain is
-persistent credential storage, not a guarantee that credentials never exist on disk.
-Session/CSRF cookies are required; `cf_clearance` is used when available for challenges.
+Submissions go through the browser, not the server. The Studio Connector extension
+(`extension/`) sends one submission per explicit click from a leetcode.com tab, using the
+browser's own LeetCode sign-in, then polls that submission's result. The page passes the
+submission id and LeetCode's raw result to `POST /api/submit/record`; the server builds the
+verdict (acceptance is `status_code === 10`) and records the code, session events and
+`meta.json`. The server holds no LeetCode credentials and never contacts the judge.
+Polling reads the result of that submission; nothing creates a second one. Every failure
+says whether the code reached LeetCode. Full design: [Submitting to LeetCode](SUBMITTING.md).
 
 ## Validation and further reading
 
@@ -158,5 +162,54 @@ setup requirements described in [contributing](../CONTRIBUTING.md).
 
 - [Engineering decisions and test locations](ENGINEERING.md)
 - [API contract](API-CONTRACT.md) and [coding/coach additions](API-CONTRACT-P2.md)
+- [Submitting to LeetCode](SUBMITTING.md)
 - [Dated LeetCode protocol research](LEETCODE-API.md)
 - [Privacy & offline use](PRIVACY.md)
+
+## Live dictation
+
+The composer microphone shows a provisional transcript below the draft while speech
+continues. It requests a cumulative audio snapshot about every 1.5 seconds, with at most
+one preview request in flight and no preview queued behind unfinished final phrases.
+Pauses finalize phrases into the editable draft; previews never become saved evidence.
+The final phrase is drained before Ask becomes available again. Audio-meter failure
+falls back to three-second recordings rather than discarding the audio.
+
+`studio-asr --worker` retains one loaded WhisperKit model and processes newline-delimited
+requests sequentially. The server restarts a failed worker for subsequent queued requests;
+individual failures remain visible. All recognition stays local. Dictation audio files
+are temporary and removed after processing, and dictation transcripts are excluded from
+practice evidence. The original `--input` command remains available for file transcription.
+
+Regression checks: `server/asr/voice-control.test.mjs` covers previews, finalization,
+late results, missing metering and notices; `server/asr/worker.test.mjs` covers worker
+reuse, ordering, crashes, timeouts and cleanup.
+
+## Coach providers and model selection
+
+The coach header and Settings share a model picker backed by `GET /api/coach/models`
+and `PUT /api/coach/model`. The selection is saved atomically in
+`STUDIO_HOME/coach-settings.json`; it applies to subsequent coding and system-design
+turns. The default is Codex CLI with `gpt-6-astra`. Claude Code default, Sonnet, Opus,
+and Haiku remain explicit choices. No automatic provider or API-billing fallback occurs.
+The Codex catalog comes from `model/list`; catalog membership does not guarantee quota
+or entitlement, so inference errors remain visible.
+
+`server/coach/provider.mjs` dispatches a snapshotted provider/model choice. Claude retains
+its existing scoped tool permissions. Codex uses the installed CLI's ChatGPT sign-in via
+app-server stdio, with a temporary working directory, an ephemeral read-only thread,
+web/shell/apps/plugins disabled, and every interactive tool request rejected. The child
+environment excludes `OPENAI_API_KEY`. No credentials are returned to the browser.
+The protocol follows the [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
+
+Codex receives bounded conversation history and server-read TUTOR/NOTES excerpts, with
+reference data fenced separately from instructions. It cannot edit memory files; Studio
+still saves its chats and interview outcomes. Automatic note edits remain Claude-only.
+Native Claude session IDs are never passed to Codex as native thread IDs. Switching back
+to Claude reconstructs context before starting a new native session. Provider/model
+metadata is additive; untagged older records are treated as Claude. Existing learner
+records are not rewritten.
+
+Use `codex login` or the normal Claude Code sign-in for the selected provider. The model
+picker does not claim to bypass either provider's subscription limits. Provider, routing,
+context-switching, lifecycle, and permission regressions are under `server/coach/test/`.

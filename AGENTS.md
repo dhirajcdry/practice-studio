@@ -6,7 +6,7 @@
 ## What this is
 
 A local-first interview practice environment. You solve LeetCode problems in your own
-editor, against your own runner, with a coach (`claude` CLI) that sees the whole session —
+editor, against your own runner, with a coach (Codex CLI or Claude Code) that sees the whole session —
 buffer, diff, test results, elapsed time — rather than a screenshot. It also runs full
 system-design mock interviews on an Excalidraw whiteboard, with a voice mode where the
 interviewer speaks and going quiet is what submits your answer.
@@ -14,7 +14,8 @@ interviewer speaks and going quiet is what submits your answer.
 The browser talks to a local Node server on `127.0.0.1`; there is no hosted Studio
 backend or Studio account. The local Claude Code CLI subprocess uses its configured
 authentication and online service, sending session context there. Speech recognition is
-on-device after its model download (FluidAudio/Parakeet); speech output uses browser
+on-device with WhisperKit 0.18.0, reusing justwisper's selected cached model read-only
+or downloading into Studio's own cache; speech output uses browser
 `speechSynthesis`, whose voice behavior depends on browser/OS. LeetCode content fetches
 and optional submissions also use the network. See `docs/PRIVACY.md` for the boundary.
 
@@ -51,8 +52,9 @@ that a screen doesn't blink or an icon isn't misaligned.
 | `web/vendor/` | Monaco and Excalidraw, pre-bundled for a browser that has no CDN and no build step | generated, **committed** (see below) |
 | `data/catalog.json`, `data/solutions-index.json` | Problem catalog and reference-solution index | generated, `scripts/extract-catalog.mjs` / `scripts/index-solutions.mjs` |
 | `vendor/neetcode-solutions/` | Shallow clone of `neetcode-gh/leetcode` (MIT), reference solutions | generated, **gitignored** — re-clone before running anything that reads it |
-| `docs/` | Architecture and protocol notes (`ARCHITECTURE.md`, `API-CONTRACT*.md`, `LEETCODE-API.md`) | hand-written, read before touching the judge/coach boundary |
-| `asr/` | The on-device Swift/CoreML transcriber (`studio-asr`) FluidAudio/Parakeet builds against | hand-written |
+| `extension/` | The Studio Connector browser extension (Manifest V3, no build step) that submits to LeetCode; see `docs/SUBMITTING.md` | hand-written |
+| `docs/` | Architecture and protocol notes (`ARCHITECTURE.md`, `SUBMITTING.md`, `API-CONTRACT*.md`, `LEETCODE-API.md`) | hand-written, read before touching the judge/coach boundary |
+| `asr/` | The on-device Swift transcriber (`studio-asr`) built against WhisperKit 0.18.0 | hand-written |
 
 **Generated vs hand-written, the one rule that matters most:** if a path above says
 "generated," never hand-edit it — fix the script that produces it and re-run the script.
@@ -85,12 +87,13 @@ violating one of these, stop and say so rather than finding a workaround.
   `permissionArgs()` for the enforced allow/deny list.
 - **The server binds `127.0.0.1` only, never `0.0.0.0`.** It executes arbitrary code
   (the coach subprocess, the local judge runner) — this is not a hardening nice-to-have.
-- **LeetCode credentials live only in the macOS keychain.** Never a file in the repo,
-  never an env var written to disk.
+- **Studio holds no LeetCode credentials.** Submissions use the browser's own sign-in
+  through the Studio Connector extension. Never a cookie in a file, an env var, Keychain,
+  a log line, or a server request.
 - **One submission per explicit user action. No retry loops, no batching, ever.**
   Automating your own submissions at human pace is what every editor plugin does; a retry
   loop or a batch is the one thing that would plausibly look like abuse. See
-  `docs/ARCHITECTURE.md` §6 for the full reasoning and the three submission traps
+  `docs/SUBMITTING.md` for the full design and `docs/API-CONTRACT-P2.md` Phase 4 for the three submission traps
   (internal `question_id` vs displayed number, `state: SUCCESS` ≠ accepted, auth failures
   arrive as HTML not JSON).
 - **Reference solutions under `vendor/` are never executed** — read for comparison only.
@@ -122,3 +125,30 @@ violating one of these, stop and say so rather than finding a workaround.
   layout-flash bugs in this codebase have been caught by driving a real headless Chrome
   over CDP (see `scripts/check-*.mjs`) and reading `getBoundingClientRect()`, not by
   visual inspection.
+
+## Coach provider boundary
+
+The coach header and Settings choose Codex CLI/Astra or Claude Code for new turns.
+Dispatch lives in `server/coach/provider.mjs`. Keep native provider session identities
+separate and preserve server-owned history when switching. Codex uses ephemeral
+read-only app-server threads with tools disabled; it cannot write learner memory files.
+Claude's existing tool/path restrictions above remain mandatory. Never silently switch
+providers, use API billing, or label an unverified model as available to the account.
+
+## LeetCode submissions
+
+The browser submits, not the server. The **Studio Connector** extension (`extension/`)
+sends one submission per click from a leetcode.com tab with the browser's own sign-in;
+`POST /api/submit/record` only records the result. Read `docs/SUBMITTING.md` before
+touching `extension/`, `web/js/leetcode-bridge.js`, `submitCode` in `web/js/api.js`,
+`web/js/submit.js` or `server/judge/`.
+
+- Never reintroduce server-side submission, cookie import, or Keychain storage. Cloudflare
+  challenges non-browser clients even with valid cookies; that path was removed for that reason.
+- Studio, the Connector and the LeetCode sign-in live in the same browser profile.
+  Sign-in problems and Cloudflare checks are resolved there, never by copying cookies.
+- Never automate a real submission in a check or test; use `?simsubmit=`, the panel tests in
+  `web/tests.html`, or a fresh Chrome for Testing profile, where the Connector answers
+  `SIGNED_OUT` without sending anything.
+- After changing `extension/`, say that the extension must be reloaded in
+  `chrome://extensions`; a running browser doesn't pick up changes on its own.

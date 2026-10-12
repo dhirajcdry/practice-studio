@@ -52,8 +52,10 @@ cache. The full suite still needs those content fixtures. See the
 [example session](docs/EXAMPLE-SESSION.md#reproduce-the-demo) for repeatable screenshot/GIF
 capture, and [setup](docs/SETUP.md) for optional voice and coaching.
 
-For visual changes, also inspect the result in a real browser. Keep LeetCode credentials
-in the macOS keychain; never commit them or write them to an environment file. The app
+For visual changes, also inspect the result in a real browser. Studio holds no LeetCode
+credentials: submissions go through the browser extension in `extension/` (see
+[Submitting to LeetCode](docs/SUBMITTING.md)). Never add code that copies cookies out of
+the browser, and never automate a real submission in a check. The app
 binds to loopback, and changes must not widen that boundary.
 
 ## Generated output

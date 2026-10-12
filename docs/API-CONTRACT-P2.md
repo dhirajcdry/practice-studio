@@ -175,19 +175,24 @@ what I remembered.
 The hidden tests are not downloadable, so Submit is the only thing that can produce a real
 verdict. Run must stay instant and offline — it is the tight loop.
 
+### Who talks to the judge
+
+**The browser does, not the server.** Submissions go through the Studio Connector
+extension (`extension/`), which sends them from a leetcode.com tab with the browser's own
+sign-in. The original design had the server submit with cookies copied into macOS
+Keychain; Cloudflare challenged that path even with valid cookies, so it was removed.
+Setup, message formats and failure states: [SUBMITTING.md](SUBMITTING.md).
+
 ### The verified protocol
 
-Auth is three cookies, read from the macOS keychain (services `studio-leetcode-session`,
-`studio-leetcode-csrf`, `studio-leetcode-cfclearance`). `cf_clearance` is bound to the
-User-Agent that obtained it, so **the same browser-like User-Agent must be sent on every
-request** or Cloudflare challenges it.
+What the Connector sends, from inside the leetcode.com tab (so cookies, CSRF token and
+Cloudflare clearance are the browser's own):
 
 1. **Internal id** — `POST /graphql/` for `question { questionId }`. This is NOT the
    displayed number. They are both `1` for two-sum, so a first test cannot catch a mix-up.
 2. **Submit** — `POST https://leetcode.com/problems/<slug>/submit/`
-   body `{ lang: "python3", question_id: "<internal>", typed_code }`,
-   headers `x-csrftoken` (matching the cookie), `referer: https://leetcode.com/problems/<slug>/`,
-   `origin: https://leetcode.com`, the browser User-Agent.
+   body `{ lang: "python3", question_id: "<internal>", typed_code, test_mode: false, judge_type: "large" }`,
+   header `x-csrftoken` (the `csrftoken` cookie's value).
    → `200 { "submission_id": 2081220750 }`
 3. **Poll** — `GET https://leetcode.com/submissions/detail/<id>/check/` until
    `state === "SUCCESS"`. Real observed shape:
@@ -201,31 +206,40 @@ request** or Cloudflare challenges it.
 **`state: "SUCCESS"` means judging finished, not accepted.** Acceptance is
 `status_code === 10`. This is the most common bug in third-party clients.
 
-### `POST /api/submit`
-Body `{ slug, code }`. The server submits, polls to completion, and returns the verdict.
+### `POST /api/submit/record`
+
+Body `{ slug, code, submissionId, check }`, where `check` is LeetCode's raw `/check/` body
+with `state: "SUCCESS"`, or `null` when the submission went through but no verdict came
+back. The server never contacts LeetCode on this route. It builds the verdict
+(`server/judge/verdict.mjs`), records it, and returns:
 
 ```json
 { "ok": true, "accepted": true, "verdict": "Accepted", "statusCode": 10,
   "passed": 64, "total": 64,
   "runtime": "3 ms", "memory": "20.4 MB",
   "runtimePercentile": 53.86, "memoryPercentile": 58.13,
-  "submissionId": 2081220750,
+  "submissionId": "2081220750",
   "submissionUrl": "https://leetcode.com/submissions/detail/2081220750/",
-  "failure": null }
+  "failure": null,
+  "submittedAt": "2026-10-12T07:30:00-05:00",
+  "recorded": { "sessionEvents": true, "meta": true, "note": null } }
 ```
 
 On a non-accepted verdict, `failure` carries whichever of these the judge returned: the
 last executed input, expected vs actual output, a compile error, or a runtime error. Show
 what the judge said — never paraphrase a verdict.
 
-Error states, each with a plain-English message:
-- `401 SESSION_EXPIRED` — the cookie died. Tell the user to re-paste, do not retry.
-- `503 JUDGE_UNREACHABLE` — network or Cloudflare challenge (**responses may be HTML, so
-  check `content-type` before parsing**).
-- `429 RATE_LIMITED` — back off; never auto-retry a submission.
+Errors: `400 BAD_REQUEST` (missing slug or code, a submission id that isn't a positive
+integer, or a `check` that hadn't finished), `404 PROBLEM_NOT_FOUND` (slug outside the
+catalog), `409 ALREADY_RECORDED` (that submission was recorded already).
+
+Judge-side failures (signed out, Cloudflare challenge, rate limit, timeout) never reach
+this route; the Connector reports them to the page directly, each saying whether the code
+reached LeetCode. See [SUBMITTING.md](SUBMITTING.md#what-the-panel-tells-you).
 
 **One submission per explicit user action. No retry loops, no batching, ever.** Keeping
 this at human pace is the entire reason it is safe to use.
 
-On a verdict, log a `submitted` and a `verdict` session event and record it in `meta.json`
-— that is what finally makes the dashboard's solve data real rather than hand-backfilled.
+On a verdict, the server logs a `submitted` and a `verdict` session event, saves the
+submitted code beside it, and records the verdict in `meta.json` — that is what makes the
+dashboard's solve data real rather than hand-backfilled.

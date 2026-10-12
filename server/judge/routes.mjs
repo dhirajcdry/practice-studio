@@ -1,38 +1,28 @@
-// Phase 4 route table — the judge.
+// Phase 4 route table — recording what LeetCode's judge said.
 //
-// Wired into the router by the main agent per the contract's Integration rule; nothing in
-// this directory touches server/app.mjs or server/index.mjs.
-//
-//   import { routes as judgeRoutes } from './judge/routes.mjs';
+// The server never talks to LeetCode's judge. The browser submits, through the Studio
+// Connector extension (extension/, docs/SUBMITTING.md), using its own LeetCode sign-in.
+// It then hands this route the submission id and LeetCode's raw `/check/` body, and the
+// server records them: the submitted code, the session events and meta.json.
 //
 // Handlers are `(req, res, ctx)`. From `ctx` this module uses, all optionally:
-//   ctx.catalog                        an unknown slug is a 404 before any network happens
-//   ctx.leetcode                       the Phase 1 content cache, for the internal
-//                                      question_id without an extra round trip
+//   ctx.catalog                        an unknown slug is a 404
 //   ctx.homeRoot / ctx.paths.HOME_ROOT the workspace root, for meta.json
+//   ctx.sessionLog                     the session log (a fresh one by default)
 //   ctx.log                            console-shaped logger
 // Nothing else. A bare `{}` ctx still works.
 
 import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
-import { SessionLog } from '../coach/sessions.mjs';
-import { QuestionIdCache, JudgeError } from './client.mjs';
-import { submitToJudge } from './submit.mjs';
+import { SessionLog, isoWithOffset } from '../coach/sessions.mjs';
+import { buildVerdict, submissionUrl } from './verdict.mjs';
+import { recordVerdict, logSubmitted, logVerdict, saveSubmittedCode } from './record.mjs';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
-/** One process-lifetime cache of internal question ids, shared across requests. */
-let questionIds = null;
-let questionIdsKey = null;
-
-function cacheFor(ctx) {
-  const key = ctx?.leetcode ?? null;
-  if (questionIds === null || questionIdsKey !== key) {
-    questionIds = new QuestionIdCache({ leetcode: key ?? null });
-    questionIdsKey = key;
-  }
-  return questionIds;
-}
+/** Submissions this process has already recorded, so a repeated call writes nothing twice.
+ *  meta.json also refuses a submission id it already holds, which covers restarts. */
+const recorded = new Set();
 
 async function readJsonBody(req) {
   const chunks = [];
@@ -55,53 +45,87 @@ async function readJsonBody(req) {
   }
 }
 
-export async function handleSubmit(req, res, ctx = {}) {
+/**
+ * Record one browser submission.
+ *
+ * `check` null means the submission went through but no verdict came back: only the
+ * `submitted` event and the code are recorded.
+ * @returns {Promise<object>} the contract's 200 body; the full verdict when `check` is set
+ * @throws {HttpError} on a malformed request or a repeat
+ */
+export async function recordSubmission({ slug, code, submissionId, check = null, sessionLog = null, homeRoot, log = console }) {
+  if (typeof slug !== 'string' || slug === '') {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request did not say which problem it was for.');
+  }
+  if (typeof code !== 'string' || code.trim() === '') {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request did not include the submitted code.');
+  }
+  const id = typeof submissionId === 'number' ? String(submissionId) : submissionId;
+  if (typeof id !== 'string' || !/^[1-9][0-9]*$/.test(id)) {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request did not include a valid LeetCode submission id.');
+  }
+  // `state: "SUCCESS"` means judging finished. Anything earlier is not a verdict.
+  if (check !== null && (typeof check !== 'object' || Array.isArray(check) || check.state !== 'SUCCESS')) {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request carried a judge result that had not finished.');
+  }
+
+  const key = `${id}:${check ? 'verdict' : 'submitted'}`;
+  if (recorded.has(key)) throw new HttpError(409, 'ALREADY_RECORDED', `Submission ${id} is already recorded.`);
+  recorded.add(key);
+
+  const submittedAt = isoWithOffset();
+  const url = submissionUrl(id);
+  const submittedLog = await logSubmitted(sessionLog, slug, {
+    submissionId: id, lang: 'python3', codeBytes: Buffer.byteLength(code, 'utf8'), submissionUrl: url, via: 'browser',
+  });
+  // The exact bytes that earned this verdict, kept beside it — the editor buffer will
+  // have moved on by the time anyone reads the history back.
+  const codeFile = await saveSubmittedCode({ root: homeRoot, slug, submissionId: id, code });
+  if (!check) {
+    return { ok: true, submissionId: id, submissionUrl: url, recorded: { sessionEvents: submittedLog.written, meta: false, note: 'no verdict yet' } };
+  }
+
+  const verdict = buildVerdict(check, id);
+  const verdictLog = await logVerdict(sessionLog, slug, verdict);
+  const meta = homeRoot
+    ? await recordVerdict({ root: homeRoot, slug, verdict, at: isoWithOffset(), codeFile })
+    : { written: false, reason: 'no workspace root configured' };
+  for (const result of [submittedLog, verdictLog, meta]) {
+    if (!result.written && result.reason) log?.warn?.(`[judge] ${slug}: verdict recorded only partially — ${result.reason}`);
+  }
+  return {
+    ...verdict,
+    submittedAt,
+    recorded: {
+      sessionEvents: submittedLog.written && verdictLog.written,
+      meta: meta.written,
+      note: meta.written ? null : (meta.reason ?? null),
+    },
+  };
+}
+
+/** POST /api/submit/record */
+export async function handleRecord(req, res, ctx = {}) {
   const body = await readJsonBody(req);
   const slug = typeof body.slug === 'string' ? body.slug : '';
-  if (slug === '') {
-    throw new HttpError(400, 'BAD_REQUEST', 'That submit request did not say which problem it was for.');
-  }
-  if (ctx.catalog?.get && !ctx.catalog.get(slug)) {
+  if (ctx.catalog?.get && slug && !ctx.catalog.get(slug)) {
     throw new HttpError(404, 'PROBLEM_NOT_FOUND', `"${slug}" is not in the NeetCode 250.`);
   }
-
   const homeRoot = ctx.homeRoot ?? ctx.paths?.HOME_ROOT ?? HOME_ROOT;
-  const sessionLog = ctx.sessionLog ?? new SessionLog({ root: homeRoot });
-
-  // The shared id cache belongs to the real fetch. A test that injects its own fetch gets
-  // a fresh cache so a stub can never be answered from a live-fetched id, or vice versa.
-  const overrides = ctx.judgeOverrides ?? {};
-  const ids = ctx.questionIds ?? (overrides.fetchImpl ? undefined : cacheFor(ctx));
-
-  try {
-    const payload = await submitToJudge({
-      slug,
-      code: body.code,
-      leetcode: ctx.leetcode ?? null,
-      questionIds: ids,
-      sessionLog,
-      homeRoot,
-      log: ctx.log ?? console,
-      ...overrides,
-    });
-    return sendJson(res, 200, payload);
-  } catch (err) {
-    if (err instanceof JudgeError) {
-      // The error envelope from API-CONTRACT.md, plus the submission id on a timeout —
-      // an honest timeout has to name the submission it left running.
-      const error = { code: err.code, message: err.message };
-      if (err.submissionId !== undefined) {
-        error.submissionId = err.submissionId;
-        error.submissionUrl = err.submissionUrl;
-      }
-      return sendJson(res, err.status, { error });
-    }
-    throw err;
-  }
+  const payload = await recordSubmission({
+    slug,
+    code: body.code,
+    submissionId: body.submissionId,
+    check: body.check ?? null,
+    sessionLog: ctx.sessionLog ?? new SessionLog({ root: homeRoot }),
+    homeRoot,
+    log: ctx.log ?? console,
+  });
+  return sendJson(res, 200, payload);
 }
 
 export const routes = {
-  'POST /api/submit': handleSubmit,
+  'POST /api/submit/record': handleRecord,
 };
 
 export default routes;

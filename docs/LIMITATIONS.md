@@ -23,8 +23,9 @@ before using it or assessing a result.
 - **Whiteboard interpretation:** the interviewer sees an extracted graph of supported
   shapes/text/connections, not every visual nuance of a freehand drawing. It receives
   an updated graph when you send an answer, rather than replying on each edit.
-- **LeetCode access:** browser challenges, expiring cookies, and Premium content can
-  limit fetching or submissions. A cache entry for a restricted problem doesn't create
+- **LeetCode access:** browser challenges, an expired LeetCode sign-in, and Premium content
+  can limit fetching or submissions. Submitting needs the Studio Connector extension in a
+  Chromium browser. A cache entry for a restricted problem doesn't create
   access to content that LeetCode didn't return.
 - **Offline use:** cached practice and stored records work locally; connected coaching,
   new interviewer turns, new problem fetching, and submissions require network access.

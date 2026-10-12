@@ -7,6 +7,8 @@
   configuration, and shortcuts.
 - [Example session](EXAMPLE-SESSION.md): an illustrative coding attempt and whiteboard
   follow-up, plus commands to reproduce the demo.
+- [Submitting to LeetCode](SUBMITTING.md): the one-time browser extension setup, what
+  Submit does, what it records, and what each result means.
 - [Privacy & offline use](PRIVACY.md): local storage, connected features, audio, and cache
   preparation.
 - [Current limitations](LIMITATIONS.md): supported platform/language and what results mean.

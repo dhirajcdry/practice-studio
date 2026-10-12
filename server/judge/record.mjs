@@ -101,6 +101,9 @@ export async function recordVerdict({ root, slug, verdict, at = isoWithOffset(),
 
   const base = existing ?? { schemaVersion: 1, slug, sessions: [] };
   const submissions = Array.isArray(base.submissions) ? base.submissions.slice() : [];
+  if (verdict.submissionId != null && submissions.some((s) => String(s?.submissionId) === String(verdict.submissionId))) {
+    return { written: true, duplicate: true };
+  }
   submissions.push(submissionEntry(verdict, { at, codeFile }));
 
   const merged = { ...base, slug: base.slug ?? slug, submissions, lastSeen: dayOf(at) ?? base.lastSeen };

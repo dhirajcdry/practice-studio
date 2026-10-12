@@ -9,7 +9,10 @@
 //
 // Interim polls omit fields entirely rather than nulling them, so every read is guarded.
 
-import { submissionUrl } from './client.mjs';
+/** The public page for one submission on LeetCode. */
+export function submissionUrl(id) {
+  return `https://leetcode.com/submissions/detail/${id}/`;
+}
 
 export const ACCEPTED_STATUS_CODE = 10;
 
@@ -80,7 +83,7 @@ export function buildFailure(check) {
 }
 
 /**
- * The `POST /api/submit` 200 body, exactly as docs/API-CONTRACT-P2.md Phase 4 specifies.
+ * The `POST /api/submit/record` 200 body, as docs/API-CONTRACT-P2.md Phase 4 specifies.
  */
 export function buildVerdict(check, submissionId) {
   const statusCode = num(check?.status_code);

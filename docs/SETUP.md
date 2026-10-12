@@ -2,7 +2,7 @@
 
 Start with the [README quick start](../README.md#quick-start). The basic coding workspace
 needs macOS, Node.js 22+, and Python 3. It doesn't need an npm install, Claude account,
-Swift build, or LeetCode cookies.
+Swift build, or LeetCode sign-in.
 
 ## Check the basic tools
 
@@ -70,37 +70,28 @@ Studio.
 
 ## LeetCode submissions
 
-Submitting requires your LeetCode session cookies. Obtain them from your signed-in
-browser and store them under account `studio` in macOS Keychain. `LEETCODE_SESSION` and `csrftoken` are required; `cf_clearance` is optional when
-LeetCode is not challenging your browser. The names are:
+Submit sends your solution to LeetCode's real judge through your own browser, using the
+**Studio Connector** extension in `extension/`. Studio never stores LeetCode cookies.
 
-| Keychain service | Browser cookie |
-| --- | --- |
-| `studio-leetcode-session` | `LEETCODE_SESSION` |
-| `studio-leetcode-csrf` | `csrftoken` |
-| `studio-leetcode-cfclearance` | `cf_clearance` |
+One-time setup, in the browser profile you run Studio in (Dia, Chrome, Brave, Arc, Edge):
 
-To keep cookie values out of shell history, use interactive password prompts:
+1. Sign in to leetcode.com in that profile.
+2. Open `chrome://extensions` (in Dia, `dia://extensions` also works) and turn on
+   **Developer mode**.
+3. Click **Load unpacked** and choose this repo's `extension/` folder.
+4. Reload Studio.
 
-```sh
-security add-generic-password -U -a studio -s studio-leetcode-session -w
-security add-generic-password -U -a studio -s studio-leetcode-csrf -w
-security add-generic-password -U -a studio -s studio-leetcode-cfclearance -w
-```
+Use **Submit** only when you intend to contact the real judge. Each click sends exactly
+one solution and Studio never retries; a local pass doesn't imply acceptance by hidden
+tests. If something goes wrong, the panel says whether your code reached LeetCode and
+what to do next.
 
-Paste each value at its password prompt. The `-U` option updates an existing item.
-Alternatively, create or update these generic password items in Keychain Access.
-`cf_clearance` is tied to the browser that issued it; if challenged, set
-`STUDIO_LEETCODE_UA` to that browser's user agent before starting Studio. Cookie expiry
-or a challenge can require signing in again and updating the Keychain items.
-
-Use **Submit** only when you intend to contact the real judge. Each explicit action sends
-one solution; a local pass doesn't imply acceptance by hidden tests.
+How it works, what gets recorded, every panel state and troubleshooting:
+[Submitting to LeetCode](SUBMITTING.md).
 
 ## Configuration
 
-Set environment variables in the shell that starts Studio. Don't store cookie values in
-environment variables or project files.
+Set environment variables in the shell that starts Studio.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -148,3 +139,11 @@ can appear in your practice history.
 For an offline trip, use `npm run warm:check` to inspect cache coverage without a network
 request. See [offline preparation](PRIVACY.md#offline-preparation) for the optional
 sequential cache warmer.
+
+### Submit problems
+
+Submit runs in your browser through the Studio Connector. If the panel says the
+Connector isn't installed, you aren't signed in, or Cloudflare wants a check, follow
+[What the panel tells you](SUBMITTING.md#what-the-panel-tells-you). If a submission's
+outcome is uncertain, check your submissions on LeetCode before pressing Submit again;
+Studio never retries on its own.

@@ -684,15 +684,22 @@ check('a verdict with nothing attached says so instead of showing empty boxes', 
 check('a response with no verdict string still refuses to imply success',
   shapeSubmitResult({ ok: true, accepted: false, statusCode: 11 }).headline === 'Not accepted');
 
+check('a demo restriction never implies an uncertain submission or offers a retry', (()=>{
+  const shaped=shapeSubmitResult({ok:false,kind:'server',code:'DEMO_ONLY',message:'Illustrative demo: real submissions and microphone transcription are disabled.'},'two-sum');
+  const node=subRendered(shaped,{onResubmit:()=>{}});
+  return shaped.blockedKind==='demo'&&!shaped.retry&&!shaped.checkFirst&&node.querySelector('.act')===null&&!node.textContent.includes('may already')&&node.textContent.includes('Nothing was sent');
+})());
+
 check('an expired session is a state of its own', (() => {
   const s = shapeSubmitResult({ ok: false, kind: 'session_expired', message: 'The cookie died.' }, 'two-sum');
   return s.status === 'blocked' && s.blockedKind === 'session_expired' && s.tone === 'err';
 })());
 check('an expired session offers NO retry button — retrying cannot help',
   subRendered(shapeSubmitResult({ ok: false, kind: 'session_expired' }, 'two-sum')).querySelector('.act') === null);
-check('an expired session says the session expired and must be pasted again', (() => {
-  const t = subRendered(shapeSubmitResult({ ok: false, kind: 'session_expired' }, 'two-sum')).textContent;
-  return /expired/i.test(t) && /paste/i.test(t);
+check('an expired session links to the LeetCode sign-in', (() => {
+  const box = subRendered(shapeSubmitResult({ ok: false, kind: 'session_expired' }, 'two-sum'));
+  return /expired/i.test(box.textContent)
+    && box.querySelector('a.sub-link[href="https://leetcode.com/accounts/login/"]') !== null;
 })());
 check('"never connected" and "session died" are two states, not one', (() => {
   const none = shapeSubmitResult({ ok: false, kind: 'no_session' }, 'two-sum');
@@ -704,12 +711,19 @@ check('neither credential state offers a retry button', (() => {
   return subRendered(shapeSubmitResult({ ok: false, kind: 'no_session' }, 'two-sum'), h).querySelector('.act') === null
     && subRendered(shapeSubmitResult({ ok: false, kind: 'session_expired' }, 'two-sum'), h).querySelector('.act') === null;
 })());
-check('both credential states say what to paste and that Run is unaffected', (() => {
-  const t = subRendered(shapeSubmitResult({ ok: false, kind: 'no_session' }, 'two-sum')).textContent;
-  return t.includes('LEETCODE_SESSION') && /Local Run/.test(t);
+check('both sign-in states point at the browser sign-in, not a stored cookie', (() => {
+  const box = subRendered(shapeSubmitResult({ ok: false, kind: 'no_session' }, 'two-sum'));
+  return box.textContent.includes('Sign in to LeetCode') && !box.textContent.includes('Keychain');
+})());
+check('a missing connector explains the one-time install and offers the manual route', (() => {
+  const s = shapeSubmitResult({ ok: false, kind: 'no_connector', message: '' }, 'two-sum');
+  const box = subRendered(s, { getCode: () => 'x', onResubmit: () => {} });
+  return s.retry === false && /Load unpacked/.test(box.textContent)
+    && [...box.querySelectorAll('.act')].map((b) => b.textContent).join() === 'Copy current solution'
+    && box.querySelector('a.sub-link[href="https://leetcode.com/problems/two-sum/"]') !== null;
 })());
 check('the server\'s own words win over the built-in wording for a known code',
-  shapeSubmitResult({ ok: false, kind: 'no_session', message: 'Nothing is in the keychain yet.' }).message === 'Nothing is in the keychain yet.');
+  shapeSubmitResult({ ok: false, kind: 'no_session', message: 'Sign in on leetcode.com first.' }).message === 'Sign in on leetcode.com first.');
 check('an error code nobody here knows still shows the server\'s message verbatim', (() => {
   const s = shapeSubmitResult({ ok: false, kind: 'server', code: 'WAT_NEW_CODE', message: 'The judge said something new.' });
   return s.message === 'The judge said something new.' && subRendered(s).textContent.includes('The judge said something new.');

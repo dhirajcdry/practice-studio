@@ -5,6 +5,8 @@
 //   { ok:true,  ...payload, source:'live'|'mock' }
 //   { ok:false, kind:'missing'|'premium'|'offline'|'timeout'|'server', message, code }
 
+import { connectorVersion, submitViaConnector } from './leetcode-bridge.js';
+
 const REQUEST_TIMEOUT_MS = 8000;
 const BOOT_TIMEOUT_MS = 3500;
 
@@ -16,6 +18,7 @@ export const api = {
   mode: 'boot',        // 'live' once the server answers, 'mock' otherwise
   reason: '',          // plain-English explanation shown in the banner
   health: null,
+  demo: false,
 };
 
 async function fetchJson(path, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -114,7 +117,10 @@ export async function loadCatalog() {
   }
 
   const health = await fetchJson('/api/health', BOOT_TIMEOUT_MS);
-  const list = health.ok ? await fetchJson('/api/problems', BOOT_TIMEOUT_MS) : health;
+  const [list,demo] = health.ok
+    ? await Promise.all([fetchJson('/api/problems', BOOT_TIMEOUT_MS),fetchJson('/api/demo', BOOT_TIMEOUT_MS)])
+    : [health,{ok:false}];
+  api.demo = demo.ok && (demo.data?.demo === true || typeof demo.data?.token === 'string');
 
   if (list.ok && Array.isArray(list.data?.problems) && list.data.problems.length) {
     api.mode = 'live';
@@ -536,32 +542,35 @@ export function cancelRun(slug) {
    through untouched.
    ========================================================================== */
 
-const SUBMIT_TIMEOUT_MS = 90000;
 
 /** Dev switch for the verdict states without a judge: ?simsubmit=
  *  accepted|wrong|tle|mle|compile|runtime|nodetail
- *  |expired|nosession|unreachable|judgetimeout|ratelimited|inflight|missing */
+ *  |expired|nosession|noconnector|unreachable|judgetimeout|ratelimited|inflight|missing */
 export const simulateSubmit = flags.get('simsubmit') || '';
 
 /**
- * The judge's error codes, mapped onto this file's `kind` vocabulary.
+ * The Studio Connector's error codes (extension/background.js), mapped onto
+ * this file's `kind` vocabulary.
  *
  * `kind` only decides the shape of the panel — the headline, whether a retry
  * button is offered, whether we link out. The words always come from the
- * server's own `error.message`, including for a code that is not in this table:
+ * connector's own `message`, including for a code that is not in this table:
  * an unknown code falls through to `server`, which prints the message verbatim
  * rather than replacing it with something generic.
  *
- * NO_SESSION and SESSION_EXPIRED are both 401 and need different actions from
- * the user, so they are deliberately two kinds and not one.
+ * SIGNED_OUT (no LeetCode cookie in this browser) and SESSION_EXPIRED (LeetCode
+ * refused the cookie it has) read differently, so they stay two kinds.
  */
 const SUBMIT_KINDS = {
-  NO_SESSION: 'no_session',
-  SESSION_EXPIRED: 'session_expired', HTTP_401: 'session_expired', HTTP_403: 'session_expired',
-  RATE_LIMITED: 'rate_limited', HTTP_429: 'rate_limited',
-  JUDGE_UNREACHABLE: 'judge_unreachable', HTTP_502: 'judge_unreachable', HTTP_503: 'judge_unreachable',
-  JUDGE_TIMEOUT: 'judge_timeout', HTTP_504: 'judge_timeout',
-  SUBMIT_IN_FLIGHT: 'in_flight', HTTP_409: 'in_flight',
+  DEMO_ONLY: 'demo',
+  NO_CONNECTOR: 'no_connector',
+  SIGNED_OUT: 'no_session',
+  SESSION_EXPIRED: 'session_expired',
+  RATE_LIMITED: 'rate_limited',
+  JUDGE_UNREACHABLE: 'judge_unreachable',
+  JUDGE_TIMEOUT: 'judge_timeout',
+  SUBMIT_IN_FLIGHT: 'in_flight',
+  CANCELLED: 'cancelled',
 };
 
 const SIM_ACCEPTED = {
@@ -606,10 +615,12 @@ function simulatedSubmit(kind) {
         runtime: '', memory: '', runtimePercentile: null, memoryPercentile: null, failure: null };
     case 'expired':
       return { ok: false, kind: 'session_expired', code: 'SESSION_EXPIRED',
-        message: 'Your LeetCode session cookie is no longer valid, so nothing was submitted.' };
+        message: 'LeetCode treated this browser as signed out, so nothing was submitted.' };
     case 'nosession':
-      return { ok: false, kind: 'no_session', code: 'NO_SESSION',
-        message: 'No LeetCode credentials are stored on this machine, so there is nothing to submit with.' };
+      return { ok: false, kind: 'no_session', code: 'SIGNED_OUT',
+        message: 'This browser profile is not signed in to LeetCode. Nothing was submitted.' };
+    case 'noconnector':
+      return { ok: false, kind: 'no_connector', code: 'NO_CONNECTOR', message: '' };
     case 'judgetimeout':
       return { ok: false, kind: 'judge_timeout', code: 'JUDGE_TIMEOUT',
         message: 'LeetCode accepted the submission but had not finished judging it when the server stopped polling.',
@@ -618,7 +629,7 @@ function simulatedSubmit(kind) {
       return { ok: false, kind: 'in_flight', code: 'SUBMIT_IN_FLIGHT',
         message: 'A submission for this problem is already on its way to LeetCode. Nothing was sent twice.' };
     case 'unreachable':
-      return { ok: false, kind: 'judge_unreachable', code: 'JUDGE_UNREACHABLE',
+      return { ok: false, kind: 'judge_unreachable', code: 'JUDGE_UNREACHABLE', challenge: true, submissionState: 'not_sent',
         message: 'LeetCode did not answer — the request was challenged by Cloudflare before it reached the judge.' };
     case 'ratelimited':
       return { ok: false, kind: 'rate_limited', code: 'RATE_LIMITED',
@@ -632,13 +643,17 @@ function simulatedSubmit(kind) {
 }
 
 /**
- * POST /api/submit — one submission, judged by LeetCode against every hidden test.
+ * Submit — one submission, judged by LeetCode against every hidden test.
+ *
+ * The browser sends it through the Studio Connector extension (docs/SUBMITTING.md);
+ * the server only records the verdict, via POST /api/submit/record.
  *
  * There is deliberately no retry, no backoff loop and no second attempt in this
  * function: it sends once, waits once, and reports whatever came back. Aborting
  * the signal stops us waiting; it does not and cannot cancel the submission.
  */
 export async function submitCode(slug, code, signal) {
+  if (api.demo && !simulateSubmit) return {ok:false,kind:'demo',code:'DEMO_ONLY',message:'Submissions are unavailable in the demo. Nothing was sent to LeetCode.'};
   if (simulateSubmit) {
     await new Promise(r => setTimeout(r, 1200));
     return { ...simulatedSubmit(simulateSubmit), source: 'mock' };
@@ -646,21 +661,56 @@ export async function submitCode(slug, code, signal) {
   if (api.mode !== 'live') {
     return {
       ok: false, source: 'mock', kind: 'offline', code: 'NO_SERVER',
-      message: 'Nothing was submitted. Submitting needs the studio server, which is not answering — it holds the LeetCode session and this page never sees it.',
+      message: 'Nothing was submitted. Submitting needs the studio server, which records every verdict, and it is not answering.',
     };
   }
-  const result = await sendJson('/api/submit', { method: 'POST', body: { slug, code }, timeoutMs: SUBMIT_TIMEOUT_MS, signal });
-  if (result.ok) return { ...result.data, source: 'live' };
-  // A judge timeout still identifies the submission it gave up on, and the user
-  // is entitled to that link — it is the only way left to find out what happened.
-  const envelope = result.data && typeof result.data === 'object' ? result.data : {};
-  const carried = envelope.error && typeof envelope.error === 'object' ? envelope.error : {};
+  // The browser submits, through the Studio Connector extension and its own LeetCode
+  // sign-in. The server only records what came back.
+  if (!connectorVersion()) {
+    return { ok: false, source: 'live', kind: 'no_connector', code: 'NO_CONNECTOR', message: '' };
+  }
+  const sent = await submitViaConnector({ slug, code, signal });
+  if (sent.ok || sent.submissionId) {
+    const recorded = await sendJson('/api/submit/record', {
+      method: 'POST', body: { slug, code, submissionId: sent.submissionId, check: sent.ok ? sent.check : null },
+    });
+    if (sent.ok) {
+      return recorded.ok
+        ? { ...recorded.data, source: 'live' }
+        : { ...verdictFromCheck(sent.check, sent.submissionId), source: 'live' };
+    }
+  }
   return {
-    ...result,
-    kind: SUBMIT_KINDS[result.code] || result.kind,
-    submissionId: envelope.submissionId ?? carried.submissionId ?? null,
-    submissionUrl: envelope.submissionUrl ?? carried.submissionUrl ?? null,
+    ok: false,
+    code: sent.code || 'CONNECTOR_ERROR',
+    kind: SUBMIT_KINDS[sent.code] || 'server',
+    message: typeof sent.message === 'string' ? sent.message : '',
+    submissionId: sent.submissionId ?? null,
+    submissionUrl: null,
+    submissionState: sent.submissionState ?? null,
+    challenge: sent.challenge === true,
     source: 'live',
+  };
+}
+
+/** The verdict straight from LeetCode's `/check/` body, for when the server could not
+ *  record it. Same acceptance rule as server/judge/verdict.mjs: status_code 10 only. */
+function verdictFromCheck(check, submissionId) {
+  const accepted = check?.status_code === 10;
+  const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+  return {
+    ok: true,
+    accepted,
+    verdict: check?.status_msg || 'Unknown',
+    statusCode: num(check?.status_code),
+    passed: num(check?.total_correct),
+    total: num(check?.total_testcases),
+    runtime: check?.status_runtime || '',
+    memory: check?.status_memory || '',
+    runtimePercentile: num(check?.runtime_percentile),
+    memoryPercentile: num(check?.memory_percentile),
+    submissionId,
+    failure: accepted ? null : check,
   };
 }
 
@@ -973,7 +1023,7 @@ export async function transcribeAudio(slug, blob, { filename = 'take.webm', mode
       const err = payload?.error || null;
       return {
         ok: false,
-        kind: missing ? 'unavailable' : (err?.code === 'NO_AUDIO' || err?.kind === 'no_audio' ? 'no_audio' : 'server'),
+        kind: missing ? 'unavailable' : (err?.code === 'NO_AUDIO' || err?.kind === 'no_audio' ? 'no_audio' : err?.code === 'EMPTY_TRANSCRIPT' || err?.kind === 'empty_transcript' ? 'empty_transcript' : 'server'),
         code: err?.code || `HTTP_${response.status}`,
         message: missing
           ? 'This studio server cannot transcribe yet — it has no /api/asr endpoint. Your recording was not saved.'

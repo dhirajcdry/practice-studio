@@ -15,7 +15,7 @@ intention as proof of a universal guarantee.
 | Kill an execution's process group | Stop runaway children as well as the parent | [Executor](../server/runner/execute.mjs), [runner tests](../server/runner/run.test.mjs) |
 | Extract a graph from the whiteboard | Compare the candidate's diagram with the claims in an answer | [Graph extraction](../server/design/graph.mjs), [graph tests](../server/design/graph.test.mjs) |
 | Filter incomplete streamed labels | Stop candidate impersonation before a complete label is displayed/spoken | [Narration guard](../server/design/narration.mjs), [guard tests](../server/design/narration.test.mjs) |
-| Use Keychain and redacted wrappers | Keep session cookies out of plaintext app configuration and routine diagnostics | [Credentials](../server/judge/credentials.mjs), [credential tests](../server/judge/test/credentials.test.mjs) |
+| Submit from the browser, record on the server | Use the browser's own LeetCode sign-in so Cloudflare accepts it and Studio holds no cookies | [Connector](../extension/background.js), [record route](../server/judge/routes.mjs), [route tests](../server/judge/test/routes.test.mjs), [design](SUBMITTING.md) |
 | Report missing samples | Avoid presenting sparse practice evidence as a confident metric | [Aggregation](../server/stats/aggregate.mjs), [stats tests](../server/stats/test/aggregate.test.mjs) |
 | Measure rendered boxes | Catch clipped/overlapping messages that unit tests don't see | [Layout check](../scripts/check-layout.mjs), [stream check](../scripts/check-coach-stream.mjs) |
 

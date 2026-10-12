@@ -13,15 +13,15 @@ if (!process.env.STUDIO_HOME || !process.env.STUDIO_COACH_BINARY || !process.env
 const { app, leetcode } = boot({ quiet: true });
 const showcase = new StaticSite(fileURLToPath(new URL('../../docs/', import.meta.url)));
 leetcode.fetchQuestionImpl = async () => {
-  throw new LeetCodeError('This illustrative demo only contains the seeded problem; live content fetching is disabled.');
+  throw new LeetCodeError('This statement is not cached on this machine. Live fetching is disabled in the demo.', {kind:'demo-unavailable'});
 };
 const server = http.createServer((req, res) => {
   const route = new URL(req.url, 'http://127.0.0.1').pathname;
   if (route.startsWith('/showcase/')) return showcase.serve(req, res, route.slice('/showcase'.length));
-  if (route === '/api/demo') return sendJson(res, 200, { token: process.env.STUDIO_DEMO_TOKEN });
-  if (route === '/api/submit' || route === '/api/asr') {
+  if (route === '/api/demo') return sendJson(res, 200, { demo:true, token: process.env.STUDIO_DEMO_TOKEN });
+  if (route.startsWith('/api/submit') || route === '/api/asr') {
     return sendJson(res, 503, { error: { code: 'DEMO_ONLY',
-      message: 'Illustrative demo: real submissions and microphone transcription are disabled.' } });
+      message: route.startsWith('/api/submit') ? 'Submissions are unavailable in the demo. Nothing was sent to LeetCode.' : 'Microphone transcription is unavailable in the demo.' } });
   }
   return app(req, res);
 });

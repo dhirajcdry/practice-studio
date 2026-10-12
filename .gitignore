@@ -8,8 +8,8 @@ node_modules/
 # Downloaded upstream bundles used to regenerate data/catalog.json.
 *.bundle.js
 
-# Never commit the LeetCode session cookie. It is read from the OS keychain
-# and must never be written to plaintext configuration.
+# Never commit a LeetCode session cookie or any other secret. Studio submits through
+# the browser extension and needs none (docs/SUBMITTING.md).
 .env
 .env.local
 session.json

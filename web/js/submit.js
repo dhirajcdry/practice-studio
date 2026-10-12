@@ -1,4 +1,4 @@
-// The judge panel: turning a POST /api/submit verdict into something true.
+// The judge panel: turning a LeetCode verdict into something true.
 //
 // Run and Submit are different things and this file exists to keep them
 // different. Run is local, instant, and checks the three example cases you can
@@ -25,6 +25,8 @@
 
 import { el, clear, replace } from './dom.js';
 import { submitCode } from './api.js';
+
+const LOGIN_URL = 'https://leetcode.com/accounts/login/';
 
 /* ============================== shaping (pure) ============================== */
 
@@ -106,20 +108,29 @@ export function shapeFailure(failure) {
 // are the server's whenever it sent any: every message below is a fallback for a
 // server that said nothing, never a replacement for one that did.
 const BLOCKED = {
+  demo: {tone:'',headline:'Submissions are unavailable in the demo',message:'Nothing was sent to LeetCode. Use Run to test your code locally.',retry:false,checkFirst:false},
   session_expired: {
     tone: 'err',
     headline: 'Your LeetCode session has expired',
-    message: 'Nothing was submitted. The cookies Studio uses to sign in to LeetCode are no longer valid, and no amount of trying again will change that — they have to be copied out of your browser and pasted in again.',
+    message: 'This browser is not signed in to LeetCode. Sign in on leetcode.com, then submit again. Nothing was submitted.',
     // Deliberately no retry. Pressing it again cannot help, and offering it would be a lie.
     retry: false,
-    credentials: true,
+    signIn: true,
   },
   no_session: {
     tone: 'warn',
-    headline: 'LeetCode is not connected yet',
-    message: 'Nothing was submitted. This machine has no LeetCode credentials stored, so Studio has no way to sign in to the judge.',
+    headline: 'You are not signed in to LeetCode',
+    message: 'Nothing was submitted. This browser is not signed in to LeetCode.',
     retry: false,
-    credentials: true,
+    signIn: true,
+  },
+  no_connector: {
+    tone: 'warn',
+    headline: 'Install the Studio Connector to submit',
+    message: 'Studio submits through your browser’s own LeetCode sign-in, using a small extension that ships with Studio. Nothing was submitted.',
+    advice: 'One-time setup: open chrome://extensions (dia://extensions in Dia), turn on Developer mode, choose “Load unpacked” and pick the extension folder inside practice-studio. Then reload this page.',
+    retry: false,
+    fallback: true,
   },
   in_flight: {
     // Not a failure: it is the server refusing to send the same work twice.
@@ -190,6 +201,8 @@ const BLOCKED = {
 function blocked(kind, message, slug, raw = null) {
   const preset = BLOCKED[kind] || BLOCKED.server;
   const url = submissionUrlOf(raw);
+  const challenge = raw?.challenge === true;
+  const submissionState = raw?.submissionState || (url ? 'submitted' : null);
   return {
     status: 'blocked',
     blockedKind: kind,
@@ -200,9 +213,12 @@ function blocked(kind, message, slug, raw = null) {
     // A submission id in the error means the POST went through. Whatever failed after that
     // failed while READING the verdict, so "Submit again" would send a second copy of work
     // LeetCode already has — the one thing this panel must never make easy.
-    retry: preset.retry === true && url === '',
-    checkFirst: preset.checkFirst === true || url !== '',
-    credentials: preset.credentials === true,
+    retry: preset.retry === true && url === '' && !challenge && submissionState !== 'unknown',
+    checkFirst: url !== '' || submissionState === 'unknown' || (preset.checkFirst === true && !submissionState),
+    challenge,
+    submissionState,
+    signIn: preset.signIn === true,
+    fallback: preset.fallback === true || (challenge && submissionState === 'not_sent'),
     advice: preset.advice || '',
     note: '',
     passed: null,
@@ -212,6 +228,7 @@ function blocked(kind, message, slug, raw = null) {
     runtimePercentile: '',
     memoryPercentile: '',
     submissionUrl: url,
+    problemUrl: `https://leetcode.com/problems/${encodeURIComponent(slug)}/`,
     submissionsUrl: submissionsUrlOf(slug),
     details: [],
   };
@@ -231,6 +248,7 @@ export function shapeSubmitResult(raw, slug = '') {
   }
 
   if (raw.ok === false) {
+    if (raw.code === 'DEMO_ONLY' || raw.kind === 'demo') return blocked('demo',null,slug);
     // An unrecognised kind or an error code nobody here has heard of still gets
     // the server's own sentence, verbatim — a generic fallback would throw away
     // the only accurate thing in the response.
@@ -341,10 +359,23 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
     target.append(el('div', { class: 'state ' + shaped.tone }, [
       el('h3', { text: shaped.headline }),
       el('p', { text: shaped.message }),
-      shaped.advice ? el('p', { text: shaped.advice }) : null,
-      shaped.credentials
-        ? el('p', { text: 'Studio signs in to LeetCode with three cookies copied out of your browser — LEETCODE_SESSION, csrftoken and cf_clearance — kept in the macOS keychain. Paste them in again and submit. Local Run needs none of them and is unaffected.' })
-        : null,
+      shaped.advice && !shaped.challenge ? el('p', { text: shaped.advice }) : null,
+      shaped.fallback ? (() => {
+        const copyStatus = el('p', { role: 'status', text: 'Or submit by hand: copy your solution, paste it into LeetCode’s editor and submit there.' });
+        const copy = el('button', { class: 'act', type: 'button', text: 'Copy current solution', onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(handlers.getCode());
+            copyStatus.textContent = 'Solution copied. Paste it into LeetCode’s editor, check the language, then submit there. Studio has not submitted it.';
+          } catch {
+            copyStatus.textContent = 'Clipboard access failed. Select and copy your solution from the Studio editor, then paste it on LeetCode.';
+          }
+        } });
+        return el('div', {}, [
+          el('div', { class: 'acts' }, [handlers.getCode ? copy : null, linkOut(shaped.problemUrl, 'Open problem on LeetCode ↗')]),
+          copyStatus,
+        ]);
+      })() : null,
+      shaped.signIn ? el('div', { class: 'acts' }, [linkOut(LOGIN_URL, 'Sign in to LeetCode ↗')]) : null,
       shaped.checkFirst
         ? el('p', { class: 'sub-check' }, shaped.submissionUrl
           ? ['This submission is on LeetCode and will finish judging with or without this panel. ', linkOut(shaped.submissionUrl, 'Open it ↗')]
@@ -479,6 +510,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     // useless (expired session) or unwelcome (rate limited).
     const allow = shaped.status !== 'blocked' || shaped.retry;
     renderSubmitResult(body, shaped, {
+      getCode,
       ...(allow ? { onResubmit: submit } : {}),
       ...(onUseFailingCase ? { onUseFailingCase } : {}),
     });

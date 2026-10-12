@@ -213,6 +213,11 @@ This one endpoint gives you the whole slug catalog in a single request — much 
 
 # Part 2 — Run and Submit
 
+> **Update.** The submit flow below was later verified by hand (2026-07-25, Accepted 64/64;
+> see [API-CONTRACT-P2.md](API-CONTRACT-P2.md#phase-4--the-judge)). Studio sends it from
+> the browser through the Studio Connector extension, not from its server: see
+> [SUBMITTING.md](SUBMITTING.md). The original research notes follow unchanged.
+
 > **Everything in this section is `[UNVERIFIED]`.** I did not authenticate and did not submit code, per the constraints. Sources are named per claim. These endpoints have been stable for roughly a decade across many independent clients, which is why confidence is high — but "stable for a decade" is not "I saw it work today". **Smoke-test the first submission by hand and compare against what's written here.**
 
 ## 2.1 The two endpoints
