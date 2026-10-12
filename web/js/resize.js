@@ -15,8 +15,10 @@ const STORE_KEY = 'studio.layout.v1';
 // read a line of, an editor narrower than a signature, a coach column of broken words.
 const MIN = { statement: 280, editor: 420, coach: 300 };
 const MIN_EDITOR_HEIGHT = 150;
-// Keep the verdict readable even when an older saved layout used a tiny panel.
-const MIN_RESULTS_HEIGHT = 180;
+// The results can shrink to their tab row. Dragging past that hides them entirely;
+// Run, the rail button or the shortcut bring them back at the height they had.
+const MIN_RESULTS_HEIGHT = 40;
+const COLLAPSE_BELOW = 24;
 // Enough to read a couple of cases and their printed output without dragging first.
 const DEFAULT_RESULTS_HEIGHT = 260;
 
@@ -235,8 +237,10 @@ export function installResizers() {
     document.body.classList.add('is-splitting');
     rowHandle.setPointerCapture?.(event.pointerId);
 
+    let collapse = false;
     const move = (e) => {
       const next = startHeight - (e.clientY - startY);
+      collapse = next < COLLAPSE_BELOW;
       layout.results = Math.min(
         Math.max(next, MIN_RESULTS_HEIGHT),
         available - MIN_EDITOR_HEIGHT,
@@ -248,6 +252,12 @@ export function installResizers() {
       document.body.classList.remove('is-splitting');
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      if (collapse) {
+        // Reopen at the height it had before this drag, not as a sliver.
+        layout.results = Math.max(startHeight, DEFAULT_RESULTS_HEIGHT);
+        applyResultsHeight(resultsEl);
+        window.dispatchEvent(new CustomEvent('studio:toggle-results'));
+      }
       saveLayout(layout);
       window.dispatchEvent(new Event('resize'));
     };

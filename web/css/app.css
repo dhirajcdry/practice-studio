@@ -632,7 +632,7 @@ body.hide-problem .ws-probtitle{
    header would still cost the editor the rows, which is the reason to close it at all. */
 body.hide-results .ws-results{display:none}
 .ws-results{
-  flex:0 1 auto;max-height:56%;overflow-y:auto;overscroll-behavior:contain;
+  flex:0 1 auto;max-height:56%;min-height:0;overflow-y:auto;overscroll-behavior:contain;
   border-top:1px solid var(--hair-20);background:rgba(var(--ink-rgb),.016);
 }
 .rr-body > .state{border-style:solid}

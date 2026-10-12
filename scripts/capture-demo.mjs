@@ -218,10 +218,9 @@ try {
         const summary=document.querySelector('.attempt-evidence').getBoundingClientRect();
         const bar=document.querySelector('.ws>.ws-bar').getBoundingClientRect();
         const editor=document.querySelector('.ws').getBoundingClientRect();
-        const footer=document.querySelector('.editor-statusline').getBoundingClientRect();
-        return {top:summary.top-bar.bottom,left:summary.left-editor.left,right:editor.right-summary.right,footer:footer.height};
+        return {top:summary.top-bar.bottom,left:summary.left-editor.left,right:editor.right-summary.right};
       })()`);
-      if (spacing.top<8 || spacing.left<12 || spacing.right<12 || spacing.footer<32) throw new Error(`Cramped ${view} footer: ${JSON.stringify(spacing)}`);
+      if (spacing.top<8 || spacing.left<12 || spacing.right<12) throw new Error(`Cramped ${view} footer: ${JSON.stringify(spacing)}`);
 
       if (view==='review' && !(state.editor.x<state.problem.x && state.coach.y>state.problem.y && Math.abs(state.coach.x-state.problem.x)<2)) throw new Error('Review did not create a stacked evidence column');
       // Screenshots use the original code; a genuine undo must survive each switch.

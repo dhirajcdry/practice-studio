@@ -68,7 +68,8 @@ body.ws-wide .ws{border-inline:1px solid var(--hair-10);background:var(--card)}
 .editor-tabs{height:37px;min-height:37px;display:flex;align-items:stretch;background:var(--canvas);border-bottom:1px solid var(--hair-10)}
 .editor-file{display:flex;align-items:center;gap:8px;padding:0 18px;font:12px var(--ui);background:var(--card);border-right:1px solid var(--hair-10);border-top:2px solid var(--accent);margin-bottom:-1px;color:var(--ink)}
 .file-language{font:600 9px var(--mono);color:var(--accent);letter-spacing:-.02em}
-.editor-path{margin-left:auto;align-self:center;padding:0 16px;font:10px var(--mono);color:var(--ink-35);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.editor-meta{margin-left:auto;display:flex;align-items:center;justify-content:flex-end;gap:16px;min-width:0;max-width:65%;padding-right:16px}
+.editor-path{min-width:0;font:10px var(--mono);color:var(--ink-35);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.ws-wide .ws-bar{min-height:42px;padding:6px 12px;gap:8px;border:0;border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:var(--card)}
 body.ws-wide .ws-title{display:none}
 body.ws-wide .ws-probtitle{font:500 12px var(--ui);max-width:28ch}
@@ -98,11 +99,11 @@ body.ws-wide .ws-run.tc-run:hover{border-color:var(--ink-35)}
 body.ws-wide .tc-label,body.ws-wide .tc-origin{font:11px var(--ui);letter-spacing:0;text-transform:none}
 /* Read-only is said by the note under the fields; a dashed edge read as a drop zone. */
 body.ws-wide .tc-input[readonly]{border-style:solid;border-color:var(--hair-10)}
-.editor-statusline{display:flex;align-items:center;gap:18px;min-height:32px;flex-shrink:0;padding:0 16px;border-top:1px solid var(--hair-10);background:var(--canvas);font:10px var(--ui);color:var(--ink-50)}
-.editor-cursor{margin-left:auto;font-family:var(--mono)}
+.editor-cursor{flex:none;font:10px var(--mono);color:var(--ink-50);white-space:nowrap}
 
-body.ws-wide .ws>.ws-bar{min-height:52px;flex-shrink:0;padding:10px 16px;gap:12px;border-top:1px solid var(--hair-10);border-bottom:0;align-items:center}
-body.ws-wide .ws>.ws-bar button{min-height:32px;padding:6px 12px}
+/* One row of buttons: 28px controls in a 40px bar. Height here comes out of the editor. */
+body.ws-wide .ws>.ws-bar{min-height:40px;flex-shrink:0;padding:6px 12px 6px 16px;gap:8px;border-top:1px solid var(--hair-10);border-bottom:0;align-items:center}
+body.ws-wide .ws>.ws-bar button{display:inline-flex;align-items:center;gap:6px;height:28px;min-height:0;padding:0 12px}
 body.ws-wide .ws>.ws-bar .ws-status{color:var(--ink-70)}
 
 /* A live summary, inspired by Daybound's state-before-detail hierarchy. These are
@@ -173,8 +174,7 @@ body.workspace-review.ws-wide .coach-log:has(.coach-empty){justify-content:flex-
   body.workspace-focus .editor-tabs{height:42px;min-height:42px;background:var(--card);border-bottom:0}
   body.workspace-focus .editor-file{border:0;margin:0;font-weight:600}
   body.workspace-focus .editor-path{display:none}
-  body.workspace-focus.ws-wide .ws>.ws-bar{border-bottom:0;padding:10px 16px}
-  body.workspace-focus .editor-statusline{background:var(--card);border-top:1px solid var(--hair-06);min-height:36px}
+  body.workspace-focus.ws-wide .ws>.ws-bar{border-bottom:0;padding:6px 12px 6px 16px}
   body.workspace-focus.ws-wide .coach{background:transparent;border:0}
   body.workspace-focus.ws-wide .coach-identity{padding:16px 8px;border:0}
   body.workspace-focus.ws-wide .coach-eyebrow{font-size:15px}
@@ -283,10 +283,8 @@ body.ws-wide .cmsg-who{color:var(--ink-70)}
 }
 
 @media(max-width:600px){
-  body.ws-wide .ws>.ws-bar{gap:8px;padding:10px 12px}
+  body.ws-wide .ws>.ws-bar{gap:8px;padding:6px 12px}
   body.ws-wide .ws>.ws-bar .ws-status{order:0;flex-basis:100%}
-  .editor-statusline{padding:0 12px;gap:12px}
-  .editor-statusline .mono{font-size:9px}
 }
 
 body.ws-wide .coach-hide{min-height:32px;padding:6px 10px}

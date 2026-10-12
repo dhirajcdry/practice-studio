@@ -606,14 +606,15 @@ export function mountWorkspace(entry, options = {}) {
     judgeStub, judgeLane, runStub, runLane,
   ]);
 
+  // The cursor position rides in the file tab row. A status bar under the results said
+  // "Python 3 · UTF-8 · 4 spaces", which never change, and cost a row of editor height.
+  const cursorEl = el('span', { class: 'editor-cursor', text: 'Ln 1, Col 1' });
   const editorTabs = el('div', { class: 'editor-tabs' }, [
     el('span', { class: 'editor-file' }, [el('span', { class: 'file-language', text: 'PY' }), el('span', { text: 'solution.py' })]),
-    el('span', { class: 'editor-path mono', text: `problems/${slug}/solution.py` }),
-  ]);
-  const cursorEl = el('span', { class: 'editor-cursor mono', text: 'Ln 1, Col 1' });
-  const editorStatusline = el('div', { class: 'editor-statusline' }, [
-    el('span', { class: 'mono', text: 'Python 3' }), el('span', { class: 'mono', text: 'UTF-8' }),
-    el('span', { class: 'mono', text: '4 spaces' }), cursorEl,
+    el('span', { class: 'editor-meta' }, [
+      el('span', { class: 'editor-path mono', text: `problems/${slug}/solution.py` }),
+      cursorEl,
+    ]),
   ]);
   const root = el('section', { class: 'card ws' }, [
     editorTabs,
@@ -635,7 +636,6 @@ export function mountWorkspace(entry, options = {}) {
       submitButton,
     ]),
     results,
-    editorStatusline,
   ]);
 
   /* ---- save state ---- */
