@@ -21,6 +21,7 @@
 // instead of quietly charging you for the night.
 
 import { el, replace } from './dom.js';
+import { onSettingsChange } from './settings.js';
 import { when } from './history.js';
 import { createVoiceControl } from './voice.js';
 import { createSpeaker, splitForSpeech, turnDecision, speechSupported } from './speech.js';
@@ -75,8 +76,8 @@ async function streamPost(url, body, { onToken, onEvent }) {
   let buffer = '';
   for (;;) {
     const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+    if (done && buffer.trim()) buffer += '\n\n';
     // An SSE event is a block of field lines ended by a blank line.
     let split;
     while ((split = buffer.indexOf('\n\n')) !== -1) {
@@ -94,6 +95,7 @@ async function streamPost(url, body, { onToken, onEvent }) {
       if (name === 'token') onToken(payload.text ?? '');
       else onEvent(name, payload);
     }
+    if (done) break;
   }
 }
 
@@ -172,8 +174,22 @@ function mountLibrary(host, { onNew, onOpen }) {
 
   const list = el('div', { class: 'dzl-list' });
   const newButton = el('button', {
-    class: 'dzl-new', type: 'button', text: 'Start a new interview', onclick: () => onNew(),
+    class: 'dzl-new', type: 'button', text: 'Start a new interview', onclick: () => { setup.hidden = false; newButton.hidden = true; levelSelect.focus(); },
   });
+
+  const levelSelect = el('select', { 'aria-label': 'Interview level' }, ['L3','L4','L5','L6'].map(value => el('option', { value, text: value, selected: value === 'L4' })));
+  const durationSelect = el('select', { 'aria-label': 'Interview duration' }, [30,45,60].map(value => el('option', { value: String(value), text: `${value} minutes`, selected: value === 45 })));
+  const setup = el('form', { class: 'dz-setup', hidden: true, onsubmit: event => {
+    event.preventDefault(); onNew({ level: levelSelect.value, minutes: Number(durationSelect.value) });
+  } }, [
+    el('h2', { text: 'Set up your interview' }),
+    el('p', { text: 'The interviewer picks a problem. Sketch your architecture, explain your decisions, then finish with a debrief.' }),
+    el('div', { class: 'dz-setup-fields' }, [
+      el('label', {}, ['Level', levelSelect]), el('label', {}, ['Session length', durationSelect]),
+      el('button', { class: 'dzl-new', type: 'submit', text: 'Begin interview' }),
+      el('button', { class: 'dzl-go', type: 'button', text: 'Cancel', onclick: () => { setup.hidden = true; newButton.hidden = false; newButton.focus(); } }),
+    ]),
+  ]);
 
   const view = el('div', { class: 'dzl' }, [
     el('div', { class: 'dzl-head' }, [
@@ -184,6 +200,7 @@ function mountLibrary(host, { onNew, onOpen }) {
       el('span', { class: 'spacer' }),
       newButton,
     ]),
+    setup,
     list,
   ]);
   replace(host, view);
@@ -270,6 +287,8 @@ function mountLibrary(host, { onNew, onOpen }) {
 function mountReview(host, data, { onBack }) {
   let gone = false;
   let root = null;
+  let boardApi = null;
+  const stopTheme = onSettingsChange(() => boardApi?.updateScene({ appState: { theme: document.body.classList.contains('is-dark') ? 'dark' : 'light' } }));
 
   const log = el('div', { class: 'dz-log' });
 
@@ -334,6 +353,7 @@ function mountReview(host, data, { onBack }) {
       root.render(ex.createElement(ex.Excalidraw, {
         theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
         viewModeEnabled: true,
+        excalidrawAPI: (instance) => { boardApi = instance; },
         initialData: { elements: data.elements, scrollToContent: true },
         UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, export: false } },
       }));
@@ -345,19 +365,24 @@ function mountReview(host, data, { onBack }) {
     }
   })();
 
-  return { destroy() { gone = true; root = null; } };
+  return { destroy() { gone = true; stopTheme(); root?.unmount(); root = null; boardApi = null; } };
 }
 
 /* ---------------- one interview, live ---------------- */
 
 function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBack }) {
   let interviewId = resumed?.id ?? null;
+  let boardRoot = null;
+  const stopTheme = onSettingsChange(() => api?.updateScene({ appState: { theme: document.body.classList.contains('is-dark') ? 'dark' : 'light' } }));
   let api = null;               // Excalidraw's imperative handle
   let elements = resumed?.elements ?? [];
   let phase = resumed?.phase ?? 'requirements';
   let busy = false;
   let destroyed = false;
   let debriefed = false;
+  let paused = false;
+  let changingPause = false;
+  let pauseWhenIdle = false;
   let sceneTimer = null;
   let startedAt = resumed?.startedAt ? Date.parse(resumed.startedAt) || Date.now() : null;
   let clockTimer = null;
@@ -379,6 +404,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
 
   const log = el('div', { class: 'dz-log' });
   const clock = el('span', { class: 'mono dz-clock', text: '00:00' });
+  const pauseButton = el('button', { class: 'dz-pause', type: 'button', text: 'Pause',
+    title: 'Pause the timer and microphone without ending your interview', disabled: true, onclick: () => togglePause() });
   const phaseBar = el('div', { class: 'dz-phases' }, PHASES.map(([id, label]) =>
     el('button', {
       class: 'dz-phase', type: 'button', dataset: { phase: id },
@@ -395,7 +422,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   }
 
   const input = el('textarea', {
-    class: 'dz-input', rows: '3', placeholder: 'Answer out loud, or type here…',
+    class: 'dz-input', rows: '3', placeholder: 'Explain your approach, assumptions, and trade-offs…',
     'aria-label': 'Your answer',
     onkeydown: (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); answer(); }
@@ -405,7 +432,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   const sendButton = el('button', { class: 'dz-send', type: 'button', text: 'Send', onclick: () => answer() });
 
   const micSlot = el('span', { class: 'dz-mic' });
-  const status = el('div', { class: 'dz-status mono', text: '' });
+  const status = el('div', { class: 'dz-status mono', role: 'status', text: '' });
 
   // The switch. Always visible, because the moment you want it is the moment voice
   // has just mangled a term and you need to type the correction — hunting for a
@@ -414,7 +441,14 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     ['type', 'Type'], ['voice', 'Voice'],
   ].map(([id, label]) => el('button', {
     class: 'dz-mode', type: 'button', role: 'radio', dataset: { mode: id },
-    'aria-checked': String(id === 'type'), text: label,
+    'aria-checked': String(id === 'type'), tabindex: id === 'type' ? '0' : '-1', text: label,
+    onkeydown: (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 'type' : event.key === 'End' ? 'voice' : id === 'type' ? 'voice' : 'type';
+      const button = modeSwitch.querySelector(`[data-mode="${next}"]`);
+      if (!button.disabled) { setMode(next); button.focus(); }
+    },
     onclick: () => setMode(id),
   })));
 
@@ -454,15 +488,17 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   }
 
   function setMode(next) {
-    if (mode === next) return;
+    if (mode === next || debriefed || destroyed) return;
     mode = next;
     for (const b of modeSwitch.querySelectorAll('.dz-mode')) {
       b.setAttribute('aria-checked', String(b.dataset.mode === mode));
+      b.tabIndex = b.dataset.mode === mode ? 0 : -1;
     }
     typePanel.hidden = isVoice();
     voicePanel.hidden = !isVoice();
     if (isVoice()) {
-      paintVoice('Listening…');
+      voicePanel.append(micSlot);
+      paintVoice('Starting microphone…');
       openMic();
     } else {
       // Leaving voice must silence it as well as close the microphone, or the
@@ -470,6 +506,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       speaker?.cancel();
       speakBuffer = '';
       closeMic();
+      typePanel.querySelector('.dz-actions').prepend(micSlot);
       input.focus();
     }
   }
@@ -481,7 +518,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   }
 
   function openMic() {
-    if (!isVoice() || destroyed || busy) return;
+    if (!isVoice() || destroyed || busy || debriefed || paused || changingPause) return;
     if (speaker?.speaking) return;
     try { voice?.start?.(); } catch { /* the button still works */ }
   }
@@ -511,19 +548,24 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   /* ---- turns ---- */
 
   async function runTurn(url, body, { kind = 'q' } = {}) {
-    if (busy) return;
+    if (busy || destroyed || debriefed || paused || changingPause) return false;
     busy = true;
+    pauseButton.disabled = true;
     sendButton.disabled = true;
     doneButton.disabled = true;
     say('thinking…');
     if (isVoice()) paintVoice('Thinking…', 'think');
     const target = entry(kind);
     let cut = false;
+    let succeeded = false;
+    let failed = false;
     try {
       await streamPost(url, body, {
         onToken: (text) => {
+          if (destroyed) return;
+          const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
           target.textContent += text;
-          log.scrollTop = log.scrollHeight;
+          if (follow) log.scrollTop = log.scrollHeight;
           if (!isVoice()) return;
           // Speak each sentence as it completes. Waiting for the whole question would
           // add its entire generation time to the silence before the interviewer talks.
@@ -537,11 +579,16 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
             interviewId = payload.id;
             startedAt = Date.parse(payload.startedAt) || Date.now();
             tickClock();
+          } else if (name === 'done') {
+            succeeded = true;
+          } else if (name === 'phase' && PHASE_LABELS.has(payload.phase)) {
+            phase = payload.phase; paintPhases();
           } else if (name === 'broke-character') {
             // Said out loud rather than swallowed. The turn is about to end short and
             // the candidate deserves the real reason.
             cut = true;
           } else if (name === 'error') {
+            failed = true;
             target.textContent = payload.message;
             target.closest('.dz-entry')?.classList.add('dz-err');
           }
@@ -554,25 +601,34 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
             : 'The interviewer started writing your answer, so the turn was cut. Say something and it will ask again.');
         target.after(note);
       }
-      if (!target.textContent.trim() && !cut) target.textContent = '…';
+      if (!succeeded && !failed) {
+        failed = true;
+        target.closest('.dz-entry')?.classList.add('dz-err');
+        target.textContent += '\nThe connection ended before this turn finished. Your interview is still open.';
+      }
+      if (!target.textContent.trim() && !cut) target.textContent = 'No response was received.';
       if (isVoice() && speakBuffer.trim()) { speaker?.say(speakBuffer); speakBuffer = ''; }
     } catch (error) {
+      failed = true;
       target.textContent = error.message;
       target.closest('.dz-entry')?.classList.add('dz-err');
     } finally {
       busy = false;
       sendButton.disabled = false;
-      doneButton.disabled = false;
+      doneButton.disabled = paused;
+      pauseButton.disabled = !interviewId || debriefed;
+      if (pauseWhenIdle) { pauseWhenIdle = false; if (!paused && !destroyed) togglePause(); }
       say(isVoice() ? (speaker?.speaking ? 'speaking…' : 'listening…') : '');
       // If it is still talking the speaker's own state change reopens the microphone;
       // if it never spoke, nothing else will.
-      if (isVoice() && !speaker?.speaking) openMic();
+      if (isVoice() && kind !== 'd' && !speaker?.speaking) openMic();
     }
+    return succeeded && !failed;
   }
 
   async function answer() {
     const said = input.value.trim();
-    if (!interviewId || busy) return;
+    if (!interviewId || busy || debriefed || destroyed || paused || changingPause) return;
     if (said) entry('a', said);
     input.value = '';
     if (isVoice()) paintVoice('Thinking…', 'think');
@@ -580,18 +636,81 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   }
 
   async function finish() {
-    if (!interviewId || busy) return;
-    await runTurn('/api/design/done', { interviewId, elements }, { kind: 'd' });
+    if (!interviewId || busy || debriefed || destroyed || paused || changingPause) return;
+    closeMic();
+    const completed = await runTurn('/api/design/done', { interviewId, elements }, { kind: 'd' });
+    if (!completed || destroyed) return;
     debriefed = true;
+    closeMic();
+    speaker?.cancel();
+    view.querySelector('.dz-compose').hidden = true;
+    phaseBar.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    api?.updateScene({ appState: { viewModeEnabled: true } });
     doneButton.disabled = true;
     doneButton.textContent = 'Debriefed';
+    pauseButton.hidden = true;
     if (clockTimer) clearInterval(clockTimer);
   }
+
+  function paintPaused() {
+    pauseButton.textContent = paused ? 'Resume' : 'Pause';
+    pauseButton.setAttribute('aria-pressed', String(paused));
+    clock.classList.toggle('paused', paused);
+    clock.title = paused ? 'Interview paused — time away is not counted' : 'Active interview time';
+    input.disabled = paused;
+    sendButton.disabled = paused || busy;
+    doneButton.disabled = paused || busy;
+    modeSwitch.querySelectorAll('button').forEach(button => {
+      button.disabled = paused || (button.dataset.mode === 'voice' && (!speechSupported() || !voice));
+    });
+    phaseBar.querySelectorAll('button').forEach(button => { button.disabled = paused; });
+    if (voice) voice.root.hidden = paused;
+    api?.updateScene({ appState: { viewModeEnabled: paused } });
+    say(paused ? 'Paused · Resume when you’re ready' : '');
+    if (isVoice() && paused) paintVoice('Paused');
+  }
+
+  async function togglePause() {
+    if (!interviewId || busy || changingPause || destroyed || debriefed) return;
+    changingPause = true;
+    pauseButton.disabled = true;
+    closeMic(); speaker?.cancel();
+    try {
+      if (paused) {
+        const result = await callJson('/api/design/resume', { interviewId });
+        startedAt = Date.parse(result.startedAt);
+        paused = false;
+      } else {
+        const result = await callJson('/api/design/pause', { interviewId });
+        paused = true;
+        const seconds = Math.floor(result.spentMs / 1000);
+        clock.textContent = `${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
+      }
+      if (!destroyed) paintPaused();
+    } catch (error) { say(`Could not ${paused ? 'resume' : 'pause'}: ${error.message}`); }
+    finally { changingPause = false; pauseButton.disabled = false; }
+    if (!paused) openMic();
+  }
+
+  const onVisibility = () => {
+    if (!document.hidden || paused || debriefed || destroyed) return;
+    if (busy) pauseWhenIdle = true;
+    else togglePause();
+  };
+  const onPageHide = () => {
+    if (!interviewId || paused || debriefed || destroyed) return;
+    closeMic(); speaker?.cancel();
+    paused = true;
+    navigator.sendBeacon?.('/api/design/pause', new Blob([JSON.stringify({ interviewId })], { type: 'application/json' }));
+    paintPaused();
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', onPageHide);
 
   function tickClock() {
     if (clockTimer) clearInterval(clockTimer);
     clockTimer = setInterval(() => {
-      if (destroyed || !startedAt) return;
+      if (destroyed || !startedAt || paused) return;
       const s = Math.floor((Date.now() - startedAt) / 1000);
       clock.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
       clock.classList.toggle('over', s > minutes * 60);
@@ -626,15 +745,20 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       el('span', { class: 'mono dz-title', text: 'System design' }),
       el('span', { class: 'mono dim', text: level }),
       clock,
+      pauseButton,
       el('span', { class: 'spacer' }),
       doneButton,
     ]),
     el('div', { class: 'dz-split' }, [
       canvasHost,
       el('div', { class: 'dz-side' }, [
+        el('div', { class: 'dz-panel-heading' }, [
+          el('strong', { text: 'Interview' }),
+          el('span', { text: 'Your reasoning, alongside your design' }),
+        ]),
         phaseBar,
         log,
-        el('div', { class: 'dz-compose' }, [modeSwitch, typePanel, voicePanel]),
+        el('div', { class: 'dz-compose' }, [modeSwitch, typePanel, voicePanel, el('div', { class: 'dz-compose-hint', text: '⌘ / Ctrl + Enter to send · Your board is included' })]),
       ]),
     ]),
   ]);
@@ -673,6 +797,11 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     voice = createVoiceControl({
       getSlug: () => '',
       logTakes: false,
+      onState: (state) => {
+        if (!isVoice() || destroyed) return;
+        const labels = { opening: 'Allow microphone access…', recording: 'Listening…', working: 'Transcribing…', idle: 'Microphone off' };
+        paintVoice(labels[state] || 'Microphone off', state === 'recording' ? 'listen' : '');
+      },
       onTranscript: (text) => {
         const gap = input.value === '' || /\s$/.test(input.value) ? '' : ' ';
         input.value += gap + text;
@@ -713,9 +842,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     try {
       const ex = await loadExcalidraw();
       if (destroyed) return;
-      const root = ex.createRoot(canvasHost);
+      boardRoot = ex.createRoot(canvasHost);
       canvasHost.querySelector('.dz-loading')?.remove();
-      root.render(ex.createElement(ex.Excalidraw, {
+      boardRoot.render(ex.createElement(ex.Excalidraw, {
         theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
         excalidrawAPI: (instance) => { api = instance; },
         onChange: (next) => onSceneChange(next),
@@ -747,6 +876,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       }
       log.scrollTop = log.scrollHeight;
       tickClock();
+      pauseButton.disabled = false;
       say(isVoice() ? 'listening…' : '');
       input.focus();
       openMic();
@@ -770,6 +900,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       if (clockTimer) clearInterval(clockTimer);
       if (turnTimer) clearInterval(turnTimer);
       window.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
       // Leaving the screen must silence it. A voice still reading a question from a
       // page you have navigated away from is the worst bug this feature could have.
       speaker?.dispose?.();
@@ -781,7 +913,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       }
       // Stop the clock on the way out. Without this an interview left open overnight
       // comes back eighteen hours in, past the end of its own phase machine.
-      if (interviewId && !debriefed) {
+      if (interviewId && !debriefed && !paused) {
         const body = JSON.stringify({ interviewId });
         const sent = navigator.sendBeacon?.('/api/design/pause', new Blob([body], { type: 'application/json' }));
         if (!sent) {
@@ -790,6 +922,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
           }).catch(() => { /* the clock is the only casualty */ });
         }
       }
+      stopTheme();
+      boardRoot?.unmount();
+      boardRoot = null;
       api = null;
     },
   };
@@ -816,8 +951,8 @@ export function initDesign(host, { level = 'L4', minutes = 45, interviewId = nul
     swap(() => mountLibrary(host, { onNew: startNew, onOpen: open }));
   }
 
-  function startNew() {
-    swap(() => mountInterview(host, { level, minutes, onBack: showLibrary }));
+  function startNew(options = {}) {
+    swap(() => mountInterview(host, { level, minutes, ...options, onBack: showLibrary }));
   }
 
   function waiting(text) {

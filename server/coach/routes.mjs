@@ -21,8 +21,9 @@ import { readJsonBody, requireString } from './http.mjs';
 import { SseStream } from './sse.mjs';
 import { SessionLog, CoachSessionStore, EVENT_TYPES, isKnownEventType } from './sessions.mjs';
 import { gatherContext, buildPrompt } from './context.mjs';
-import { appendTurn, readThreads } from './transcript.mjs';
-import { runCoachTurn } from './claude-cli.mjs';
+import { appendTurn, readThreads, readTurns } from './transcript.mjs';
+import { readCoachChoice, runProviderTurn, providerRoutes } from './provider.mjs';
+import { readCoachMemory, withConversation, conversationTurns } from './provider-context.mjs';
 import { CoachRuns } from './runs.mjs';
 
 /** Everything Phase 3 needs, in one object so tests can point it at a temp workspace. */
@@ -32,7 +33,7 @@ export class CoachService {
     // STUDIO_COACH_BINARY lets a browser check point this at a fake CLI, so the
     // reload-survival check can run without a token or a network call. Unset in normal
     // use, which is the real `claude`.
-    binary = process.env.STUDIO_COACH_BINARY || 'claude',
+    binary = process.env.STUDIO_COACH_BINARY || null,
     spawnFn, env, timeoutMs, log = console,
   } = {}) {
     this.root = root;
@@ -128,6 +129,7 @@ export async function handleCoachMessage(req, res, ctx) {
     ? body.resumeSessionId
     : null;
 
+  const choice = await readCoachChoice(svc.root, svc);
   const stream = new SseStream(res);
 
   // Already thinking about this problem? Watch that turn rather than starting a second
@@ -168,11 +170,20 @@ export async function handleCoachMessage(req, res, ctx) {
       sessionLog: svc.sessionLog,
       attemptId,
     });
-    const { prompt } = buildPrompt({ context, message, includeCode, review });
+    let { prompt } = buildPrompt({ context, message, includeCode, review });
 
     if (newThread) await svc.coachSessions.forget(slug).catch(() => {});
     const stored = newThread ? null : await svc.coachSessions.read(slug);
-    const resumeSessionId = resumeThread ?? stored?.sessionId ?? null;
+    const logicalSessionId = resumeThread ?? stored?.sessionId ?? null;
+    const turns = logicalSessionId ? conversationTurns(await readTurns({ root: svc.root, slug }), logicalSessionId) : [];
+    const previousProvider = turns.at(-1)?.provider ?? (stored?.sessionId === logicalSessionId ? stored?.provider : null) ?? 'claude';
+    // Codex threads are ephemeral; its session ID only groups the server-owned chat.
+    // Claude resumes natively only when the preceding turn also used Claude.
+    const resumeSessionId = choice.provider === 'codex' || previousProvider === 'claude' ? logicalSessionId : null;
+    if (choice.provider === 'codex' || previousProvider !== choice.provider) {
+      const memory = choice.provider === 'codex' ? await readCoachMemory(svc.root, slug) : [];
+      prompt = withConversation(prompt, turns, memory, { readOnly: choice.provider === 'codex' });
+    }
 
     // Accumulated so the turn can be filed after it finishes. The browser already has
     // the text; the point is that the workspace has it too, once the tab is gone.
@@ -195,6 +206,9 @@ export async function handleCoachMessage(req, res, ctx) {
         log: svc.log,
         turn: {
           sessionId: id,
+          provider: choice.provider,
+          model: choice.model,
+          ...(!resumeSessionId && logicalSessionId ? { continuedFromSessionId: logicalSessionId } : {}),
           kind: review ? 'attempt-review' : 'question',
           attemptId,
           ask: message,
@@ -211,7 +225,8 @@ export async function handleCoachMessage(req, res, ctx) {
     // would cut the `done` event off the end of a stream the client is still reading.
     let finishing = null;
     await new Promise((resolve) => {
-      child = runCoachTurn({
+      child = runProviderTurn({
+        choice,
         root: svc.root,
         prompt,
         resumeSessionId,
@@ -230,7 +245,7 @@ export async function handleCoachMessage(req, res, ctx) {
         onDone: (sessionId, stoppedReason) => {
           finishing = (async () => {
             const id = sessionId ?? finalSessionId;
-            if (id) await svc.coachSessions.remember(slug, id).catch(() => {});
+            if (id) await svc.coachSessions.remember(slug, id, choice).catch(() => {});
             await fileTurn(id, false);
             svc.runs.finish(run, { status: 'done', sessionId: id, stoppedReason });
           })();
@@ -391,6 +406,7 @@ async function readMeta(root, slug) {
 }
 
 export const routes = {
+  ...providerRoutes,
   'POST /api/coach/message': handleCoachMessage,
   'GET /api/coach/runs': handleCoachRuns,
   'GET /api/coach/runs/:id': handleCoachRunStream,

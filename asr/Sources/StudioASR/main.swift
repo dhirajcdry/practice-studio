@@ -1,4 +1,4 @@
-import FluidAudio
+import WhisperKit
 import Foundation
 
 // MARK: - Output document
@@ -26,11 +26,13 @@ private struct CommandLineOptions {
     let inputFilePath: String
 }
 
+private struct WorkerRequest: Decodable { let input: String }
+
 private let usageText = """
 usage: studio-asr --input <path> [--json]
 
-Transcribes an audio or video file entirely on-device with the Parakeet
-TDT 0.6B v2 CoreML model and prints one JSON object to stdout:
+Transcribes an audio or video file entirely on-device with WhisperKit
+and justwisper's selected Core ML model and prints one JSON object to stdout:
 
   {"text":"...","words":[{"word":"...","start":0.0,"end":0.12}],
    "durationSeconds":12.3,"modelId":"..."}
@@ -78,10 +80,10 @@ private func parseCommandLineOptions(_ arguments: [String]) throws -> CommandLin
 /// silence or a muted track sits below it.
 private let silencePeakAmplitudeThreshold: Float = 0.001
 
-/// FluidAudio rejects clips shorter than this outright (ASRError.invalidAudioData).
-private let minimumTranscribableSeconds: Double = 0.3
+/// Whisper uses 10 ms audio frames; shorter audible inputs cannot form a frame.
+private let minimumTranscribableSeconds: Double = 0.01
 
-private func runTranscription(options: CommandLineOptions) async throws -> TranscriptionDocument {
+private func runTranscription(options: CommandLineOptions, loaded: (pipe: WhisperKit, modelId: String)? = nil) async throws -> TranscriptionDocument {
     let fileManager = FileManager.default
     let inputFileURL = URL(fileURLWithPath: (options.inputFilePath as NSString).expandingTildeInPath)
         .standardizedFileURL
@@ -135,7 +137,7 @@ private func runTranscription(options: CommandLineOptions) async throws -> Trans
         throw StudioASRError(
             kind: "audio_too_short",
             message: String(
-                format: "'%@' contains only %.3fs of audio; the model needs at least %.1fs.",
+                format: "'%@' contains only %.3fs of audio; the model needs at least %.3fs.",
                 inputFileURL.lastPathComponent,
                 decodedSeconds,
                 minimumTranscribableSeconds
@@ -143,28 +145,28 @@ private func runTranscription(options: CommandLineOptions) async throws -> Trans
         )
     }
 
-    // 4. Load the model (downloading on first run) and transcribe.
-    let asrManager = try await ParakeetModelProvider.makeWarmAsrManager()
-
-    var decoderState = TdtDecoderState.make()
-    let transcriptionResult: ASRResult
-    do {
-        transcriptionResult = try await asrManager.transcribe(decodedAudio.monoSamples, decoderState: &decoderState)
-    } catch ASRError.invalidAudioData {
-        throw StudioASRError(
-            kind: "no_audio",
-            message:
-                "The model rejected the audio in '\(inputFileURL.lastPathComponent)' as unusable "
-                + "(too short or not speech-like)."
-        )
-    } catch {
-        throw StudioASRError(
-            kind: "transcription_failed",
-            message: "Transcription of '\(inputFileURL.lastPathComponent)' failed: \(error.localizedDescription)"
-        )
+    // Pad sub-second clips without changing the reported recording duration.
+    var samples = decodedAudio.monoSamples
+    if samples.count < AudioDecoder.targetSampleRate {
+        samples += Array(repeating: 0, count: AudioDecoder.targetSampleRate - samples.count)
     }
-
-    let transcriptText = transcriptionResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let loadedModel: (pipe: WhisperKit, modelId: String)
+    if let loaded {
+        loadedModel = loaded
+    } else {
+        loadedModel = try await WhisperModelProvider.load()
+    }
+    let started = Date()
+    let results: [TranscriptionResult]
+    do {
+        // justwisper's final pass uses defaults. Only enable word timestamps.
+        results = try await loadedModel.pipe.transcribe(audioArray: samples, decodeOptions: DecodingOptions(wordTimestamps: true))
+    } catch {
+        throw StudioASRError(kind: "transcription_failed",
+                            message: "Transcription of '\(inputFileURL.lastPathComponent)' failed: \(error.localizedDescription)")
+    }
+    let processingTime = Date().timeIntervalSince(started)
+    let transcriptText = WhisperTranscript.clean(results.map(\.text).joined(separator: " "))
 
     // 5. An empty transcript from audible audio is a failure, not a result.
     guard !transcriptText.isEmpty else {
@@ -183,8 +185,9 @@ private func runTranscription(options: CommandLineOptions) async throws -> Trans
 
     // 6. Word timings from the model's own token timings — never fabricated.
     var warnings: [String] = []
-    let tokenTimings = transcriptionResult.tokenTimings ?? []
-    let wordTimings = buildWordTimings(from: tokenTimings)
+    let wordTimings = results.flatMap { $0.segments }.flatMap { segment in
+        WhisperTranscript.words(segment.words ?? [])
+    }
     if wordTimings.isEmpty {
         warnings.append(
             "The model returned no token timings for this file, so `words` is empty. "
@@ -192,23 +195,13 @@ private func runTranscription(options: CommandLineOptions) async throws -> Trans
         )
     }
 
-    // 7. Duration ALWAYS from the container / decoded samples.
-    //    FluidAudio's chunked (>15s) path returns `duration == 0` and `rtfx == 0`
-    //    because it builds its ASRResult with an empty sample array, so that
-    //    field is unusable exactly where it matters most.
-    if transcriptionResult.duration == 0 {
-        StandardErrorLog.write(
-            "studio-asr: note — ASRResult.duration was 0 (known FluidAudio chunked-path bug); "
-                + String(format: "using container duration %.2fs instead.", decodedAudio.durationSeconds)
-        )
-    }
-
+    // Duration remains the original container / decoded sample duration.
     StandardErrorLog.write(
         String(
             format: "studio-asr: transcribed in %.2fs (%.0fx realtime), %d words with timings",
-            transcriptionResult.processingTime,
-            transcriptionResult.processingTime > 0
-                ? decodedAudio.durationSeconds / transcriptionResult.processingTime : 0,
+            processingTime,
+            processingTime > 0
+                ? decodedAudio.durationSeconds / processingTime : 0,
             wordTimings.count
         )
     )
@@ -216,12 +209,48 @@ private func runTranscription(options: CommandLineOptions) async throws -> Trans
     return TranscriptionDocument(
         text: transcriptText,
         words: wordTimings.map {
-            TranscriptionDocument.WordEntry(word: $0.word, start: $0.startTime, end: $0.endTime)
+            TranscriptionDocument.WordEntry(word: $0.word, start: Double($0.start), end: Double($0.end))
         },
         durationSeconds: decodedAudio.durationSeconds,
-        modelId: ParakeetModelProvider.modelIdentifier,
+        modelId: loadedModel.modelId,
         warnings: warnings.isEmpty ? nil : warnings
     )
+}
+
+private func writeWorkerDocument<T: Encodable>(_ value: T) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    let data = try encoder.encode(value)
+    ProtectedStandardOutput.writeDocument(data)
+}
+
+private func runWorker() async {
+    do {
+        let loaded = try await WhisperModelProvider.load()
+        StandardErrorLog.write("studio-asr: worker ready (model \(loaded.modelId))")
+        while let line = readLine() {
+            guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            do {
+                let request = try JSONDecoder().decode(WorkerRequest.self, from: Data(line.utf8))
+                let document = try await runTranscription(
+                    options: CommandLineOptions(inputFilePath: request.input), loaded: loaded
+                )
+                try writeWorkerDocument(document)
+            } catch let error as StudioASRError {
+                try? writeWorkerDocument(["error": ["kind": error.kind, "message": error.message]])
+            } catch {
+                try? writeWorkerDocument(["error": ["kind": "internal_error", "message": error.localizedDescription]])
+            }
+        }
+    } catch let error as StudioASRError {
+        StudioASRErrorReporter.writeErrorDocumentToStandardError(error)
+        exit(1)
+    } catch {
+        StudioASRErrorReporter.writeErrorDocumentToStandardError(
+            StudioASRError(kind: "model_unavailable", message: error.localizedDescription)
+        )
+        exit(1)
+    }
 }
 
 // MARK: - Entry point
@@ -233,7 +262,12 @@ ProtectedStandardOutput.redirectStrayStandardOutputWritesToStandardError()
 
 // Top-level `await` in main.swift keeps the async pipeline straightforward.
 do {
-    let options = try parseCommandLineOptions(Array(CommandLine.arguments.dropFirst()))
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments.first == "--worker" {
+        await runWorker()
+        exit(0)
+    }
+    let options = try parseCommandLineOptions(arguments)
     let document = try await runTranscription(options: options)
 
     // Encode fully before writing a single byte, so stdout can never contain a

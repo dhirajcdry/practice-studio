@@ -37,6 +37,8 @@ export async function appendTurn({ root, slug, turn, log = console }) {
   const record = {
     at: turn.at ?? isoWithOffset(),
     sessionId: turn.sessionId ?? null,
+    ...(turn.provider ? { provider: turn.provider, model: turn.model ?? null } : {}),
+    ...(turn.continuedFromSessionId ? { continuedFromSessionId: turn.continuedFromSessionId } : {}),
     kind: turn.kind === 'attempt-review' ? 'attempt-review' : 'question',
     attemptId: turn.attemptId ?? null,
     ask: String(turn.ask ?? '').slice(0, MAX_STORED_CHARS),

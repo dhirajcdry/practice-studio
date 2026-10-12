@@ -2,7 +2,9 @@
 
 import { el, replace } from './dom.js';
 import { loadCatalog, api } from './api.js';
+import { loadCatalogProgress } from './catalog-progress.js';
 import { renderBrowse, visibleProblems, filteredProblems } from './browse.js';
+import { renderRoadmap } from './roadmap.js';
 import { renderProblem, openPanel, closeDrawer, isDrawerOpen, setDrawerListener, drawerKind } from './problem.js';
 import { init as initDashboard } from './dashboard.js';
 import { initDesign } from './design.js';
@@ -22,6 +24,10 @@ const scrimEl = document.getElementById('scrim');
 const STORE_KEY = 'studio.browse.v1';
 
 const state = {
+  catalogMode: 'explorer',
+  pattern: null,
+  progress: null,
+  progressState: 'loading',
   query: '',
   list: 'neetcode250',
   difficulty: 'all',
@@ -37,6 +43,7 @@ let bySlug = new Map();
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    if (saved.catalogMode === 'roadmap') state.catalogMode = 'roadmap';
     if (typeof saved.list === 'string') state.list = saved.list;
     if (typeof saved.difficulty === 'string') state.difficulty = saved.difficulty;
     if (Array.isArray(saved.collapsed)) state.collapsed = new Set(saved.collapsed);
@@ -47,6 +54,7 @@ function loadState() {
 function saveState() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
+      catalogMode: state.catalogMode,
       list: state.list,
       difficulty: state.difficulty,
       collapsed: [...state.collapsed],
@@ -62,7 +70,7 @@ function currentSlug() {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function goBrowse() { location.hash = '#/'; }
+function goBrowse() { location.hash = state.catalogMode === 'roadmap' ? '#/roadmap' : '#/'; }
 function goProblem(slug) { location.hash = '#/p/' + encodeURIComponent(slug); }
 
 function neighboursOf(slug) {
@@ -73,8 +81,11 @@ function neighboursOf(slug) {
 }
 
 const handlers = {
+  onCatalogMode: (mode) => { state.catalogMode = mode; saveState(); const hash = mode === 'roadmap' ? '#/roadmap' : '#/'; if (location.hash === hash) render(); else location.hash = hash; },
   onOpen: (slug) => { state.selectedSlug = slug; goProblem(slug); },
   onBack: () => goBrowse(),
+  onPattern: (pattern) => { state.pattern = pattern; if (pattern) state.collapsed.delete(pattern); state.selectedSlug = null; render(); appEl.querySelector(pattern ? '.tree-pattern[aria-pressed="true"]' : '.tree-root')?.focus({ preventScroll: true }); },
+  onRetryProgress: () => { progressLoadedAt = 0; refreshCatalogProgress(); },
   onToggle: (pattern) => {
     if (state.collapsed.has(pattern)) state.collapsed.delete(pattern);
     else state.collapsed.add(pattern);
@@ -87,6 +98,7 @@ const handlers = {
   onList: (id) => { state.list = id; saveState(); render(); },
   onDifficulty: (value) => { state.difficulty = value; saveState(); render(); },
   onClear: () => {
+    state.pattern = null;
     state.query = ''; searchEl.value = '';
     state.list = 'neetcode250'; state.difficulty = 'all';
     saveState(); render();
@@ -157,7 +169,7 @@ function markNav() {
   const hash = location.hash || '#/';
   // A deep-linked interview is still the Design section, the same way a problem page
   // is still Problems.
-  const route = hash.startsWith('#/p/') ? '#/'
+  const route = hash.startsWith('#/p/') || hash === '#/roadmap' ? '#/'
     : hash.startsWith('#/design/') ? '#/design'
       : hash;
 
@@ -177,6 +189,8 @@ function markNav() {
 }
 
 function render() {
+  document.body.classList.toggle('browse-page', !currentSlug() && !location.hash.startsWith('#/design') && location.hash !== '#/progress');
+  if (currentSlug()) progressLoadedAt = 0;
   markNav();
   // The dashboard owns its own DOM and its own fetch, so it is torn down explicitly
   // rather than left running behind another screen.
@@ -239,9 +253,39 @@ function render() {
   }
 
   closeDrawer();
-  replace(appEl, renderBrowse(data, state, handlers));
+  if (location.hash === '#/roadmap') state.catalogMode = 'roadmap';
+  else if (location.hash === '#/') state.catalogMode = 'explorer';
+  saveState();
+  replace(appEl, renderCatalog());
+  refreshCatalogProgress();
   const selected = state.selectedSlug && appEl.querySelector(`.prow[data-slug="${CSS.escape(state.selectedSlug)}"]`);
   if (selected) selected.scrollIntoView({ block: 'center', behavior: 'auto' });
+}
+
+function renderCatalog() {
+  return state.catalogMode === 'roadmap' ? renderRoadmap(data, state, handlers) : renderBrowse(data, state, handlers);
+}
+
+let progressLoadedAt = 0;
+let progressPending = false;
+async function refreshCatalogProgress() {
+  if (progressPending || Date.now() - progressLoadedAt < 30_000) return;
+  progressPending = true;
+  try {
+    state.progress = await loadCatalogProgress({ signal: AbortSignal.timeout(8000) });
+    state.progressState = 'ready';
+  } catch {
+    state.progress = null;
+    state.progressState = 'unavailable';
+  } finally {
+    progressPending = false;
+    progressLoadedAt = Date.now();
+    if (document.body.classList.contains('browse-page')) {
+      const y = window.scrollY;
+      replace(appEl, renderCatalog());
+      window.scrollTo({ top: y, behavior: 'instant' });
+    }
+  }
 }
 
 /* -------------------------------- selection -------------------------------- */
@@ -308,6 +352,7 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
+  if (state.catalogMode === 'roadmap') return;
   if (event.key === 'j' || event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); }
   else if (event.key === 'k' || event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); }
   else if (event.key === 'Enter' && state.selectedSlug) { event.preventDefault(); handlers.onOpen(state.selectedSlug); }
@@ -315,6 +360,7 @@ document.addEventListener('keydown', (event) => {
 
 searchEl.addEventListener('input', () => {
   state.query = searchEl.value;
+  state.pattern = null;
   if (currentSlug()) { goBrowse(); return; } // hashchange re-renders
   render();
 });
@@ -343,9 +389,9 @@ function showBanner(message) {
 function setSourceLabel() {
   const dot = document.getElementById('srcDot');
   const label = document.getElementById('srcLabel');
-  dot.dataset.state = api.mode;
-  label.textContent = api.mode === 'live' ? 'Live' : 'Sample data';
-  label.title = api.mode === 'live' ? 'Served by the studio server' : api.reason;
+  dot.dataset.state = api.demo ? 'mock' : api.mode;
+  label.textContent = api.demo ? 'Demo' : api.mode === 'live' ? 'Live' : 'Sample data';
+  label.title = api.demo ? 'Demo workspace: local runs and scripted coaching' : api.mode === 'live' ? 'Served by the studio server' : api.reason;
 }
 
 async function boot() {

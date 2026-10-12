@@ -17,7 +17,7 @@ import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { readJsonBody } from '../coach/http.mjs';
 import { SseStream } from '../coach/sse.mjs';
-import { runCoachTurn } from '../coach/claude-cli.mjs';
+import { readCoachChoice, runProviderTurn } from '../coach/provider.mjs';
 import { sceneToGraph } from './graph.mjs';
 import { createNarrationFilter, salvageQuestion } from './narration.mjs';
 import {
@@ -28,7 +28,7 @@ import { DesignStore, newInterviewId, isSafeInterviewId } from './store.mjs';
 import { writeInterviewDoc } from './render.mjs';
 
 class DesignService {
-  constructor({ root = HOME_ROOT, binary = process.env.STUDIO_COACH_BINARY || 'claude', log = console } = {}) {
+  constructor({ root = HOME_ROOT, binary = process.env.STUDIO_COACH_BINARY || null, log = console } = {}) {
     this.root = root;
     this.binary = binary;
     this.log = log;
@@ -65,6 +65,12 @@ async function threadFor(svc, id) {
   return sid;
 }
 
+function rememberProvider(state, svc, id, choice) {
+  state.coachProvider = choice.provider;
+  state.coachModel = choice.model;
+  if (choice.provider === 'claude') state.claudeSessionId = svc.sessions.get(id) ?? state.claudeSessionId ?? null;
+}
+
 function idFrom(body, ctx) {
   const id = ctx?.params?.id ?? body?.interviewId;
   if (!isSafeInterviewId(id)) {
@@ -81,7 +87,8 @@ function idFrom(body, ctx) {
  * spoken. Cutting the stream is the only point at which the candidate can still be
  * prevented from seeing an answer they did not give.
  */
-function streamTurn(svc, { id, prompt, system = null, resume = null, stream, onFinished }) {
+function streamTurn(svc, { id, choice, prompt, system = null, resume = null, stream, onFinished }) {
+  const sessionKey = choice.provider === 'claude' ? id : `codex:${id}`;
   const filter = createNarrationFilter();
   let broke = false;
   let finished = false;
@@ -111,7 +118,7 @@ function streamTurn(svc, { id, prompt, system = null, resume = null, stream, onF
       if (rest) stream.token(rest);
       if (tags.phase) { lastPhase = tags.phase; stream.send('phase', { phase: tags.phase }); }
     }
-    if (sessionId) svc.sessions.set(id, sessionId);
+    if (sessionId) svc.sessions.set(sessionKey, sessionId);
     const asked = extractPhaseTag(
       broke ? (salvageQuestion(filter.text()) ?? '') : filter.text(),
     ).text;
@@ -124,7 +131,8 @@ function streamTurn(svc, { id, prompt, system = null, resume = null, stream, onF
     stream.end();
   }
 
-  const child = runCoachTurn({
+  const child = runProviderTurn({
+    choice,
     root: svc.root,
     binary: svc.binary,
     prompt: system ? `${system}\n\n---\n\n${prompt}` : prompt,
@@ -146,12 +154,12 @@ function streamTurn(svc, { id, prompt, system = null, resume = null, stream, onF
         // Close the books here, then kill. Killing first would race the child's own
         // exit for who gets to end the stream, and on the branch where we win, nobody
         // ends it at all.
-        finish(svc.sessions.get(id) ?? resume, 'broke-character');
+        finish(svc.sessions.get(sessionKey) ?? resume, 'broke-character');
         child.kill();
       }
     },
     onTool: (name, summary) => stream.tool(name, summary),
-    onSessionId: (sid) => { if (sid) svc.sessions.set(id, sid); },
+    onSessionId: (sid) => { if (sid) svc.sessions.set(sessionKey, sid); },
     onError: (message) => {
       if (finished) return;
       finished = true;
@@ -170,6 +178,7 @@ function streamTurn(svc, { id, prompt, system = null, resume = null, stream, onF
 async function handleStart(req, res, ctx) {
   const svc = serviceFor(ctx);
   const body = await readJsonBody(req);
+  const choice = await readCoachChoice(svc.root, svc);
   const id = newInterviewId();
   const now = Date.now();
 
@@ -188,17 +197,18 @@ async function handleStart(req, res, ctx) {
   const avoid = state.prompt ? [] : await svc.store.pastPrompts();
   streamTurn(svc, {
     id,
+    choice,
     system: systemPrompt({ level: state.level, minutes: state.minutes }),
     prompt: openingPrompt(state, { avoid }),
     resume: null,
     stream,
     onFinished: async (asked) => {
-      state.claudeSessionId = svc.sessions.get(id) ?? null;
+      rememberProvider(state, svc, id, choice);
       // The model chose the problem; that choice is the interview's identity, so it is
       // recorded rather than re-derived later from the transcript.
       if (!state.prompt && asked) state.prompt = asked.trim().split('\n')[0].slice(0, 300);
       recordTurn(state, { asked, at: new Date().toISOString() });
-      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'opening', asked });
+      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'opening', provider: choice.provider, model: choice.model, asked });
       await svc.store.writeState(id, state);
     },
   });
@@ -208,6 +218,7 @@ async function handleStart(req, res, ctx) {
 async function handleTurn(req, res, ctx) {
   const svc = serviceFor(ctx);
   const body = await readJsonBody(req);
+  const choice = await readCoachChoice(svc.root, svc);
   const id = idFrom(body, ctx);
   const state = await svc.store.readState(id);
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
@@ -231,10 +242,10 @@ async function handleTurn(req, res, ctx) {
 
   // A thread that was never saved is rebuilt here, once: the character, the record so
   // far, and then the turn. After this the new thread carries the interview normally.
-  const resume = await threadFor(svc, id);
+  const resume = choice.provider === 'claude' && (state.coachProvider ?? 'claude') === 'claude' ? await threadFor(svc, id) : null;
   let prompt = turn.text;
   let system = null;
-  if (!resume && state.rehydrate) {
+  if (!resume) {
     system = systemPrompt({ level: state.level, minutes: state.minutes });
     prompt = `${rehydratePrompt(state, await svc.store.readTurns(id))}\n\n---\n\n${turn.text}`;
     state.rehydrate = false;
@@ -243,17 +254,18 @@ async function handleTurn(req, res, ctx) {
   const stream = new SseStream(res);
   streamTurn(svc, {
     id,
+    choice,
     prompt,
     system,
     resume,
     stream,
     onFinished: async (asked, { phase } = {}) => {
-      state.claudeSessionId = svc.sessions.get(id) ?? state.claudeSessionId ?? null;
+      rememberProvider(state, svc, id, choice);
       // The interviewer says which phase it has moved to; the candidate never has to.
       if (phase) enterPhase(state, phase);
       if (due) state.curveballDone = true;
       recordTurn(state, { said, asked, at: new Date().toISOString(), gap: body.gap ?? null });
-      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'turn', said, asked, phase: state.phase });
+      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'turn', provider: choice.provider, model: choice.model, said, asked, phase: state.phase });
       await svc.store.writeState(id, state);
     },
   });
@@ -280,6 +292,7 @@ async function handleScene(req, res, ctx) {
 async function handleDone(req, res, ctx) {
   const svc = serviceFor(ctx);
   const body = await readJsonBody(req);
+  const choice = await readCoachChoice(svc.root, svc);
   const id = idFrom(body, ctx);
   const state = await svc.store.readState(id);
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
@@ -289,17 +302,22 @@ async function handleDone(req, res, ctx) {
     await svc.store.writeScene(id, (await svc.store.readScenes(id)).length, body.elements);
   }
 
+  const resume = choice.provider === 'claude' && (state.coachProvider ?? 'claude') === 'claude' ? await threadFor(svc, id) : null;
+  const turn = buildTurn(state, { now: Date.now(), done: true }).text;
+  const prompt = resume ? turn : `${rehydratePrompt(state, await svc.store.readTurns(id))}\n\n${turn}`;
   const stream = new SseStream(res);
   streamTurn(svc, {
     id,
-    prompt: buildTurn(state, { now: Date.now(), done: true }).text,
-    resume: await threadFor(svc, id),
+    choice,
+    prompt,
+    system: resume ? null : systemPrompt({ level: state.level, minutes: state.minutes }),
+    resume,
     stream,
     onFinished: async (asked) => {
-      state.claudeSessionId = svc.sessions.get(id) ?? state.claudeSessionId ?? null;
+      rememberProvider(state, svc, id, choice);
       state.debriefed = true;
       state.endedAt = Date.now();
-      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'debrief', asked });
+      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'debrief', provider: choice.provider, model: choice.model, asked });
       await svc.store.writeState(id, state);
       // Derived, and written here so the file exists the moment the interview ends.
       await writeInterviewDoc({ root: svc.root, id }).catch((err) => {
@@ -396,7 +414,8 @@ async function handleResume(req, res, ctx) {
   if (state.debriefed) {
     throw new HttpError(409, 'CONFLICT', 'That interview has already been debriefed. Start a new one.');
   }
-  const spent = state.spentMs ?? (state.startedAt ? (state.pausedAt ?? Date.now()) - state.startedAt : 0);
+  const spent = state.pausedAt && Number.isFinite(state.spentMs) ? state.spentMs
+    : (state.startedAt ? (state.pausedAt ?? Date.now()) - state.startedAt : 0);
   state.startedAt = Date.now() - spent;
   state.pausedAt = null;
   // No thread to resume: the next turn rebuilds one from the transcript instead of
@@ -429,8 +448,11 @@ async function handlePause(req, res, ctx) {
   const id = idFrom(body, ctx);
   const state = await svc.store.readState(id);
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
-  state.pausedAt = Date.now();
-  state.spentMs = state.startedAt ? state.pausedAt - state.startedAt : 0;
+  if (state.debriefed) throw new HttpError(409, 'CONFLICT', 'This interview is already complete.');
+  if (!state.pausedAt) {
+    state.pausedAt = Date.now();
+    state.spentMs = state.startedAt ? Math.max(0, state.pausedAt - state.startedAt) : 0;
+  }
   await svc.store.writeState(id, state);
   return sendJson(res, 200, { ok: true, spentMs: state.spentMs });
 }

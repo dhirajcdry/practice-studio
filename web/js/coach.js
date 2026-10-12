@@ -17,6 +17,7 @@ import { renderMarkdown } from './markdown.js';
 import { splitDiagramBlocks, renderDiagram } from './illustrator.js';
 import { streamCoachMessage, api } from './api.js';
 import { createVoiceControl } from './voice.js';
+import { createCoachModelPicker } from './coach-model.js';
 import { flushRecorder } from './recorder.js';
 import { renderHistory } from './history.js';
 import { onChord, chordLabel } from './shortcuts.js';
@@ -192,6 +193,7 @@ export function createCoachPanel(entry) {
       log.scrollTop = log.scrollHeight;
     },
     onState: (state) => {
+      sendButton.disabled = state !== 'idle' || streaming || changingModel;
       if (state === 'recording') stateLabel.textContent = 'Listening';
       else if (state === 'working') stateLabel.textContent = 'Transcribing';
       else if (!streaming) stateLabel.textContent = 'Ready';
@@ -202,12 +204,14 @@ export function createCoachPanel(entry) {
   // above them, which gave the composer three stacked rows to say two things.
   const composer = el('div', { class: 'coach-compose' }, [
     input,
+    api.demo ? null : voice.preview,
     el('div', { class: 'coach-actions' }, [
-      voice.root,
+      api.demo ? null : voice.root,
       el('span', { class: 'spacer' }),
       stopButton,
       sendButton,
     ]),
+    api.demo ? null : voice.status,
   ]);
 
   const closeButton = el('button', {
@@ -245,9 +249,18 @@ export function createCoachPanel(entry) {
   tabChat.addEventListener('click', () => showTab('chat'));
   tabHistory.addEventListener('click', () => showTab('history'));
 
+  let changingModel = false;
+  const modelPicker = createCoachModelPicker({ compact: true, onPending: pending => {
+    changingModel = pending;
+    sendButton.disabled = pending || streaming || voice.isBusy();
+  } });
+
   const root = el('section', { class: 'card coach', 'aria-label': 'Coach' }, [
     el('div', { class: 'coach-identity' }, [
-      el('span', { class: 'coach-eyebrow mono', text: 'Your practice partner' }),
+      el('div', { class: 'coach-identity-row' }, [
+        el('span', { class: 'coach-eyebrow mono', text: 'Your practice partner' }),
+        api.demo ? null : modelPicker.root,
+      ]),
       el('div', { class: 'coach-title', text: 'Keep your train of thought.' }),
       el('div', { class: 'coach-context', 'aria-label': 'Context available with each question',
         title: 'Each question includes your current code, recent runs and available transcripts. Microphone recording starts only when you choose it.' }, [
@@ -407,7 +420,8 @@ export function createCoachPanel(entry) {
 
   function setBusy(on, label) {
     streaming = on;
-    sendButton.disabled = on;
+    sendButton.disabled = on || voice.isBusy() || changingModel;
+    modelPicker.setBusy(on);
     sendLabel.textContent = on ? 'Asking' : 'Ask';
     sendButton.classList.toggle('busy', on);
     stopButton.hidden = !on;
@@ -518,7 +532,7 @@ export function createCoachPanel(entry) {
   }
 
   async function submit({ ask = null, kind = null, attemptId = null, newThread = false, lead = null } = {}) {
-    if (streaming) return;
+    if (streaming || voice.isBusy() || changingModel) return;
     const review = kind === 'attempt-review';
     const message = ask !== null ? ask : input.value.trim();
     if (!review && message === '') { input.focus(); return; }
@@ -614,6 +628,7 @@ export function createCoachPanel(entry) {
       disposed = true;
       if (detachRun) { detachRun(); detachRun = null; }
       voice.dispose();
+      modelPicker.dispose();
     },
   };
 }

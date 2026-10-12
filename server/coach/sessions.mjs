@@ -306,10 +306,11 @@ export class CoachSessionStore {
   }
 
   /** Record that a turn completed against `sessionId`. */
-  async remember(slug, sessionId) {
+  async remember(slug, sessionId, metadata = {}) {
     const existing = (await this.read(slug)) ?? {};
     await this.write(slug, {
       sessionId,
+      ...metadata,
       createdAt: existing.createdAt ?? isoWithOffset(),
       updatedAt: isoWithOffset(),
       turns: (Number(existing.turns) || 0) + 1,

@@ -10,16 +10,17 @@ let package = Package(
         .executable(name: "studio-asr", targets: ["StudioASR"])
     ],
     dependencies: [
-        // Pinned to an exact version, measured at ~489x realtime with Parakeet TDT 0.6B v2.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5")
+        // Match justwisper so its downloaded Core ML models can be reused.
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "0.18.0")
     ],
     targets: [
         .executableTarget(
             name: "StudioASR",
             dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio")
+                .product(name: "WhisperKit", package: "argmax-oss-swift")
             ],
             path: "Sources/StudioASR"
-        )
+        ),
+        .testTarget(name: "StudioASRTests", dependencies: ["StudioASR"], path: "Tests/StudioASRTests")
     ]
 )

@@ -76,6 +76,8 @@ export function monacoThemeFor(theme) {
   if (theme === 'blueprint') return 'studio-blueprint';
   if (theme === 'phosphor') return 'studio-phosphor';
   if (theme === 'slate') return 'studio-slate';
+  if (theme === 'editorial') return 'studio-editorial';
+  if (theme === 'ink') return 'studio-ink';
   return 'studio-light';
 }
 
@@ -225,7 +227,7 @@ function defineTheme(monaco) {
       'editorLineNumber.activeForeground': '#E8EAED',
       'editor.lineHighlightBackground': '#1B1E22',
       'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#FF8256',
+      'editorCursor.foreground': '#91A7FF',
       'editor.selectionBackground': '#E8EAED26',
       'editor.inactiveSelectionBackground': '#E8EAED14',
       'editorIndentGuide.background1': '#FFFFFF12',
@@ -234,8 +236,8 @@ function defineTheme(monaco) {
       'editorBracketMatch.background': '#00000000',
       ...widgetColors({
         ground: '#101317', raised: '#1F2429', ink: '#E8EAED', dim: '#9AA1AB',
-        edge: '#343A42', accent: '#FF8256', onAccent: '#15181C',
-        match: '#FF82564D', matchDim: '#FF825626', hoverWash: '#FFFFFF12',
+        edge: '#343A42', accent: '#91A7FF', onAccent: '#15181C',
+        match: '#91A7FF4D', matchDim: '#91A7FF26', hoverWash: '#FFFFFF12',
       }),
     },
   });
@@ -291,6 +293,36 @@ function defineTheme(monaco) {
       }),
     },
   });
+
+  const lightThemes = [
+    ['studio-editorial', '#FBF8F2', '#28251F', '#F3EEE4', '#6D665B', '#A3432B', '#A3432B33'],
+    ['studio-ink', '#FFFFFF', '#111111', '#F4F4F4', '#666666', '#0057B8', '#0057B833'],
+  ];
+  for (const [name, background, foreground, line, dim, accent, selection] of lightThemes) {
+    monaco.editor.defineTheme(name, {
+      base: 'vs', inherit: true,
+      rules: [
+        { token: '', foreground: foreground.slice(1) },
+        { token: 'comment', foreground: dim.slice(1), fontStyle: 'italic' },
+        { token: 'string', foreground: '2E6B4F' }, { token: 'number', foreground: '93650B' },
+        { token: 'keyword', foreground: accent.slice(1), fontStyle: name === 'studio-ink' ? 'bold' : '' },
+        { token: 'type', foreground: '1E5A8A' }, { token: 'predefined', foreground: '1E5A8A' },
+        { token: 'identifier', foreground: foreground.slice(1) }, { token: 'delimiter', foreground: dim.slice(1) },
+        { token: 'operator', foreground: dim.slice(1) },
+      ],
+      colors: {
+        'editor.background': background, 'editor.foreground': foreground,
+        'editorGutter.background': background, 'editorLineNumber.foreground': dim,
+        'editorLineNumber.activeForeground': foreground, 'editor.lineHighlightBackground': line,
+        'editor.lineHighlightBorder': '#00000000', 'editorCursor.foreground': accent,
+        'editor.selectionBackground': selection, 'editorIndentGuide.background1': '#00000012',
+        'editorIndentGuide.activeBackground1': '#0000002E', 'editorWhitespace.foreground': '#00000018',
+        ...widgetColors({ ground: background, raised: line, ink: foreground, dim,
+          edge: '#00000022', accent, onAccent: '#FFFFFF', match: `${accent}40`,
+          matchDim: `${accent}1F`, hoverWash: '#0000000D' }),
+      },
+    });
+  }
 }
 
 const MONO_STACK = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -370,6 +402,7 @@ function textareaEditor(host, initial) {
     blur: () => area.blur(),
     hasFocus: () => document.activeElement === area,
     onChange: (fn) => { changed = fn; },
+    onCursorChange: () => () => {},
     // The same three verbs Monaco's adapter answers to, so the settings watcher never
     // has to ask which editor it got. Two of them have nothing to do here.
     setFontSize: (px) => { area.style.fontSize = `${px}px`; },
@@ -408,6 +441,7 @@ function monacoEditor(monaco, host, initial, { onRun, onSubmit, onSave, onEscape
     blur: () => { const node = host.querySelector('textarea'); if (node) node.blur(); },
     hasFocus: () => instance.hasTextFocus(),
     onChange: (fn) => { changed = fn; },
+    onCursorChange: (fn) => instance.onDidChangeCursorPosition((event) => fn(event.position)),
     setFontSize: (px) => instance.updateOptions({ fontSize: px }),
     setTheme: (name) => monaco.editor.setTheme(name),
     // Monaco measures its container once and caches it; a collapsed pane or a resized
@@ -464,6 +498,8 @@ export function mountWorkspace(entry, options = {}) {
   let retryTimer = null;
   let disposed = false;
   let lane = 'run';             // which results lane is open; the other is a stub
+  let workspace = getSettings().workspace || 'workbench';
+  let stopCursor = null;
   const releaseChords = [];
 
   /* ---- chrome ---- */
@@ -577,7 +613,19 @@ export function mountWorkspace(entry, options = {}) {
     judgeStub, judgeLane, runStub, runLane,
   ]);
 
+  const editorTabs = el('div', { class: 'editor-tabs' }, [
+    el('span', { class: 'editor-file' }, [el('span', { class: 'file-language', text: 'PY' }), el('span', { text: 'solution.py' })]),
+    el('span', { class: 'editor-path mono', text: `problems/${slug}/solution.py` }),
+  ]);
+  const cursorEl = el('span', { class: 'editor-cursor mono', text: 'Ln 1, Col 1' });
+  const editorStatusline = el('div', { class: 'editor-statusline' }, [
+    el('span', { class: 'mono', text: 'Python 3' }), el('span', { class: 'mono', text: 'UTF-8' }),
+    el('span', { class: 'mono', text: '4 spaces' }), cursorEl,
+  ]);
   const root = el('section', { class: 'card ws' }, [
+    editorTabs,
+    noticeEl,
+    host,
     el('div', { class: 'ws-bar' }, [
       el('span', { class: 'mono dim ws-title', text: 'Python' }),
       // Focus mode hides the heading, so the toolbar carries the title instead —
@@ -593,9 +641,8 @@ export function mountWorkspace(entry, options = {}) {
       runButton,
       submitButton,
     ]),
-    noticeEl,
-    host,
     results,
+    editorStatusline,
   ]);
 
   /* ---- save state ---- */
@@ -798,8 +845,13 @@ export function mountWorkspace(entry, options = {}) {
   }
 
   const stored = (key) => { try { return localStorage.getItem(key) === '1'; } catch { return false; } };
-  setProblemHidden(stored(FOCUS_KEY));
-  setResultsHidden(stored(PANEL_KEY));
+  if (workspace === 'focus') {
+    setProblemHidden(true);
+    setResultsHidden(true);
+  } else {
+    setProblemHidden(stored(FOCUS_KEY));
+    setResultsHidden(stored(PANEL_KEY));
+  }
 
   releaseChords.push(onChord('problem', () => setProblemHidden(!isProblemHidden())));
   releaseChords.push(onChord('results', () => setResultsHidden(!isResultsHidden())));
@@ -846,11 +898,18 @@ export function mountWorkspace(entry, options = {}) {
   // with while the page around it changed. Silent, because a listener that throws takes
   // nothing else down with it.
   const stopWatchingSettings = onSettingsChange((settings) => {
+    if (settings.workspace !== workspace) {
+      workspace = settings.workspace;
+      setProblemHidden(workspace === 'focus');
+      setResultsHidden(workspace === 'focus');
+    }
     if (!editor) return;
     editor.setFontSize?.(settings.codeSize);
     editor.setTheme?.(monacoThemeFor(settings.theme));
     requestAnimationFrame(() => editor.layout?.());
   });
+  const onToggleResults = () => setResultsHidden(!isResultsHidden());
+  window.addEventListener('studio:toggle-results', onToggleResults);
 
   function onHide() { if (document.visibilityState === 'hidden') flushNow(); }
   document.addEventListener('visibilitychange', onHide);
@@ -909,6 +968,14 @@ export function mountWorkspace(entry, options = {}) {
       editor = textareaEditor(host, text);
     }
     editor.onChange(onEdit);
+    if (editor.kind === 'textarea') {
+      cursorEl.hidden = true;
+    } else {
+      stopCursor = editor.onCursorChange?.(({ lineNumber, column }) => {
+        cursorEl.textContent = `Ln ${lineNumber}, Col ${column}`;
+      });
+      cursorEl.textContent = 'Ln 1, Col 1';
+    }
     paintStatus();
 
     if (failure) {
@@ -964,6 +1031,8 @@ export function mountWorkspace(entry, options = {}) {
       document.removeEventListener('keydown', onDocumentKey);
       for (const release of releaseChords) release();
       stopWatchingSettings();
+      window.removeEventListener('studio:toggle-results', onToggleResults);
+      stopCursor?.dispose?.();
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flushNow);
       panel.dispose();

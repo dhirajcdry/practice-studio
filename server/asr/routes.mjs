@@ -75,67 +75,104 @@ function safeExtension(filename) {
   return ['.webm', '.wav', '.m4a', '.mov', '.mp4', '.aiff', '.caf'].includes(ext) ? ext : '.webm';
 }
 
-function runAsr(file) {
-  return new Promise((resolve) => {
-    let child;
+export class AsrWorker {
+  constructor(binary = ASR_BINARY, timeoutMs = ASR_TIMEOUT_MS) {
+    this.binary = binary; this.timeoutMs = timeoutMs;
+    this.child = null; this.queue = []; this.active = null; this.lines = '';
+  }
+
+  run(file) {
+    return new Promise((resolve) => {
+      this.queue.push({ file, resolve });
+      this.#drain();
+    });
+  }
+
+  #start() {
     try {
-      child = spawn(ASR_BINARY, ['--input', file, '--json'], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(this.binary, ['--worker'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      this.child = child; this.lines = '';
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => {
+        if (this.child !== child) return;
+        this.lines += chunk;
+        let newline;
+        while ((newline = this.lines.indexOf('\n')) !== -1) {
+          const line = this.lines.slice(0, newline).trim(); this.lines = this.lines.slice(newline + 1);
+          if (!line || !this.active) continue;
+          let parsed;
+          try { parsed = JSON.parse(line); } catch {
+            this.#finish({ ok: false, error: { kind: 'internal', message: 'The transcriber returned something unreadable.' } });
+            continue;
+          }
+          this.#finish(parsed?.error ? { ok: false, error: parsed.error } : { ok: true, result: parsed });
+        }
+      });
+      child.stderr.on('data', () => {});
+      child.stdin.on('error', (err) => {
+        if (this.child === child) this.#workerDied(child, { kind: 'unavailable', message: err.message });
+      });
+      child.on('error', (err) => {
+        if (this.child === child) this.#workerDied(child, { kind: 'unavailable', message: err.message });
+      });
+      child.on('close', (code) => {
+        if (this.child === child) this.#workerDied(child, { kind: 'failed', message: `Transcription worker exited (code ${code}).` });
+      });
     } catch (err) {
-      resolve({ ok: false, error: { kind: 'unavailable', message: err.message } });
+      this.#failWorker({ kind: 'unavailable', message: err.message });
       return;
     }
+  }
 
-    const out = [];
-    const err = [];
-    let settled = false;
+  #workerDied(child, error) {
+    if (this.child !== child) return;
+    this.child = null; this.lines = '';
+    if (this.active) this.#finish({ ok: false, error }, false);
+    this.#drain();
+  }
 
-    const timer = setTimeout(() => {
-      settled = true;
+  #drain() {
+    if (this.active || !this.queue.length) return;
+    if (!this.child) this.#start();
+    if (!this.child) return;
+    this.active = this.queue.shift();
+    const child = this.child;
+    this.timer = setTimeout(() => {
+      if (this.child !== child) return;
       child.kill('SIGKILL');
-      resolve({ ok: false, error: { kind: 'timeout', message: 'Transcription took too long and was stopped.' } });
-    }, ASR_TIMEOUT_MS);
+      this.#workerDied(child, { kind: 'timeout', message: 'Transcription took too long and was stopped.' });
+    }, this.timeoutMs);
+    try { child.stdin.write(`${JSON.stringify({ input: this.active.file })}\n`); }
+    catch (err) { this.#finish({ ok: false, error: { kind: 'unavailable', message: err.message } }); }
+  }
 
-    child.stdout.on('data', (d) => out.push(d));
-    child.stderr.on('data', (d) => err.push(d));
+  #finish(outcome, drain = true) {
+    if (!this.active) return;
+    clearTimeout(this.timer);
+    const current = this.active; this.active = null; current.resolve(outcome);
+    if (drain) this.#drain();
+  }
 
-    child.on('error', (e) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ ok: false, error: { kind: 'unavailable', message: e.message } });
-    });
+  #failWorker(error) {
+    if (this.active) this.#finish({ ok: false, error });
+    while (this.queue.length) this.queue.shift().resolve({ ok: false, error });
+  }
 
-    child.on('close', (code) => {
-      if (settled) return;
-      clearTimeout(timer);
-      const stdout = Buffer.concat(out).toString('utf8').trim();
-      const stderr = Buffer.concat(err).toString('utf8').trim();
-
-      if (code === 0 && stdout) {
-        try {
-          return resolve({ ok: true, result: JSON.parse(stdout) });
-        } catch {
-          return resolve({
-            ok: false,
-            error: { kind: 'internal', message: 'The transcriber returned something unreadable.' },
-          });
-        }
-      }
-      // studio-asr reports failures as JSON on stderr — surface its own words, since it
-      // distinguishes "no audio track" from "silent" from "nothing was said".
-      try {
-        const parsed = JSON.parse(stderr.slice(stderr.indexOf('{')));
-        if (parsed?.error) return resolve({ ok: false, error: parsed.error });
-      } catch {
-        /* fall through to the generic message */
-      }
-      resolve({
-        ok: false,
-        error: { kind: 'failed', message: stderr.split('\n').pop() || `Transcription failed (exit ${code}).` },
-      });
-    });
-  });
+  close() {
+    const child = this.child;
+    this.child = null;
+    this.lines = '';
+    if (this.active) this.#finish({ ok: false, error: { kind: 'shutdown', message: 'Transcription worker stopped.' } }, false);
+    while (this.queue.length) this.queue.shift().resolve({ ok: false, error: { kind: 'shutdown', message: 'Transcription worker stopped.' } });
+    child?.kill('SIGTERM');
+  }
 }
+
+const asrWorker = new AsrWorker();
+const runAsr = (file) => asrWorker.run(file);
+// Keep the model process tied to the local server lifetime; exit hooks cannot await,
+// so close() only resolves in-memory callers and sends SIGTERM to the child.
+process.once('exit', () => asrWorker.close());
 
 async function handleTranscribe(req, res, ctx) {
   const contentType = req.headers['content-type'] || '';

@@ -9,6 +9,7 @@ import { renderMarkdown, codeBlock } from './markdown.js';
 import { loadProblem, loadSolution, loadArticle, logSessionEvent, api } from './api.js';
 import { mountWorkspace, enableWideLayout } from './editor.js';
 import { mountCoach } from './coach.js';
+import { workspaceSwitcher, workspaceRail } from './workspace.js';
 
 const drawerEl = document.getElementById('drawer');
 const scrimEl = document.getElementById('scrim');
@@ -140,7 +141,7 @@ function renderSolutionInto(body, entry, result) {
           `About 26 of the 250 have no Python reference in the NeetCode bundle, and ${entry.title} is one of them.`,
           entry.hasArticle
             ? 'The written article covers this problem, so start there.'
-            : 'There is no article for this one either — the video walkthrough on NeetCode is the remaining reference.',
+            : 'There is no local article for this problem either. You can check NeetCode using the link in the problem panel.',
         ]
         : [result.message],
       actions,
@@ -218,6 +219,7 @@ export function renderProblem(entry, context) {
     neighbours.next
       ? el('button', { class: 'linkbtn', type: 'button', text: '↓ ' + neighbours.next.title, onclick: () => onOpen(neighbours.next.slug) })
       : null,
+    workspaceSwitcher(),
   ]));
 
   const titleEl = el('h1', { text: entry.title });
@@ -261,11 +263,6 @@ export function renderProblem(entry, context) {
       href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`,
       text: 'NeetCode ↗',
     }),
-    entry.youtubeVideoId ? el('a', {
-      class: 'extlink', target: '_blank', rel: 'noopener noreferrer',
-      href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`,
-      text: 'Video walkthrough ↗',
-    }) : null,
   ]));
   // Phase 2: the problem — heading, statement, quick facts — on the left, the code
   // workspace pinned full-height on the right, so both are in one glance. The hero
@@ -275,6 +272,7 @@ export function renderProblem(entry, context) {
   // and closed until asked for — the launcher in the corner and `c` open it. When it
   // is closed the grid falls back to two columns and the editor keeps its width.
   enableWideLayout(true);
+  view.append(workspaceRail());
   view.append(el('div', { class: 'pbody with-workspace' }, [
     el('div', { class: 'pcol' }, [hero, descCard, rail]),
     mountWorkspace(entry),
@@ -312,15 +310,16 @@ function fillDescription(card, rail, titleEl, badgeRow, entry, result) {
   if (!result.ok) {
     target.append(stateBlock({
       tone: 'err',
-      head: result.kind === 'timeout' ? 'The description timed out' : 'The description could not be loaded',
-      body: [
-        result.message,
-        'Everything else on this page still works: the pattern list, the search, and the Solution and Article panels above.',
+      head: 'Description unavailable',
+      body: result.code === 'DEMO_CONTENT_UNAVAILABLE'
+        ? 'No cached statement is available for this problem. Open it on LeetCode.'
+        : result.kind === 'timeout'
+        ? 'LeetCode did not respond in time. Retry or open the statement directly.'
+        : 'The statement is not available offline. Open it on LeetCode or retry your connection.',
+      actions: [
+        {label:'Open on LeetCode ↗',onClick:()=>window.open(`https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, '_blank', 'noopener,noreferrer')},
+        ...(result.code === 'DEMO_CONTENT_UNAVAILABLE' ? [] : [{label:'Retry',onClick:()=>{replace(target,skeleton(7));loadProblem(entry.slug,entry).then(r=>fillDescription(card,rail,titleEl,badgeRow,entry,r));}}]),
       ],
-      actions: [{
-        label: 'Try again',
-        onClick: () => { replace(target, skeleton(7)); loadProblem(entry.slug, entry).then(r => fillDescription(card, rail, titleEl, badgeRow, entry, r)); },
-      }],
     }));
     return;
   }

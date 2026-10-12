@@ -1,0 +1,85 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import http from 'node:http';
+import { fileURLToPath } from 'node:url';
+import { routes, CoachService } from '../routes.mjs';
+import { routes as designRoutes, DesignService } from '../../design/routes.mjs';
+import { saveCoachChoice } from '../provider.mjs';
+import { readTurns } from '../transcript.mjs';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const CLAUDE = path.join(here, 'bin/fake-claude.mjs');
+const CODEX = path.join(here, 'bin/fake-codex.mjs');
+
+test('switching Claude → Codex → Claude preserves context and never cross-resumes native sessions', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-switch-'));
+  const prior = process.env.STUDIO_CODEX_BINARY;
+  process.env.STUDIO_CODEX_BINARY = CODEX;
+  t.after(async () => { if (prior === undefined) delete process.env.STUDIO_CODEX_BINARY; else process.env.STUDIO_CODEX_BINARY = prior; await fs.rm(root, { recursive: true, force: true }); });
+  const promptFile = path.join(root, 'prompt.txt'), argsFile = path.join(root, 'args.json');
+  const coach = new CoachService({ root, binary: CLAUDE, env: { ...process.env, FAKE_CODEX_PROMPT_FILE: promptFile, FAKE_CLAUDE_PROMPT_FILE: promptFile, FAKE_CLAUDE_ARGS_FILE: argsFile }, log: { warn() {}, error() {} } });
+  const server = http.createServer((req, res) => {
+    routes[`${req.method} ${req.url}`](req, res, { coach, homeRoot: root }).catch(error => { res.writeHead(500); res.end(error.message); });
+  });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise(r => server.close(r)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const ask = async message => {
+    const response = await fetch(origin + '/api/coach/message', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'two-sum', message }) });
+    const stream = await response.text(); assert.match(stream, /event: done/); assert.ok(!stream.includes('event: error'), stream);
+  };
+  await ask('First learner question');
+  const first = (await coach.coachSessions.read('two-sum')).sessionId;
+  await saveCoachChoice(root, { provider: 'codex', model: 'gpt-6-astra' }, { models: async () => [{ id: 'gpt-6-astra' }] });
+  await ask('Second learner question');
+  assert.equal((await coach.coachSessions.read('two-sum')).sessionId, first);
+  assert.match(await fs.readFile(promptFile, 'utf8'), /First learner question/);
+  await ask('Third learner question');
+  assert.match(await fs.readFile(promptFile, 'utf8'), /Second learner question/);
+  await saveCoachChoice(root, { provider: 'claude', model: 'sonnet' });
+  await ask('Fourth learner question');
+  const args = JSON.parse(await fs.readFile(argsFile, 'utf8'));
+  assert.ok(!args.includes('--resume'), 'Codex history cannot be resumed as a Claude session');
+  assert.equal(args[args.indexOf('--model') + 1], 'sonnet');
+  assert.match(await fs.readFile(promptFile, 'utf8'), /Third learner question/);
+  await saveCoachChoice(root, { provider: 'codex', model: 'gpt-6-astra' }, { models: async () => [{ id: 'gpt-6-astra' }] });
+  await ask('Fifth learner question');
+  const rebuilt = await fs.readFile(promptFile, 'utf8');
+  assert.match(rebuilt, /First learner question/);
+  assert.match(rebuilt, /Fourth learner question/);
+  const turns = await readTurns({ root, slug: 'two-sum' });
+  assert.deepEqual(turns.map(turn => turn.provider), ['claude', 'codex', 'codex', 'claude', 'codex']);
+});
+
+test('system-design switching rebuilds history and keeps the Claude native session separate', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-design-switch-'));
+  const keys = ['STUDIO_CODEX_BINARY', 'FAKE_CLAUDE_ARGS_FILE', 'FAKE_CLAUDE_PROMPT_FILE', 'FAKE_CODEX_PROMPT_FILE'];
+  const saved = Object.fromEntries(keys.map(k => [k, process.env[k]]));
+  Object.assign(process.env, { STUDIO_CODEX_BINARY: CODEX, FAKE_CLAUDE_ARGS_FILE: path.join(root, 'args.json'), FAKE_CLAUDE_PROMPT_FILE: path.join(root, 'claude.txt'), FAKE_CODEX_PROMPT_FILE: path.join(root, 'codex.txt') });
+  t.after(async () => { for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; } await fs.rm(root, { recursive: true, force: true }); });
+  const design = new DesignService({ root, binary: CLAUDE, log: { warn() {}, error() {} } });
+  const server = http.createServer((req, res) => designRoutes[`${req.method} ${req.url}`](req, res, { design }).catch(error => { res.writeHead(500); res.end(error.message); }));
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise(r => server.close(r)));
+  const post = async (route, body) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const stream = await response.text(); assert.match(stream, /event: done/); return stream;
+  };
+  const opening = await post('/api/design/start', { prompt: 'Design a task queue.' });
+  const id = JSON.parse(opening.split('\n\n').find(s => s.includes('event: interview')).split('data: ')[1]).id;
+  const original = await design.store.readState(id);
+  await saveCoachChoice(root, { provider: 'codex', model: 'gpt-6-astra' }, { models: async () => [{ id: 'gpt-6-astra' }] });
+  await post('/api/design/turn', { interviewId: id, said: 'I need durable jobs.' });
+  const codexState = await design.store.readState(id);
+  assert.equal(codexState.coachProvider, 'codex');
+  assert.equal(codexState.claudeSessionId, original.claudeSessionId);
+  assert.match(await fs.readFile(path.join(root, 'codex.txt'), 'utf8'), /Design a task queue/);
+  await saveCoachChoice(root, { provider: 'claude', model: 'opus' });
+  await post('/api/design/turn', { interviewId: id, said: 'Workers will claim jobs.' });
+  const args = JSON.parse(await fs.readFile(path.join(root, 'args.json'), 'utf8'));
+  assert.ok(!args.includes('--resume'));
+  assert.match(await fs.readFile(path.join(root, 'claude.txt'), 'utf8'), /I need durable jobs/);
+  assert.equal((await design.store.readState(id)).coachProvider, 'claude');
+});

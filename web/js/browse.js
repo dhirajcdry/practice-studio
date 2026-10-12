@@ -3,6 +3,7 @@
 // at boot, so nothing here ever touches the network.
 
 import { el, digits, frag } from './dom.js';
+import { progressFor, summarizeProgress } from './catalog-progress.js';
 
 export const LIST_FILTERS = [
   { id: 'neetcode250', label: 'NeetCode 250' },
@@ -31,6 +32,7 @@ export function groupProblems(data, state) {
     bucket.total++;
     if (state.difficulty !== 'all' && problem.difficulty !== state.difficulty) continue;
     if (!matches(problem, needle)) continue;
+    if (state.pattern && state.pattern !== problem.pattern) continue;
     bucket.items.push(problem);
   }
   return [...byPattern.values()];
@@ -47,17 +49,31 @@ function markTitle(title, needle) {
   ]);
 }
 
-function mixBar(items) {
-  const counts = { Easy: 0, Medium: 0, Hard: 0 };
-  for (const item of items) counts[item.difficulty] = (counts[item.difficulty] || 0) + 1;
-  const title = `${counts.Easy} easy · ${counts.Medium} medium · ${counts.Hard} hard`;
-  const bar = el('span', { class: 'mixbar', role: 'img', 'aria-label': `Difficulty mix: ${title}`, title });
-  for (const [key, cls] of [['Easy', 'e'], ['Medium', 'm'], ['Hard', 'h']]) {
-    if (!counts[key]) continue;
-    bar.append(el('span', { class: cls, style: `flex:${counts[key]}` }));
-  }
-  if (!items.length) bar.append(el('span', { style: 'flex:1;background:rgba(0,0,0,.08)' }));
-  return bar;
+function folderIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('folder-icon');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M2 5h6l2 2h8v10H2Z');
+  path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.4'); path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path); return svg;
+}
+
+function progressOverview(summary, state) {
+  const ready = state.progress !== null;
+  const total = summary.total;
+  const accepted = ready ? summary.accepted : 0;
+  return el('section', {class:'catalog-overview','aria-label':'Collection progress'}, [
+    el('div',{class:'collection-progress'},[
+      el('span',{class:'overview-label',text:'COLLECTION PROGRESS'}),
+      el('div',{class:'progress-fraction'},[el('strong',{text:ready ? String(accepted) : '—'}),el('span',{text:`/ ${total} accepted`})]),
+      el('div',{class:'collection-track',role:'img','aria-label':ready ? `${accepted} of ${total} accepted on LeetCode` : 'Progress not loaded'},el('span',{style:`width:${total ? accepted / total * 100 : 0}%`})),
+      el('span',{class:'overview-note',text:ready ? 'Accepted verdicts recorded in this workspace' : state.progressState === 'unavailable' ? 'Progress unavailable' : 'Loading saved activity…'}),
+    ]),
+    ...[['localPass','Passed locally','Example cases passed'],['attempted','In progress','Started, not yet accepted'],['touched','Practiced','Attempted or tested problems']].map(([key,label,note]) => el('div',{class:'overview-stat'},[
+      el('span',{class:'overview-label',text:label}),el('strong',{text:ready ? String(summary[key]) : '—'}),el('span',{class:'overview-note',text:note}),
+    ])),
+  ]);
 }
 
 function assetDot(present, letter, label) {
@@ -70,14 +86,17 @@ function assetDot(present, letter, label) {
 }
 
 function problemRow(problem, state, needle, onOpen) {
+  const progress = progressFor(problem.slug, state.progress);
   const row = el('button', {
     class: 'prow' + (state.selectedSlug === problem.slug ? ' sel' : ''),
     type: 'button',
     dataset: { slug: problem.slug },
     onclick: () => onOpen(problem.slug),
   }, [
+    el('span', { class: `problem-state state-${progress.status}`, title: progress.label, 'aria-label': progress.label, text: progress.status === 'accepted' ? '✓' : progress.status === 'local-pass' ? '◐' : progress.status === 'attempted' ? '•' : '○' }),
     el('span', { class: 'pnum', text: problem.number ? String(problem.number) : '—' }),
     el('span', { class: 'ptitle' }, markTitle(problem.title, needle)),
+    el('span', { class: `problem-progress state-${progress.status}`, text: progress.label }),
     el('span', { class: 'plists' }, [
       problem.lists.blind75 ? el('span', { class: 'tag quiet', text: 'B75' }) : null,
       problem.lists.neetcode150 && !problem.lists.blind75 ? el('span', { class: 'tag quiet', text: '150' }) : null,
@@ -104,7 +123,7 @@ function patternSection(group, index, state, needle, handlers) {
     onclick: () => handlers.onToggle(group.pattern),
   }, [
     el('span', { class: 'caret', 'aria-hidden': 'true', text: '▶' }),
-    el('span', { class: 'pidx', text: String(index + 1).padStart(2, '0') }),
+    folderIcon(),
     el('span', { class: 'pname', text: group.pattern }),
     el('span', { class: 'pcount' }, [
       el('b', { text: String(group.items.length) }),
@@ -112,7 +131,7 @@ function patternSection(group, index, state, needle, handlers) {
     ]),
     // With a single difficulty selected the bar would be one solid block saying
     // nothing, so it steps aside.
-    state.difficulty === 'all' ? mixBar(group.items) : el('span'),
+    state.progress ? el('span', { class: 'folder-progress', text: `${summarizeProgress(group.items, state.progress).accepted} accepted` }) : el('span', { class: 'folder-progress', text: 'Progress —' }),
   ]);
 
   const section = el('section', { class: 'psec' + (open ? ' open' : '') }, head);
@@ -144,15 +163,19 @@ export function renderBrowse(data, state, handlers) {
   const allCollapsed = groups.every(g => !g.items.length || state.collapsed.has(g.pattern));
   const forcedOpen = needle !== '' || state.difficulty !== 'all' || state.list !== 'neetcode250';
 
-  const view = el('div', { class: 'view' });
+  const view = el('div', { class: 'view catalog' });
 
   view.append(el('div', { class: 'viewhead' }, [
     el('div', {}, [
-      el('h1', { text: 'NeetCode 250' }),
-      el('div', { class: 'sub', text: `${data.problems.length} problems across ${data.patterns.length} patterns, in curriculum order — easiest ideas first.` }),
+      el('h1', { text: 'Problem explorer' }),
+      el('div', { class: 'sub', text: 'A place for every pattern. A record of every attempt.' }),
+    ]),
+    el('div', {class:'catalog-modes', 'aria-label':'Catalog view'}, [
+      el('button',{type:'button','aria-pressed':'true',text:'Explorer',onclick:()=>handlers.onCatalogMode('explorer')}),
+      el('button',{type:'button','aria-pressed':'false',text:'Roadmap',onclick:()=>handlers.onCatalogMode('roadmap')}),
     ]),
     el('div', { class: 'legend', hidden: state.difficulty !== 'all' }, [
-      el('span', { class: 'mono dim', text: 'Bar = difficulty mix' }),
+      el('span', { class: 'mono dim', text: 'Difficulty' }),
       ...[['Easy', 'e'], ['Medium', 'm'], ['Hard', 'h']].map(([label, cls]) =>
         el('span', { class: 'lg' }, [el('i', { class: cls }), el('span', { class: 'mono dim', text: label })])),
     ]),
@@ -184,10 +207,31 @@ export function renderBrowse(data, state, handlers) {
       })
       : null,
   ]);
-  view.append(controls);
+  const collection = data.problems.filter(problem => problem.lists[state.list]);
+  const summary = summarizeProgress(collection, state.progress);
+  view.append(progressOverview(summary, state));
+  const layout = el('div', { class: 'catalog-layout' });
+  const sidebar = el('nav', { class: 'catalog-tree', 'aria-label': 'Problem patterns' }, [
+    el('div', { class: 'tree-heading', text: 'EXPLORER' }),
+    el('div', { class: 'tree-legend', text: 'Accepted / total problems' }),
+    el('button', { class: 'tree-root', type: 'button', 'aria-pressed': String(!state.pattern), onclick: () => handlers.onPattern(null) }, [folderIcon(), el('span', {text: LIST_FILTERS.find(f=>f.id===state.list)?.label || 'All problems'}), el('span', {class:'tree-count',text:String(collection.length)})]),
+    ...data.patterns.map(pattern => {
+      const items = collection.filter(problem => problem.pattern === pattern);
+      const accepted = state.progress ? summarizeProgress(items, state.progress).accepted : null;
+      return el('button', {type:'button',class:'tree-pattern',title:pattern,'aria-pressed':String(state.pattern === pattern),onclick:()=>handlers.onPattern(pattern)}, [
+        folderIcon(), el('span',{text:pattern}), el('span',{class:'tree-count',text:accepted === null ? String(items.length) : `${accepted}/${items.length}`,title:accepted === null ? 'Problems' : 'Accepted / problems'}),
+      ]);
+    }),
+    el('a', {class:'tree-report',href:'#/progress',text:'View practice report ↗'}),
+  ]);
+  const content = el('div', {class:'catalog-content'});
+  layout.append(sidebar, content);
+  view.append(layout);
+  content.append(el('div', {class:'catalog-path'}, [el('span',{text:LIST_FILTERS.find(f=>f.id===state.list)?.label || 'Problems'}), el('span',{text:'/'}),el('strong',{text:state.pattern || 'All patterns'})]), controls);
+  if (state.progressState === 'unavailable') content.append(el('div',{class:'catalog-unavailable'},[el('span',{text:'Progress unavailable. Your problem library is still accessible.'}),el('button',{type:'button',text:'Retry',onclick:handlers.onRetryProgress})]));
 
   if (shown === 0) {
-    view.append(el('section', { class: 'card' }, el('div', { class: 'emptynote' }, [
+    content.append(el('section', { class: 'card' }, el('div', { class: 'emptynote' }, [
       'Nothing matches ',
       needle ? el('b', { text: `“${state.query.trim()}”` }) : 'these filters',
       needle ? ' with the current filters' : '',
@@ -208,17 +252,17 @@ export function renderBrowse(data, state, handlers) {
     if (!group.items.length) return;
     sections.append(patternSection(group, index, state, needle, handlers));
   });
-  view.append(sections);
+  content.append(sections);
 
-  const silent = groups.filter(g => !g.items.length);
+  const silent = state.pattern ? [] : groups.filter(g => !g.items.length);
   if (silent.length) {
-    view.append(el('div', {
+    content.append(el('div', {
       class: 'mono dim', style: 'margin-top:12px;text-align:center;letter-spacing:.12em',
       text: `No match in ${silent.length} other pattern${silent.length === 1 ? '' : 's'}: ${silent.map(g => g.pattern).join(' · ')}`,
     }));
   }
 
-  view.append(el('div', { class: 'hint' }, [
+  content.append(el('div', { class: 'hint' }, [
     el('kbd', { text: '/' }), ' search  ',
     el('kbd', { text: 'j' }), el('kbd', { text: 'k' }), ' move  ',
     el('kbd', { text: '↵' }), ' open  ',

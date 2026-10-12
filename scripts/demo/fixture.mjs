@@ -1,6 +1,8 @@
-// Original illustrative content. Never copied from a personal practice workspace.
+// Original illustrative session; public cached statements supplement the library.
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import {copyCachedQuestions} from './cached-questions.mjs';
 import { DesignStore, newInterviewId } from '../../server/design/store.mjs';
 import { newInterview, recordTurn } from '../../server/design/interview.mjs';
 import { writeInterviewDoc } from '../../server/design/render.mjs';
@@ -107,6 +109,8 @@ export async function seedDemo(root) {
   await fsp.writeFile(path.join(cacheDir, `${SLUG}.json`), JSON.stringify({
     slug: SLUG, complete: true, fetchedAt: '2026-09-30T12:00:00Z', question,
   }, null, 2));
+  const catalog=JSON.parse(await fsp.readFile(new URL('../../data/catalog.json',import.meta.url),'utf8'));
+  await copyCachedQuestions(path.join(os.homedir(),'LeetCodeTutor','cache','leetcode'),cacheDir,catalog.problems.filter(p=>p.lists?.neetcode250).map(p=>p.leetcodeSlug));
   const store = new DesignStore({ root });
   const id = newInterviewId(new Date('2026-09-30T12:00:00Z'));
   const startedAt = Date.parse('2026-09-30T12:00:00Z');

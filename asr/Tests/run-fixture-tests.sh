@@ -8,8 +8,8 @@
 #   ./Tests/run-fixture-tests.sh            # build (release) then test
 #   SKIP_BUILD=1 ./Tests/run-fixture-tests.sh
 #
-# A regular XCTest target is deliberately not used: every meaningful assertion
-# here is about the *process contract* (exit code, stdout being exactly one JSON
+# Provider selection/cache tests live in StudioASRTests; assertions here
+# cover the *process contract* (exit code, stdout being exactly one JSON
 # document, stderr carrying the error document), which only a subprocess test
 # can actually verify.
 
@@ -17,7 +17,7 @@ set -uo pipefail
 
 PACKAGE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BINARY_PATH="$PACKAGE_DIRECTORY/.build/release/studio-asr"
-FIXTURE_DIRECTORY="$PACKAGE_DIRECTORY/.fixtures"
+FIXTURE_DIRECTORY="$(mktemp -d /tmp/studio-asr-fixtures.XXXXXX)"
 
 passedTestCount=0
 failedTestCount=0
@@ -59,6 +59,8 @@ if [[ ! -f "$FIXTURE_DIRECTORY/.generated" ]]; then
     mkdir -p "$FIXTURE_DIRECTORY"
     pushd "$FIXTURE_DIRECTORY" >/dev/null || exit 2
 
+    say -o phrase.aiff "use a hash map"
+    ffmpeg -v error -y -i phrase.aiff -c:a libopus -ar 48000 -ac 1 phrase.webm
     say -o short.aiff "The quick brown fox jumps over the lazy dog."
     say -o long.aiff "Today we are going to solve two sum. Given an array of integers and a target value, return the indices of the two numbers that add up to the target. The brute force approach checks every pair, which takes quadratic time. A hash map lets us do it in linear time by remembering the complement of each number as we scan. Let us walk through an example together, step by step, and see how the hash map evolves."
 
@@ -69,7 +71,7 @@ if [[ ! -f "$FIXTURE_DIRECTORY/.generated" ]]; then
     ffmpeg -v error -y -f lavfi -i color=c=blue:s=320x240:d=6 -i short.aiff \
         -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest speech_with_video.mov
 
-    # Longer than the model's 15s window, to exercise chunked transcription.
+    # Longer recording, to verify duration and timestamps across more speech.
     ffmpeg -v error -y -i long.aiff -ar 16000 -ac 1 long_speech.wav
 
     # Real speech recorded very quietly — must NOT be mistaken for silence.
@@ -91,7 +93,7 @@ fi
 
 standardOutputFile="$(mktemp)"
 standardErrorFile="$(mktemp)"
-trap 'rm -f "$standardOutputFile" "$standardErrorFile"' EXIT
+trap 'rm -f "$standardOutputFile" "$standardErrorFile"; rm -rf "$FIXTURE_DIRECTORY"' EXIT
 
 run_binary() {
     "$BINARY_PATH" --input "$1" --json >"$standardOutputFile" 2>"$standardErrorFile"
@@ -175,13 +177,14 @@ assert_fails() {
 
 echo
 echo "### speech transcribes correctly, in every container"
+assert_transcribes phrase.webm "hash map" 0.5 3.0
 assert_transcribes short_speech.wav       "quick brown fox" 2.5 3.2
 assert_transcribes short_speech.webm      "quick brown fox" 2.5 3.2
 assert_transcribes short_speech.m4a       "quick brown fox" 2.5 3.2
 assert_transcribes speech_with_video.mov  "quick brown fox" 2.5 3.2
 
 echo
-echo "### >15s audio: chunked path, duration must come from the container (not ASRResult.duration, which reads 0)"
+echo "### longer audio: duration must come from the original container"
 assert_transcribes long_speech.wav "hash map" 24.0 27.0
 
 echo

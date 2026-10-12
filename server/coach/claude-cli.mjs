@@ -120,7 +120,7 @@ export function permissionArgs(root) {
  * @param {string|null} o.resumeSessionId session to resume, or null to start a new one
  * @param {string} [o.newSessionId] uuid to use when starting fresh
  */
-export function buildArgs({ root, resumeSessionId, newSessionId }) {
+export function buildArgs({ root, resumeSessionId, newSessionId, model }) {
   const { allow, deny } = permissionArgs(root);
   const args = [
     '-p',
@@ -138,6 +138,7 @@ export function buildArgs({ root, resumeSessionId, newSessionId }) {
     '--disallowedTools',
     ...deny,
   ];
+  if (model) args.push('--model', model);
   if (resumeSessionId) args.push('--resume', resumeSessionId);
   else args.push('--session-id', newSessionId ?? crypto.randomUUID());
   return args;
@@ -281,6 +282,7 @@ export function runCoachTurn({
   prompt,
   resumeSessionId = null,
   binary = 'claude',
+  model = null,
   env = process.env,
   spawnFn = spawn,
   timeoutMs = TURN_TIMEOUT_MS,
@@ -306,7 +308,7 @@ export function runCoachTurn({
     onDone(sessionId, stoppedReason);
   };
 
-  const args = buildArgs({ root, resumeSessionId });
+  const args = buildArgs({ root, resumeSessionId, model });
 
   try {
     child = spawnFn(binary, args, {

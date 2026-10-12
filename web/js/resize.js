@@ -8,18 +8,20 @@
 // rather than being grid children — that keeps the column count fixed whether or not the
 // coach is open, and means nothing here has to restructure the DOM it sits in.
 
+import { getSettings } from './settings.js';
 const STORE_KEY = 'studio.layout.v1';
 
 // Below these a pane stops being usable rather than merely small: a statement you cannot
 // read a line of, an editor narrower than a signature, a coach column of broken words.
 const MIN = { statement: 280, editor: 420, coach: 300 };
 const MIN_EDITOR_HEIGHT = 150;
-const MIN_RESULTS_HEIGHT = 90;
+// Keep the verdict readable even when an older saved layout used a tiny panel.
+const MIN_RESULTS_HEIGHT = 180;
 // Enough to read a couple of cases and their printed output without dragging first.
 const DEFAULT_RESULTS_HEIGHT = 260;
 
 // The editor is the reason the screen exists, so it is the widest column by default.
-const DEFAULTS = { statement: 0.92, editor: 1.35, coach: 0.86, results: DEFAULT_RESULTS_HEIGHT };
+const DEFAULTS = { statement: 0.7, editor: 1.6, coach: 0.85, results: DEFAULT_RESULTS_HEIGHT };
 
 function loadLayout() {
   try {
@@ -28,7 +30,7 @@ function loadLayout() {
       statement: Number(raw.statement) > 0 ? Number(raw.statement) : DEFAULTS.statement,
       editor: Number(raw.editor) > 0 ? Number(raw.editor) : DEFAULTS.editor,
       coach: Number(raw.coach) > 0 ? Number(raw.coach) : DEFAULTS.coach,
-      results: Number(raw.results) > 0 ? Number(raw.results) : DEFAULTS.results,
+      results: Number(raw.results) >= MIN_RESULTS_HEIGHT ? Number(raw.results) : DEFAULTS.results,
     };
   } catch {
     return { ...DEFAULTS }; // private browsing: the app works, it just forgets
@@ -62,11 +64,23 @@ function resultsHidden() {
 }
 
 function applyColumns(pbody) {
-  if (isStacked() || problemHidden()) {
+  if (!isStacked() && getSettings().workspace === 'review') {
+    pbody.style.gridTemplateColumns = problemHidden() && !coachOpen()
+      ? 'minmax(0,1fr)'
+      : `minmax(${MIN.editor}px, ${layout.editor}fr) minmax(320px, ${layout.statement}fr)`;
+    return;
+  }
+  if (isStacked()) {
     pbody.style.removeProperty('grid-template-columns');
     return;
   }
   const { statement, editor, coach } = layout;
+  if (problemHidden()) {
+    pbody.style.gridTemplateColumns = coachOpen()
+      ? `minmax(${MIN.editor}px, ${editor}fr) minmax(${MIN.coach}px, ${coach}fr)`
+      : 'minmax(0,1fr)';
+    return;
+  }
   pbody.style.gridTemplateColumns = coachOpen()
     ? `minmax(${MIN.statement}px, ${statement}fr) minmax(${MIN.editor}px, ${editor}fr) minmax(${MIN.coach}px, ${coach}fr)`
     : `minmax(${MIN.statement}px, ${statement}fr) minmax(${MIN.editor}px, ${editor}fr)`;
@@ -146,12 +160,18 @@ export function installResizers() {
   }
 
   function position() {
-    const stacked = isStacked() || problemHidden();
+    const stacked = isStacked();
+    const problemIsHidden = problemHidden();
     const box = pbody.getBoundingClientRect();
+    const review = getSettings().workspace === 'review';
+    if (handles[0]) {
+      handles[0].between = review ? [wsEl, statementEl] : [statementEl, wsEl];
+      handles[0].keys = review ? ['editor', 'statement'] : ['statement', 'editor'];
+    }
 
     for (const h of handles) {
       const [left, right] = h.between;
-      const hidden = stacked || (h.keys[1] === 'coach' && !coachOpen()) || right.offsetParent === null;
+      const hidden = stacked || (problemIsHidden && h.keys[1] !== 'coach') || (h.keys[1] === 'coach' && (!coachOpen() || review)) || right.offsetParent === null;
       h.el.hidden = hidden;
       if (hidden) continue;
       const a = left.getBoundingClientRect();
@@ -182,7 +202,7 @@ export function installResizers() {
     const totalPx = leftStart + rightStart;
 
     const minLeft = leftKey === 'statement' ? MIN.statement : MIN.editor;
-    const minRight = rightKey === 'coach' ? MIN.coach : MIN.editor;
+    const minRight = rightKey === 'statement' && getSettings().workspace === 'review' ? 320 : MIN[rightKey];
 
     document.body.classList.add('is-splitting');
     handle.el.setPointerCapture?.(event.pointerId);
@@ -252,6 +272,7 @@ export function installResizers() {
       else if (e.key === 'Enter' || e.key === ' ') { onReset(); e.preventDefault(); return; }
       else return;
       e.preventDefault();
+      e.stopPropagation();
       applyColumns(pbody); position(); saveLayout(layout);
       window.dispatchEvent(new Event('resize'));
     };
@@ -281,6 +302,7 @@ export function installResizers() {
       else if (e.key === 'Enter' || e.key === ' ') { onReset(); e.preventDefault(); return; }
       else return;
       e.preventDefault();
+      e.stopPropagation();
       applyResultsHeight(resultsEl); position(); saveLayout(layout);
       window.dispatchEvent(new Event('resize'));
     };

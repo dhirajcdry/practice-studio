@@ -250,6 +250,9 @@ test('resuming shifts the clock so a day away is not a day of interview', async 
     paused.pausedAt = dayAgo + 6 * 60_000;
     await store2.writeState(id, paused);
 
+    const again = await (await post(origin, '/api/design/pause', { interviewId: id })).json();
+    assert.equal(again.spentMs, 6 * 60_000, 'repeated pause must not count time away');
+
     const res = await post(origin, '/api/design/resume', { interviewId: id });
     assert.equal(res.status, 200);
     const back = await res.json();
@@ -260,6 +263,11 @@ test('resuming shifts the clock so a day away is not a day of interview', async 
     const after = await store.readState(id);
     const spent = Date.now() - after.startedAt;
     assert.ok(spent > 5.5 * 60_000 && spent < 7 * 60_000, `resumed with ${Math.round(spent / 60000)} minutes spent`);
+    after.startedAt -= 2 * 60_000;
+    await store.writeState(id, after);
+    await post(origin, '/api/design/resume', { interviewId: id });
+    const active = await store.readState(id);
+    assert.ok(Date.now() - active.startedAt >= 8 * 60_000, 'resuming an active session must not reset its accumulated time');
   } finally { await close(); }
 });
 

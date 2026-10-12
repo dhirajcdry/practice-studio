@@ -14,11 +14,7 @@ struct DecodedAudio {
 
     /// Duration the tool reports to the caller.
     ///
-    /// IMPORTANT: this must NEVER come from `ASRResult.duration`. FluidAudio's
-    /// chunked (>15s) path builds its result with `audioSamples: []`, so both
-    /// `duration` and `rtfx` come back as 0 for exactly the long recordings we
-    /// care about. Container duration (or, failing that, the decoded sample
-    /// count) is always correct.
+    /// Use the container or original sample count, never the padded model input.
     var durationSeconds: Double {
         if let containerReportedDurationSeconds, containerReportedDurationSeconds > 0 {
             return containerReportedDurationSeconds
@@ -37,7 +33,7 @@ struct DecodedAudio {
 }
 
 enum AudioDecoder {
-    /// Parakeet expects 16 kHz mono audio.
+    /// WhisperKit expects 16 kHz mono audio.
     static let targetSampleRate = 16_000
 
     /// Decodes any supported container to 16 kHz mono float samples.

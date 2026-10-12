@@ -59,7 +59,47 @@ try {
   await send('Page.navigate', { url: `${ORIGIN}/#/p/contains-duplicate` });
   await sleep(2500);
 
+  const splitCheck = await evaluate(`(() => {
+    document.body.classList.add('hide-problem');
+    const handle = document.querySelector('.split-row');
+    if (!handle || handle.hidden) return 'editor/results divider disappeared when Problem was collapsed';
+    const before = document.querySelector('.ws-results')?.getBoundingClientRect().height || 0;
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    const after = document.querySelector('.ws-results')?.getBoundingClientRect().height || 0;
+    return after > before ? '' : 'editor/results divider did not resize results with ArrowUp';
+  })()`);
+  if (splitCheck) throw new Error(splitCheck);
+  await evaluate(`document.body.classList.remove('hide-problem')`);
+
   await evaluate(`document.body.classList.add('coach-open')`);
+  await sleep(800);
+  await evaluate(`document.body.classList.add('hide-problem')`);
+  await sleep(200);
+  for (const [selector, pane, dx, dy] of [
+    ['.split-col[aria-label*="Editor and coach"]', '.coach', -60, 0],
+    ['.split-row', '.ws-results', 0, -40],
+  ]) {
+    const before = await evaluate(`(() => {
+      const handle = document.querySelector(${JSON.stringify(selector)});
+      const pane = document.querySelector(${JSON.stringify(pane)});
+      if (!handle || handle.hidden || !pane) return null;
+      const r = handle.getBoundingClientRect(); const p = pane.getBoundingClientRect();
+      return {x:r.x+r.width/2,y:r.y+r.height/2,width:p.width,height:p.height};
+    })()`);
+    if (!before) throw new Error('Divider missing with Problem collapsed: ' + selector);
+    await send('Input.dispatchMouseEvent', {type:'mousePressed',x:before.x,y:before.y,button:'left',clickCount:1});
+    await send('Input.dispatchMouseEvent', {type:'mouseMoved',x:before.x+dx,y:before.y+dy,button:'left',buttons:1});
+    await send('Input.dispatchMouseEvent', {type:'mouseReleased',x:before.x+dx,y:before.y+dy,button:'left',clickCount:1});
+    const after = await evaluate(`(() => {const r=document.querySelector(${JSON.stringify(pane)}).getBoundingClientRect(); return {width:r.width,height:r.height};})()`);
+    if ((dx && after.width <= before.width) || (dy && after.height <= before.height)) throw new Error('Pointer resize did not grow ' + pane);
+  }
+  const keyboardNavigation = await evaluate(`(() => {
+    const before = location.hash;
+    document.querySelector('.split-row').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',shiftKey:true,bubbles:true}));
+    return before !== location.hash;
+  })()`);
+  if (keyboardNavigation) throw new Error('Resize shortcut navigated to another problem');
+  await evaluate(`document.body.classList.remove('hide-problem')`);
   await sleep(400);
 
   // A real conversation, built by the panel itself from a stubbed stream — not by hand.

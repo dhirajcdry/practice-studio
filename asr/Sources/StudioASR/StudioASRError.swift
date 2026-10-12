@@ -13,7 +13,7 @@ struct StudioASRError: Error {
     ///   - `no_audio`           — no audio track at all, or the audio is pure silence
     ///   - `audio_too_short`    — decodable audio shorter than the model's minimum window
     ///   - `empty_transcript`   — audio had signal but the model produced no words
-    ///   - `model_unavailable`  — the Parakeet model could not be downloaded or loaded
+    ///   - `model_unavailable`  — the Whisper model could not be downloaded or loaded
     ///   - `transcription_failed` — the model threw while transcribing
     let kind: String
     let message: String

@@ -394,6 +394,82 @@ try {
     );
   }
 
+  /* Layout and lifecycle regressions, using only the disposable interview. */
+  for (const theme of ['light','editorial','ink','slate','blueprint','phosphor']) {
+    await evaluate(`import('/js/settings.js').then(m=>m.setSetting('theme', '${theme}'))`);
+    await sleep(80);
+    const metrics = await evaluate(`(() => {
+      const mode=document.querySelector('.dz-modes').getBoundingClientRect();
+      const buttons=[...document.querySelectorAll('.dz-mode')].map(n=>n.getBoundingClientRect());
+      const compose=document.querySelector('.dz-compose').getBoundingClientRect();
+      const side=document.querySelector('.dz-side').getBoundingClientRect();
+      return {fits:buttons.every(b=>b.left>=mode.left&&b.right<=mode.right&&b.height>=32),bottom:compose.bottom<=side.bottom+1,
+        theme:document.body.classList.contains('is-dark')===Boolean(document.querySelector('.excalidraw.theme--dark'))};
+    })()`);
+    if(metrics.fits&&metrics.bottom&&metrics.theme)ok(theme+': controls fit, composer stays visible, board theme updates');
+    else bad(theme+': layout and live theme',JSON.stringify(metrics));
+  }
+  for (const width of [1024,768,390]) {
+    await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+    await sleep(100);
+    const fits=await evaluate(`document.documentElement.scrollWidth<=innerWidth && document.querySelector('.dz-input').getBoundingClientRect().width>200 && document.querySelector('.dz-canvas').getBoundingClientRect().height>=300`);
+    if(fits)ok(width+'px: board and answer controls remain usable without horizontal overflow');
+    else bad(width+'px responsive layout','overflow or undersized controls');
+  }
+  await send('Emulation.setDeviceMetricsOverride',{width:1600,height:1000,deviceScaleFactor:1,mobile:false});
+  const pauseWorks=await evaluate(`(async()=>{
+    document.querySelector('.dz-pause').click();
+    for(let i=0;i<100 && document.querySelector('.dz-pause').textContent!=='Resume';i++) await new Promise(r=>setTimeout(r,25));
+    const before=document.querySelector('.dz-clock').textContent;
+    await new Promise(r=>setTimeout(r,1200));
+    const frozen=before===document.querySelector('.dz-clock').textContent;
+    const locked=document.querySelector('.dz-input').disabled && document.querySelector('.dz-send').disabled;
+    document.querySelector('.dz-pause').click();
+    for(let i=0;i<100 && document.querySelector('.dz-pause').textContent!=='Pause';i++) await new Promise(r=>setTimeout(r,25));
+    return frozen && locked && !document.querySelector('.dz-input').disabled && document.querySelector('.dz-pause').textContent==='Pause';
+  })()`);
+  if(pauseWorks)ok('Pause freezes the clock and input; Resume continues the same interview');
+  else bad('pause/resume controls','timer or controls did not transition');
+
+  const voiceRecovery=await evaluate(`(async()=>{
+    const original=navigator.mediaDevices.getUserMedia;
+    navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Test permission denied','NotAllowedError');};
+    document.querySelector('[data-mode="type"]').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));
+    await new Promise(r=>setTimeout(r,100));
+    const panel=document.querySelector('.dz-voice');
+    const visible=!panel.hidden && !panel.querySelector('.vc-status').hidden && panel.querySelector('.vc-status').getBoundingClientRect().height>0;
+    document.querySelector('[data-mode="voice"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}));
+    navigator.mediaDevices.getUserMedia=original;
+    return visible && !document.querySelector('.dz-type').hidden && document.querySelector('[data-mode="type"]').tabIndex===0;
+  })()`);
+  if(voiceRecovery)ok('keyboard mode switching exposes microphone errors and returns to typing');
+  else bad('voice permission recovery','hidden error or inaccessible mode controls');
+
+  const failedDebrief=await evaluate(`(async()=>{
+    const original=window.fetch;
+    window.fetch=(url,options)=>String(url)==='/api/design/done'
+      ?Promise.resolve(new Response(JSON.stringify({error:{message:'Test debrief unavailable'}}),{status:503,headers:{'content-type':'application/json'}}))
+      :original(url,options);
+    document.querySelector('.dz-done').click();
+    await new Promise(r=>setTimeout(r,100));
+    window.fetch=original;
+    return !document.querySelector('.dz-done').disabled && !document.querySelector('.dz-compose').hidden && document.querySelector('.dz-err').textContent.includes('Test debrief unavailable');
+  })()`);
+  if(failedDebrief)ok('failed debrief leaves the interview open and retryable');
+  else bad('failed debrief recovery','interview was incorrectly finalized');
+  const complete=await evaluate(`(async()=>{
+    const original=window.fetch;
+    window.fetch=(url,options)=>String(url)==='/api/design/done'
+      ?Promise.resolve(new Response('event: token\\ndata: {"text":"Test debrief"}\\n\\nevent: done\\ndata: {}',{headers:{'content-type':'text/event-stream'}}))
+      :original(url,options);
+    document.querySelector('.dz-done').click();
+    await new Promise(r=>setTimeout(r,100));
+    window.fetch=original;
+    return document.querySelector('.dz-done').disabled && document.querySelector('.dz-compose').hidden;
+  })()`);
+  if(complete)ok('successful debrief closes the composer, including a final SSE event without a blank line');
+  else bad('successful debrief lifecycle','composer still accepts answers');
+
   /* ---- 7. a finished interview opens read-only ---- */
 
   const review = await evaluate(`(async () => {

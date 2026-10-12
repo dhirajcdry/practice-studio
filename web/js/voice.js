@@ -24,7 +24,7 @@ import { transcribeAudio, logSessionEvent } from './api.js';
 /** A hard ceiling, so a stuck key cannot leave the microphone open all afternoon. */
 const MAX_TAKE_MS = 5 * 60 * 1000;
 /** Below this there is nothing to transcribe — say so rather than posting silence. */
-const MIN_TAKE_MS = 500;
+const PREVIEW_MS = 1500;
 
 /* ============================== shaping (pure) ============================== */
 
@@ -212,11 +212,12 @@ export function createVoiceControl({
     'aria-label': 'Record a message for the coach. Click again to stop.',
   }, [micGlyph(), talkLabel]);
 
-  const status = el('div', { class: 'vc-status', hidden: true });
+  const status = el('div', { class: 'vc-status', hidden: true, role: 'status' });
+  const preview = el('div', { class: 'vc-preview', hidden: true, 'aria-label': 'Live transcript preview' });
 
   const root = el('div', { class: 'vc' }, [
     el('div', { class: 'vc-row' }, [talkButton, el('span', { class: 'spacer' }), indicator]),
-    status,
+    preview, status,
   ]);
 
   function note(tone, head, body) {
@@ -225,7 +226,8 @@ export function createVoiceControl({
     status.className = 'vc-status ' + (tone || '');
     replace(status, [
       head ? el('span', { class: 'mono vc-statushead', text: head }) : null,
-      el('span', { class: 'vc-statusbody', text: body }),
+      body ? el('span', { class: 'vc-statusbody', text: body }) : null,
+      el('button', { class: 'vc-dismiss', type: 'button', text: '×', 'aria-label': 'Dismiss microphone notice', onclick: () => note('', '', '') }),
     ]);
   }
 
@@ -282,11 +284,41 @@ export function createVoiceControl({
   let lastLoudAt = 0;
   let phraseStartedAt = 0;
   let phraseHadSpeech = false;
+  let closing = 0;
   let sending = 0;             // phrases in flight
   let seq = 0;                 // order in, order out
   let nextToEmit = 0;
   const held = new Map();      // seq -> text, waiting for its turn
   let spokenChars = 0;
+  let takeError = false;
+  let previewBusy = false;
+  let lastPreviewAt = 0;
+  let previewController = null;
+
+  function clearPreview() {
+    preview.hidden = true;
+    preview.textContent = '';
+    previewController?.abort();
+  }
+
+  async function showPreview(current, blob) {
+    if (previewBusy || sending || disposed || recorder !== current || state !== 'recording') return;
+    previewBusy = true;
+    const controller = new AbortController();
+    previewController = controller;
+    try {
+      const result = await transcribeAudio(getSlug(), blob, {
+        filename: `preview.${extensionFor(current.mimeType)}`, mode: 'dictation', signal: controller.signal,
+      });
+      if (!disposed && !controller.signal.aborted && recorder === current && state === 'recording' && result.ok) {
+        preview.textContent = result.text;
+        preview.hidden = false;
+      }
+    } finally {
+      previewBusy = false;
+      if (previewController === controller) previewController = null;
+    }
+  }
 
   function closeAudio() {
     clearInterval(levelTimer); levelTimer = null;
@@ -317,16 +349,20 @@ export function createVoiceControl({
 
       // The same signal, offered to whoever is listening. The design interview uses it
       // to decide the turn is over; nothing here needs to know that.
-      onLevel({ loud, sinceLoud: now - lastLoudAt, pending: sending });
+      onLevel({ loud, sinceLoud: now - lastLoudAt, pending: sending + closing });
 
       const decision = phraseDecision({
         age: now - phraseStartedAt,
         sinceLoud: now - lastLoudAt,
         hadSpeech: phraseHadSpeech,
       });
-      // 'drop' recycles a buffer of pure room tone rather than posting it.
+      // Periodically check quiet audio too: metering must not discard a soft voice.
       if (decision === 'cut') cutPhrase();
-      else if (decision === 'drop') cutPhrase({ drop: true });
+      else if (decision === 'drop') cutPhrase({ force: true });
+      else if (now - lastPreviewAt >= PREVIEW_MS && now - phraseStartedAt >= PREVIEW_MS && !previewBusy && !sending) {
+        lastPreviewAt = now;
+        recorder?.requestData();
+      }
     }, 100);
   }
 
@@ -334,21 +370,25 @@ export function createVoiceControl({
   function cutPhrase({ drop = false, final = false, force = false } = {}) {
     if (!recorder) return;
     const current = recorder;
+    previewController?.abort();
     const hadSpeech = (phraseHadSpeech || force) && !drop;
     const startedThisPhrase = phraseStartedAt;
     recorder = null;
+    closing += 1;
 
     current.addEventListener('stop', () => {
+      closing -= 1;
+      if (disposed) return;
       const blob = chunks.length ? new Blob(chunks, { type: current.mimeType || 'audio/webm' }) : null;
       chunks = [];
       if (hadSpeech && blob && blob.size > 0) {
         sendPhrase(blob, current.mimeType, Date.now() - startedThisPhrase);
       }
       if (!final && state === 'recording' && stream) beginPhrase();
-      else if (final) settle();
+      else settle();
     }, { once: true });
 
-    try { current.stop(); } catch { if (final) settle(); }
+    try { current.stop(); } catch { closing -= 1; settle(); }
   }
 
   function beginPhrase() {
@@ -364,10 +404,18 @@ export function createVoiceControl({
     }
     chunks = [];
     phraseStartedAt = Date.now();
+    lastPreviewAt = phraseStartedAt;
     lastLoudAt = phraseStartedAt;
     phraseHadSpeech = false;
+    const current = recorder;
     recorder.addEventListener('dataavailable', (event) => {
-      if (event.data && event.data.size > 0) chunks.push(event.data);
+      if (event.data && event.data.size > 0) {
+        chunks.push(event.data);
+        if (recorder === current && state === 'recording') {
+          // Include the container header and all preceding chunks: a lone WebM chunk is not decodable.
+          showPreview(current, new Blob(chunks, { type: current.mimeType || 'audio/webm' })).catch(() => {});
+        }
+      }
     });
     recorder.addEventListener('error', () => {
       releaseMicrophone();
@@ -391,8 +439,12 @@ export function createVoiceControl({
       if (shaped.ok) text = result.text;
       // A phrase that came back empty is not an error worth interrupting for: you
       // paused, or coughed. The take as a whole is checked when it ends.
-      else if (shaped.tone === 'err') note(shaped.tone, shaped.head, shaped.body);
+      else if (!['no_audio', 'empty_transcript'].includes(result.kind)) {
+        takeError = true;
+        note(shaped.tone, shaped.head, shaped.body);
+      }
     } catch {
+      takeError = true;
       note('err', 'Transcription failed', 'That phrase could not be transcribed. The microphone is still open.');
     }
     sending -= 1;
@@ -412,6 +464,7 @@ export function createVoiceControl({
       nextToEmit += 1;
       if (disposed) continue;
       if (entry.text && entry.text.trim() !== '') {
+        clearPreview();
         spokenChars += entry.text.length;
         onTranscript(entry.text.trim(), { mode, durationSeconds: Math.round(entry.ms / 1000), live: true });
       }
@@ -420,11 +473,13 @@ export function createVoiceControl({
 
   /** The take is over and nothing is still in flight: close the books. */
   function settle() {
-    if (state !== 'working' || sending > 0 || recorder) return;
+    if (state !== 'working' || sending > 0 || closing > 0 || recorder) return;
     setState('idle');
     const elapsed = Date.now() - startedAt;
+    clearPreview();
+    if (takeError) return;
     if (spokenChars === 0) {
-      note('warn', 'Nothing heard', 'The microphone was open but no speech was transcribed. Nothing was added to the box.');
+      note('warn', '', 'No speech detected. Try again.');
     } else {
       note('', '', '');
       // A system design interview has no problem slug and keeps its own record, so
@@ -446,6 +501,8 @@ export function createVoiceControl({
       return;
     }
     wantRecording = true;
+    note('', '', '');
+    clearPreview();
     setState('opening');
 
     let granted;
@@ -476,6 +533,7 @@ export function createVoiceControl({
     nextToEmit = 0;
     held.clear();
     spokenChars = 0;
+    takeError = false;
     sending = 0;
     noiseFloor = 0.004;
 
@@ -484,7 +542,8 @@ export function createVoiceControl({
       // A context created without a gesture starts suspended, and a suspended analyser
       // reports pure silence forever — which reads as "you never spoke" and throws the
       // whole take away. Ask for it to run before trusting a single sample.
-      if (audioCtx.state === 'suspended') await audioCtx.resume().catch(() => {});
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      if (audioCtx.state !== 'running') throw new Error('Audio meter unavailable');
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 1024;
       samples = new Float32Array(analyser.fftSize);
@@ -494,6 +553,7 @@ export function createVoiceControl({
       closeAudio();
     }
 
+    if (!wantRecording || disposed) { releaseMicrophone(); setState('idle'); return; }
     startedAt = Date.now();
     setState('recording');
     beginPhrase();
@@ -502,7 +562,7 @@ export function createVoiceControl({
     clock.textContent = '0:00';
     ticker = setInterval(() => { clock.textContent = formatTake(Date.now() - startedAt); }, 250);
     if (analyser) watchLevel();
-    else levelTimer = setInterval(() => { if (state === 'recording') cutPhrase(); }, 6000);
+    else levelTimer = setInterval(() => { if (state === 'recording') cutPhrase({ force: true }); }, 3000);
     capTimer = setTimeout(() => {
       if (state !== 'recording') return;
       stop();
@@ -522,7 +582,7 @@ export function createVoiceControl({
     setState('working');
     // If the meter never heard anything all take, send the audio anyway rather than
     // silently discarding it. Metering is an optimisation; the recording is the point.
-    if (last) cutPhrase({ final: true, force: seq === 0 && Date.now() - startedAt > MIN_PHRASE_MS });
+    if (last) cutPhrase({ final: true, force: Date.now() - phraseStartedAt > 500 });
     releaseMicrophone();
     if (!last) settle();
   }
@@ -546,7 +606,7 @@ export function createVoiceControl({
   });
 
   // A tab that goes away mid-take should not leave the microphone live behind it.
-  window.addEventListener('blur', () => { if (state === 'recording') stop(); });
+  window.addEventListener('blur', release);
 
   if (!voiceSupported()) {
     talkButton.disabled = true;
@@ -555,12 +615,16 @@ export function createVoiceControl({
 
   return {
     root,
+    status,
+    preview,
     start,
     isRecording: () => state === 'recording' || state === 'opening',
+    isBusy: () => state !== 'idle',
     currentMode: () => mode,
     stop,
     dispose() {
       disposed = true;
+      clearPreview();
       wantRecording = false;
       try { recorder?.stop(); } catch { /* noop */ }
       recorder = null;

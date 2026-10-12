@@ -191,7 +191,7 @@ test('GET /api/problems/:slug — unreachable with no cache is 503 LEETCODE_UNRE
       const { status, json } = await call('/api/problems/two-sum');
       assert.equal(status, 503);
       assert.equal(json.error.code, 'LEETCODE_UNREACHABLE');
-      assert.match(json.error.message, /still works/);
+      assert.equal(json.error.message, 'Could not reach LeetCode. Check your network connection.');
       assert.doesNotMatch(json.error.message, /at .*\.mjs:/, 'no stack trace in a user-facing message');
     },
   );
@@ -359,3 +359,9 @@ test('static: serves studio/web when present, and cannot be escaped', async () =
   await fsp.rm(web, { recursive: true, force: true });
   await fsp.rm(outsideDir, { recursive: true, force: true });
 });
+
+ test('demo cache misses have a distinct code instead of suggesting a network retry',async()=>{
+  await withServer({fetchQuestionImpl:async()=>{throw new LeetCodeError('No cached statement.',{kind:'demo-unavailable'});}},async({call})=>{
+    const {status,json}=await call('/api/problems/two-sum');assert.equal(status,503);assert.equal(json.error.code,'DEMO_CONTENT_UNAVAILABLE');assert.equal(json.error.message,'No cached statement.');
+  });
+ });

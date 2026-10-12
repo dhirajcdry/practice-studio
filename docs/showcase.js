@@ -1,10 +1,10 @@
 const themes = [
-  ['paper', 'Paper', '#f7f7f7', 'a quiet desk, warm paper, understated detail'],
-  ['editorial', 'Editorial', '#f4efe6', 'journal typography, double rules, oxblood accents'],
+  ['paper', 'Paper', '#f3f4f6', 'a quiet canvas, clean type, blue focus'],
+  ['editorial', 'Editorial', '#f4efe6', 'serif annotations, dashed rules, oxblood accents'],
   ['ink', 'Ink', '#1b49f5', 'electric blue, bold contrast, hard edges'],
-  ['slate', 'Slate', '#353b44', 'graphite surfaces, warm orange details'],
-  ['blueprint', 'Blueprint', '#17395a', 'a midnight drafting table with cyan instrument marks'],
-  ['phosphor', 'Phosphor', '#7effa8', 'terminal green, amber signals, crisp outlines'],
+  ['slate', 'Slate', '#91a7ff', 'graphite surfaces, blue focus'],
+  ['blueprint', 'Blueprint', '#17395a', 'navy engineering surfaces with cyan marks'],
+  ['phosphor', 'Phosphor', '#7effa8', 'compact mono logs, green text, amber signals'],
 ];
 const controls = document.querySelector('.theme-controls');
 for (const [id, name, color, description] of themes) {

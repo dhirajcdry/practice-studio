@@ -143,7 +143,7 @@ test('an uncached problem offline says so honestly, and does not pretend', async
     const { status, json } = await call('/api/problems/3sum');
     assert.equal(status, 503);
     assert.equal(json.error.code, 'LEETCODE_UNREACHABLE');
-    assert.match(json.error.message, /everything else in the app still works/);
+    assert.match(json.error.message, /network is unreachable/);
     assert.ok(networkCalls() > 0, 'a miss should at least try');
   });
 });
