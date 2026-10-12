@@ -141,7 +141,9 @@ function renderSolutionInto(body, entry, result) {
           `About 26 of the 250 have no Python reference in the NeetCode bundle, and ${entry.title} is one of them.`,
           entry.hasArticle
             ? 'The written article covers this problem, so start there.'
-            : 'There is no local article for this problem either. You can check NeetCode using the link in the problem panel.',
+            : (entry.youtubeVideoId
+              ? 'There is no local article for this problem either. The video walkthrough (the Video button above) is the remaining reference.'
+              : 'There is no local article for this problem either. You can check NeetCode using the link in the Links panel.'),
         ]
         : [result.message],
       actions,
@@ -247,6 +249,12 @@ export function renderProblem(entry, context) {
     el('div', { class: 'paneltoggles' }, [
       panelToggle(entry, 'solution', 'Solution', 's', entry.hasPythonSolution),
       panelToggle(entry, 'article', 'Article', 'a', entry.hasArticle),
+      // NeetCode's walkthrough lives on YouTube, so this one leaves the app.
+      entry.youtubeVideoId ? el('a', {
+        class: 'ptoggle', target: '_blank', rel: 'noopener noreferrer',
+        href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`,
+        text: 'Video ↗',
+      }) : null,
     ]),
   ]);
 
@@ -263,6 +271,11 @@ export function renderProblem(entry, context) {
       href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`,
       text: 'NeetCode ↗',
     }),
+    entry.youtubeVideoId ? el('a', {
+      class: 'extlink', target: '_blank', rel: 'noopener noreferrer',
+      href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`,
+      text: 'Video walkthrough ↗',
+    }) : null,
   ]));
   // Phase 2: the problem — heading, statement, quick facts — on the left, the code
   // workspace pinned full-height on the right, so both are in one glance. The hero

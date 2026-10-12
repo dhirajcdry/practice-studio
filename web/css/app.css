@@ -340,6 +340,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
   padding:7px 14px;border:1px solid var(--hair-20);border-radius:8px;background:var(--card);color:var(--ink-70);
   transition:background .12s,color .12s,border-color .12s;
 }
+a.ptoggle{text-decoration:none}
 .ptoggle:hover{border-color:var(--ink);color:var(--ink)}
 .ptoggle[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .ptoggle kbd{font-family:var(--mono);font-size:9px;border:1px solid currentColor;opacity:.5;border-radius:3px;padding:0 4px}
