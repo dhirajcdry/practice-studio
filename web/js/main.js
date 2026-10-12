@@ -392,6 +392,8 @@ function setSourceLabel() {
   dot.dataset.state = api.demo ? 'mock' : api.mode;
   label.textContent = api.demo ? 'Demo' : api.mode === 'live' ? 'Live' : 'Sample data';
   label.title = api.demo ? 'Demo workspace: local runs and scripted coaching' : api.mode === 'live' ? 'Served by the studio server' : api.reason;
+  // Live is the normal case and needs no badge; only say so when the data is not yours.
+  document.getElementById('srcCell').hidden = api.mode === 'live' && !api.demo;
 }
 
 async function boot() {
@@ -410,6 +412,7 @@ async function boot() {
       'That means files are missing from web/mock/, so there is nothing this page can show.',
     ])));
     document.getElementById('srcLabel').textContent = 'Failed';
+    document.getElementById('srcCell').hidden = false;
     return;
   }
 
