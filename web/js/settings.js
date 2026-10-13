@@ -14,8 +14,8 @@ export const THEMES = [
   { id: 'studio', name: 'Studio', blurb: 'Clean and docked. Panes meet edge to edge.', light: { paper: '#F3F4F6', ink: '#111111', accent: '#355DCC' }, dark: { paper: '#131518', ink: '#E8EAED', accent: '#91A7FF' } },
   { id: 'desk', name: 'Desk', blurb: 'Soft and rounded. Panes float on warm paper.', light: { paper: '#F6F4F0', ink: '#181818', accent: '#BD5F3C' }, dark: { paper: '#171513', ink: '#EEE8E0', accent: '#E2875F' } },
   { id: 'editorial', name: 'Editorial', blurb: 'Serif prose, double rules, a printed page.', light: { paper: '#F4EFE6', ink: '#1A1614', accent: '#9B2C2C' }, dark: { paper: '#16120F', ink: '#ECE3D4', accent: '#E07B6E' } },
-  { id: 'ink', name: 'Ink', blurb: 'Hard edges, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
-  { id: 'terminal', name: 'Terminal', blurb: 'Monospaced everything. A command log.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#A35F00' }, dark: { paper: '#050B07', ink: '#7EFFA8', accent: '#FFC24B' } },
+  { id: 'ink', name: 'Ink', blurb: 'Black header bars, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
+  { id: 'terminal', name: 'Terminal', blurb: 'Split panes, a status line, [ bracketed ] controls.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#A35F00' }, dark: { paper: '#050B07', ink: '#7EFFA8', accent: '#FFC24B' } },
 ];
 
 export function themeById(id) {

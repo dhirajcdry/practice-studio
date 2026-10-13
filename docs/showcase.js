@@ -2,8 +2,8 @@ const themes = [
   ['studio', 'Studio', '#f3f4f6', 'clean and docked, panes meet edge to edge'],
   ['desk', 'Desk', '#f6f4f0', 'soft and rounded, panes float on warm paper'],
   ['editorial', 'Editorial', '#f4efe6', 'serif annotations, dashed rules, oxblood accents'],
-  ['ink', 'Ink', '#1b49f5', 'electric blue, bold contrast, hard edges'],
-  ['terminal', 'Terminal', '#f3f1e7', 'monospaced everything, a command log'],
+  ['ink', 'Ink', '#1b49f5', 'black header bars, heavy rules, no rounding'],
+  ['terminal', 'Terminal', '#f3f1e7', 'split panes, a status line, bracketed controls'],
 ];
 const controls = document.querySelector('.theme-controls');
 for (const [id, name, color, description] of themes) {

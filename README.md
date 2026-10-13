@@ -106,12 +106,12 @@ the sun/moon button. Both are stored locally.
 <td><a href="docs/images/theme-ink-light.png"><img src="docs/images/theme-ink-light.png" alt="Ink theme, light" width="100%"></a></td>
 <td><a href="docs/images/theme-ink-dark.png"><img src="docs/images/theme-ink-dark.png" alt="Ink theme, dark" width="100%"></a></td>
 </tr>
-<tr><td colspan="2"><strong>Ink</strong> · <sub>Hard edges, heavy rules, no rounding.</sub></td></tr>
+<tr><td colspan="2"><strong>Ink</strong> · <sub>Black header bars, heavy rules, no rounding.</sub></td></tr>
 <tr>
 <td><a href="docs/images/theme-terminal-light.png"><img src="docs/images/theme-terminal-light.png" alt="Terminal theme, light" width="100%"></a></td>
 <td><a href="docs/images/theme-terminal-dark.png"><img src="docs/images/theme-terminal-dark.png" alt="Terminal theme, dark" width="100%"></a></td>
 </tr>
-<tr><td colspan="2"><strong>Terminal</strong> · <sub>Monospaced everything. A command log.</sub></td></tr>
+<tr><td colspan="2"><strong>Terminal</strong> · <sub>Split panes, a status line, [ bracketed ] controls.</sub></td></tr>
 </table>
 
 ## Quick start

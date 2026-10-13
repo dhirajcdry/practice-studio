@@ -11,7 +11,7 @@
 .roadmap-chips .chip{font:12px var(--ui);padding:8px 12px;border:1px solid var(--hair-10);border-radius:var(--r-sm);color:var(--ink-70)}
 .roadmap-chips .chip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .roadmap-level{margin-left:auto;font:12px var(--ui);color:var(--ink-50);white-space:nowrap}
-.roadmap-level select{margin-left:8px;background:var(--card);color:var(--ink);border:1px solid var(--hair-10);border-radius:var(--r-sm);padding:7px;font:12px var(--ui)}
+.roadmap-level select{margin-left:8px;background-color:var(--card);color:var(--ink);border:1px solid var(--hair-10);border-radius:var(--r-sm);padding:7px 30px 7px 10px;font:12px var(--ui)}
 .roadmap-query{font:12px var(--ui);color:var(--ink-70);margin-bottom:14px}.roadmap-query button{margin-left:12px;color:var(--accent)}
 .roadmap-graph-col{border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card);overflow:hidden}
 .roadmap-toolbar{height:42px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 18px;border-bottom:1px solid var(--hair-10)}

@@ -221,7 +221,7 @@ main:has(.dz-view){max-width:none;padding:16px 20px 20px}
 .dz-setup p{font:13px/1.6 var(--ui);color:var(--ink-70);margin:0 0 20px}
 .dz-setup-fields{display:flex;flex-wrap:wrap;gap:16px;align-items:end}
 .dz-setup label{display:flex;flex-direction:column;gap:7px;font:12px var(--ui);color:var(--ink-70)}
-.dz-setup select{background:var(--canvas);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:10px;min-width:150px;font:13px var(--ui)}
+.dz-setup select{background-color:var(--canvas);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:10px 32px 10px 11px;min-width:150px;font:13px var(--ui)}
 
 @media(max-width:1100px) and (min-width:861px){.dz-split{grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:minmax(0,1fr)}}
 @media(max-width:860px){

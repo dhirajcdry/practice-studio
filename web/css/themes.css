@@ -219,6 +219,8 @@ body.theme-editorial.is-dark{
 }
 
 body.theme-ink{
+  --bar-bg:#0A0A0A;
+  --bar-rgb:255,255,255;
   --ink-rgb:10,10,10;
   --on-ink-rgb:237,237,234;
   --on-ink:#EDEDEA;
@@ -256,6 +258,8 @@ body.theme-ink{
 }
 
 body.theme-ink.is-dark{
+  --bar-bg:#F4F4F0;
+  --bar-rgb:11,11,11;
   --ink-rgb:244,244,240;
   --on-ink-rgb:11,11,11;
   --on-ink:#0B0B0B;
@@ -292,6 +296,8 @@ body.theme-ink.is-dark{
 }
 
 body.theme-terminal{
+  --line-bg:#17301F;
+  --line-rgb:243,241,231;
   --ink-rgb:23,48,31;
   --on-ink-rgb:243,241,231;
   --on-ink:#F3F1E7;
@@ -329,6 +335,8 @@ body.theme-terminal{
 }
 
 body.theme-terminal.is-dark{
+  --line-bg:#7EFFA8;
+  --line-rgb:5,11,7;
   --ink-rgb:126,255,168;
   --on-ink-rgb:5,11,7;
   --on-ink:#050B07;
@@ -384,21 +392,71 @@ body.theme-editorial .topbar,body.theme-editorial .editor-tabs{border-bottom:3px
 body.theme-editorial .rr-case,body.theme-editorial .prow{border-bottom:1px dashed var(--hair-20)}
 body.theme-editorial .desc{font-size:15px;line-height:1.8}
 
-body.theme-ink :is(.card,.psec,.dash-card,.roadmap-node,button,.tag,input,textarea,select){border-width:var(--rule)}
-body.theme-ink :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:800;letter-spacing:-.04em}
-body.theme-ink .editor-file{border-top-width:3px}
-body.theme-ink .rr-tab[aria-pressed="true"]{border-bottom-width:3px}
+/* INK — a Swiss poster. The headers of the app are solid black bars (white in dark mode),
+   rules are 2px and black, titles are heavy, and choices are solid chips. The bars are
+   inverted by re-scoping the palette tokens on them, so everything inside (search, nav,
+   the model picker, the file tab) inverts with them without a rule of its own. */
+body.theme-ink :is(.topbar,.editor-tabs,.coach-identity){
+  --ink-rgb:var(--bar-rgb);--ink:rgb(var(--bar-rgb));
+  --ink-70:rgba(var(--bar-rgb),.78);--ink-50:rgba(var(--bar-rgb),.62);--ink-35:rgba(var(--bar-rgb),.45);
+  --hair-20:rgba(var(--bar-rgb),.42);--hair-10:rgba(var(--bar-rgb),.26);--hair-06:rgba(var(--bar-rgb),.14);
+  --canvas:var(--bar-bg);--card:var(--bar-bg);
+  background:var(--bar-bg);color:var(--ink);border-bottom-color:var(--bar-bg)}
+body.theme-ink .topbar{border-bottom:0}
+body.theme-ink .editor-file{border-top-width:4px;border-right:0;font-weight:700}
+body.theme-ink :is(.card,.psec,.dash-card,.roadmap-node,button,.tag,input,textarea,select){border-width:2px}
+body.theme-ink :is(h1,h2,h3){font-weight:800;letter-spacing:-.035em}
+body.theme-ink :is(.viewhead,.dash-head,.roadmap) h1{font-size:44px;letter-spacing:-.05em}
+body.theme-ink.ws-wide .phero h1{font-size:28px;letter-spacing:-.05em}
+body.theme-ink .tag{background:transparent;border:2px solid currentColor;font-weight:700}
+body.theme-ink.ws-wide .tag.pattern{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
+body.theme-ink .rr-tab[aria-pressed="true"]{border-bottom-width:4px;border-bottom-color:var(--ink);font-weight:700}
+body.theme-ink.ws-wide .ws{border-inline:2px solid var(--ink)}
+body.theme-ink.ws-wide .ws>.ws-bar,body.theme-ink.ws-wide .rr-tabs{border-color:var(--ink);border-width:2px}
+body.theme-ink.ws-wide .workspace-rail{border-right:2px solid var(--ink)}
+body.theme-ink.ws-wide .coach{border-left:2px solid var(--ink)}
+body.theme-ink.ws-wide .paneltoggles{border-bottom:2px solid var(--ink)}
+body.theme-ink .workspace-rail button[aria-pressed="true"]{color:var(--ink)}
+body.theme-ink .workspace-rail button[aria-pressed="true"]::before{background:currentColor;width:4px}
 body.theme-ink .settings,body.theme-ink .navmenu,body.theme-ink:not(.ws-wide) .card,body.theme-ink .catalog .psec{box-shadow:var(--shadow)}
 /* Pressed choices go solid. Not tabs and the rail, whose pressed state is an underline or an
    accent mark, and not the day/night switch, whose pressed state just means "dark". */
 body.theme-ink button[aria-pressed="true"]:not(.workspace-rail button,.rr-tab,.coach-tab,.set-daynight),body.theme-ink .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
-
-body.theme-terminal .topbar,body.theme-terminal .editor-tabs,body.theme-terminal .rr-case{border-bottom-style:dashed}
-body.theme-terminal .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
-body.theme-terminal :is(h1,h2,h3),body.theme-terminal :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:600;letter-spacing:0}
-body.theme-terminal .cmsg.reply .cmsg-body{font-size:12px;line-height:1.8}
-
 body.theme-ink .set-card[aria-pressed="true"] :is(.set-cardname,.set-cardblurb){color:var(--solid-fg)}
+
+/* TERMINAL — a TUI in a tmux session. The panes are split windows with a gap between
+   them, the action bar is a vim status line, controls are [ bracketed ] words rather than
+   boxes, and the conversation reads as prompts. */
+body.theme-terminal.ws-wide{--pane-gap:6px}
+body.theme-terminal .topbar,body.theme-terminal .editor-tabs,body.theme-terminal .rr-case{border-bottom-style:dashed}
+@media(min-width:1081px){
+  body.theme-terminal.ws-wide .pbody.with-workspace{padding:6px 6px 6px 0}
+  body.theme-terminal.ws-wide .workspace-rail{border-right:0;background:transparent}
+  body.theme-terminal.ws-wide :is(.pcol,.ws,.coach){border:1px solid var(--hair-20);background:var(--card)}
+  body.theme-terminal.ws-wide .pcol{overflow-y:auto}
+}
+/* The status line: the palette flipped, like vim's. */
+body.theme-terminal.ws-wide .ws>.ws-bar{
+  --ink-rgb:var(--line-rgb);--ink:rgb(var(--line-rgb));
+  --ink-70:rgba(var(--line-rgb),.82);--ink-50:rgba(var(--line-rgb),.66);--ink-35:rgba(var(--line-rgb),.5);
+  --hair-20:rgba(var(--line-rgb),.45);--hair-10:rgba(var(--line-rgb),.3);--hair-06:rgba(var(--line-rgb),.16);
+  --card:var(--line-bg);--canvas:var(--line-bg);
+  background:var(--line-bg);color:var(--ink);border-top:0}
+body.theme-terminal.ws-wide .ws>.ws-bar .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
+body.theme-terminal .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
+body.theme-terminal :is(.ws-bar button,.rr-tab,.coach-tab,.tc-tab){border-color:transparent;background:transparent;box-shadow:none}
+body.theme-terminal :is(.ws-bar button,.rr-tab,.coach-tab,.tc-tab)::before{content:"[";margin-right:3px;opacity:.6}
+body.theme-terminal :is(.ws-bar button,.rr-tab,.coach-tab,.tc-tab)::after{content:"]";margin-left:3px;opacity:.6}
+body.theme-terminal :is(.rr-tab,.coach-tab)[aria-pressed="true"],body.theme-terminal .tc-tab.is-on,body.theme-terminal .ptoggle[aria-pressed="true"]{background:var(--line-bg);color:rgb(var(--line-rgb));border-color:var(--line-bg)}
+body.theme-terminal :is(h1,h2,h3){font-weight:600;letter-spacing:0}
+body.theme-terminal :is(.phero,.viewhead,.dash-head,.roadmap) h1::before{content:"$ ";color:var(--accent)}
+body.theme-terminal.is-dark :is(h1,h2,h3,.wordmark){text-shadow:0 0 8px rgba(var(--ink-rgb),.45)}
+body.theme-terminal .tag,body.theme-terminal .ptoggle{background:transparent;border:1px dashed currentColor}
+body.theme-terminal.ws-wide .ws>.ws-bar .ws-submit{color:var(--ink)}
+body.theme-terminal .cmsg-who::before{content:"# ";color:var(--accent)}
+body.theme-terminal .cmsg.you .cmsg-body::before{content:"> ";color:var(--accent)}
+body.theme-terminal .cmsg.reply .cmsg-body{font-size:12px;line-height:1.8}
+body.theme-terminal .coach-input{caret-color:var(--accent)}
 
 /* Each card previews both modes, independently of the active appearance. */
 .set-seg{display:flex;gap:3px;padding:3px;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--canvas)}
