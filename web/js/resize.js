@@ -8,7 +8,6 @@
 // rather than being grid children — that keeps the column count fixed whether or not the
 // coach is open, and means nothing here has to restructure the DOM it sits in.
 
-import { getSettings } from './settings.js';
 const STORE_KEY = 'studio.layout.v1';
 
 // Below these a pane stops being usable rather than merely small: a statement you cannot
@@ -66,12 +65,6 @@ function resultsHidden() {
 }
 
 function applyColumns(pbody) {
-  if (!isStacked() && getSettings().workspace === 'review') {
-    pbody.style.gridTemplateColumns = problemHidden() && !coachOpen()
-      ? 'minmax(0,1fr)'
-      : `minmax(${MIN.editor}px, ${layout.editor}fr) minmax(320px, ${layout.statement}fr)`;
-    return;
-  }
   if (isStacked()) {
     pbody.style.removeProperty('grid-template-columns');
     return;
@@ -165,15 +158,10 @@ export function installResizers() {
     const stacked = isStacked();
     const problemIsHidden = problemHidden();
     const box = pbody.getBoundingClientRect();
-    const review = getSettings().workspace === 'review';
-    if (handles[0]) {
-      handles[0].between = review ? [wsEl, statementEl] : [statementEl, wsEl];
-      handles[0].keys = review ? ['editor', 'statement'] : ['statement', 'editor'];
-    }
 
     for (const h of handles) {
       const [left, right] = h.between;
-      const hidden = stacked || (problemIsHidden && h.keys[1] !== 'coach') || (h.keys[1] === 'coach' && (!coachOpen() || review)) || right.offsetParent === null;
+      const hidden = stacked || (problemIsHidden && h.keys[1] !== 'coach') || (h.keys[1] === 'coach' && !coachOpen()) || right.offsetParent === null;
       h.el.hidden = hidden;
       if (hidden) continue;
       const a = left.getBoundingClientRect();
@@ -204,7 +192,7 @@ export function installResizers() {
     const totalPx = leftStart + rightStart;
 
     const minLeft = leftKey === 'statement' ? MIN.statement : MIN.editor;
-    const minRight = rightKey === 'statement' && getSettings().workspace === 'review' ? 320 : MIN[rightKey];
+    const minRight = MIN[rightKey];
 
     document.body.classList.add('is-splitting');
     handle.el.setPointerCapture?.(event.pointerId);

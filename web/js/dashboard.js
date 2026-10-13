@@ -546,20 +546,8 @@ function warningsSection(stats) {
 
 function noWorkspaceState() {
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-empty' }, [
-    el('h3', { text: 'There is no practice record yet' }),
-    el('p', {}, [
-      'This screen reads ', el('b', { text: '~/LeetCodeTutor/problems/' }),
-      ', and that folder does not exist yet. That is different from having solved nothing — ',
-      'there is simply nothing on disk to count.',
-    ]),
-    el('p', { text: 'It is created the first time you open a problem in Studio. From then on this page fills itself in:' }),
-    el('ul', {}, [
-      el('li', { text: 'Coverage across all 18 patterns and the Blind 75 / NeetCode 150 / 250 lists.' }),
-      el('li', { text: 'How long you read a problem before you start typing, broken down by pattern.' }),
-      el('li', { text: 'How often you reveal a solution before solving it.' }),
-      el('li', { text: 'How many attempts a solved problem takes you.' }),
-    ]),
-    el('p', { text: 'None of it is estimated. Every number here will trace back to a file you can open and read.' }),
+    el('h3', { text: 'Nothing is recorded yet.' }),
+    el('p', { text: 'This page fills in once you open a problem: coverage by pattern and list, time to first keystroke, solution reveals, and attempts per solve. Every number traces back to a file in ~/LeetCodeTutor.' }),
   ]));
 }
 

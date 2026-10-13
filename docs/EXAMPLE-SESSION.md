@@ -146,11 +146,8 @@ The checked-in [interactive showcase](http://127.0.0.1:4196/showcase/showcase.ht
 the quickest way to browse the scenes once the server is running. Supporting screenshots
 are captured at 3200×2000.
 
-The showcase also compares the three workspace views: Workbench keeps context together,
-Focus clears the editor, and Review brings run evidence forward. The six themes change
-the information treatment from Slate's grouped rows to Paper's quiet surface, Editorial's
-annotations and dashed rules, Ink's strong rules, Blueprint's engineering navy and cyan,
-and Phosphor's compact mono logs.
+The showcase also previews the five themes (Studio, Desk, Editorial, Ink and Terminal),
+each of which has a light and a dark mode.
 
 To regenerate the checked-in screenshots:
 

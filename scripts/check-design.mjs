@@ -395,7 +395,7 @@ try {
   }
 
   /* Layout and lifecycle regressions, using only the disposable interview. */
-  for (const theme of ['light','editorial','ink','slate','blueprint','phosphor']) {
+  for (const theme of ['studio','desk','editorial','ink','terminal']) {
     await evaluate(`import('/js/settings.js').then(m=>m.setSetting('theme', '${theme}'))`);
     await sleep(80);
     const metrics = await evaluate(`(() => {

@@ -117,7 +117,7 @@ try {
     // Retina master images for the checked-in showcase screenshots.
     await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 2, mobile: false });
     await send('Page.addScriptToEvaluateOnNewDocument', { source: `
-      if (!localStorage.getItem('studio.settings.v1')) localStorage.setItem('studio.settings.v1', JSON.stringify({ theme:'slate', codeSize:16, motion:false }));
+      if (!localStorage.getItem('studio.settings.v1')) localStorage.setItem('studio.settings.v1', JSON.stringify({ theme:'studio', mode:'dark', codeSize:16, motion:false }));
     ` });
     await send('Page.navigate', { url: `${origin}/#/p/${SLUG}` });
     await until(() => evaluate(`Boolean(window.monaco?.editor.getModels().length && document.querySelector('.ws-run'))`), 'Editor did not mount');
@@ -126,9 +126,8 @@ try {
       const host=document.querySelector('.ws-host').getBoundingClientRect();
       const bar=document.querySelector('.ws>.ws-bar').getBoundingClientRect();
       const summary=document.querySelector('.attempt-evidence');
-      return bar.top >= host.bottom - 1 && summary.hidden && summary.getBoundingClientRect().height === 0
-        && !document.querySelector('.prail a[href*="youtube.com"]');
-    })()`)) throw new Error('Run controls must follow the editor; walkthrough link must be absent');
+      return bar.top >= host.bottom - 1 && summary.hidden && summary.getBoundingClientRect().height === 0;
+    })()`)) throw new Error('Run controls must follow the editor');
 
     await fsp.mkdir(output, { recursive: true });
     async function shot(name) {
@@ -153,7 +152,6 @@ try {
     await until(() => evaluate(`Boolean(document.querySelector('.coach-compose textarea'))`), 'Coach composer did not mount');
     // Check the untouched starter state before the scripted conversation replaces it.
     await send('Emulation.setDeviceMetricsOverride', { width:1140, height:800, deviceScaleFactor:2, mobile:false });
-    await evaluate(`document.querySelector('[data-workspace="focus"]').click()`); await sleep(100);
     const emptyCoach = await evaluate(`(() => {
       const rect = selector => { const node=document.querySelector(selector); if (!node) return null; const r=node.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,width:r.width,height:r.height}; };
       const first=document.querySelector('.coach-empty')?.firstElementChild?.getBoundingClientRect();
@@ -164,7 +162,6 @@ try {
     }
     await shot('coach-empty.png');
     await send('Emulation.setDeviceMetricsOverride', { width:1600, height:1000, deviceScaleFactor:2, mobile:false });
-    await evaluate(`document.querySelector('[data-workspace="workbench"]').click()`); await sleep(100);
     await evaluate(`(() => {
       const input = document.querySelector('.coach-compose textarea');
       input.value = ${JSON.stringify(EXPLANATION)};
@@ -181,60 +178,16 @@ try {
       const { THEMES } = await import('/js/settings.js');
       return THEMES.map(({ id, name }) => ({ id, name }));
     })()`);
-    for (const theme of themes) {
-      await evaluate(`(async () => {
-        const { setSetting } = await import('/js/settings.js');
-        setSetting('theme', ${JSON.stringify(theme.id)});
-      })()`);
-      await until(() => evaluate(`document.body.classList.contains('theme-${theme.id}') && window.monaco.editor.getModels().length > 0`), `${theme.name} did not apply`);
-      await shot(`theme-${theme.id}.png`);
+    for (const theme of themes) for (const mode of ['light', 'dark']) {
+      await evaluate(`(async () => { const { setSetting } = await import('/js/settings.js'); setSetting('theme', ${JSON.stringify(theme.id)}); setSetting('mode', ${JSON.stringify(mode)}); })()`);
+      await until(() => evaluate(`document.body.classList.contains('theme-${theme.id}') && document.body.classList.contains('is-dark') === ${mode === 'dark'} && window.monaco.editor.getModels().length > 0`), `${theme.name} ${mode} did not apply`);
+      await shot(`theme-${theme.id}-${mode}.png`);
     }
-    // Put a real edit on Monaco's undo stack before rearranging the panes.
-    await evaluate(`(() => {
-      const m = window.monaco.editor.getModels()[0];
-      m.pushStackElement();
-      m.pushEditOperations([], [{range:new window.monaco.Range(1,1,1,1),text:'# layout check\\n'}], () => []);
-      m.pushStackElement();
-    })()`);
-    // Change views through the actual controls. A rearrangement must preserve the
-    // editor's identity, undo history, code, and the existing conversation.
-    await evaluate(`(async () => { const { setSetting } = await import('/js/settings.js'); setSetting('theme', 'slate'); })()`);
-    const chosenTheme = await evaluate(`document.body.className.match(/theme-([\\w-]+)/)?.[1]`);
-    const beforeView = await evaluate(`({id:window.monaco.editor.getModels()[0].id,code:window.monaco.editor.getModels()[0].getValue(),chat:document.querySelector('.coach-log').textContent})`);
-    for (const view of ['focus', 'review', 'workbench']) {
-      await evaluate(`document.querySelector('[data-workspace="${view}"]').click()`);
-      await sleep(200);
-      const state = await evaluate(`(() => {
-        const model=window.monaco.editor.getModels()[0];
-        const bounds=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}};
-        return {id:model.id,code:model.getValue(),chat:document.querySelector('.coach-log').textContent,
-          view:document.body.classList.contains('workspace-${view}'), editor:bounds('.ws'), problem:bounds('.pcol'),coach:bounds('.coach'),host:bounds('.ws-host'),
-          overflow:document.documentElement.scrollWidth>innerWidth,hidden:document.body.classList.contains('hide-problem')};
-      })()`);
-      if (state.id!==beforeView.id || state.code!==beforeView.code || state.chat!==beforeView.chat || !state.view || state.overflow || state.host.height<150) throw new Error(`View lost state or overflows: ${view} ${JSON.stringify(state)}`);
-      if (!await evaluate(`document.body.classList.contains('theme-${chosenTheme}')`)) throw new Error(`${view} changed the chosen theme`);
-      if (view==='focus' && !state.hidden) throw new Error('Focus did not hide the problem');
-      const spacing = await evaluate(`(() => {
-        const summary=document.querySelector('.attempt-evidence').getBoundingClientRect();
-        const bar=document.querySelector('.ws>.ws-bar').getBoundingClientRect();
-        const editor=document.querySelector('.ws').getBoundingClientRect();
-        return {top:summary.top-bar.bottom,left:summary.left-editor.left,right:editor.right-summary.right};
-      })()`);
-      if (spacing.top<8 || spacing.left<12 || spacing.right<12) throw new Error(`Cramped ${view} footer: ${JSON.stringify(spacing)}`);
-
-      if (view==='review' && !(state.editor.x<state.problem.x && state.coach.y>state.problem.y && Math.abs(state.coach.x-state.problem.x)<2)) throw new Error('Review did not create a stacked evidence column');
-      // Screenshots use the original code; a genuine undo must survive each switch.
-      await evaluate(`window.monaco.editor.getModels()[0].undo()`);
-      if (await evaluate(`window.monaco.editor.getModels()[0].getValue()`) !== CODE) throw new Error(`${view} lost undo history`);
-      await shot(`workspace-${view}.png`);
-      await evaluate(`window.monaco.editor.getModels()[0].redo()`);
-    }
-    await evaluate(`(async () => { const { setSetting } = await import('/js/settings.js'); setSetting('theme', 'slate'); })()`);
-    await evaluate(`window.monaco.editor.getModels()[0].undo()`);
+    await evaluate(`(async () => { const { setSetting } = await import('/js/settings.js'); setSetting('theme', 'studio'); setSetting('mode', 'dark'); })()`);
+    const chosenTheme = 'studio';
     for (const width of [1081, 1140, 1180, 1280, 768, 390]) {
       await send('Emulation.setDeviceMetricsOverride', { width, height:800, deviceScaleFactor:2, mobile:false });
-      for (const view of ['focus','review','workbench']) {
-        await evaluate(`document.querySelector('[data-workspace="${view}"]').click()`);
+      {
         await sleep(100);
         const measure=await evaluate(`(() => {
           const rect = selector => { const node=document.querySelector(selector); if (!node) return null; const r=node.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}; };
@@ -250,37 +203,33 @@ try {
         const coachUsable = measure.coach && measure.compose && measure.actions && (!desktop || measure.coach.bottom <= 800) && measure.compose.bottom <= measure.coach.bottom + 1 && measure.actions.bottom <= measure.compose.bottom + 1 && measure.coach.width > 0 && measure.compose.width > 0 && (!desktop || measure.log?.height >= 80);
         const starterVisible = measure.starterTop === null || measure.starterTop >= measure.logTop - 1;
         const settingsSized = measure.settings?.width >= 36 && measure.settings?.height >= 36 && measure.gear?.width >= 20 && measure.gear?.height >= 20;
-        if(measure.overflow || measure.host.height<150 || measure.host.width<250 || !coachUsable || !starterVisible || !settingsSized) throw new Error(`${view} at ${width}px: ${JSON.stringify(measure)}`);
+        if(measure.overflow || measure.host.height<150 || measure.host.width<250 || !coachUsable || !starterVisible || !settingsSized) throw new Error(`Layout at ${width}px: ${JSON.stringify(measure)}`);
       }
     }
     for (const height of [650]) {
       await send('Emulation.setDeviceMetricsOverride', { width:1280, height, deviceScaleFactor:2, mobile:false });
-      for (const view of ['focus','review','workbench']) {
-        await evaluate(`document.querySelector('[data-workspace="${view}"]').click()`); await sleep(100);
+      {
         const measure = await evaluate(`(() => { const r=document.querySelector('.coach')?.getBoundingClientRect(); const c=document.querySelector('.coach-compose')?.getBoundingClientRect(); const a=document.querySelector('.coach-actions')?.getBoundingClientRect(); const l=document.querySelector('.coach-log')?.getBoundingClientRect(); return {overflow:document.documentElement.scrollWidth>innerWidth,coach:r&&{top:r.top,bottom:r.bottom,width:r.width},compose:c&&{top:c.top,bottom:c.bottom},actions:a&&{top:a.top,bottom:a.bottom},log:l&&{height:l.height}}; })()`);
-        if (measure.overflow || !measure.coach?.width || measure.coach.bottom > height || measure.compose.bottom > measure.coach.bottom + 1 || measure.actions.bottom > measure.compose.bottom + 1 || measure.log?.height < 80) throw new Error(`${view} at 1280×${height}: ${JSON.stringify(measure)}`);
+        if (measure.overflow || !measure.coach?.width || measure.coach.bottom > height || measure.compose.bottom > measure.coach.bottom + 1 || measure.actions.bottom > measure.compose.bottom + 1 || measure.log?.height < 80) throw new Error(`Layout at 1280×${height}: ${JSON.stringify(measure)}`);
       }
     }
-    await evaluate(`document.querySelector('[data-workspace="focus"]').click()`);
     await send('Page.reload');
     await until(() => evaluate(`Boolean(document.querySelector('.ws-run') && window.monaco?.editor.getModels().length)`), 'Reload lost the editor');
     if (!await evaluate(`document.body.classList.contains('theme-${chosenTheme}')`)) throw new Error('Reload lost the global theme');
-    if(!await evaluate(`document.body.classList.contains('workspace-focus') && document.body.classList.contains('hide-problem') && document.body.classList.contains('hide-results')`)) throw new Error('Focus did not persist after reload');
     await send('Emulation.setDeviceMetricsOverride', {width:1600,height:1000,deviceScaleFactor:2,mobile:false});
-    await evaluate(`document.querySelector('[data-workspace="workbench"]').click()`);
     await send('Page.navigate', { url: `${origin}/#/` });
-    await until(() => evaluate(`Boolean(document.querySelector('.catalog-overview') && document.querySelector('.catalog .tree-pattern'))`), 'Catalog explorer did not mount');
-    await until(() => evaluate(`!document.querySelector('.catalog-overview').innerText.includes('Loading saved activity')`), 'Catalog progress did not load');
+    await until(() => evaluate(`Boolean(document.querySelector('.catalog-summary') && document.querySelector('.catalog .tree-pattern'))`), 'Catalog explorer did not mount');
+    await until(() => evaluate(`!document.querySelector('.catalog-summary').innerText.includes('Loading your progress')`), 'Catalog progress did not load');
     const explorerState = await evaluate(`(() => {
       const first = document.querySelector('.catalog .tree-pattern');
       const pattern = first?.querySelector('span:not(.tree-count)')?.textContent?.trim();
       first?.click();
       const rows = [...document.querySelectorAll('.catalog .prow')];
       const filtered = rows.length > 0 && [...document.querySelectorAll('.catalog .psec')].every(section => section.querySelector('.pname')?.textContent === pattern ? section.querySelectorAll('.prow').length > 0 : section.querySelectorAll('.prow').length === 0);
-      const overview = document.querySelector('.catalog-overview')?.innerText || '';
+      const overview = document.querySelector('.catalog-summary')?.innerText || '';
       return { pattern, filtered, overview, rows: rows.length };
     })()`);
-    if (!explorerState.filtered || explorerState.rows === 0 || /Loading saved activity/.test(explorerState.overview)) throw new Error(`Catalog pattern filter/progress failed: ${JSON.stringify(explorerState)}`);
+    if (!explorerState.filtered || explorerState.rows === 0 || /Loading your progress/.test(explorerState.overview)) throw new Error(`Catalog pattern filter/progress failed: ${JSON.stringify(explorerState)}`);
     await evaluate(`(() => { const q=document.querySelector('#q'); q.value='duplicate'; q.dispatchEvent(new Event('input',{bubbles:true})); })()`);
     if (!await evaluate(`document.querySelectorAll('.catalog .prow').length > 0 && document.querySelector('.catalog-path')?.innerText.includes('All patterns')`)) throw new Error('Catalog search did not clear the pattern filter or match a problem');
     await evaluate(`(() => { const q=document.querySelector('#q'); q.value=''; q.dispatchEvent(new Event('input',{bubbles:true})); })()`);
@@ -307,7 +256,7 @@ try {
     await evaluate(`document.getElementById('voice').scrollIntoView({behavior:'instant', block:'start'})`);
     await shot('transcription.png');
     await send('Page.navigate', { url: `${origin}/showcase/showcase.html` });
-    await until(() => evaluate(`document.querySelector('.product-stage img')?.complete && document.querySelector('.theme-controls')?.children.length === 6`), 'Showcase did not load');
+    await until(() => evaluate(`document.querySelector('.product-stage img')?.complete && document.querySelector('.theme-controls')?.children.length === 5`), 'Showcase did not load');
     await shot('showcase.png');
     await until(() => evaluate(`document.querySelector('#voice-sample').readyState >= 1 && document.querySelector('#voice-transcript').children.length > 0`), 'Audio sample did not decode');
     await evaluate(`document.querySelector('#voice-sample').currentTime = 1.2`);
@@ -315,7 +264,7 @@ try {
     await evaluate(`document.getElementById('themes').scrollIntoView({behavior:'instant'})`);
     for (const theme of themes) {
       await evaluate(`Array.from(document.querySelectorAll('.theme-controls button')).find(button => button.textContent === ${JSON.stringify(theme.name)}).click()`);
-      await until(() => evaluate(`document.getElementById('theme-image').complete && document.getElementById('theme-image').naturalWidth === 3200 && document.getElementById('theme-image').src.endsWith('theme-${theme.id}.png')`), `Showcase preview failed: ${theme.name}`);
+      await until(() => evaluate(`document.getElementById('theme-image').complete && document.getElementById('theme-image').naturalWidth === 3200 && document.getElementById('theme-image').src.endsWith('theme-${theme.id}-light.png')`), `Showcase preview failed: ${theme.name}`);
     }
     for (const width of [390, 768, 1600]) {
       await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 2, mobile: false });
@@ -328,7 +277,7 @@ try {
       }
     }
     if (errors.length) throw new Error(errors.join('\n'));
-    console.log('Captured 3200×2000 PNG masters, six themes, showcase.png, and validated the audio transcript. Both corrected local cases passed. Coaching is scripted.');
+    console.log('Captured 3200×2000 PNG masters, five themes in both modes, showcase.png, and validated the audio transcript. Both corrected local cases passed. Coaching is scripted.');
   }
 } finally {
   await cleanup();

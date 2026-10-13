@@ -46,19 +46,12 @@ without leaving your place. Connections guide study without locking any problem.
 
 ![Study roadmap with pattern connections and a problem panel](docs/images/roadmap.png)
 
-### Three views for one attempt
+### One workspace, panes on demand
 
-Workbench keeps the problem, editor, evidence, and coach together. Focus clears the
-surrounding panes so you can think in the code. Review brings the latest run and its
-implications forward after a change. Switch views as the attempt moves from solving to
-explaining.
+The problem, editor, results and coach share one screen. Show or hide each pane from the
+rail on the left or with `⌘B`, `⌘J` and `⌘\`; Studio remembers what you left open.
 
-The six themes change the information treatment as well as the surface: Slate groups
-rows, Paper stays quiet and clean, Editorial adds annotations and dashed rules with
-serif prose, Ink uses strong rules, Blueprint reads like a navy-and-cyan engineering
-surface, and Phosphor compresses results into compact mono logs.
-
-![Workbench view](docs/images/workspace-workbench.png) ![Focus view](docs/images/workspace-focus.png) ![Review view](docs/images/workspace-review.png)
+![The workspace with the problem, editor, local run and coach](docs/images/theme-studio-light.png)
 
 ### A coach beside you for the whole attempt
 
@@ -86,26 +79,39 @@ board’s semantic data, including missing connections and changes between turns
 
 ![System-design practice with a URL-shortener diagram and an interviewer follow-up](docs/images/system-design.png)
 
-## Six ways to make it yours
+## Five themes, each light and dark
 
-The interface has six distinct moods, from a warm paper desk to a glowing terminal.
-Open the gear, then choose a theme under **Settings → Theme**. Your choice is stored
-locally and stays the same across Workbench, Focus, Review, and the problem explorer.
-Switching views changes the layout, not your chosen theme.
+A theme changes the character of the whole app: type, corners, rules and how the panes
+sit. Every theme has a light and a dark mode. Choose the theme under **Settings → Theme**
+and the mode under **Settings → Appearance** (System, Light or Dark), or flip the mode with
+the sun/moon button. Both are stored locally.
 
 <table>
 <tr>
-<td><a href="docs/images/theme-paper.png"><img src="docs/images/theme-paper.png" alt="Paper theme" width="100%"></a><br><strong>Paper</strong><br><sub>Clean type, soft surfaces, quiet blue focus.</sub></td>
-<td><a href="docs/images/theme-editorial.png"><img src="docs/images/theme-editorial.png" alt="Editorial theme" width="100%"></a><br><strong>Editorial</strong><br><sub>Laid paper, Palatino, and a deep red accent.</sub></td>
+<td><a href="docs/images/theme-studio-light.png"><img src="docs/images/theme-studio-light.png" alt="Studio theme, light" width="100%"></a></td>
+<td><a href="docs/images/theme-studio-dark.png"><img src="docs/images/theme-studio-dark.png" alt="Studio theme, dark" width="100%"></a></td>
 </tr>
+<tr><td colspan="2"><strong>Studio</strong> · <sub>Clean and docked. Panes meet edge to edge.</sub></td></tr>
 <tr>
-<td><a href="docs/images/theme-ink.png"><img src="docs/images/theme-ink.png" alt="Ink theme" width="100%"></a><br><strong>Ink</strong><br><sub>High contrast, hard rules, electric blue.</sub></td>
-<td><a href="docs/images/theme-slate.png"><img src="docs/images/theme-slate.png" alt="Slate theme" width="100%"></a><br><strong>Slate</strong><br><sub>Graphite surfaces, blue focus, quiet depth.</sub></td>
+<td><a href="docs/images/theme-desk-light.png"><img src="docs/images/theme-desk-light.png" alt="Desk theme, light" width="100%"></a></td>
+<td><a href="docs/images/theme-desk-dark.png"><img src="docs/images/theme-desk-dark.png" alt="Desk theme, dark" width="100%"></a></td>
 </tr>
+<tr><td colspan="2"><strong>Desk</strong> · <sub>Soft and rounded. Panes float on warm paper.</sub></td></tr>
 <tr>
-<td><a href="docs/images/theme-blueprint.png"><img src="docs/images/theme-blueprint.png" alt="Blueprint theme" width="100%"></a><br><strong>Blueprint</strong><br><sub>Cyan engineering marks on deep navy surfaces.</sub></td>
-<td><a href="docs/images/theme-phosphor.png"><img src="docs/images/theme-phosphor.png" alt="Phosphor theme" width="100%"></a><br><strong>Phosphor</strong><br><sub>Compact mono logs, green text, amber signal.</sub></td>
+<td><a href="docs/images/theme-editorial-light.png"><img src="docs/images/theme-editorial-light.png" alt="Editorial theme, light" width="100%"></a></td>
+<td><a href="docs/images/theme-editorial-dark.png"><img src="docs/images/theme-editorial-dark.png" alt="Editorial theme, dark" width="100%"></a></td>
 </tr>
+<tr><td colspan="2"><strong>Editorial</strong> · <sub>Serif prose, double rules, a printed page.</sub></td></tr>
+<tr>
+<td><a href="docs/images/theme-ink-light.png"><img src="docs/images/theme-ink-light.png" alt="Ink theme, light" width="100%"></a></td>
+<td><a href="docs/images/theme-ink-dark.png"><img src="docs/images/theme-ink-dark.png" alt="Ink theme, dark" width="100%"></a></td>
+</tr>
+<tr><td colspan="2"><strong>Ink</strong> · <sub>Hard edges, heavy rules, no rounding.</sub></td></tr>
+<tr>
+<td><a href="docs/images/theme-terminal-light.png"><img src="docs/images/theme-terminal-light.png" alt="Terminal theme, light" width="100%"></a></td>
+<td><a href="docs/images/theme-terminal-dark.png"><img src="docs/images/theme-terminal-dark.png" alt="Terminal theme, dark" width="100%"></a></td>
+</tr>
+<tr><td colspan="2"><strong>Terminal</strong> · <sub>Monospaced everything. A command log.</sub></td></tr>
 </table>
 
 ## Quick start

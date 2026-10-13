@@ -1,16 +1,15 @@
 const themes = [
-  ['paper', 'Paper', '#f3f4f6', 'a quiet canvas, clean type, blue focus'],
+  ['studio', 'Studio', '#f3f4f6', 'clean and docked, panes meet edge to edge'],
+  ['desk', 'Desk', '#f6f4f0', 'soft and rounded, panes float on warm paper'],
   ['editorial', 'Editorial', '#f4efe6', 'serif annotations, dashed rules, oxblood accents'],
   ['ink', 'Ink', '#1b49f5', 'electric blue, bold contrast, hard edges'],
-  ['slate', 'Slate', '#91a7ff', 'graphite surfaces, blue focus'],
-  ['blueprint', 'Blueprint', '#17395a', 'navy engineering surfaces with cyan marks'],
-  ['phosphor', 'Phosphor', '#7effa8', 'compact mono logs, green text, amber signals'],
+  ['terminal', 'Terminal', '#f3f1e7', 'monospaced everything, a command log'],
 ];
 const controls = document.querySelector('.theme-controls');
 for (const [id, name, color, description] of themes) {
   const button = document.createElement('button');
   button.type = 'button';
-  button.setAttribute('aria-pressed', String(id === 'slate'));
+  button.setAttribute('aria-pressed', String(id === 'studio'));
   button.setAttribute('aria-controls', 'theme-image');
   const swatch = document.createElement('i');
   swatch.style.setProperty('--swatch', color);
@@ -19,7 +18,7 @@ for (const [id, name, color, description] of themes) {
   button.addEventListener('click', () => {
     for (const peer of controls.children) peer.setAttribute('aria-pressed', String(peer === button));
     const image = document.getElementById('theme-image');
-    image.src = `images/theme-${id}.png`;
+    image.src = `images/theme-${id}-light.png`;
     image.alt = `${name} theme: ${description}`;
     document.getElementById('theme-caption').textContent = `${name} — ${description}.`;
   });

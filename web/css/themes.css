@@ -1,0 +1,424 @@
+/* Each family keeps its shape and type when the light changes. */
+body.theme-studio{
+  --ink-rgb:17,17,17;
+  --on-ink-rgb:243,244,246;
+  --on-ink:#F3F4F6;
+  --canvas:#F3F4F6;
+  --card:#FFFFFF;
+  --ink:#111111;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#355DCC;
+  --accent-rgb:53,93,204;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#345BCC;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#345BCC;
+  --solid-hover:#2C4FB5;
+  --easy:#2E6B4F;
+  --easy-rgb:46,107,79;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#93650B;
+  --med-rgb:147,101,11;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B33A1A;
+  --hard-rgb:179,58,26;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#7A3E8F;
+  --tok-def:#1E5A8A;
+  --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --texture:none;
+  --r-sm:5px; --r-md:7px; --r-pane:0px; --pane-gap:0px; --display:var(--ui); --prose:var(--ui); --serif:var(--ui);
+}
+
+body.theme-studio.is-dark{
+  --ink-rgb:232,234,237;
+  --on-ink-rgb:19,21,24;
+  --on-ink:#131518;
+  --canvas:#131518;
+  --card:#1B1E22;
+  --ink:#E8EAED;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#91A7FF;
+  --accent-rgb:145,167,255;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#4465ED;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#5474FF;
+  --solid-hover:#5574F0;
+  --easy:#5FCF97;
+  --easy-rgb:95,207,151;
+  --easy-soft:rgba(var(--easy-rgb),.13);
+  --med:#E3B457;
+  --med-rgb:227,180,87;
+  --med-soft:rgba(var(--med-rgb),.13);
+  --hard:#FF7A6B;
+  --hard-rgb:255,122,107;
+  --hard-soft:rgba(var(--hard-rgb),.13);
+  --tok-kw:#C7A0E8;
+  --tok-def:#86C2EC;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --texture:none;
+}
+
+body.theme-desk{
+  --ink-rgb:24,24,24;
+  --on-ink-rgb:246,244,240;
+  --on-ink:#F6F4F0;
+  --canvas:#F6F4F0;
+  --card:#FFFDF9;
+  --ink:#181818;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#BD5F3C;
+  --accent-rgb:189,95,60;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#BD5F3C;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#BD5F3C;
+  --solid-hover:#A9512F;
+  --easy:#3F7A55;
+  --easy-rgb:63,122,85;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#9A6A12;
+  --med-rgb:154,106,18;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B4432A;
+  --hard-rgb:180,67,42;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#A34A2A;
+  --tok-def:#2F5D7C;
+  --shadow:0 1px 2px rgba(24,24,24,.04), 0 10px 30px rgba(24,24,24,.06);
+  --shadow-lift:0 4px 12px rgba(24,24,24,.08), 0 30px 70px rgba(24,24,24,.16);
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='grain'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23grain)' opacity='.04'/></svg>");
+  --r-sm:8px; --r-md:12px; --r-pane:14px; --pane-gap:10px; --display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; --prose:var(--ui); --serif:var(--ui);
+}
+
+body.theme-desk.is-dark{
+  --ink-rgb:238,232,224;
+  --on-ink-rgb:23,21,19;
+  --on-ink:#171513;
+  --canvas:#171513;
+  --card:#211E1B;
+  --ink:#EEE8E0;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#E2875F;
+  --accent-rgb:226,135,95;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#C8663F;
+  --solid-fg:#FFF8F2;
+  --solid-edge:#D97650;
+  --solid-hover:#D57250;
+  --easy:#7BC796;
+  --easy-rgb:123,199,150;
+  --easy-soft:rgba(var(--easy-rgb),.13);
+  --med:#E0B060;
+  --med-rgb:224,176,96;
+  --med-soft:rgba(var(--med-rgb),.13);
+  --hard:#F08A72;
+  --hard-rgb:240,138,114;
+  --hard-soft:rgba(var(--hard-rgb),.13);
+  --tok-kw:#E59A78;
+  --tok-def:#8FB8D8;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);
+  --shadow-lift:0 4px 12px rgba(0,0,0,.5), 0 30px 70px rgba(0,0,0,.6);
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='grain'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23grain)' opacity='.03'/></svg>");
+}
+
+body.theme-editorial{
+  --ink-rgb:26,22,20;
+  --on-ink-rgb:244,239,230;
+  --on-ink:#F4EFE6;
+  --canvas:#F4EFE6;
+  --card:#FBF8F2;
+  --ink:#1A1614;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#9B2C2C;
+  --accent-rgb:155,44,44;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#1A1614;
+  --solid-fg:#FBF8F2;
+  --solid-edge:#1A1614;
+  --solid-hover:#000000;
+  --easy:#2F6B4F;
+  --easy-rgb:47,107,79;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#8A6212;
+  --med-rgb:138,98,18;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#9B2C2C;
+  --hard-rgb:155,44,44;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#6B3F86;
+  --tok-def:#1F5175;
+  --shadow:0 1px 0 rgba(26,22,20,.06);
+  --shadow-lift:0 10px 46px rgba(26,22,20,.16);
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><g stroke='%231A1614' stroke-opacity='0.035'><path d='M0 7h28M0 14h28M0 21h28M0 28h28'/></g><g stroke='%231A1614' stroke-opacity='0.02'><path d='M7 0v28M21 0v28'/></g></svg>");
+  --r-sm:2px; --r-md:2px; --r-pane:0px; --pane-gap:0px; --display:Palatino,"Palatino Linotype","Book Antiqua",Georgia,serif; --prose:var(--display); --serif:var(--display);
+}
+
+body.theme-editorial.is-dark{
+  --ink-rgb:236,227,212;
+  --on-ink-rgb:22,18,15;
+  --on-ink:#16120F;
+  --canvas:#16120F;
+  --card:#1E1915;
+  --ink:#ECE3D4;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#E07B6E;
+  --accent-rgb:224,123,110;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#3A2E26;
+  --solid-fg:#F3EBDD;
+  --solid-edge:#5A4638;
+  --solid-hover:#46372D;
+  --easy:#86C49C;
+  --easy-rgb:134,196,156;
+  --easy-soft:rgba(var(--easy-rgb),.13);
+  --med:#D9B061;
+  --med-rgb:217,176,97;
+  --med-soft:rgba(var(--med-rgb),.13);
+  --hard:#E88576;
+  --hard-rgb:232,133,118;
+  --hard-soft:rgba(var(--hard-rgb),.13);
+  --tok-kw:#D3A6E0;
+  --tok-def:#8DBFE0;
+  --shadow:0 1px 0 rgba(0,0,0,.4);
+  --shadow-lift:0 10px 46px rgba(0,0,0,.4);
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><g stroke='%23ECE3D4' stroke-opacity='.03'><path d='M0 7h28M0 14h28M0 21h28M0 28h28'/></g><g stroke='%23ECE3D4' stroke-opacity='0.02'><path d='M7 0v28M21 0v28'/></g></svg>");
+}
+
+body.theme-ink{
+  --ink-rgb:10,10,10;
+  --on-ink-rgb:237,237,234;
+  --on-ink:#EDEDEA;
+  --canvas:#EDEDEA;
+  --card:#FFFFFF;
+  --ink:#0A0A0A;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.4);
+  --hair-10:rgba(var(--ink-rgb),.22);
+  --hair-06:rgba(var(--ink-rgb),.14);
+  --accent:#1B49F5;
+  --accent-rgb:27,73,245;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#0A0A0A;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#0A0A0A;
+  --solid-hover:#000000;
+  --easy:#0A6B3D;
+  --easy-rgb:10,107,61;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#7A5200;
+  --med-rgb:122,82,0;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B4160F;
+  --hard-rgb:180,22,15;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#5B21A8;
+  --tok-def:#0B4A82;
+  --shadow:3px 3px 0 rgba(10,10,10,.9);
+  --shadow-lift:6px 6px 0 rgba(10,10,10,.9);
+  --texture:none;
+  --r-sm:0px; --r-md:0px; --r-pane:0px; --pane-gap:0px; --rule:1.5px; --ui:"Helvetica Neue",Helvetica,Arial,sans-serif; --display:var(--ui); --prose:var(--ui); --serif:var(--ui);
+}
+
+body.theme-ink.is-dark{
+  --ink-rgb:244,244,240;
+  --on-ink-rgb:11,11,11;
+  --on-ink:#0B0B0B;
+  --canvas:#0B0B0B;
+  --card:#141414;
+  --ink:#F4F4F0;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.4);
+  --hair-10:rgba(var(--ink-rgb),.22);
+  --hair-06:rgba(var(--ink-rgb),.14);
+  --accent:#6E8BFF;
+  --accent-rgb:110,139,255;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#F4F4F0;
+  --solid-fg:#0B0B0B;
+  --solid-edge:#F4F4F0;
+  --solid-hover:#FFFFFF;
+  --easy:#4ED68C;
+  --easy-rgb:78,214,140;
+  --easy-soft:rgba(var(--easy-rgb),.13);
+  --med:#F0B429;
+  --med-rgb:240,180,41;
+  --med-soft:rgba(var(--med-rgb),.13);
+  --hard:#FF5A4E;
+  --hard-rgb:255,90,78;
+  --hard-soft:rgba(var(--hard-rgb),.13);
+  --tok-kw:#9DB0FF;
+  --tok-def:#7FD1C7;
+  --shadow:3px 3px 0 rgba(244,244,240,.85);
+  --shadow-lift:6px 6px 0 rgba(244,244,240,.85);
+  --texture:none;
+}
+
+body.theme-terminal{
+  --ink-rgb:23,48,31;
+  --on-ink-rgb:243,241,231;
+  --on-ink:#F3F1E7;
+  --canvas:#F3F1E7;
+  --card:#FAF8F0;
+  --ink:#17301F;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#A35F00;
+  --accent-rgb:163,95,0;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#17301F;
+  --solid-fg:#F3F1E7;
+  --solid-edge:#17301F;
+  --solid-hover:#0E2215;
+  --easy:#1D7A45;
+  --easy-rgb:29,122,69;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#8A5A00;
+  --med-rgb:138,90,0;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B3261E;
+  --hard-rgb:179,38,30;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#0F5C33;
+  --tok-def:#5A4A00;
+  --shadow:none;
+  --shadow-lift:0 0 40px rgba(23,48,31,.12);
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'><rect width='4' height='1' fill='%2317301F' fill-opacity='0.03'/></svg>");
+  --r-sm:0px; --r-md:0px; --r-pane:0px; --pane-gap:0px; --ui:var(--mono); --display:var(--mono); --prose:var(--mono); --serif:var(--mono);
+}
+
+body.theme-terminal.is-dark{
+  --ink-rgb:126,255,168;
+  --on-ink-rgb:5,11,7;
+  --on-ink:#050B07;
+  --canvas:#050B07;
+  --card:#08130C;
+  --ink:#7EFFA8;
+  --ink-70:rgba(var(--ink-rgb),.7);
+  --ink-50:rgba(var(--ink-rgb),.48);
+  --ink-35:rgba(var(--ink-rgb),.32);
+  --hair-20:rgba(var(--ink-rgb),.26);
+  --hair-10:rgba(var(--ink-rgb),.14);
+  --hair-06:rgba(var(--ink-rgb),.08);
+  --accent:#FFC24B;
+  --accent-rgb:255,194,75;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#0F2A19;
+  --solid-fg:#7EFFA8;
+  --solid-edge:#7EFFA8;
+  --solid-hover:#163A23;
+  --easy:#7EFFA8;
+  --easy-rgb:126,255,168;
+  --easy-soft:rgba(var(--easy-rgb),.1);
+  --med:#FFC24B;
+  --med-rgb:255,194,75;
+  --med-soft:rgba(var(--med-rgb),.1);
+  --hard:#FF6B6B;
+  --hard-rgb:255,107,107;
+  --hard-soft:rgba(var(--hard-rgb),.12);
+  --tok-kw:#CFFFDF;
+  --tok-def:#A8FFC8;
+  --shadow:none;
+  --shadow-lift:0 0 60px rgba(126,255,168,.09);
+  --texture:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'><rect width='4' height='1' fill='%237EFFA8' fill-opacity='0.045'/></svg>");
+}
+
+/* Character uses the same tokens on every page and in both modes. */
+body.theme-studio.is-dark .ws-host{background:#15181C}
+
+body.theme-desk .topbar{border-bottom:0}
+body.theme-desk :is(h1,h2,h3),body.theme-desk :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-family:var(--display);font-weight:500;letter-spacing:-.01em}
+body.theme-desk:not(.ws-wide) .card,body.theme-desk .psec,body.theme-desk .dash-card,body.theme-desk .roadmap-node{border-radius:var(--r-md);box-shadow:var(--shadow)}
+@media(min-width:1081px){
+  body.theme-desk.ws-wide .pbody.with-workspace{padding:10px 10px 10px 0}
+  body.theme-desk.ws-wide .workspace-rail{background:transparent;border-right:0}
+  body.theme-desk.ws-wide :is(.pcol,.ws,.coach){border:1px solid var(--hair-10);border-radius:var(--r-pane);background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+  /* The floating statement still needs its own scrolling region. */
+  body.theme-desk.ws-wide .pcol{overflow-y:auto}
+}
+
+body.theme-editorial :is(h1,h2,h3),body.theme-editorial :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:400}
+body.theme-editorial :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-style:italic}
+body.theme-editorial .topbar,body.theme-editorial .editor-tabs{border-bottom:3px double var(--hair-20)}
+body.theme-editorial .rr-case,body.theme-editorial .prow{border-bottom:1px dashed var(--hair-20)}
+body.theme-editorial .desc{font-size:15px;line-height:1.8}
+
+body.theme-ink :is(.card,.psec,.dash-card,.roadmap-node,button,.tag,input,textarea,select){border-width:var(--rule)}
+body.theme-ink :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:800;letter-spacing:-.04em}
+body.theme-ink .editor-file{border-top-width:3px}
+body.theme-ink .rr-tab[aria-pressed="true"]{border-bottom-width:3px}
+body.theme-ink .settings,body.theme-ink .navmenu,body.theme-ink:not(.ws-wide) .card,body.theme-ink .catalog .psec{box-shadow:var(--shadow)}
+/* Pressed choices go solid. Not tabs and the rail, whose pressed state is an underline or an
+   accent mark, and not the day/night switch, whose pressed state just means "dark". */
+body.theme-ink button[aria-pressed="true"]:not(.workspace-rail button,.rr-tab,.coach-tab,.set-daynight),body.theme-ink .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
+
+body.theme-terminal .topbar,body.theme-terminal .editor-tabs,body.theme-terminal .rr-case{border-bottom-style:dashed}
+body.theme-terminal .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
+body.theme-terminal :is(h1,h2,h3),body.theme-terminal :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:600;letter-spacing:0}
+body.theme-terminal .cmsg.reply .cmsg-body{font-size:12px;line-height:1.8}
+
+body.theme-ink .set-card[aria-pressed="true"] :is(.set-cardname,.set-cardblurb){color:var(--solid-fg)}
+
+/* Each card previews both modes, independently of the active appearance. */
+.set-seg{display:flex;gap:3px;padding:3px;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--canvas)}
+.set-seg button{flex:1;padding:7px 10px;border-radius:var(--r-sm);font:500 12px var(--ui);color:var(--ink-70)}
+.set-seg button[aria-pressed="true"]{background:var(--solid-bg);color:var(--solid-fg)}
+.set-themes .set-cardname{font:600 13px var(--ui)}
+.set-themes .set-cardblurb{font-size:12px;color:var(--ink-70)}
+.theme-preview{display:grid;grid-template-columns:1fr 1fr;height:76px;border:1px solid var(--hair-20);border-radius:var(--preview-radius);overflow:hidden}
+.theme-preview[data-theme-preview="studio"]{--preview-radius:6px}
+.theme-preview[data-theme-preview="desk"]{--preview-radius:12px}
+.theme-preview[data-theme-preview="editorial"]{--preview-radius:2px}
+.theme-preview[data-theme-preview="ink"]{--preview-radius:0px;border-width:1.5px}
+.theme-preview[data-theme-preview="terminal"]{--preview-radius:0px}
+.theme-half{display:block;padding:10px;font-style:normal;background:var(--half-paper);color:var(--half-ink)}
+.theme-half.light{--half-paper:var(--pl-paper);--half-ink:var(--pl-ink);--half-accent:var(--pl-accent)}
+.theme-half.dark{--half-paper:var(--pd-paper);--half-ink:var(--pd-ink);--half-accent:var(--pd-accent)}
+.theme-half b{display:block;border-radius:var(--preview-radius)}
+.theme-title-line{height:6px;width:70%;margin-bottom:10px;background:var(--half-ink)}
+.theme-text-line{height:3px;width:90%;margin-bottom:5px;background:var(--half-ink);opacity:.3}
+.theme-text-line+.theme-text-line{width:65%}
+.theme-accent-bar{height:7px;width:25%;margin-top:7px;background:var(--half-accent)}
+[data-theme-preview="terminal"] .theme-title-line{height:6px;background:transparent;position:relative}
+[data-theme-preview="terminal"] .theme-title-line::before{content:'›_';position:absolute;top:-6px;font:11px var(--mono)}

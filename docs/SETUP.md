@@ -119,7 +119,7 @@ STUDIO_HOME="$HOME/PracticeStudio" STUDIO_PORT=4174 npm start
 | `⌥R` | Start or end a coding attempt |
 | `s` · `a` | Reveal reference solution or article outside the editor |
 
-The settings panel lists shortcuts and the six themes. Reveal actions are logged so they
+The settings panel lists shortcuts, the five themes and the light/dark setting. Reveal actions are logged so they
 can appear in your practice history.
 
 ## Common setup problems

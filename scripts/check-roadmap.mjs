@@ -54,12 +54,12 @@ try {
   await send('Network.setCacheDisabled', {cacheDisabled: true});
   await send('Page.navigate', {url: `${origin}/#/`});
   await until(`Boolean(document.querySelector('.tree-pattern'))`);
-  await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme','slate');})()`);
+  await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme','studio');setSetting('mode','dark');})()`);
   const flash = await evaluate(`(async()=>{let min=1;document.querySelector('.tree-pattern').click();for(let i=0;i<18;i++){await new Promise(requestAnimationFrame);min=Math.min(min,Number(getComputedStyle(document.querySelector('.view')).opacity));}return min;})()`);
   if (flash !== 1) throw Error(`Catalog fades out after click: ${flash}`);
 
   await navigateRoadmap();
-  await until(`document.querySelector('.graph-percentage').textContent.length > 0`);
+  await until(`document.querySelector('.graph-pct').textContent.length > 0`);
   const integrity = await evaluate(`(()=>{const nodes=[...document.querySelectorAll('.roadmap-node')];const text=document.body.innerText;const sums=[...document.querySelectorAll('.node-meta')].map(n=>Number.parseInt(n.textContent,10));return {nodes:nodes.length,sums:sums.reduce((a,b)=>a+b,0),nullText:/\\bnull\\b/i.test(text),empty:[...document.querySelectorAll('.roadmap *')].some(n=>n.childNodes.length===1&&n.textContent.trim()==='null')};})()`);
   if (integrity.nodes !== 18 || integrity.sums !== 250 || integrity.nullText || integrity.empty) throw Error(`Roadmap data integrity failed: ${JSON.stringify(integrity)}`);
   await evaluate(`[...document.querySelectorAll('.roadmap-chips .chip')].find(button=>button.textContent.trim()==='NeetCode 150').click()`); await sleep(120);
@@ -73,7 +73,7 @@ try {
   const transform = await evaluate(`(()=>{const c=document.querySelector('.roadmap-canvas');const before=c.style.transform;document.querySelector('[aria-label="Zoom in"]').click();return [before,c.style.transform];})()`);
   if (!transform[1] || transform[0] === transform[1]) throw Error('Zoom in did not change canvas transform');
 
-  for (const theme of ['paper', 'editorial', 'ink', 'slate', 'blueprint', 'phosphor']) {
+  for (const theme of ['studio', 'desk', 'editorial', 'ink', 'terminal']) {
     await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme',${JSON.stringify(theme)});})()`);
     await until(`document.querySelectorAll('.roadmap-node').length===18`);
     for (const width of [390, 768, 1140, 1600]) {
@@ -96,12 +96,12 @@ try {
   if(!concise)throw Error('Demo fallback repeats error prose or offers a useless retry');
   await evaluate(`window.fetch=window.originalMapFetch;delete window.originalMapFetch`);
   await navigateRoadmap();
-  await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme','slate');})()`);
+  await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme','studio');setSetting('mode','dark');})()`);
   await evaluate(`document.querySelector('.detail-close')?.click();window.scrollTo({top:0,behavior:'instant'});document.querySelector('.graph-btn.fit').click()`);
 
   const screenshot = await send('Page.captureScreenshot', {format: 'png'});
   await writeFile('docs/images/roadmap.png', Buffer.from(screenshot.result.data, 'base64'));
-  console.log('Roadmap checks passed: integrity, selection, zoom, fit, six themes, and 390/768/1140/1600 widths.');
+  console.log('Roadmap checks passed: integrity, selection, zoom, fit, five themes, and 390/768/1140/1600 widths.');
 } finally {
   ws?.close(); chrome.kill(); await sleep(200);
   await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});

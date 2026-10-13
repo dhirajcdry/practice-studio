@@ -1,31 +1,21 @@
-/* Coding surfaces: layout first, colour second. The same live editor and coach are
-   arranged in three ways; no duplicated panes, no decorative pretend IDE controls. */
+/* Coding surfaces share one layout, with independently controlled panes. */
 :root{
-  --ui:"Avenir Next",Avenir,"Segoe UI",sans-serif;
   --surface-inset:rgba(var(--ink-rgb),.025);
 }
-body.ws-wide{font-family:var(--ui);background-image:none}
+body.ws-wide{font-family:var(--ui)}
 body.ws-wide .view{position:relative}
-body.ws-wide .mono{font-size:10px;letter-spacing:.04em;text-transform:none}
 /* One top bar on every page. It used to be restyled separately for the problem page
    and the explorer, slightly differently, and not at all for Progress and System Design,
    so the logo and nav changed font and size as you moved between sections. */
 body .topbar{background:var(--canvas);box-shadow:none;padding-inline:24px;gap:22px}
 body .wordmark .solid,body .wordmark .outline{font-family:var(--ui);font-size:16px;letter-spacing:-.04em}
 body .wordmark .outline{color:var(--ink-50);-webkit-text-stroke:0;font-weight:500}
-body .navbtn,body .navlink{font:500 12px var(--ui);text-transform:none;letter-spacing:0;border:0;border-radius:5px;background:transparent;height:30px;padding:0 11px}
+body .navbtn,body .navlink{font:500 12px var(--ui);text-transform:none;letter-spacing:0;border:0;border-radius:var(--r-sm);background:transparent;height:30px;padding:0 11px}
 body .navbtn .mono,body .navmenu a.mono{font:500 12px var(--ui);text-transform:none;letter-spacing:0}
 body .navbtn:not(.quiet),body .navlink[aria-current="page"]{background:rgba(var(--ink-rgb),.07);color:var(--ink);border-color:transparent}
 body .topmeta #srcLabel{font:500 11px var(--mono);letter-spacing:.04em;text-transform:none}
-body.ws-wide .searchbox{background:var(--card);border-color:var(--hair-10);border-radius:5px;max-width:400px}
-body.ws-wide .searchbox input{font:12px var(--ui);letter-spacing:0;text-transform:none}
-body.ws-wide .rec-main{box-shadow:none}
-body.ws-wide .crumb{display:flex;align-items:center;gap:18px;min-height:44px;margin:0;padding:0 14px;border-bottom:1px solid var(--hair-10)}
-body.ws-wide .crumb button.linkbtn{font:11px var(--ui);letter-spacing:0;text-transform:none;color:var(--ink-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:23ch}
-.workspace-switcher{display:flex;gap:2px;margin-left:auto;flex-shrink:0;padding:3px;border:1px solid var(--hair-10);border-radius:6px;background:var(--surface-inset)}
-body.ws-wide .workspace-switcher button{font:500 11px var(--ui);padding:5px 11px;letter-spacing:0;text-transform:none;border-radius:4px;color:var(--ink-50)}
-body.ws-wide .workspace-switcher button:hover{color:var(--ink)}
-body.ws-wide .workspace-switcher button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(var(--ink-rgb),.1)}
+body.ws-wide .searchbox{background:var(--card);border-color:var(--hair-10);border-radius:var(--r-sm);max-width:400px}
+body.ws-wide .rec-toggle{box-shadow:none}
 .workspace-rail{display:none}
 .workspace-rail button{position:relative;width:44px;height:48px;display:flex;align-items:center;justify-content:center;color:var(--ink-35)}
 .workspace-rail button:hover{color:var(--ink);background:var(--surface-inset)}
@@ -33,8 +23,7 @@ body.ws-wide .workspace-switcher button[aria-pressed="true"]{background:var(--ca
 .workspace-rail button[aria-pressed="true"]::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:2px;background:var(--accent)}
 .workspace-rail svg{width:20px;height:20px}
 .workspace-rail button span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.rail-spacer{flex:1}
-.workspace-switcher button:focus-visible,.workspace-rail button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.workspace-rail button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 
 /* Shared coding typography is compact and legible. Prose lives in the statement
    and conversation; only source code and measured values use monospace. */
@@ -46,24 +35,17 @@ body.ws-wide .pcol>.card{background:transparent}
 body.ws-wide .pcol>*+*{margin-top:0}
 body.ws-wide .phero{padding:22px 20px 16px}
 body.ws-wide .phero .row1{gap:7px}
-body.ws-wide .phero h1{font:600 21px/1.25 var(--ui);letter-spacing:-.04em;text-transform:none}
+body.ws-wide .phero h1{font:600 21px/1.25 var(--display);letter-spacing:-.04em;text-transform:none}
 body.ws-wide .phero .pno{font-size:11px;color:var(--ink-50)}
-body.ws-wide .tag{font:10px/1.5 var(--ui);letter-spacing:0;text-transform:none;border:0;background:var(--surface-inset);padding:2px 6px;border-radius:4px}
+body.ws-wide .tag{font:10px/1.5 var(--ui);letter-spacing:0;text-transform:none;border:0;background:var(--surface-inset);padding:2px 6px;border-radius:var(--r-sm)}
 body.ws-wide .tag.easy{color:var(--easy);background:var(--easy-soft)}
 body.ws-wide .tag.medium{color:var(--med);background:var(--med-soft)}
 body.ws-wide .tag.hard{color:var(--hard);background:var(--hard-soft)}
-body.ws-wide .phero .meta{margin-top:12px}
-body.ws-wide .phero .meta .cell{gap:8px}
-body.ws-wide .phero .meta .cell .v{font:11px var(--ui)}
 /* The toggles close the hero, so they share its surface: no rule above them. */
 body.ws-wide .paneltoggles{padding:0 20px 16px;border-top:0;background:transparent;border-bottom:1px solid var(--hair-10);gap:8px}
-body.ws-wide .ptoggle{font:11px/1 var(--ui);letter-spacing:0;text-transform:none;border-radius:4px;height:26px;padding:0 9px;border-color:var(--hair-10)}
-body.ws-wide .desc{padding:20px;font:13px/1.75 var(--ui)}
-body.ws-wide .desc pre{padding:14px;font-size:12px;border:1px solid var(--hair-10);border-radius:5px;box-shadow:none;background:var(--card)}
-body.ws-wide .prail{padding:0 20px 20px}
-body.ws-wide .railcard{padding:14px;border:1px solid var(--hair-10);border-radius:6px}
-body.ws-wide .railcard h3{margin-bottom:10px;color:var(--ink-70);font-size:10px}
-body.ws-wide .railcard .extlink{display:block;padding:6px 0;min-height:30px;font:12px/1.5 var(--ui);letter-spacing:0;text-transform:none;color:var(--ink-70)}
+body.ws-wide .ptoggle{font:11px/1 var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm);height:26px;padding:0 9px;border-color:var(--hair-10)}
+body.ws-wide .desc{padding:20px;font:13px/1.75 var(--prose)}
+body.ws-wide .desc pre{padding:14px;font-size:12px;border:1px solid var(--hair-10);border-radius:var(--r-sm);box-shadow:none;background:var(--card)}
 body.ws-wide .ws{border-inline:1px solid var(--hair-10);background:var(--card)}
 .editor-tabs{height:37px;min-height:37px;display:flex;align-items:stretch;background:var(--canvas);border-bottom:1px solid var(--hair-10)}
 .editor-file{display:flex;align-items:center;gap:8px;padding:0 18px;font:12px var(--ui);background:var(--card);border-right:1px solid var(--hair-10);border-top:2px solid var(--accent);margin-bottom:-1px;color:var(--ink)}
@@ -75,12 +57,11 @@ body.ws-wide .ws-title{display:none}
 body.ws-wide .ws-probtitle{font:500 12px var(--ui);max-width:28ch}
 body.ws-wide .ws-status{font:11px var(--ui);letter-spacing:0}
 body.ws-wide .ws-status-why{font:10px var(--ui)}
-body.ws-wide .ws-mini,body.ws-wide .ws-run,body.ws-wide .ws-submit{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;padding:5px 10px;border-radius:4px;box-shadow:none}
+body.ws-wide .ws-mini,body.ws-wide .ws-run,body.ws-wide .ws-submit{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;padding:5px 10px;border-radius:var(--r-sm);box-shadow:none}
 body.ws-wide .ws-mini{border-color:var(--hair-10)}
 /* "Problem" is a pane switch, not an action: shown-state is a quiet fill, so Run stays
    the one solid button in the bar. */
 body.ws-wide .prob-toggle[aria-pressed="true"]{background:rgba(var(--ink-rgb),.07);border-color:var(--hair-20);color:var(--ink)}
-body.ws-wide .railcard .tag.quiet{color:var(--ink-70);border-color:var(--hair-20)}
 body.ws-wide .ws-run{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
 body.ws-wide .ws-submit{background:transparent;color:var(--accent);border-color:var(--hair-10)}
 body.ws-wide .ws-mini kbd,body.ws-wide .ws-run kbd{font-size:9px;letter-spacing:0;border:0;padding:0;margin-left:2px}
@@ -89,7 +70,7 @@ body.ws-wide .rr-tabmark{font:11px var(--ui)}
 body.ws-wide .rr-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;padding:7px 10px;border-radius:0;border:0;border-bottom:2px solid transparent}
 body.ws-wide .rr-tab[aria-pressed="true"]{border-bottom-color:var(--accent);background:transparent}
 body.ws-wide .rr-summary{font:500 13px var(--ui)}
-body.ws-wide .tc-tab{font:11px var(--ui);letter-spacing:0;border-radius:4px}
+body.ws-wide .tc-tab{font:11px var(--ui);letter-spacing:0;border-radius:var(--r-sm)}
 /* One solid button per bar. The selected case and the case editor's own Run are
    quiet, so the toolbar's Run stays the obvious action. */
 body.ws-wide .tc-tab.is-on{background:rgba(var(--ink-rgb),.08);border-color:var(--hair-20);color:var(--ink)}
@@ -111,18 +92,6 @@ body.ws-wide .ws>.ws-bar .ws-status{color:var(--ink-70)}
 
 /* Three reading models from the same evidence: grouped records, marginal notes,
    and a command log. Adapted to code/results/conversation, not copied from notes. */
-body.theme-slate.ws-wide .rr-case{margin:5px 10px;border:1px solid var(--hair-06);border-radius:5px;background:var(--surface-inset)}
-body.theme-slate.ws-wide .rr-case:hover{background:var(--accent-soft)}
-body.theme-slate.ws-wide .cmsg.reply{padding-top:16px;border-top:1px solid var(--hair-10)}
-body.theme-editorial.ws-wide .cmsg{padding-left:16px;border-left:1px solid var(--hair-20)}
-body.theme-editorial.ws-wide .cmsg.you .cmsg-body{padding:3px 0 8px;border:0;background:transparent;font:italic 14px/1.8 Palatino,Georgia,serif}
-body.theme-editorial.ws-wide .cmsg-who{font-family:var(--mono);font-weight:400;letter-spacing:.1em}
-body.theme-editorial.ws-wide .rr-case{border-bottom:1px dashed var(--hair-20)}
-body.theme-ink.ws-wide .cmsg-who{display:inline-block;background:var(--solid-bg);color:var(--solid-fg);padding:3px 7px;letter-spacing:.08em}
-body.theme-phosphor.ws-wide .cmsg.you .cmsg-body{border:0;border-left:2px solid var(--accent);border-radius:0;background:transparent;padding:0 12px}
-body.theme-phosphor.ws-wide .cmsg-who{color:var(--accent);font-family:var(--mono)}
-body.theme-phosphor.ws-wide .cmsg.reply .cmsg-body{font-family:var(--mono);font-size:12px;line-height:1.8}
-body.theme-phosphor.ws-wide .rr-case{border-bottom-style:dashed}
 
 /* The coach is a tool beside the file, not a promotional card inside the IDE. */
 body.ws-wide .coach{background:var(--canvas)}
@@ -134,117 +103,56 @@ body.ws-wide .coach-context{margin-top:7px;gap:10px}
 body.ws-wide .coach-context span{font:10px var(--ui);letter-spacing:0;text-transform:none;border:0;padding:0;color:var(--ink-50)}
 body.ws-wide .coach-context span+span::before{content:"·";padding-right:10px;color:var(--ink-35)}
 body.ws-wide .coach-bar{background:transparent;min-height:35px;padding:5px 12px}
-body.ws-wide .coach-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:4px;padding:4px 8px}
+body.ws-wide .coach-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm);padding:4px 8px}
 body.ws-wide .coach-state{font:10px var(--ui);letter-spacing:0}
 body.ws-wide .coach-log{padding:20px 18px}
 body.ws-wide .coach-log>*+*{margin-top:24px}
 body.ws-wide .cmsg-who{font:600 10px var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--ink-50)}
-body.ws-wide .cmsg.you .cmsg-body{font:12px/1.7 var(--ui);border:1px solid var(--hair-10);border-radius:6px;background:var(--card);padding:11px 13px}
-body.ws-wide .cmsg.reply .cmsg-body{font:13px/1.8 var(--ui)}
+body.ws-wide .cmsg.you .cmsg-body{font:12px/1.7 var(--ui);border:1px solid var(--hair-10);border-radius:var(--r-sm);background:var(--card);padding:11px 13px}
+body.ws-wide .cmsg.reply .cmsg-body{font:13px/1.8 var(--prose)}
 body.ws-wide .coach-compose{padding:12px;background:transparent;border-top:1px solid var(--hair-10)}
-body.ws-wide .coach-input{font:12px/1.6 var(--ui);background:var(--card);border-radius:6px;border-color:var(--hair-20);padding:12px}
+body.ws-wide .coach-input{font:12px/1.6 var(--ui);background:var(--card);border-radius:var(--r-sm);border-color:var(--hair-20);padding:12px}
 body.ws-wide .coach-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-body.ws-wide .vc-talk{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:4px}
+body.ws-wide .vc-talk{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm)}
 body.ws-wide .coach-starters{display:grid;gap:8px}
-body.ws-wide .coach-starters button{font:12px var(--ui);letter-spacing:0;text-transform:none;text-align:left;padding:11px 12px;border-radius:5px;border:1px solid var(--hair-10);background:var(--card)}
+body.ws-wide .coach-starters button{font:12px var(--ui);letter-spacing:0;text-transform:none;text-align:left;padding:11px 12px;border-radius:var(--r-sm);border:1px solid var(--hair-10);background:var(--card)}
 body.ws-wide .coach-empty{padding-top:8px}
-body.workspace-review.ws-wide .coach-log:has(.coach-empty){justify-content:flex-start}
 
-/* WORKBENCH — integrated, dense, edge-to-edge. The activity rail and the result
+/* The layout is integrated, dense, edge-to-edge. The activity rail and the result
    dock form a stable frame around the editing surface. */
 @media(min-width:1081px){
   body.ws-wide main{padding:0;max-width:none}
-  body.ws-wide .pbody.with-workspace{padding-bottom:0;margin-left:44px}
-  body.ws-wide .workspace-rail{display:flex;flex-direction:column;position:absolute;left:0;top:44px;bottom:0;width:44px;border-right:1px solid var(--hair-10);background:var(--canvas)}
-  body.ws-wide .crumb{padding-left:58px}
+  body.ws-wide .pbody.with-workspace{gap:var(--pane-gap);padding-bottom:0;margin-left:44px}
+  body.ws-wide .workspace-rail{display:flex;flex-direction:column;position:absolute;left:0;top:0;bottom:0;width:44px;border-right:1px solid var(--hair-10);background:var(--canvas)}
   body.ws-wide .pcol{height:100%;overflow-y:auto}
   body.ws-wide .pcol .card{max-width:none}
 
-  /* FOCUS — centred floating surfaces, larger reading rhythm, no activity rail.
-     The view initially hides the statement and results; both remain one click away. */
-  body.workspace-focus.ws-wide main{padding:0 28px 24px}
-  body.workspace-focus .workspace-rail{display:none}
   /* The rail already has a coach button; the floating one only covered Run and Submit. */
-  body.ws-wide:not(.workspace-focus) .coach-launch{display:none}
-  /* Workbench is docked: a hidden statement gives its width to the editor. */
-  body.workspace-workbench.ws-wide.hide-problem .ws{max-width:none}
-  body.workspace-focus.ws-wide .crumb{border:0;padding:0;min-height:58px}
-  body.workspace-focus.ws-wide .pbody.with-workspace{gap:20px;margin-left:0;max-width:1480px;width:100%;align-self:center}
-  body.workspace-focus.ws-wide .ws{border:1px solid var(--hair-10);border-radius:10px;box-shadow:0 12px 40px rgba(var(--ink-rgb),.06)}
-  body.workspace-focus .editor-tabs{height:42px;min-height:42px;background:var(--card);border-bottom:0}
-  body.workspace-focus .editor-file{border:0;margin:0;font-weight:600}
-  body.workspace-focus .editor-path{display:none}
-  body.workspace-focus.ws-wide .ws>.ws-bar{border-bottom:0;padding:6px 12px 6px 16px}
-  body.workspace-focus.ws-wide .coach{background:transparent;border:0}
-  body.workspace-focus.ws-wide .coach-identity{padding:16px 8px;border:0}
-  body.workspace-focus.ws-wide .coach-eyebrow{font-size:15px}
-  body.workspace-focus.ws-wide .coach-bar{padding-inline:0;border:0}
-  body.workspace-focus.ws-wide .coach-log{padding:24px 8px}
-  body.workspace-focus.ws-wide .coach-compose{padding:12px 0 0;border:0}
-  body.workspace-focus.ws-wide .cmsg.reply .cmsg-body{font-size:14px;line-height:1.85}
-  body.workspace-focus.ws-wide.hide-problem.coach-open .pbody.with-workspace{grid-template-columns:minmax(420px,1fr) minmax(300px,360px)}
-  body.workspace-focus.ws-wide.hide-problem:not(.coach-open) .ws{max-width:1140px;justify-self:center}
+  body.ws-wide .coach-launch{display:none}
+  /* Beats the bar's own `button{display:inline-flex}`; the rail's Problem button does this job here. */
+  body.ws-wide .ws>.ws-bar .prob-toggle{display:none}
+  /* The layout is docked: a hidden statement gives its width to the editor. */
+  body.ws-wide.hide-problem .ws{max-width:none}
 
-  /* REVIEW — editor stays tall on the left. The statement and conversation share
-     the right-hand evidence column, so tracing a result never loses the source. */
-  body.workspace-review.ws-wide .pbody.with-workspace{grid-template-rows:minmax(190px,.42fr) minmax(260px,.58fr)}
-  body.workspace-review.ws-wide .pbody>.ws{grid-column:1;grid-row:1 / span 2;max-width:none;width:100%;border-left:0}
-  body.workspace-review.ws-wide .pbody>.pcol{grid-column:2;grid-row:1;border-bottom:1px solid var(--hair-20)}
-  body.workspace-review.ws-wide .pbody>.coach{grid-column:2;grid-row:2}
-  body.workspace-review.ws-wide:not(.coach-open) .pbody>.pcol{grid-row:1 / span 2}
-  body.workspace-review.ws-wide.hide-problem .pbody>.coach{grid-row:1 / span 2}
-  body.workspace-review.ws-wide.hide-problem:not(.coach-open) .pbody>.ws{grid-column:1 / -1}
-  body.workspace-review.ws-wide .phero{padding:16px 22px 12px}
-  body.workspace-review.ws-wide .phero h1{font-size:20px}
-  body.workspace-review.ws-wide .paneltoggles{padding:0 22px 10px}
-  body.workspace-review.ws-wide .desc{padding:14px 22px}
-  body.workspace-review.ws-wide .prail{display:none}
-  body.workspace-review.ws-wide .coach-identity{padding:11px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-  body.workspace-review.ws-wide .coach-context{margin:0}
-  body.workspace-review.ws-wide .coach-log{padding:14px 22px}
-  body.workspace-review.ws-wide .cmsg.you .cmsg-body{border-left:2px solid var(--accent);border-radius:0}
-  body.workspace-review.ws-wide .cmsg.reply .cmsg-body{font-size:12px;line-height:1.7}
 }
 
 /* Appearance differences that help real coding: strong monochrome rules, a warm
    reading surface, or a terminal's small, measured type — never scanlines on code. */
-body.theme-slate{--serif:var(--ui);--solid-bg:#4465ed;--solid-fg:#ffffff;--solid-edge:#5474ff;--accent:#91a7ff;--accent-rgb:145,167,255;--solid-hover:#5574f0}
-body.theme-paper{--serif:var(--ui);--canvas:#f3f4f6;--accent:#355dcc;--accent-rgb:53,93,204;--solid-bg:#345bcc;--solid-fg:#fff;--solid-edge:#345bcc}
-body.theme-editorial.ws-wide .desc,body.theme-editorial.ws-wide .cmsg.reply .cmsg-body{font-family:Palatino,Georgia,serif;font-size:15px;line-height:1.8}
-body.theme-editorial.ws-wide .phero h1{font-family:Palatino,Georgia,serif;font-size:25px;font-weight:400}
-body.theme-editorial.ws-wide .editor-tabs{background:#e9e2d7}
-body.theme-ink.ws-wide .editor-file{border-top-width:3px}
-body.theme-ink.ws-wide .ws,body.theme-ink.ws-wide .coach{border-color:var(--hair-20)}
-body.theme-ink.ws-wide .workspace-switcher button[aria-pressed="true"]{background:var(--solid-bg);color:var(--solid-fg);box-shadow:none}
-body.theme-ink.ws-wide .cmsg.you .cmsg-body{border-radius:0;border-color:var(--hair-20)}
-body.theme-blueprint.ws-wide{--serif:var(--ui)}
-body.theme-blueprint.ws-wide .editor-file{background:#0f2237}
-body.theme-phosphor.ws-wide{--ui:var(--mono);--serif:var(--mono)}
-body.theme-phosphor.ws-wide .topbar,body.theme-phosphor.ws-wide .editor-tabs{border-bottom-color:var(--hair-20)}
-body.theme-phosphor.ws-wide .editor-file{border-top:0;border-bottom:2px solid var(--accent)}
-body.theme-phosphor.ws-wide .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
-body.theme-phosphor.ws-wide .workspace-switcher,body.theme-phosphor.ws-wide .workspace-switcher button,body.theme-phosphor.ws-wide .coach-input{border-radius:0}
 
 @media(max-width:1080px){
   body.ws-wide main{padding:0 14px 40px}
-  body.ws-wide .crumb{flex-wrap:wrap;padding:10px 0;gap:8px}
-  body.ws-wide .crumb>.linkbtn:not(:first-child){display:none}
   body.ws-wide .pbody.with-workspace,body.ws-wide.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,1fr);gap:14px;margin-left:0}
   body.ws-wide.hide-problem .pbody.with-workspace .pcol{display:none}
   body.ws-wide .pbody.with-workspace .pcol{display:block;overflow:visible}
-  body.ws-wide .ws{border:1px solid var(--hair-10);border-radius:6px}
-  body.ws-wide .coach{order:2;height:600px;border:1px solid var(--hair-10);border-radius:6px}
+  body.ws-wide .ws{border:1px solid var(--hair-10);border-radius:var(--r-sm)}
+  body.ws-wide .coach{order:2;height:600px;border:1px solid var(--hair-10);border-radius:var(--r-sm)}
   body.ws-wide .editor-path{display:none}
   body.ws-wide .ws-bar{flex-wrap:wrap}
-  body.workspace-focus.ws-wide .ws-host{height:66vh}
 }
 @media(max-width:600px){
   body.ws-wide .topbar{padding:10px 14px;gap:8px}
-  body.ws-wide .workspace-switcher button{padding:5px 9px}
-  body.ws-wide .crumb{justify-content:space-between}
-  body.ws-wide .crumb>.linkbtn{max-width:10ch}
   body.ws-wide .phero{padding:18px 14px 12px}
-  body.ws-wide .desc{padding:14px}
+  body.ws-wide .desc{font-family:var(--prose);padding:14px}
   body.ws-wide .ws-status{flex-basis:auto;order:0}
 }
 
@@ -269,17 +177,7 @@ body.ws-wide .coach-input::placeholder{color:var(--ink-50)}
 body.ws-wide .coach-actions .ws-mini,body.ws-wide .coach-actions .vc-talk{min-height:34px;font-size:12px}
 body.ws-wide .cmsg-who{color:var(--ink-70)}
 @media(min-width:1081px){
-  body.ws-wide.coach-open:not(.workspace-review) .pbody>.coach{grid-column:auto;grid-row:auto}
-  body.workspace-focus.ws-wide .coach{border:1px solid var(--hair-20);border-radius:10px;background:var(--canvas)}
-  body.workspace-focus.ws-wide .coach-identity{padding:18px}
-  body.workspace-focus.ws-wide .coach-bar{padding:6px 12px}
-  body.workspace-focus.ws-wide .coach-log{padding:20px 18px}
-  body.workspace-focus.ws-wide .coach-compose{padding:14px}
-  body.workspace-review.ws-wide .coach-identity{padding:10px 14px;display:block}
-  body.workspace-review.ws-wide .coach-context{display:none}
-  body.workspace-review.ws-wide .coach-log{padding:12px 14px}
-  body.workspace-review.ws-wide .coach-compose{padding:10px;gap:6px}
-  body.workspace-review.ws-wide .coach-input{min-height:46px;padding:8px 10px}
+  body.ws-wide.coach-open .pbody>.coach{grid-column:auto;grid-row:auto}
 }
 
 @media(max-width:600px){
@@ -290,3 +188,7 @@ body.ws-wide .cmsg-who{color:var(--ink-70)}
 body.ws-wide .coach-hide{min-height:32px;padding:6px 10px}
 
 /* Empty evidence never consumes writing space, including flex-based themes. */
+
+body.ws-wide .tag.pattern{color:var(--accent);background:var(--accent-soft)}
+body.ws-wide .ptags .tag.quiet{color:var(--ink-70)}
+body.ws-wide .ws>.ws-bar .recmount .rec-toggle{height:28px;padding:0 10px;font:500 11px var(--ui);letter-spacing:0;text-transform:none}

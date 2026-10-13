@@ -7,19 +7,19 @@
 .dz-bar{display:flex;align-items:center;gap:14px;padding:0 2px}
 /* .spacer is deliberately not global in app.css — every bar opts its own in. */
 .dz-bar .spacer,.dz-actions .spacer,.dzl-head .spacer{flex:1 1 auto}
-.dz-title{font-size:12px;letter-spacing:.16em}
+.dz-title{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dz-clock{font-size:13px;letter-spacing:.08em;color:var(--ink-50);font-variant-numeric:tabular-nums}
 .dz-clock.over{color:var(--hard)}
 .dz-done{
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   padding:7px 14px;border:1px solid var(--hair-20);border-radius:999px;background:var(--card);
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-done:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
 .dz-done:disabled{opacity:.45;cursor:default}
 
 .dz-back{
-  font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--ink-50);
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-back:hover{color:var(--ink)}
 /* The prompt is the interview's name when you are reading one back, so it gets the
@@ -30,15 +30,15 @@
 }
 
 .dz-split{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,.72fr);gap:12px;flex:1 1 auto;min-height:0}
-.dz-canvas{position:relative;min-height:0;border:1px solid var(--hair-10);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+.dz-canvas{position:relative;min-height:0;border:1px solid var(--hair-10);border-radius:var(--r-md);overflow:hidden;background:var(--card)}
 .dz-canvas .excalidraw{height:100%}
 .dz-loading{display:flex;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;color:var(--ink-50);line-height:1.7;text-transform:none;letter-spacing:0}
 
-.dz-side{display:flex;flex-direction:column;min-height:0;border:1px solid var(--hair-10);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.dz-side{display:flex;flex-direction:column;min-height:0;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card);overflow:hidden}
 .dz-phases{display:flex;flex-wrap:wrap;gap:4px;padding:9px 10px;border-bottom:1px solid var(--hair-10)}
 .dz-phase{
-  font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
   padding:4px 8px;border:1px solid var(--hair-20);border-radius:999px;color:var(--ink-50);
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-phase[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 
@@ -49,7 +49,7 @@
 .dz-log{flex:1 1 auto;overflow-y:auto;padding:12px 14px}
 .dz-entry + .dz-entry{margin-top:14px}
 .dz-entry{display:flex;flex-direction:column;gap:4px}
-.dz-who{font-size:9px;letter-spacing:.16em;color:var(--ink-35)}
+.dz-who{color:var(--ink-35);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dz-body{line-height:1.62;white-space:pre-wrap;overflow-wrap:anywhere}
 .dz-a .dz-body{color:var(--ink-70)}
 .dz-d .dz-body{font-size:14px}
@@ -63,7 +63,7 @@
 .dz-compose{border-top:1px solid var(--hair-10);padding:10px}
 .dz-input{
   width:100%;resize:vertical;min-height:58px;font:inherit;line-height:1.55;
-  padding:8px 10px;border:1px solid var(--hair-20);border-radius:8px;
+  padding:8px 10px;border:1px solid var(--hair-20);border-radius:var(--r-md);
   background:var(--canvas);color:var(--ink);
 }
 .dz-input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
@@ -71,18 +71,18 @@
 /* The two switches in the compose row read as the same kind of control as everything
    else on this screen; unstyled they came out as wrapped serif text mid-row. */
 .dz-hands,.dz-skip{
-  font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
   padding:5px 10px;border:1px solid var(--hair-20);border-radius:999px;
   color:var(--ink-50);white-space:nowrap;
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-hands[aria-pressed="true"]{color:var(--ink-70)}
 .dz-hands.off{opacity:.55}
 .dz-hands:disabled{opacity:.4;cursor:default}
 .dz-skip:hover{border-color:var(--ink);color:var(--ink)}
-.dz-status{font-size:9.5px;letter-spacing:.14em;color:var(--ink-35)}
+.dz-status{color:var(--ink-35);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dz-send{
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   padding:7px 16px;border-radius:999px;background:var(--solid-bg);color:var(--solid-fg);border:1px solid var(--solid-edge);
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-send:disabled{opacity:.45;cursor:default}
 
@@ -92,12 +92,12 @@
    the screen quiet, which is the opposite of the interview it opens into. */
 .dzl{max-width:820px;margin:0 auto}
 .dzl-head{display:flex;align-items:flex-end;gap:16px;padding:4px 2px 18px}
-.dzl-kicker{font-size:12px;letter-spacing:.16em}
+.dzl-kicker{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dzl-lede{margin-top:6px;font-size:13px;line-height:1.6;color:var(--ink-50);max-width:46ch}
 .dzl-new{
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   padding:8px 16px;border-radius:999px;white-space:nowrap;
   background:var(--solid-bg);color:var(--solid-fg);border:1px solid var(--solid-edge);
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 
 .dzl-list{border-top:1px solid var(--hair-10)}
@@ -107,13 +107,13 @@
 }
 .dzl-main{min-width:0;flex:1 1 auto}
 .dzl-title{line-height:1.5;overflow-wrap:anywhere}
-.dzl-meta{margin-top:5px;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-35)}
+.dzl-meta{margin-top:5px;color:var(--ink-35);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 /* An unfinished interview with no Resume looks broken unless the reason is on the row. */
 .dzl-note{margin-top:6px;font-size:11.5px;line-height:1.55;color:var(--ink-50)}
 .dzl-go{
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
   padding:7px 15px;border:1px solid var(--hair-20);border-radius:999px;
   background:var(--card);color:var(--ink-70);white-space:nowrap;
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dzl-go:hover{border-color:var(--ink);color:var(--ink)}
 .dzl-go.on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
@@ -133,14 +133,14 @@
    would misdescribe what the thing actually does. */
 .dz-modes{display:flex;gap:2px;padding:2px;margin-bottom:9px;border:1px solid var(--hair-20);border-radius:999px;width:max-content}
 .dz-mode{
-  font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
   padding:5px 14px;border-radius:999px;color:var(--ink-50);border:0;background:none;cursor:pointer;
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-mode[aria-checked="true"]{background:var(--solid-bg);color:var(--solid-fg)}
 .dz-mode:disabled{opacity:.35;cursor:not-allowed}
 
 .dz-voice{display:block}
-.dz-vstate{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.16em;color:var(--ink-50)}
+.dz-vstate{display:flex;align-items:center;gap:8px;color:var(--ink-50);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dz-vdot{width:7px;height:7px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
 .dz-vstate[data-tone="listen"] .dz-vdot{background:var(--easy);box-shadow:0 0 0 3px rgba(var(--easy-rgb),.18)}
 .dz-vstate[data-tone="speak"] .dz-vdot{background:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.18)}
@@ -149,10 +149,10 @@
 .dz-vheard{min-height:44px;margin:8px 0 6px;line-height:1.55;color:var(--ink-70);overflow-wrap:anywhere}
 .dz-vheard.empty::before{content:'Listening — just start talking.';color:var(--ink-35)}
 .dz-vrow{display:flex;align-items:center;gap:8px}
-.dz-vhint{font-size:9px;letter-spacing:.12em}
+.dz-vhint{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dz-skip{
-  font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
   padding:5px 12px;border:1px solid var(--hair-20);border-radius:999px;background:var(--card);color:var(--ink-70);cursor:pointer;
+  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .dz-skip:hover{border-color:var(--ink);color:var(--ink)}
 
@@ -161,19 +161,19 @@ main:has(.dz-view){max-width:none;padding:16px 20px 20px}
 .dz-view{height:calc(100dvh - var(--topbar-h) - 36px);min-height:560px;gap:14px;font-family:var(--ui)}
 .dz-bar{min-height:42px;flex-shrink:0;gap:12px;flex-wrap:wrap}
 .dz-title{font:600 14px/1.4 var(--ui);letter-spacing:0}
-.dz-back{font:500 12px var(--ui);letter-spacing:0;text-transform:none;min-height:36px;padding:8px 10px;border:1px solid var(--hair-20);border-radius:6px;background:var(--card)}
-.dz-clock{font:13px var(--mono);padding:7px 10px;background:var(--surface-inset,var(--canvas));border-radius:5px;color:var(--ink-70)}
-.dz-done,.dz-send,.dzl-new,.dzl-go{min-height:38px;font:500 13px/1.3 var(--ui);letter-spacing:0;text-transform:none;border-radius:6px;padding:9px 14px}
+.dz-back{font:500 12px var(--ui);letter-spacing:0;text-transform:none;min-height:36px;padding:8px 10px;border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card)}
+.dz-clock{font:13px var(--mono);padding:7px 10px;background:var(--surface-inset,var(--canvas));border-radius:var(--r-sm);color:var(--ink-70)}
+.dz-done,.dz-send,.dzl-new,.dzl-go{min-height:38px;font:500 13px/1.3 var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm);padding:9px 14px}
 .dz-done{color:var(--ink-70)}
 .dz-split{grid-template-columns:minmax(0,1fr) minmax(360px,420px);gap:16px}
-.dz-canvas,.dz-side{border-radius:10px;min-width:0}
+.dz-canvas,.dz-side{border-radius:var(--r-md);min-width:0}
 .dz-side{box-shadow:0 2px 8px rgba(var(--ink-rgb),.035)}
 .dz-panel-heading{display:flex;flex-direction:column;gap:4px;padding:16px 18px 12px;flex-shrink:0}
 .dz-panel-heading strong{font-size:15px;color:var(--ink)}
 .dz-panel-heading span{font-size:12px;color:var(--ink-50);line-height:1.5}
 .dz-phases{padding:0 14px 12px;gap:5px;flex-shrink:0}
 .dz-side:not(:has(.dz-panel-heading)) .dz-phases{padding-top:12px}
-.dz-phase{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;padding:6px 9px;min-height:30px;border-radius:5px;border-color:transparent;background:var(--surface-inset,var(--canvas));color:var(--ink-70)}
+.dz-phase{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;padding:6px 9px;min-height:30px;border-radius:var(--r-sm);border-color:transparent;background:var(--surface-inset,var(--canvas));color:var(--ink-70)}
 .dz-phase[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
 .dz-phase:hover:not(:disabled){border-color:var(--hair-20)}
 .dz-log{min-height:100px;padding:18px;overscroll-behavior:contain;scrollbar-gutter:stable}
@@ -183,14 +183,14 @@ main:has(.dz-view){max-width:none;padding:16px 20px 20px}
 .dz-who{font:600 10px/1.4 var(--mono);color:var(--ink-50);letter-spacing:.08em}
 .dz-q .dz-who{color:var(--accent)}
 .dz-body{font:14px/1.7 var(--ui);color:var(--ink);white-space:pre-wrap}
-.dz-a{padding:12px 14px;background:var(--surface-inset,var(--canvas));border:1px solid var(--hair-10);border-radius:7px}
+.dz-a{padding:12px 14px;background:var(--surface-inset,var(--canvas));border:1px solid var(--hair-10);border-radius:var(--r-md)}
 .dz-a .dz-body{color:var(--ink-70)}
 .dz-d{border-left:3px solid var(--accent);padding-left:14px}
 .dz-compose{padding:14px 16px;flex:0 0 auto;background:var(--card)}
-.dz-compose .dz-modes{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border:1px solid var(--hair-10);border-radius:7px;background:var(--surface-inset,var(--canvas));margin:0 0 12px}
-.dz-compose .dz-mode{min-width:0;min-height:34px;padding:7px 12px;font:500 12px/1.4 var(--ui);letter-spacing:0;text-transform:none;border-radius:4px}
+.dz-compose .dz-modes{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--surface-inset,var(--canvas));margin:0 0 12px}
+.dz-compose .dz-mode{min-width:0;min-height:34px;padding:7px 12px;font:500 12px/1.4 var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm)}
 .dz-mode[aria-checked="true"]{box-shadow:0 1px 3px rgba(var(--ink-rgb),.1)}
-.dz-input{display:block;resize:vertical;min-height:88px;max-height:180px;font:14px/1.6 var(--ui);padding:11px 12px;border-radius:6px;background:var(--canvas)}
+.dz-input{display:block;resize:vertical;min-height:88px;max-height:180px;font:14px/1.6 var(--ui);padding:11px 12px;border-radius:var(--r-sm);background:var(--canvas)}
 .dz-input::placeholder{color:var(--ink-50)}
 .dz-actions{gap:10px;margin-top:10px;flex-wrap:wrap}
 .dz-status{font:11px/1.5 var(--ui);letter-spacing:0;color:var(--ink-70)}
@@ -201,7 +201,7 @@ main:has(.dz-view){max-width:none;padding:16px 20px 20px}
 .dz-vheard.empty::before{content:'Your words appear here as they are transcribed.';color:var(--ink-50)}
 .dz-vhint{font:11px/1.5 var(--ui);letter-spacing:0}
 .dz-vrow{justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
-.dz-skip{font:500 12px var(--ui);letter-spacing:0;text-transform:none;min-height:34px;border-radius:5px}
+.dz-skip{font:500 12px var(--ui);letter-spacing:0;text-transform:none;min-height:34px;border-radius:var(--r-sm)}
 .dz-mic{display:block;max-width:100%}
 .dz-view button:focus-visible,.dzl button:focus-visible,.dzl select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .dz-view button:disabled{cursor:not-allowed}
@@ -209,22 +209,20 @@ main:has(.dz-view){max-width:none;padding:16px 20px 20px}
 .dzl-head{align-items:center;padding:0 0 28px}
 .dzl-kicker{font:600 30px/1.2 var(--serif,var(--ui));letter-spacing:-.025em;color:var(--ink);text-transform:none}
 .dzl-lede{font:14px/1.7 var(--ui);max-width:58ch;color:var(--ink-70);margin-top:10px}
-.dzl-list{border:1px solid var(--hair-10);border-radius:10px;background:var(--card);overflow:hidden}
+.dzl-list{border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card);overflow:hidden}
 .dzl-row{padding:20px 24px;gap:24px}
 .dzl-row:last-child{border-bottom:0}
 .dzl-title{font:500 16px/1.5 var(--ui)}
 .dzl-meta{font:11px/1.6 var(--mono);letter-spacing:0;text-transform:none;color:var(--ink-50)}
 .dzl-note{max-width:68ch}
 .dzl-empty{padding:28px;font:14px/1.7 var(--ui)}
-.dz-setup{border:1px solid var(--hair-20);border-radius:10px;background:var(--card);padding:24px;margin-bottom:24px}
+.dz-setup{border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);padding:24px;margin-bottom:24px}
 .dz-setup h2{font:600 18px var(--ui);margin:0 0 8px}
 .dz-setup p{font:13px/1.6 var(--ui);color:var(--ink-70);margin:0 0 20px}
 .dz-setup-fields{display:flex;flex-wrap:wrap;gap:16px;align-items:end}
 .dz-setup label{display:flex;flex-direction:column;gap:7px;font:12px var(--ui);color:var(--ink-70)}
-.dz-setup select{background:var(--canvas);color:var(--ink);border:1px solid var(--hair-20);border-radius:5px;padding:10px;min-width:150px;font:13px var(--ui)}
-body.theme-ink .dz-compose .dz-modes,body.theme-ink .dz-compose .dz-mode,body.theme-ink .dz-canvas,body.theme-ink .dz-side{border-radius:0}
-body.theme-phosphor .dz-compose .dz-modes,body.theme-phosphor .dz-compose .dz-mode{border-radius:2px;font-family:var(--mono)}
-body.theme-editorial .dz-panel-heading strong,body.theme-editorial .dzl-title{font-family:var(--serif);font-size:18px}
+.dz-setup select{background:var(--canvas);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:10px;min-width:150px;font:13px var(--ui)}
+
 @media(max-width:1100px) and (min-width:861px){.dz-split{grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:minmax(0,1fr)}}
 @media(max-width:860px){
   main:has(.dz-view){padding:12px}
@@ -240,7 +238,7 @@ body.theme-editorial .dz-panel-heading strong,body.theme-editorial .dzl-title{fo
 .dz-setup select{min-height:38px}
 .dz-voice .vc-status{max-height:100px;overflow-y:auto}
 .dz-mic .vc-talk{min-height:34px;font:500 12px var(--ui);letter-spacing:0;text-transform:none}
-.dz-pause{min-height:36px;padding:8px 12px;border:1px solid var(--hair-20);border-radius:6px;background:var(--card);color:var(--ink);font:500 12px var(--ui);white-space:nowrap}
+.dz-pause{min-height:36px;padding:8px 12px;border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card);color:var(--ink);font:500 12px var(--ui);white-space:nowrap}
 .dz-pause[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .dz-clock.paused{color:var(--ink-50)}
 .dz-pause:disabled{opacity:.45}

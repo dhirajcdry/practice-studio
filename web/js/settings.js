@@ -1,8 +1,5 @@
 // Settings: the theme, and how the editor reads.
 //
-// Workspace views change the arrangement; colour themes remain independent. Selecting
-// a view never remounts Monaco or the coach, so drafts, undo, and streams stay intact.
-//
 // Everything here is stored locally and applied before first paint, so choosing a theme
 // never costs a flash of the previous one.
 
@@ -12,35 +9,21 @@ import { createCoachModelPicker } from './coach-model.js';
 
 const STORE_KEY = 'studio.settings.v1';
 
-export const WORKSPACES = [
-  { id: 'workbench', name: 'Workbench', blurb: 'Docked tools. Everything within reach.' },
-  { id: 'focus', name: 'Focus', blurb: 'A quiet canvas for code and conversation.' },
-  { id: 'review', name: 'Review', blurb: 'Code on the left. Evidence and feedback on the right.' },
-];
-
-// `dark` is what the light/dark switch reads; `mono` is only about the typeface, and
-// the two are not the same question — Slate is dark and proportional, Phosphor is dark and monospaced.
+// A family keeps its character in either appearance.
 export const THEMES = [
-  { id: 'paper', name: 'Paper', blurb: 'A quiet canvas. Clean type, soft groups, blue focus.',
-    swatch: ['#F3F4F6', '#111111', '#355DCC'], mono: false, dark: false },
-  { id: 'editorial', name: 'Editorial', blurb: 'Margin notes. Serif prose, warm paper, red annotations.',
-    swatch: ['#F4EFE6', '#1A1614', '#9B2C2C'], mono: false, dark: false },
-  { id: 'ink', name: 'Ink', blurb: 'Bold hierarchy. Hard rules, square markers, electric blue.',
-    swatch: ['#EDEDEA', '#0A0A0A', '#1B49F5'], mono: false, dark: false },
-  { id: 'slate', name: 'Slate', blurb: 'A graphite workbench. Grouped evidence, crisp blue focus.',
-    swatch: ['#131518', '#E8EAED', '#91A7FF'], mono: false, dark: true },
-  { id: 'blueprint', name: 'Blueprint', blurb: 'Engineering notebook. Cyan guides and layered navy panes.',
-    swatch: ['#0B1B2E', '#DCEEFF', '#5FD3F3'], mono: true, dark: true },
-  { id: 'phosphor', name: 'Phosphor', blurb: 'A command log. Monospaced replies, compact test evidence.',
-    swatch: ['#050B07', '#7EFFA8', '#FFC24B'], mono: true, dark: true },
+  { id: 'studio', name: 'Studio', blurb: 'Clean and docked. Panes meet edge to edge.', light: { paper: '#F3F4F6', ink: '#111111', accent: '#355DCC' }, dark: { paper: '#131518', ink: '#E8EAED', accent: '#91A7FF' } },
+  { id: 'desk', name: 'Desk', blurb: 'Soft and rounded. Panes float on warm paper.', light: { paper: '#F6F4F0', ink: '#181818', accent: '#BD5F3C' }, dark: { paper: '#171513', ink: '#EEE8E0', accent: '#E2875F' } },
+  { id: 'editorial', name: 'Editorial', blurb: 'Serif prose, double rules, a printed page.', light: { paper: '#F4EFE6', ink: '#1A1614', accent: '#9B2C2C' }, dark: { paper: '#16120F', ink: '#ECE3D4', accent: '#E07B6E' } },
+  { id: 'ink', name: 'Ink', blurb: 'Hard edges, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
+  { id: 'terminal', name: 'Terminal', blurb: 'Monospaced everything. A command log.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#A35F00' }, dark: { paper: '#050B07', ink: '#7EFFA8', accent: '#FFC24B' } },
 ];
 
 export function themeById(id) {
   return THEMES.find((t) => t.id === id) || THEMES[0];
 }
 
-export function isDark(theme = null) {
-  return themeById(theme ?? current.theme).dark === true;
+export function isDark() {
+  return current.mode === 'dark' || (current.mode === 'system' && systemPrefersDark());
 }
 
 /** What the operating system is set to, when nothing has been chosen here yet. */
@@ -48,22 +31,17 @@ function systemPrefersDark() {
   try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; }
 }
 
-const DEFAULTS = { theme: 'paper', lightTheme: 'paper', darkTheme: 'slate', workspace: 'workbench', codeSize: 14, motion: true };
+const DEFAULTS = { theme: 'studio', mode: 'system', codeSize: 14, motion: true };
+const LEGACY = { paper: ['studio', 'light'], slate: ['studio', 'dark'], editorial: ['editorial', 'light'], ink: ['ink', 'light'], blueprint: ['studio', 'dark'], phosphor: ['terminal', 'dark'] };
 
 function read() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
-    const theme = THEMES.some(t => t.id === raw.theme) ? raw.theme
-      : (systemPrefersDark() ? DEFAULTS.darkTheme : DEFAULTS.theme);
+    let theme = THEMES.some(t => t.id === raw.theme) ? raw.theme : DEFAULTS.theme;
+    let mode = ['system', 'light', 'dark'].includes(raw.mode) ? raw.mode : undefined;
+    if (!THEMES.some(t => t.id === raw.theme) && LEGACY[raw.theme]) [theme, mode] = LEGACY[raw.theme];
     return {
-      workspace: WORKSPACES.some(w => w.id === raw.workspace) ? raw.workspace : DEFAULTS.workspace,
-      // First run follows the operating system, which is what "dark mode" means
-      // everywhere else. After that it follows you, because you chose.
-      theme,
-      // Which theme to come back to on each side of the switch, so flipping to dark and
-      // back does not quietly forget that you had chosen Editorial.
-      lightTheme: THEMES.some((t) => t.id === raw.lightTheme && !t.dark) ? raw.lightTheme : (!themeById(theme).dark ? theme : DEFAULTS.lightTheme),
-      darkTheme: THEMES.some((t) => t.id === raw.darkTheme && t.dark) ? raw.darkTheme : (themeById(theme).dark ? theme : DEFAULTS.darkTheme),
+      theme, mode: mode || DEFAULTS.mode,
       codeSize: Number(raw.codeSize) >= 10 && Number(raw.codeSize) <= 20 ? Number(raw.codeSize) : DEFAULTS.codeSize,
       motion: raw.motion !== false,
     };
@@ -74,19 +52,26 @@ function read() {
 
 let current = read();
 const listeners = new Set();
+try {
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  media.addEventListener?.('change', () => {
+    if (current.mode !== 'system') return;
+    apply();
+    for (const fn of listeners) fn(getSettings());
+  });
+} catch { /* browser without media queries */ }
 
-export function getSettings() { return { ...current }; }
+export function getSettings() { return { ...current, dark: isDark() }; }
 export function onSettingsChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
 export function setSetting(key, value) {
   if (current[key] === value) return;
-  if (key === 'workspace' && !WORKSPACES.some(w => w.id === value)) return;
+  if (!['theme', 'mode', 'codeSize', 'motion'].includes(key)) return;
+  if (key === 'theme' && !THEMES.some(t => t.id === value)) return;
+  if (key === 'mode' && !['system', 'light', 'dark'].includes(value)) return;
   current = { ...current, [key]: value };
-  // Picking a theme also records which side of the switch it belongs to.
-  if (key === 'theme') {
-    current[isDark(current.theme) ? 'darkTheme' : 'lightTheme'] = current.theme;
-  }
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(current)); } catch { /* forgets */ }
+  const { theme, mode, codeSize, motion } = current;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ theme, mode, codeSize, motion })); } catch { /* forgets */ }
   apply();
   for (const fn of listeners) fn(getSettings());
 }
@@ -94,21 +79,18 @@ export function setSetting(key, value) {
 /** Put the settings onto the document. Safe to call at any time, including before boot. */
 export function apply() {
   const root = document.documentElement;
-  for (const theme of THEMES) {
-    document.body.classList.toggle(`theme-${theme.id}`, current.theme === theme.id);
+  for (const name of [...document.body.classList]) {
+    if (name.startsWith('theme-')) document.body.classList.remove(name);
   }
+  document.body.classList.add(`theme-${current.theme}`);
   // Monaco cannot read CSS variables, so a dark theme has to be told explicitly.
   document.body.classList.toggle('is-dark', isDark());
-  for (const workspace of WORKSPACES) document.body.classList.toggle(`workspace-${workspace.id}`, current.workspace === workspace.id);
   root.style.setProperty('--code-size', `${current.codeSize}px`);
   document.body.classList.toggle('reduce-motion', current.motion === false);
 }
 
-/** Flip between light and dark, each side remembering the theme you last chose on it. */
-export function toggleDark(force = null) {
-  const next = force === null ? !isDark() : force;
-  setSetting('theme', next ? current.darkTheme : current.lightTheme);
-}
+/** Pin the opposite appearance without changing the family. */
+export function toggleDark() { setSetting('mode', isDark() ? 'light' : 'dark'); }
 
 /* ------------------------------- the panel -------------------------------- */
 
@@ -118,13 +100,16 @@ function themeCard(theme, onPick) {
     class: 'set-card set-theme', type: 'button', 'aria-pressed': String(chosen),
     onclick: () => onPick(theme.id),
   }, [
-    el('div', { class: `set-swatch theme-preview theme-preview-${theme.id}`, 'aria-hidden': 'true', style: `--preview-paper:${theme.swatch[0]};--preview-ink:${theme.swatch[1]};--preview-accent:${theme.swatch[2]}` }, [
-      el('i', { class: 'preview-top' }, [el('b'), el('b'), el('b')]),
-      el('i', { class: 'preview-rail' }),
-      el('i', { class: 'preview-main' }, [el('b'), el('b'), el('b'), el('b')]),
-      el('i', { class: 'preview-accent' }),
-    ]),
-    el('div', { class: 'set-cardname mono', text: theme.name }),
+    el('div', {
+      class: 'theme-preview', 'data-theme-preview': theme.id, 'aria-hidden': 'true',
+      style: `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}`,
+    }, ['light', 'dark'].map((mode) => el('i', { class: `theme-half ${mode}` }, [
+      el('b', { class: 'theme-title-line' }),
+      el('b', { class: 'theme-text-line' }),
+      el('b', { class: 'theme-text-line' }),
+      el('b', { class: 'theme-accent-bar' }),
+    ]))),
+    el('div', { class: 'set-cardname', text: theme.name }),
     el('div', { class: 'set-cardblurb', text: theme.blurb }),
   ]);
 }
@@ -139,8 +124,10 @@ function keyRow(keys, what) {
 let coachPicker = null;
 let panel = null;
 let scrim = null;
+let stopPanelUpdates = null;
 
 export function closeSettings() {
+  stopPanelUpdates?.(); stopPanelUpdates = null;
   coachPicker?.dispose(); coachPicker = null;
   if (panel) { panel.remove(); panel = null; }
   if (scrim) { scrim.remove(); scrim = null; }
@@ -151,10 +138,16 @@ export function openSettings() {
   if (panel) { closeSettings(); return; }
 
   const themeCards = el('div', { class: 'set-cards set-themes' });
+  const modeSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Appearance' });
   const rerender = () => {
-    replace(themeCards, THEMES.map((t) => themeCard(t, (id) => { setSetting('theme', id); rerender(); })));
+    replace(modeSeg, ['system', 'light', 'dark'].map((mode) => el('button', {
+      type: 'button', text: mode[0].toUpperCase() + mode.slice(1),
+      'aria-pressed': String(current.mode === mode), onclick: () => setSetting('mode', mode),
+    })));
+    replace(themeCards, THEMES.map((t) => themeCard(t, (id) => setSetting('theme', id))));
   };
   rerender();
+  stopPanelUpdates = onSettingsChange(rerender);
 
   const sizeValue = el('span', { class: 'mono dim set-value', text: `${current.codeSize}px` });
   const size = el('input', {
@@ -184,6 +177,7 @@ export function openSettings() {
       el('div', { class: 'mono dim set-label', text: 'Coach' }),
       coachPicker.root,
       el('p', { class: 'set-cardblurb', text: 'Applies to new coach and system-design replies. Each CLI uses its own sign-in and limits. Codex saves chats through Studio; automatic note edits are Claude-only.' }),
+      el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
       el('div', { class: 'mono dim set-label', text: 'Theme' }),
       themeCards,
       el('div', { class: 'mono dim set-label', text: 'Editor' }),
@@ -291,8 +285,7 @@ function paintDayNight(button) {
   button.setAttribute('aria-pressed', String(dark));
   // Says what pressing it does, not what it currently is — that is what a person is
   // asking when they hover a toggle.
-  const to = dark ? themeById(current.lightTheme).name : themeById(current.darkTheme).name;
-  button.title = dark ? `Light mode (${to})` : `Dark mode (${to})`;
+  button.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
   button.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
 }
 

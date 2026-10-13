@@ -84,7 +84,7 @@ const chrome = spawn(CHROME, [
 
 // Every theme, because the widget's colours are defined per theme and "invisible" is a
 // thing that happens in exactly one of them.
-const THEMES = ['studio-light', 'studio-slate', 'studio-blueprint', 'studio-phosphor'];
+const THEMES = ['ps-studio-light', 'ps-studio-dark', 'ps-desk-light', 'ps-desk-dark', 'ps-editorial-light', 'ps-editorial-dark', 'ps-ink-light', 'ps-ink-dark', 'ps-terminal-light', 'ps-terminal-dark'];
 
 try {
   await sleep(2500);

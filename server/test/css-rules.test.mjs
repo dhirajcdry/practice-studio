@@ -133,7 +133,6 @@ for (const file of fs.readdirSync(WEB_CSS).filter((f) => f.endsWith('.css'))) {
 const FG_AS_BG_ALLOWED = new Set([
   // Inverted selection is the point — it must contrast with everything around it.
   '::selection',
-  'body.theme-phosphor ::selection',
   // A focus ring and a live drag handle: 2px of deliberate maximum contrast.
   '.split:focus-visible::after',
   'body.is-splitting .split::after',
@@ -166,4 +165,21 @@ test('the coach log is block flow, not a flex column', () => {
   assert.ok(rule, '.coach-log rule not found — the selector was renamed without updating this test');
   assert.ok(rule.body.includes('display:block'), '.coach-log must be display:block');
   assert.ok(!rule.body.includes('flex-direction:column'), '.coach-log must not be a flex column');
+});
+
+// A missing palette token must not silently inherit a different family's colour.
+test('all five families define a complete light and dark palette', () => {
+  const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
+  const tokens = `ink-rgb on-ink-rgb on-ink canvas card ink ink-70 ink-50 ink-35
+    hair-20 hair-10 hair-06 accent accent-rgb accent-soft solid-bg solid-fg solid-edge
+    solid-hover easy easy-rgb easy-soft med med-rgb med-soft hard hard-rgb hard-soft
+    tok-kw tok-def shadow shadow-lift texture`.split(/\s+/);
+  for (const family of ['studio', 'desk', 'editorial', 'ink', 'terminal']) {
+    for (const mode of ['', '.is-dark']) {
+      const selector = `body.theme-${family}${mode}`;
+      const palette = rules(css).filter(rule => rule.selector === selector);
+      assert.equal(palette.length, 1, `${selector}: exactly one palette block`);
+      for (const token of tokens) assert.ok(palette[0].body.includes(`--${token}:`), `${selector}: missing ${token}`);
+    }
+  }
 });

@@ -18,7 +18,7 @@
 // keeps working; losing syntax colour is survivable, losing the editor is not.
 
 import { el, clear, replace } from './dom.js';
-import { getSettings, onSettingsChange } from './settings.js';
+import { getSettings, isDark, onSettingsChange } from './settings.js';
 import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, api } from './api.js';
 import { createRunPanel, summaryLine } from './run.js';
 import { createSubmitPanel, submitLine } from './submit.js';
@@ -70,15 +70,9 @@ function loadMonaco() {
   return monacoPromise;
 }
 
-/** The same palette as the hand-written highlighter in highlight.js. */
-/** Which Monaco theme belongs to which page theme. Light themes share one. */
-export function monacoThemeFor(theme) {
-  if (theme === 'blueprint') return 'studio-blueprint';
-  if (theme === 'phosphor') return 'studio-phosphor';
-  if (theme === 'slate') return 'studio-slate';
-  if (theme === 'editorial') return 'studio-editorial';
-  if (theme === 'ink') return 'studio-ink';
-  return 'studio-light';
+/** Monaco follows the selected family and effective appearance. */
+export function monacoThemeFor(theme, dark = false) {
+  return `ps-${theme}-${dark ? 'dark' : 'light'}`;
 }
 
 /**
@@ -130,43 +124,8 @@ function widgetColors(p) {
 
 /** Monaco cannot read CSS variables, so each visual theme needs its own definition. */
 function defineTheme(monaco) {
-  // Blueprint: cyan on navy. Syntax hues are pulled toward the drafting palette so the
-  // editor reads as part of the page rather than a window cut into it.
-  monaco.editor.defineTheme('studio-blueprint', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: 'DCEEFF' },
-      { token: 'comment', foreground: '5E86A8', fontStyle: 'italic' },
-      { token: 'string', foreground: '8FE3C0' },
-      { token: 'number', foreground: 'F2C86B' },
-      { token: 'keyword', foreground: '5FD3F3' },
-      { token: 'type', foreground: 'A9D2F5' },
-      { token: 'predefined', foreground: 'A9D2F5' },
-      { token: 'identifier', foreground: 'DCEEFF' },
-      { token: 'delimiter', foreground: '7FA6C4' },
-      { token: 'operator', foreground: '7FA6C4' },
-    ],
-    colors: {
-      'editor.background': '#0F2237',
-      'editor.foreground': '#DCEEFF',
-      'editorGutter.background': '#0F2237',
-      'editorLineNumber.foreground': '#3E6688',
-      'editorLineNumber.activeForeground': '#5FD3F3',
-      'editor.lineHighlightBackground': '#14293F',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#5FD3F3',
-      'editor.selectionBackground': '#5FD3F333',
-      ...widgetColors({
-        ground: '#0B1B2C', raised: '#14304A', ink: '#DCEEFF', dim: '#7FA6C4',
-        edge: '#2A5477', accent: '#5FD3F3', onAccent: '#0F2237',
-        match: '#5FD3F34D', matchDim: '#5FD3F326', hoverWash: '#5FD3F31A',
-      }),
-    },
-  });
-
-  // Phosphor: one hue, brightness doing the work — which is what a real tube did.
-  monaco.editor.defineTheme('studio-phosphor', {
+  // Terminal after dark retains the original phosphor syntax palette.
+  monaco.editor.defineTheme('ps-terminal-dark', {
     base: 'vs-dark',
     inherit: true,
     rules: [
@@ -202,7 +161,7 @@ function defineTheme(monaco) {
 
   // Slate: the light theme's palette, re-lit. Same hue for each token so the code reads
   // the same way in both modes — only the ground and the contrast change.
-  monaco.editor.defineTheme('studio-slate', {
+  monaco.editor.defineTheme('ps-studio-dark', {
     base: 'vs-dark',
     inherit: true,
     rules: [
@@ -242,7 +201,7 @@ function defineTheme(monaco) {
     },
   });
 
-  monaco.editor.defineTheme('studio-light', {
+  monaco.editor.defineTheme('ps-studio-light', {
     base: 'vs',
     inherit: true,
     rules: [
@@ -294,19 +253,26 @@ function defineTheme(monaco) {
     },
   });
 
-  const lightThemes = [
-    ['studio-editorial', '#FBF8F2', '#28251F', '#F3EEE4', '#6D665B', '#A3432B', '#A3432B33'],
-    ['studio-ink', '#FFFFFF', '#111111', '#F4F4F4', '#666666', '#0057B8', '#0057B833'],
+  // Each generated row supplies syntax hues as well as the editor surfaces.
+  const palettes = [
+    ['ps-editorial-light', 'vs', '#FBF8F2', '#28251F', '#F3EEE4', '#6D665B', '#A3432B', '#A3432B', '#1E5A8A', '#2E6B4F', '#93650B', '#A3432B33', ''],
+    ['ps-ink-light', 'vs', '#FFFFFF', '#111111', '#F4F4F4', '#666666', '#0057B8', '#0057B8', '#1E5A8A', '#2E6B4F', '#93650B', '#0057B833', 'bold'],
+    ['ps-desk-light', 'vs', '#FFFDF9', '#181818', '#F6F2EA', '#8A8178', '#BD5F3C', '#A34A2A', '#2F5D7C', '#3F7A55', '#9A6A12', '#BD5F3C2E', ''],
+    ['ps-desk-dark', 'vs-dark', '#211E1B', '#EEE8E0', '#2A2622', '#8C8279', '#E2875F', '#E59A78', '#8FB8D8', '#9ACB9F', '#E0B060', '#E2875F33', ''],
+    ['ps-editorial-dark', 'vs-dark', '#1E1915', '#ECE3D4', '#27211C', '#8E8172', '#E07B6E', '#D3A6E0', '#8DBFE0', '#A8CC9A', '#D9B061', '#E07B6E33', ''],
+    ['ps-ink-dark', 'vs-dark', '#141414', '#F4F4F0', '#1E1E1E', '#8A8A86', '#6E8BFF', '#9DB0FF', '#7FD1C7', '#4ED68C', '#F0B429', '#6E8BFF40', 'bold'],
+    ['ps-terminal-light', 'vs', '#FAF8F0', '#17301F', '#F0EDE0', '#6F7A66', '#A35F00', '#0F5C33', '#5A4A00', '#1D7A45', '#8A5A00', '#A35F0033', 'bold'],
   ];
-  for (const [name, background, foreground, line, dim, accent, selection] of lightThemes) {
+  for (const [name, base, background, foreground, line, dim, accent, keyword, type, string, number, selection, fontStyle] of palettes) {
+    const dark = base === 'vs-dark';
     monaco.editor.defineTheme(name, {
-      base: 'vs', inherit: true,
+      base, inherit: true,
       rules: [
         { token: '', foreground: foreground.slice(1) },
         { token: 'comment', foreground: dim.slice(1), fontStyle: 'italic' },
-        { token: 'string', foreground: '2E6B4F' }, { token: 'number', foreground: '93650B' },
-        { token: 'keyword', foreground: accent.slice(1), fontStyle: name === 'studio-ink' ? 'bold' : '' },
-        { token: 'type', foreground: '1E5A8A' }, { token: 'predefined', foreground: '1E5A8A' },
+        { token: 'string', foreground: string.slice(1) }, { token: 'number', foreground: number.slice(1) },
+        { token: 'keyword', foreground: keyword.slice(1), fontStyle },
+        { token: 'type', foreground: type.slice(1) }, { token: 'predefined', foreground: type.slice(1) },
         { token: 'identifier', foreground: foreground.slice(1) }, { token: 'delimiter', foreground: dim.slice(1) },
         { token: 'operator', foreground: dim.slice(1) },
       ],
@@ -315,11 +281,12 @@ function defineTheme(monaco) {
         'editorGutter.background': background, 'editorLineNumber.foreground': dim,
         'editorLineNumber.activeForeground': foreground, 'editor.lineHighlightBackground': line,
         'editor.lineHighlightBorder': '#00000000', 'editorCursor.foreground': accent,
-        'editor.selectionBackground': selection, 'editorIndentGuide.background1': '#00000012',
-        'editorIndentGuide.activeBackground1': '#0000002E', 'editorWhitespace.foreground': '#00000018',
+        'editor.selectionBackground': selection, 'editorIndentGuide.background1': dark ? '#FFFFFF12' : '#00000012',
+        'editorIndentGuide.activeBackground1': dark ? '#FFFFFF2E' : '#0000002E',
+        'editorWhitespace.foreground': dark ? '#FFFFFF18' : '#00000018',
         ...widgetColors({ ground: background, raised: line, ink: foreground, dim,
-          edge: '#00000022', accent, onAccent: '#FFFFFF', match: `${accent}40`,
-          matchDim: `${accent}1F`, hoverWash: '#0000000D' }),
+          edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: dark ? background : '#FFFFFF', match: `${accent}40`,
+          matchDim: `${accent}1F`, hoverWash: dark ? '#FFFFFF12' : '#0000000D' }),
       },
     });
   }
@@ -332,7 +299,7 @@ const MONO_STACK = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 function editorOptions() {
   return {
     language: 'python',
-    theme: monacoThemeFor(getSettings().theme),
+    theme: monacoThemeFor(getSettings().theme, isDark()),
     automaticLayout: true,
     fontFamily: MONO_STACK,
     fontSize: getSettings().codeSize,
@@ -498,7 +465,6 @@ export function mountWorkspace(entry, options = {}) {
   let retryTimer = null;
   let disposed = false;
   let lane = 'run';             // which results lane is open; the other is a stub
-  let workspace = getSettings().workspace || 'workbench';
   let stopCursor = null;
   const releaseChords = [];
 
@@ -622,8 +588,7 @@ export function mountWorkspace(entry, options = {}) {
     host,
     el('div', { class: 'ws-bar' }, [
       el('span', { class: 'mono dim ws-title', text: 'Python' }),
-      // Focus mode hides the heading, so the toolbar carries the title instead —
-      // never be in an editor without knowing which problem it belongs to.
+      // Keep the problem identifiable when its statement is hidden.
       el('span', { class: 'ws-probtitle', text: entry.title || slug, title: entry.title || slug }),
       statusEl,
       el('span', { class: 'spacer' }),
@@ -632,6 +597,7 @@ export function mountWorkspace(entry, options = {}) {
       // Run, then Submit. Run is the one pressed fifty times an hour and Submit is the one
       // that leaves the machine, so the safe one comes first and the irreversible one sits
       // on its own at the end.
+      el('span', { class: 'recmount', id: 'recmount' }),
       runButton,
       submitButton,
     ]),
@@ -775,10 +741,7 @@ export function mountWorkspace(entry, options = {}) {
   const isProblemHidden = () => document.body.classList.contains('hide-problem');
   const isResultsHidden = () => document.body.classList.contains('hide-results');
 
-  // Focus hides both panes on its own. That is the view's choice, not the user's, so it
-  // is never saved: saving it left Workbench and Review with no statement after a reload.
   function remember(key, on) {
-    if (workspace === 'focus') return;
     try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* noop */ }
   }
 
@@ -845,11 +808,8 @@ export function mountWorkspace(entry, options = {}) {
   }
 
   const stored = (key) => { try { return localStorage.getItem(key) === '1'; } catch { return false; } };
-  function applyWorkspacePanes() {
-    setProblemHidden(workspace === 'focus' || stored(FOCUS_KEY));
-    setResultsHidden(workspace === 'focus' || stored(PANEL_KEY));
-  }
-  applyWorkspacePanes();
+  setProblemHidden(stored(FOCUS_KEY));
+  setResultsHidden(stored(PANEL_KEY));
 
   releaseChords.push(onChord('problem', () => setProblemHidden(!isProblemHidden())));
   releaseChords.push(onChord('results', () => setResultsHidden(!isResultsHidden())));
@@ -896,13 +856,9 @@ export function mountWorkspace(entry, options = {}) {
   // with while the page around it changed. Silent, because a listener that throws takes
   // nothing else down with it.
   const stopWatchingSettings = onSettingsChange((settings) => {
-    if (settings.workspace !== workspace) {
-      workspace = settings.workspace;
-      applyWorkspacePanes();
-    }
     if (!editor) return;
     editor.setFontSize?.(settings.codeSize);
-    editor.setTheme?.(monacoThemeFor(settings.theme));
+    editor.setTheme?.(monacoThemeFor(settings.theme, isDark()));
     requestAnimationFrame(() => editor.layout?.());
   });
   const onToggleResults = () => setResultsHidden(!isResultsHidden());

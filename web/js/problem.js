@@ -9,7 +9,7 @@ import { renderMarkdown, codeBlock } from './markdown.js';
 import { loadProblem, loadSolution, loadArticle, logSessionEvent, api } from './api.js';
 import { mountWorkspace, enableWideLayout } from './editor.js';
 import { mountCoach } from './coach.js';
-import { workspaceSwitcher, workspaceRail } from './workspace.js';
+import { workspaceRail } from './workspace.js';
 
 const drawerEl = document.getElementById('drawer');
 const scrimEl = document.getElementById('scrim');
@@ -43,13 +43,6 @@ function licenseFooter(license, sourcePath) {
   return el('div', { class: 'dfoot' }, [
     el('div', { text: notice }),
     sourcePath ? el('div', { text: 'Source file: ' + sourcePath }) : null,
-  ]);
-}
-
-function metaCell(label, value) {
-  return el('span', { class: 'cell' }, [
-    el('span', { class: 'mono dim', text: label }),
-    el('span', { class: 'v', text: value }),
   ]);
 }
 
@@ -142,8 +135,8 @@ function renderSolutionInto(body, entry, result) {
           entry.hasArticle
             ? 'The written article covers this problem, so start there.'
             : (entry.youtubeVideoId
-              ? 'There is no local article for this problem either. The video walkthrough (the Video button above) is the remaining reference.'
-              : 'There is no local article for this problem either. You can check NeetCode using the link in the Links panel.'),
+              ? 'There is no local article for this problem either. The video walkthrough (the Video link above) is the remaining reference.'
+              : 'There is no local article for this problem either. You can check NeetCode using the NeetCode link above.'),
         ]
         : [result.message],
       actions,
@@ -171,7 +164,7 @@ function renderSolutionInto(body, entry, result) {
     rich,
   );
   if (result.source === 'mock') {
-    body.append(el('div', { class: 'mono dim', style: 'margin-top:6px;letter-spacing:.1em', text: 'Bundled sample — the studio server serves the full set.' }));
+    body.append(el('div', { class: 'mono dim', style: 'margin-top:6px;font:500 11px/1.4 var(--ui);letter-spacing:0', text: 'Bundled sample — the studio server serves the full set.' }));
   }
   drawerEl.append(licenseFooter(result.license, result.sourcePath));
 }
@@ -202,7 +195,7 @@ function renderArticleInto(body, entry, result) {
     body.append(rich);
   }
   if (result.source === 'mock') {
-    body.append(el('div', { class: 'mono dim', style: 'margin-top:14px;letter-spacing:.1em', text: 'Bundled sample — the studio server serves the full set.' }));
+    body.append(el('div', { class: 'mono dim', style: 'margin-top:14px;font:500 11px/1.4 var(--ui);letter-spacing:0', text: 'Bundled sample — the studio server serves the full set.' }));
   }
   drawerEl.append(licenseFooter(result.license, result.sourcePath));
 }
@@ -211,72 +204,55 @@ function renderArticleInto(body, entry, result) {
 
 export function renderProblem(entry, context) {
   const view = el('div', { class: 'view' });
-  const { neighbours, onBack, onOpen } = context;
-
-  view.append(el('div', { class: 'crumb' }, [
-    el('button', { class: 'linkbtn', type: 'button', text: '← All problems', onclick: onBack }),
-    neighbours.previous
-      ? el('button', { class: 'linkbtn', type: 'button', text: '↑ ' + neighbours.previous.title, onclick: () => onOpen(neighbours.previous.slug) })
-      : null,
-    neighbours.next
-      ? el('button', { class: 'linkbtn', type: 'button', text: '↓ ' + neighbours.next.title, onclick: () => onOpen(neighbours.next.slug) })
-      : null,
-    workspaceSwitcher(),
-  ]));
+  const { neighbours, onOpen } = context;
 
   const titleEl = el('h1', { text: entry.title });
   const badgeRow = el('span', { class: 'row1-badges', style: 'display:contents' });
+  // Pattern first, then the one list badge, then LeetCode's topics as they arrive. The
+  // lists nest (every Blind 75 problem is also in the 150 and the 250), so only the
+  // narrowest one is worth printing.
+  const tags = el('div', { class: 'ptags' }, [
+    el('span', { class: 'tag pattern', text: entry.pattern, title: 'Pattern' }),
+    entry.lists.blind75
+      ? el('span', { class: 'tag', text: 'Blind 75' })
+      : entry.lists.neetcode150
+        ? el('span', { class: 'tag quiet', text: 'NeetCode 150' })
+        : null,
+  ]);
   const hero = el('section', { class: 'card' }, [
     el('div', { class: 'phero' }, [
       el('div', { class: 'row1' }, [
         el('span', { class: 'pno', text: entry.number ? String(entry.number) : '' }),
         titleEl,
         el('span', { class: 'tag ' + entry.difficulty.toLowerCase(), text: entry.difficulty }),
-        // One list badge, the narrowest it belongs to. The lists nest — every Blind 75
-        // problem is also in the 150 and the 250 — so printing all of them says nothing
-        // the first one did not, and wraps the title onto a second row to say it.
-        entry.lists.blind75
-          ? el('span', { class: 'tag', text: 'Blind 75' })
-          : entry.lists.neetcode150
-            ? el('span', { class: 'tag quiet', text: 'NeetCode 150' })
-            : null,
         badgeRow,
+        el('span', { class: 'pnav' }, [['previous', 'Previous', '‹'], ['next', 'Next', '›']].map(([key, label, text]) => {
+          const neighbour = neighbours[key];
+          return el('button', {
+            class: 'pnav-btn', type: 'button', text,
+            title: neighbour ? `${label}: ${neighbour.title}` : label,
+            'aria-label': neighbour ? `${label}: ${neighbour.title}` : label,
+            disabled: !neighbour, onclick: () => { if (neighbour) onOpen(neighbour.slug); },
+          });
+        })),
       ]),
-      // Only the pattern. Whether a solution or article exists is already said by the
-      // two buttons below, which grey out and read "· none" when they are missing.
-      el('div', { class: 'meta' }, [metaCell('Pattern', entry.pattern)]),
+      tags,
     ]),
     el('div', { class: 'paneltoggles' }, [
       panelToggle(entry, 'solution', 'Solution', 's', entry.hasPythonSolution),
       panelToggle(entry, 'article', 'Article', 'a', entry.hasArticle),
-      // NeetCode's walkthrough lives on YouTube, so this one leaves the app.
-      entry.youtubeVideoId ? el('a', {
-        class: 'ptoggle', target: '_blank', rel: 'noopener noreferrer',
-        href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`,
-        text: 'Video ↗',
-      }) : null,
+      el('span', { class: 'plinks' }, [
+        entry.youtubeVideoId ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
+          href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`, text: 'Video ↗' }) : null,
+        el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
+          href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`, text: 'NeetCode ↗' }),
+        el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
+          href: `https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, text: 'LeetCode ↗' }),
+      ]),
     ]),
   ]);
 
   const descCard = el('section', { class: 'card' }, el('div', { class: 'desc' }, skeleton(7)));
-  const rail = el('div', { class: 'prail' }, el('section', { class: 'card railcard' }, [
-    el('h3', { text: 'Links' }),
-    el('a', {
-      class: 'extlink', target: '_blank', rel: 'noopener noreferrer',
-      href: `https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`,
-      text: 'LeetCode ↗',
-    }),
-    el('a', {
-      class: 'extlink', target: '_blank', rel: 'noopener noreferrer',
-      href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`,
-      text: 'NeetCode ↗',
-    }),
-    entry.youtubeVideoId ? el('a', {
-      class: 'extlink', target: '_blank', rel: 'noopener noreferrer',
-      href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`,
-      text: 'Video walkthrough ↗',
-    }) : null,
-  ]));
   // Phase 2: the problem — heading, statement, quick facts — on the left, the code
   // workspace pinned full-height on the right, so both are in one glance. The hero
   // moved into the left column so the editor starts at the top of the screen rather
@@ -287,14 +263,14 @@ export function renderProblem(entry, context) {
   enableWideLayout(true);
   view.append(workspaceRail());
   view.append(el('div', { class: 'pbody with-workspace' }, [
-    el('div', { class: 'pcol' }, [hero, descCard, rail]),
+    el('div', { class: 'pcol' }, [hero, descCard]),
     mountWorkspace(entry),
     mountCoach(entry),
   ]));
 
   loadProblem(entry.slug, entry).then(result => {
     if (!document.body.contains(descCard)) return; // navigated away
-    fillDescription(descCard, rail, titleEl, badgeRow, entry, result);
+    fillDescription(descCard, tags, titleEl, badgeRow, entry, result);
   });
 
   return view;
@@ -315,10 +291,11 @@ function panelToggle(entry, kind, label, key, available) {
   return button;
 }
 
-function fillDescription(card, rail, titleEl, badgeRow, entry, result) {
+function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
   const target = card.querySelector('.desc');
   clear(target);
   clear(badgeRow);
+  for (const topic of tags.querySelectorAll('[data-topic]')) topic.remove();
 
   if (!result.ok) {
     target.append(stateBlock({
@@ -331,7 +308,7 @@ function fillDescription(card, rail, titleEl, badgeRow, entry, result) {
         : 'The statement is not available offline. Open it on LeetCode or retry your connection.',
       actions: [
         {label:'Open on LeetCode ↗',onClick:()=>window.open(`https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, '_blank', 'noopener,noreferrer')},
-        ...(result.code === 'DEMO_CONTENT_UNAVAILABLE' ? [] : [{label:'Retry',onClick:()=>{replace(target,skeleton(7));loadProblem(entry.slug,entry).then(r=>fillDescription(card,rail,titleEl,badgeRow,entry,r));}}]),
+        ...(result.code === 'DEMO_CONTENT_UNAVAILABLE' ? [] : [{label:'Retry',onClick:()=>{replace(target,skeleton(7));loadProblem(entry.slug,entry).then(r=>fillDescription(card,tags,titleEl,badgeRow,entry,r));}}]),
       ],
     }));
     return;
@@ -344,9 +321,10 @@ function fillDescription(card, rail, titleEl, badgeRow, entry, result) {
   if (content?.isPaidOnly) badgeRow.append(el('span', { class: 'tag alert', text: 'Premium' }));
   if (result.source === 'mock') badgeRow.append(el('span', { class: 'tag quiet', text: 'Sample text' }));
 
-  // The rail is worth filling even when the statement itself is withheld —
-  // premium responses still carry topic tags and example test cases.
-  fillRail(rail, content);
+  for (const topic of content?.topicTags || []) {
+    if (String(topic).toLowerCase() === entry.pattern.toLowerCase()) continue;
+    tags.append(el('span', { class: 'tag quiet', text: String(topic), 'data-topic': '1' }));
+  }
 
   // `content.isPaidOnly` is the ONLY authority on "you cannot read this here".
   // catalog.isPro is NeetCode-pro, a different thing entirely, and is never used here.
@@ -388,13 +366,13 @@ function fillDescription(card, rail, titleEl, badgeRow, entry, result) {
 
   if (content.stale) {
     target.append(el('div', {
-      class: 'mono dim', style: 'margin-bottom:14px;letter-spacing:.1em',
+      class: 'mono dim', style: 'margin-bottom:14px;font:500 11px/1.4 var(--ui);letter-spacing:0',
       text: 'Served from cache — LeetCode was unreachable when this page loaded.',
     }));
   }
   if (result.source === 'mock') {
     target.append(el('div', {
-      class: 'mono dim', style: 'margin-bottom:14px;letter-spacing:.1em',
+      class: 'mono dim', style: 'margin-bottom:14px;font:500 11px/1.4 var(--ui);letter-spacing:0',
       text: 'Placeholder statement — the real one is fetched by the studio server.',
     }));
   }
@@ -410,24 +388,6 @@ function dropSpacerParagraphs(root) {
   for (const p of root.querySelectorAll('p')) {
     const empty = p.textContent.replace(/[\s ]+/g, '') === '' && !p.querySelector('img');
     if (empty) p.remove();
-  }
-}
-
-/** Topics and example input, whenever the server gives them — premium included. */
-function fillRail(rail, content) {
-  for (const stale of rail.querySelectorAll('[data-railextra]')) stale.remove(); // retry-safe
-  if (!content) return;
-  if (Array.isArray(content.topicTags) && content.topicTags.length) {
-    rail.prepend(el('section', { class: 'card railcard', dataset: { railextra: '1' } }, [
-      el('h3', { text: 'Topics' }),
-      el('div', { class: 'taglist' }, content.topicTags.map(t => el('span', { class: 'tag quiet', text: String(t) }))),
-    ]));
-  }
-  if (content.exampleTestcases) {
-    rail.append(el('section', { class: 'card railcard', dataset: { railextra: '1' } }, [
-      el('h3', { text: 'Example input' }),
-      el('pre', { text: String(content.exampleTestcases) }),
-    ]));
   }
 }
 

@@ -63,17 +63,9 @@ function progressOverview(summary, state) {
   const ready = state.progress !== null;
   const total = summary.total;
   const accepted = ready ? summary.accepted : 0;
-  return el('section', {class:'catalog-overview','aria-label':'Collection progress'}, [
-    el('div',{class:'collection-progress'},[
-      el('span',{class:'overview-label',text:'COLLECTION PROGRESS'}),
-      el('div',{class:'progress-fraction'},[el('strong',{text:ready ? String(accepted) : '—'}),el('span',{text:`/ ${total} accepted`})]),
-      el('div',{class:'collection-track',role:'img','aria-label':ready ? `${accepted} of ${total} accepted on LeetCode` : 'Progress not loaded'},el('span',{style:`width:${total ? accepted / total * 100 : 0}%`})),
-      el('span',{class:'overview-note',text:ready ? 'Accepted verdicts recorded in this workspace' : state.progressState === 'unavailable' ? 'Progress unavailable' : 'Loading saved activity…'}),
-    ]),
-    ...[['localPass','Passed locally','Example cases passed'],['attempted','In progress','Started, not yet accepted'],['touched','Practiced','Attempted or tested problems']].map(([key,label,note]) => el('div',{class:'overview-stat'},[
-      el('span',{class:'overview-label',text:label}),el('strong',{text:ready ? String(summary[key]) : '—'}),el('span',{class:'overview-note',text:note}),
-    ])),
-  ]);
+  return el('p',{class:'catalog-summary'},ready
+    ? [el('b',{text:String(accepted)}),` of ${total} accepted · ${summary.localPass} passed locally · ${summary.attempted} in progress `,el('span',{class:'collection-track',role:'img','aria-label':`${accepted} of ${total} accepted on LeetCode`},el('span',{style:`width:${total ? accepted / total * 100 : 0}%`}))]
+    : state.progressState === 'unavailable' ? 'Progress unavailable' : 'Loading your progress…');
 }
 
 function assetDot(present, letter, label) {
@@ -96,7 +88,6 @@ function problemRow(problem, state, needle, onOpen) {
     el('span', { class: `problem-state state-${progress.status}`, title: progress.label, 'aria-label': progress.label, text: progress.status === 'accepted' ? '✓' : progress.status === 'local-pass' ? '◐' : progress.status === 'attempted' ? '•' : '○' }),
     el('span', { class: 'pnum', text: problem.number ? String(problem.number) : '—' }),
     el('span', { class: 'ptitle' }, markTitle(problem.title, needle)),
-    el('span', { class: `problem-progress state-${progress.status}`, text: progress.label }),
     el('span', { class: 'plists' }, [
       problem.lists.blind75 ? el('span', { class: 'tag quiet', text: 'B75' }) : null,
       problem.lists.neetcode150 && !problem.lists.blind75 ? el('span', { class: 'tag quiet', text: '150' }) : null,
@@ -142,7 +133,7 @@ function patternSection(group, index, state, needle, handlers) {
   if (filtered) {
     section.append(el('div', {
       class: 'mono dim',
-      style: 'padding:8px 16px;border-top:1px solid rgba(0,0,0,.06);letter-spacing:.12em',
+      style: 'padding:8px 16px;border-top:1px solid rgba(0,0,0,.06);font:500 11px/1.4 var(--ui);letter-spacing:0',
       text: `${group.total - group.items.length} more in this pattern hidden by the filters`,
     }));
   }
@@ -212,7 +203,7 @@ export function renderBrowse(data, state, handlers) {
   view.append(progressOverview(summary, state));
   const layout = el('div', { class: 'catalog-layout' });
   const sidebar = el('nav', { class: 'catalog-tree', 'aria-label': 'Problem patterns' }, [
-    el('div', { class: 'tree-heading', text: 'EXPLORER' }),
+    el('div', { class: 'tree-heading', text: 'Explorer' }),
     el('div', { class: 'tree-legend', text: 'Accepted / total problems' }),
     el('button', { class: 'tree-root', type: 'button', 'aria-pressed': String(!state.pattern), onclick: () => handlers.onPattern(null) }, [folderIcon(), el('span', {text: LIST_FILTERS.find(f=>f.id===state.list)?.label || 'All problems'}), el('span', {class:'tree-count',text:String(collection.length)})]),
     ...data.patterns.map(pattern => {
@@ -257,7 +248,7 @@ export function renderBrowse(data, state, handlers) {
   const silent = state.pattern ? [] : groups.filter(g => !g.items.length);
   if (silent.length) {
     content.append(el('div', {
-      class: 'mono dim', style: 'margin-top:12px;text-align:center;letter-spacing:.12em',
+      class: 'mono dim', style: 'margin-top:12px;text-align:center;font:500 11px/1.4 var(--ui);letter-spacing:0',
       text: `No match in ${silent.length} other pattern${silent.length === 1 ? '' : 's'}: ${silent.map(g => g.pattern).join(' · ')}`,
     }));
   }
