@@ -33,11 +33,6 @@ const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
 const HOME = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-design-home-'));
 const PROFILE = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-design-profile-'));
-const realCache = path.join(os.homedir(), 'LeetCodeTutor', 'cache');
-if (fs.existsSync(realCache)) {
-  await fsp.cp(realCache, path.join(HOME, 'cache'), { recursive: true });
-}
-
 // Three interviews that already happened, written straight into the store the way the
 // server writes them. The library is a screen about the past, so it cannot be checked on
 // an empty disk: the interesting rows are the resumable one and the unfinished one that
@@ -337,6 +332,8 @@ try {
   // Both unfinished seeds now offer Resume; this row is the one seeded with a live
   // thread and a paused clock, which is what the transcript/phase/clock assertions
   // below actually check. The threadless one is covered separately below.
+  await evaluate(`import('/js/drafts.js').then(m => m.saveDraft('design:2026-07-28T18-40-00-000Z', 'Recovered spoken answer'))`);
+
   const resumed = await evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     [...document.querySelectorAll('.dzl-row')]
@@ -430,6 +427,35 @@ try {
   })()`);
   if(pauseWorks)ok('Pause freezes the clock and input; Resume continues the same interview');
   else bad('pause/resume controls','timer or controls did not transition');
+
+  const draftRecovery = await evaluate(`(async () => {
+    const original = navigator.mediaDevices.getUserMedia;
+    let openings = 0;
+    navigator.mediaDevices.getUserMedia = async () => { openings++; throw new Error('Unexpected microphone'); };
+    const text = document.querySelector('.dz-input').value;
+    document.querySelector('[data-mode="voice"]').click();
+    await new Promise(r => setTimeout(r, 100));
+    const notice = document.querySelector('.dz-draft');
+    const visible = !notice.hidden && notice.getBoundingClientRect().height > 0;
+    const tail = notice.querySelector('.dz-draft-tail');
+    const oneLine = getComputedStyle(tail).whiteSpace === 'nowrap';
+    [...notice.querySelectorAll('button')].find(b => b.textContent === 'Edit').click();
+    const edited = !document.querySelector('.dz-type').hidden && document.querySelector('.dz-input').value === text;
+    document.querySelector('[data-mode="voice"]').click();
+    const originalFetch = window.fetch;
+    let sent = '';
+    window.fetch = (url, options) => String(url) === '/api/design/turn'
+      ? (sent = JSON.parse(options.body).said, Promise.resolve(new Response('event: done\\ndata: {}\\n\\n', {headers:{'content-type':'text/event-stream'}})))
+      : originalFetch(url, options);
+    notice.querySelector('.dz-send').click();
+    document.querySelector('[data-mode="type"]').click();
+    await new Promise(r => setTimeout(r, 100));
+    window.fetch = originalFetch;
+    navigator.mediaDevices.getUserMedia = original;
+    return text === 'Recovered spoken answer' && visible && oneLine && edited && openings === 0 && sent === text;
+  })()`);
+  if (draftRecovery) ok('restored voice draft shows one-line Send/Edit notice and blocks microphone until resolved');
+  else bad('restored voice draft', 'draft, notice, Send/Edit, or microphone gate failed');
 
   const voiceRecovery=await evaluate(`(async()=>{
     const original=navigator.mediaDevices.getUserMedia;

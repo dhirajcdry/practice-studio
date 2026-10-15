@@ -114,6 +114,7 @@ STUDIO_HOME="$HOME/PracticeStudio" STUDIO_PORT=4174 npm start
 | Keys | Action |
 | --- | --- |
 | `/` · `j` / `k` · `Enter` | Search · move through results · open |
+| `⌘←` · `⌘→` | Previous · next problem (on a problem page) |
 | `⌘'` · `⌘↵` · `⌘S` | Run locally · submit to LeetCode · save |
 | `⌘B` · `⌘J` · `⌘\` | Toggle problem · results · coach |
 | `⌥R` | Start or end a coding attempt |

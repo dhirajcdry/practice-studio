@@ -85,6 +85,16 @@ export function msFromSnapshotName(name) {
 
 /* --------------------------------- gathering --------------------------------- */
 
+/** Read every sitting on one clock; attempts can span navigation and idle gaps. */
+export async function readProblemSessionEvents(root, slug) {
+  const dir = path.join(root, 'problems', slug, 'sessions');
+  const events = [];
+  for (const name of (await listDir(dir)).filter((n) => n.endsWith('.jsonl'))) {
+    events.push(...await readJsonl(path.join(dir, name)));
+  }
+  return events.sort((a, b) => (ms(a.at) ?? 0) - (ms(b.at) ?? 0));
+}
+
 /**
  * Everything that belongs to one attempt, from every store.
  *
@@ -96,40 +106,19 @@ export function msFromSnapshotName(name) {
  */
 export async function gatherAttempt({ root, slug, attemptId }) {
   const dir = path.join(root, 'problems', slug);
-  const sessionFiles = (await listDir(path.join(dir, 'sessions'))).filter((n) => n.endsWith('.jsonl'));
-
-  let started = null;
-  let ended = null;
-  let events = [];
-
-  for (const name of sessionFiles) {
-    const all = await readJsonl(path.join(dir, 'sessions', name));
-    const startAt = all.find((e) => e.type === 'attempt_started' && e.data?.attemptId === attemptId);
-    if (!startAt) continue;
-    const endAt = all.find((e) => e.type === 'attempt_ended' && e.data?.attemptId === attemptId);
-    started = startAt;
-    ended = endAt ?? null;
-
-    const from = ms(startAt.at);
-    // An attempt with no end is one that is still open, or one whose end was lost to a
-    // crash. Take everything after the start rather than nothing.
-    const to = endAt ? ms(endAt.at) : Number.POSITIVE_INFINITY;
-
-    events = all.filter((e) => {
-      const own = e.data?.attemptId;
-      if (own) return own === attemptId;
-      const at = ms(e.at);
-      if (at === null) return false;
-      // The verdict for the last submission can land a second or two after Stop.
-      return at >= from && at <= to + 30_000;
-    });
-    break;
-  }
-
+  const all = await readProblemSessionEvents(root, slug);
+  const started = all.find((e) => e.type === 'attempt_started' && e.data?.attemptId === attemptId);
   if (!started) return null;
-
+  const ended = all.find((e) => e.type === 'attempt_ended' && e.data?.attemptId === attemptId) ?? null;
   const from = ms(started.at);
   const to = ended ? ms(ended.at) : Number.POSITIVE_INFINITY;
+  const events = all.filter((e) => {
+    const own = e.data?.attemptId;
+    if (own) return own === attemptId;
+    const at = ms(e.at);
+    // The verdict for the last submission can land shortly after Stop.
+    return at !== null && at >= from && at <= to + 30_000;
+  });
 
   /* the spoken track, de-chunked */
   const speech = [];

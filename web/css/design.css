@@ -243,3 +243,7 @@ main:has(.dz-view){max-width:none;padding:16px 20px 20px}
 .dz-clock.paused{color:var(--ink-50)}
 .dz-pause:disabled{opacity:.45}
 .dz-input:disabled{opacity:.6;resize:none}
+
+.dz-draft{display:flex;align-items:center;gap:8px;min-width:0}
+.dz-draft[hidden]{display:none}
+.dz-draft-tail{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

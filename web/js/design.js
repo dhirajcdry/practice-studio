@@ -25,6 +25,8 @@ import { onSettingsChange } from './settings.js';
 import { when } from './history.js';
 import { createVoiceControl } from './voice.js';
 import { createSpeaker, splitForSpeech, turnDecision, speechSupported } from './speech.js';
+import { designDraftNotice } from './design-draft.js';
+import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft } from './drafts.js';
 
 const VENDOR = new URL('../vendor/excalidraw/', import.meta.url).href;
 
@@ -390,8 +392,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   let voice = null;
   // Two modes, not one toggle among four buttons. They are different interactions:
   // typed is a text box you submit, voice is a conversation where going quiet IS the
-  // submit. Showing a Send button in voice mode would be a lie about how it works, so
-  // the compose row is rebuilt rather than decorated.
+  // submit. A recovered draft is the exception: explicitly send or edit it first.
   let mode = 'type';       // 'type' | 'voice'
   const isVoice = () => mode === 'voice';
   let speakBuffer = '';    // tokens not yet formed into a speakable sentence
@@ -428,6 +429,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); answer(); }
     },
   });
+  const draft = readDraft(resumed?.id ? 'design:' + resumed.id : '');
+  if (draft?.text) input.value = draft.text;
+  input.addEventListener('input', () => { if (interviewId) saveDraft('design:' + interviewId, input.value); });
 
   const sendButton = el('button', { class: 'dz-send', type: 'button', text: 'Send', onclick: () => answer() });
 
@@ -465,13 +469,40 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     el('i', { class: 'dz-vdot' }), el('span', { class: 'dz-vlabel', text: 'Starting…' }),
   ]);
   const voiceHeard = el('div', { class: 'dz-vheard', 'aria-live': 'polite' });
+  const voiceHint = el('span', { class: 'mono dim dz-vhint', text: 'Stop talking to send' });
+  let pendingDraft = Boolean(input.value.trim());
+  const draftTail = el('span', { class: 'dz-draft-tail' });
+  const draftSend = el('button', { class: 'dz-send', type: 'button', text: 'Send', onclick: () => answer() });
+  const draftNotice = el('div', { class: 'dz-draft dz-cut mono', hidden: true }, [
+    draftTail, draftSend,
+    el('button', { class: 'dz-skip', type: 'button', text: 'Edit', onclick: () => setMode('type') }),
+  ]);
+  function paintDraft() {
+    const notice = designDraftNotice({ text: input.value, pending: pendingDraft, mode });
+    draftNotice.hidden = !notice.visible;
+    draftTail.textContent = notice.tail;
+    draftTail.title = input.value.trim();
+    micSlot.hidden = isVoice() && !draftNotice.hidden;
+    // The mic is held shut until the recovered answer is sent or edited, so going quiet sends nothing.
+    voiceHint.hidden = !draftNotice.hidden;
+    draftSend.disabled = busy || paused || changingPause;
+  }
+  let writingDraft = false;
+  const unwatchDraft = interviewId ? watchDraft('design:' + interviewId, text => {
+    if (writingDraft) return;
+    input.value = text;
+    pendingDraft = Boolean(text.trim());
+    if (pendingDraft && isVoice()) closeMic();
+    paintDraft();
+  }) : () => {};
   const voicePanel = el('div', { class: 'dz-voice', hidden: true }, [
     voiceState,
+    draftNotice,
     voiceHeard,
     el('div', { class: 'dz-vrow' }, [
       skipButton,
       el('span', { class: 'spacer' }),
-      el('span', { class: 'mono dim dz-vhint', text: 'Stop talking to send' }),
+      voiceHint,
     ]),
   ]);
   const typePanel = el('div', { class: 'dz-type' }, [
@@ -483,6 +514,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     voiceState.querySelector('.dz-vlabel').textContent = label;
     voiceState.dataset.tone = tone;
     // The live text is what you have said this turn; it is cleared when the turn is sent.
+    voiceHeard.hidden = pendingDraft;
     voiceHeard.textContent = input.value.trim();
     voiceHeard.classList.toggle('empty', input.value.trim() === '');
   }
@@ -496,9 +528,11 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     }
     typePanel.hidden = isVoice();
     voicePanel.hidden = !isVoice();
+    pendingDraft = Boolean(input.value.trim());
+    paintDraft();
     if (isVoice()) {
       voicePanel.append(micSlot);
-      paintVoice('Starting microphone…');
+      paintVoice(pendingDraft ? 'Unsent answer — send or edit' : 'Starting microphone…');
       openMic();
     } else {
       // Leaving voice must silence it as well as close the microphone, or the
@@ -518,7 +552,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   }
 
   function openMic() {
-    if (!isVoice() || destroyed || busy || debriefed || paused || changingPause) return;
+    if (!isVoice() || destroyed || busy || debriefed || paused || changingPause || designDraftNotice({ text: input.value, pending: pendingDraft, mode }).blocksMic) return;
     if (speaker?.speaking) return;
     try { voice?.start?.(); } catch { /* the button still works */ }
   }
@@ -550,6 +584,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   async function runTurn(url, body, { kind = 'q' } = {}) {
     if (busy || destroyed || debriefed || paused || changingPause) return false;
     busy = true;
+    paintDraft();
     pauseButton.disabled = true;
     sendButton.disabled = true;
     doneButton.disabled = true;
@@ -577,6 +612,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
         onEvent: (name, payload) => {
           if (name === 'interview') {
             interviewId = payload.id;
+            if (input.value) saveDraft('design:' + interviewId, input.value);
             startedAt = Date.parse(payload.startedAt) || Date.now();
             tickClock();
           } else if (name === 'done') {
@@ -607,13 +643,14 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
         target.textContent += '\nThe connection ended before this turn finished. Your interview is still open.';
       }
       if (!target.textContent.trim() && !cut) target.textContent = 'No response was received.';
-      if (isVoice() && speakBuffer.trim()) { speaker?.say(speakBuffer); speakBuffer = ''; }
+      if (!destroyed && isVoice() && speakBuffer.trim()) { speaker?.say(speakBuffer); speakBuffer = ''; }
     } catch (error) {
       failed = true;
       target.textContent = error.message;
       target.closest('.dz-entry')?.classList.add('dz-err');
     } finally {
       busy = false;
+      paintDraft();
       sendButton.disabled = false;
       doneButton.disabled = paused;
       pauseButton.disabled = !interviewId || debriefed;
@@ -631,6 +668,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     if (!interviewId || busy || debriefed || destroyed || paused || changingPause) return;
     if (said) entry('a', said);
     input.value = '';
+    clearDraft('design:' + interviewId);
+    pendingDraft = false;
+    paintDraft();
     if (isVoice()) paintVoice('Thinking…', 'think');
     await runTurn('/api/design/turn', { interviewId, said, phase, elements });
   }
@@ -653,6 +693,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   }
 
   function paintPaused() {
+    paintDraft();
     pauseButton.textContent = paused ? 'Resume' : 'Pause';
     pauseButton.setAttribute('aria-pressed', String(paused));
     clock.classList.toggle('paused', paused);
@@ -697,13 +738,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     if (busy) pauseWhenIdle = true;
     else togglePause();
   };
-  const onPageHide = () => {
-    if (!interviewId || paused || debriefed || destroyed) return;
-    closeMic(); speaker?.cancel();
-    paused = true;
-    navigator.sendBeacon?.('/api/design/pause', new Blob([JSON.stringify({ interviewId })], { type: 'application/json' }));
-    paintPaused();
-  };
+  const onPageHide = () => destroy();
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('pagehide', onPageHide);
 
@@ -803,8 +838,17 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
         paintVoice(labels[state] || 'Microphone off', state === 'recording' ? 'listen' : '');
       },
       onTranscript: (text) => {
+        if (destroyed) {
+          if (interviewId) appendDraft('design:' + interviewId, text);
+          return;
+        }
         const gap = input.value === '' || /\s$/.test(input.value) ? '' : ' ';
         input.value += gap + text;
+        writingDraft = true;
+        try { if (interviewId) saveDraft('design:' + interviewId, input.value); }
+        finally { writingDraft = false; }
+        pendingDraft = false;
+        paintDraft();
         // In voice mode there is no text box on screen, so this is the only way to see
         // that the transcriber is keeping up with you.
         if (isVoice()) paintVoice(speaker?.speaking ? 'Speaking…' : 'Listening…');
@@ -812,7 +856,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       // Going quiet is what ends a turn. The analyser already computes this signal for
       // cutting phrases; a turn just has a much longer fuse. See speech.js.
       onLevel: ({ sinceLoud, pending }) => {
-        if (!isVoice() || destroyed) return;
+        if (!isVoice() || destroyed || pendingDraft) return;
         const decision = turnDecision({
           sinceLoud,
           chars: input.value.trim().length,
@@ -893,9 +937,10 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     input.focus();
   })();
 
-  return {
-    destroy() {
+  function destroy() {
+      if (destroyed) return;
       destroyed = true;
+      unwatchDraft();
       clearTimeout(sceneTimer);
       if (clockTimer) clearInterval(clockTimer);
       if (turnTimer) clearInterval(turnTimer);
@@ -905,12 +950,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       // Leaving the screen must silence it. A voice still reading a question from a
       // page you have navigated away from is the worst bug this feature could have.
       speaker?.dispose?.();
-      voice?.dispose?.();
-      if (interviewId && busy) {
-        navigator.sendBeacon?.('/api/design/stop', new Blob(
-          [JSON.stringify({ interviewId })], { type: 'application/json' },
-        ));
-      }
+      voice?.dispose?.({ finish: true });
       // Stop the clock on the way out. Without this an interview left open overnight
       // comes back eighteen hours in, past the end of its own phase machine.
       if (interviewId && !debriefed && !paused) {
@@ -926,8 +966,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
       boardRoot?.unmount();
       boardRoot = null;
       api = null;
-    },
-  };
+  }
+  return { destroy };
 }
 
 /* ---------------- the route ---------------- */

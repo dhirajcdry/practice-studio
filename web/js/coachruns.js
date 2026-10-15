@@ -20,6 +20,11 @@
 
 import { streamCoachMessage, attachCoachRun, listCoachRuns, stopCoachRun } from './api.js';
 
+import { createSeenRuns } from './seen-runs.js';
+let storage;
+try { storage = localStorage; } catch { /* private browsing */ }
+const seenRuns = createSeenRuns(storage);
+
 /** @type {Map<string, object>} slug → run */
 const runs = new Map();
 const globalListeners = new Set();
@@ -62,6 +67,7 @@ export function dismissRun(slug) {
   const run = runs.get(slug);
   if (!run || run.dismissed) return;
   run.dismissed = true;
+  seenRuns.remember(run.serverId);
   announce();
 }
 
@@ -87,6 +93,7 @@ export function markSeen(slug) {
   const run = runs.get(slug);
   if (!run) return;
   run.seen = true;
+  seenRuns.remember(run.serverId);
   if (run.done) runs.delete(slug);
   announce();
 }
@@ -135,7 +142,10 @@ function newRun({ slug, title, message, kind, lead, startedAt = new Date().toISO
 function consume(run, open) {
   const handlers = {
     signal: run.controller.signal,
-    onRun: (info) => { run.serverId = info.id; },
+    onRun: (info) => {
+      run.serverId = info.id;
+      if (run.seen || run.dismissed) seenRuns.remember(info.id);
+    },
     onToken: (chunk) => { run.text += chunk; emit(run, 'token'); },
     onTool: (name, summary) => { run.tools.push({ name, summary }); emit(run, 'tool'); },
   };
@@ -165,7 +175,7 @@ function consume(run, open) {
     emit(run, 'done');
     // Nobody is watching: the answer waits in the registry until the panel comes back,
     // and the indicator says where it is. Watched runs are dropped by markSeen.
-    if (run.listeners.size === 0) run.seen = false;
+    // Acknowledgement survives detaching the last listener, too.
     announce();
   });
 }
@@ -208,6 +218,7 @@ export async function adopt() {
   for (const summary of found) {
     // A run this tab already knows about — it started it, and is still streaming it.
     if (runs.has(summary.slug)) continue;
+    if (summary.status !== 'running' && seenRuns.has(summary.id)) continue;
 
     const run = newRun({
       slug: summary.slug,
@@ -218,6 +229,7 @@ export async function adopt() {
       startedAt: summary.startedAt,
     });
     run.serverId = summary.id;
+    run.dismissed = seenRuns.has(summary.id);
     // Adopted rather than watched from the start: it has not been on screen in this tab,
     // so the indicator should offer it.
     run.seen = false;

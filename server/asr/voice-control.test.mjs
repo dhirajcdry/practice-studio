@@ -11,7 +11,7 @@ class Element extends EventTarget {
   setAttribute(k, v) { this[k] = v; }
   append(...nodes) { this.children.push(...nodes); }
 }
-function harness({ meter = true, result = { ok: true, text: 'Hello world' } } = {}) {
+function harness({ meter = true, result = { ok: true, text: 'Hello world' }, permission = null } = {}) {
   let now = 0, stopped = 0;
   const timers = new Map(), requests = [], emitted = [];
   let timerId = 0;
@@ -35,7 +35,7 @@ function harness({ meter = true, result = { ok: true, text: 'Hello world' } } = 
   };
   const ctx = vm.createContext({
     window, MediaRecorder: Recorder, Blob, AbortController,
-    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() { stopped++; } }] }) } },
+    navigator: { mediaDevices: { getUserMedia: async () => { if (permission) await permission; return { getTracks: () => [{ stop() { stopped++; } }] }; } } },
     document: { createElementNS: () => new Element() },
     el, clear: (e) => { e.children = []; }, replace: (e, nodes) => { e.children = nodes.filter(Boolean); },
     transcribeAudio: async (_slug, blob, opts) => { requests.push({ blob, opts }); return typeof result === 'function' ? result(opts) : result; },
@@ -47,7 +47,7 @@ function harness({ meter = true, result = { ok: true, text: 'Hello world' } } = 
   vm.runInContext(source + '\nthis.make = createVoiceControl;', ctx);
   const voice = ctx.make({ getSlug: () => '', logTakes: false, onTranscript: (text) => emitted.push(text) });
   const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-  return { voice, requests, emitted, stopped: () => stopped, flush,
+  return { voice, window, requests, emitted, stopped: () => stopped, flush,
     async advance(ms) { const end = now + ms; while (now < end) { now += 100; for (const t of [...timers.values()]) if (t.next <= now) { t.next += t.ms; t.fn(); } await flush(); } },
   };
 }
@@ -85,4 +85,61 @@ test('late preview after stop cannot replace or duplicate the final transcript',
   await h.voice.start(); await h.advance(1700); h.voice.stop(); await h.flush();
   resolvePreview({ ok: true, text: 'Stale partial' }); await h.flush();
   assert.deepEqual(h.emitted, ['Final words']); assert.equal(h.voice.preview.hidden, true); h.voice.dispose();
+});
+
+test('finish disposal drains an in-flight transcription after detaching', async () => {
+  let resolve;
+  const h = harness({ result: () => new Promise(r => { resolve = r; }) });
+  await h.voice.start(); await h.advance(1700); h.voice.stop();
+  h.voice.dispose({ finish: true });
+  await h.flush();
+  resolve({ ok: true, text: 'Words after navigation' });
+  await h.flush();
+  assert.deepEqual(h.emitted, ['Words after navigation']);
+});
+
+test('blur stops the microphone, then finishing disposal preserves the completed phrase', async () => {
+  const h = harness(); await h.voice.start(); await h.advance(1700);
+  // The control listens to blur as the browser navigation/focus boundary.
+  h.window.dispatchEvent(new Event('blur'));
+  await h.flush();
+  assert.deepEqual(h.emitted, ['Hello world']);
+  h.voice.dispose({ finish: true });
+  assert.equal(h.stopped(), 1);
+});
+
+test('disposing while permission is opening releases the eventual stream', async () => {
+  let grant;
+  const permission = new Promise(resolve => { grant = resolve; });
+  const h = harness({ permission });
+  const opening = h.voice.start();
+  assert.equal(h.voice.isBusy(), true);
+  h.voice.dispose({ finish: true });
+  grant();
+  await opening;
+  assert.equal(h.stopped(), 1);
+  assert.equal(h.voice.isBusy(), false);
+  assert.equal(h.requests.length, 0);
+});
+
+test('recording navigation drains its tail and guards unload only until it finishes', async () => {
+  let finish;
+  const h = harness({ result: opts => opts.filename.startsWith('preview')
+    ? { ok: true, text: 'preview' } : new Promise(resolve => { finish = resolve; }) });
+  const guarded = () => {
+    const event = new Event('beforeunload', { cancelable: true });
+    h.window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(guarded(), false);
+  await h.voice.start(); await h.advance(1700);
+  assert.equal(guarded(), true);
+  h.window.dispatchEvent(new Event('blur'));
+  h.voice.dispose({ finish: true });
+  await h.flush();
+  assert.equal(guarded(), true);
+  finish({ ok: true, text: 'The last words' }); await h.flush();
+  assert.deepEqual(h.emitted, ['The last words']);
+  assert.equal(guarded(), false);
+  assert.equal(h.stopped(), 1);
 });

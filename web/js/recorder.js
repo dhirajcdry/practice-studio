@@ -16,6 +16,9 @@
 
 import { el } from './dom.js';
 import { transcribeAudio, logSessionEvent } from './api.js';
+import { readAttempt, saveAttempt, resumeDecision } from './attempt-state.js';
+
+const STOP_TRANSCRIPTION_TIMEOUT_MS = 60_000;
 
 const SEGMENT_MS = 120_000;    // a lost segment costs two minutes, not a session
 // The first one is short so you find out the microphone is working in seconds rather
@@ -36,11 +39,9 @@ export function formatClock(ms) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-/**
- * @param {() => string|null} getSlug the problem being worked on, read at segment time so
- *        speech follows you when you switch problems mid-recording
- */
-export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEnd = () => {} }) {
+// Routing only changes where this control is mounted. The attempt owns its slug and
+// microphone until an explicit stop, including while another problem is on screen.
+export function createRecorder({ getSlug, getTitle = slug => slug, onAttemptStart = () => {}, onAttemptEnd = () => {} }) {
   let stream = null;
   let recorder = null;
   // One mode. There used to be a second ("debrief" — explain a finished solution back),
@@ -48,6 +49,8 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
   const mode = 'think_aloud';
   let attemptId = null;
   let attemptSlug = null;
+  let attemptTitle = null;
+  let opening = false;
   let startedAt = 0;
   let segmentStartedAt = 0;
   let ticker = null;
@@ -76,8 +79,14 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
    * a graded window opening and closing — completely unlabelled.
    */
   function refreshLabels() {
-    const live = recorder !== null;
-    label.textContent = live ? 'End attempt' : 'Start attempt';
+    const live = attemptId !== null;
+    label.textContent = live ? (recorder ? 'End attempt' : 'Resume attempt') : 'Start attempt';
+    toggle.disabled = opening || stopping;
+    root.hidden = !live && !getSlug();
+    back.hidden = !live || getSlug() === attemptSlug;
+    back.textContent = attemptTitle || attemptSlug || '';
+    root.dataset.attemptId = attemptId || '';
+    pausedEnd.hidden = !live || !!recorder;
     toggle.title = live
       ? 'Stop recording and have the coach review this attempt (⌥R)'
       : 'Start a recorded attempt — the coach reviews it when you stop (⌥R)';
@@ -89,9 +98,13 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
   }, [dot, label, clock]);
 
 
+  const back = el('button', { class: 'rec-problem linkbtn', type: 'button', hidden: true,
+    onclick: () => { location.hash = '#/p/' + encodeURIComponent(attemptSlug); },
+  });
+  const pausedEnd = el('button', { class: 'linkbtn rec-end', type: 'button', text: 'End attempt', hidden: true, onclick: stop });
   const note = el('div', { class: 'rec-note', hidden: true });
   const root = el('div', { class: 'rec' }, [
-    el('div', { class: 'rec-row' }, [toggle]),
+    el('div', { class: 'rec-row' }, [back, toggle, pausedEnd]),
     note,
   ]);
   refreshLabels();
@@ -131,13 +144,13 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
    * Transcribe one segment. Deliberately fire-and-forget: recording must never pause
    * waiting for the model, or the gap swallows whatever was said next.
    */
-  async function handleSegment(blob, slug, spokeMs) {
+  async function handleSegment(blob, slug, spokeMs, segmentAttemptId) {
     if (!slug || blob.size === 0 || spokeMs < MIN_SEGMENT_MS) return;
     try {
       const result = await transcribeAudio(slug, blob, {
         filename: `take-${Date.now()}.webm`,
         mode,
-        attemptId,
+        attemptId: segmentAttemptId,
       });
       if (result?.ok === false || result?.error) {
         // No speech in a segment is normal — you think in silence too. Say nothing.
@@ -147,7 +160,7 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
         }
         return;
       }
-      savedMs += spokeMs;
+      if (attemptId === segmentAttemptId) { savedMs += spokeMs; persist(); }
       // Show what it heard, not what it wants you to do. A running clock proves the
       // timer works; only your own words back prove the microphone does.
       say(`${formatClock(savedMs)} · ${tail(result?.text)}`, 'ok');
@@ -155,7 +168,7 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
       // instead of inferring it from timestamps that can disagree by milliseconds.
       logSessionEvent(slug, 'recorded_audio', {
         mode,
-        attemptId,
+        attemptId: segmentAttemptId,
         seconds: Math.round(spokeMs / 1000),
         characters: (result?.text || '').length,
         transcript: result?.transcript ?? null,
@@ -180,10 +193,11 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
     recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     segmentStartedAt = Date.now();
 
+    const segmentAttemptId = attemptId;
+    const slug = attemptSlug;
     recorder.ondataavailable = (event) => {
       const spokeMs = Date.now() - segmentStartedAt;
-      const slug = getSlug();
-      if (event.data && event.data.size) track(handleSegment(event.data, slug, spokeMs));
+      if (event.data && event.data.size) track(handleSegment(event.data, slug, spokeMs, segmentAttemptId));
       rollResolve?.();
       rollResolve = null;
     };
@@ -197,39 +211,75 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
     armSegment(savedMs === 0 && pending.size === 0);
   }
 
+  function persist() {
+    if (attemptId) saveAttempt({ attemptId, slug: attemptSlug, title: attemptTitle, startedAt, savedMs });
+  }
+
+  const beforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
+
   async function start() {
-    if (recorder || disposed) return;
+    if (recorder || disposed || opening || stopping) return;
+    // Capture the page before awaiting permission: navigation while the browser's
+    // prompt is open must not start the attempt against a different problem.
+    const slug = attemptSlug || getSlug();
+    if (!slug) return;
+    opening = true;
+    refreshLabels();
     say('');
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (disposed) { for (const track of stream.getTracks()) track.stop(); stream = null; return; }
+      if (!attemptId) {
+        savedMs = 0;
+        startedAt = Date.now();
+        attemptId = new Date(startedAt).toISOString();
+        attemptSlug = slug;
+        attemptTitle = getTitle(slug);
+        persist();
+        logSessionEvent(slug, 'attempt_started', { attemptId, mode }).catch(() => {});
+        onAttemptStart({ attemptId, slug, mode });
+      }
+      root.classList.add('is-live');
+      toggle.setAttribute('aria-pressed', 'true');
+      tick();
+      clearInterval(ticker);
+      ticker = setInterval(tick, 1000);
+      beginSegment();
+      window.addEventListener('beforeunload', beforeUnload);
+      say('Listening…', 'ok');
     } catch (err) {
-      const denied = /NotAllowed|Permission/i.test(err?.name || '');
-      say(denied
-        ? 'Microphone access was refused. Allow it in your browser settings to record.'
-        : 'No microphone is available on this machine.', 'err');
+      for (const track of stream?.getTracks() ?? []) track.stop();
+      stream = null;
+      say(attemptId ? 'Attempt paused — click Resume attempt to reopen the microphone.'
+        : 'Microphone unavailable. Allow access to start recording.', 'err');
+    } finally {
+      opening = false;
+      refreshLabels();
+    }
+  }
+
+  function restore() {
+    const saved = readAttempt();
+    const decision = resumeDecision(saved);
+    if (decision !== 'resume') {
+      saveAttempt(null);
+      if (decision === 'stale') logSessionEvent(saved.slug, 'attempt_ended', {
+        attemptId: saved.attemptId, stale: true,
+        elapsedSeconds: Math.round((Date.now() - saved.startedAt) / 1000),
+        spokenSeconds: Math.round(saved.savedMs / 1000),
+      }).catch(() => {});
       return;
     }
-    stopping = false;
-    savedMs = 0;
-    startedAt = Date.now();
-
-    // Pressing record is the start of an attempt, not just of a microphone. Everything
-    // logged from here until stop — runs, submissions, speech, questions — belongs to it,
-    // and the review at the end is scoped to exactly this window.
-    attemptId = new Date(startedAt).toISOString();
-    attemptSlug = getSlug();
-    if (attemptSlug) {
-      logSessionEvent(attemptSlug, 'attempt_started', { attemptId, mode }).catch(() => {});
-    }
-    onAttemptStart({ attemptId, slug: attemptSlug, mode });
-
-    root.classList.add('is-live');
-    toggle.setAttribute('aria-pressed', 'true');
+    attemptId = saved.attemptId;
+    attemptSlug = saved.slug;
+    attemptTitle = getTitle(saved.slug) || saved.title || saved.slug;
+    startedAt = saved.startedAt;
+    savedMs = saved.savedMs;
     tick();
     ticker = setInterval(tick, 1000);
-    beginSegment();
     refreshLabels();
-    say('Listening…', 'ok');
+    logSessionEvent(attemptSlug, 'attempt_resumed', { attemptId, mode }).catch(() => {});
+    start();
   }
 
   /**
@@ -260,12 +310,13 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
    * wrap-up, "yep, all of this works" — made it into the transcript first.
    */
   async function stop() {
-    if (!recorder || stopping) return;
+    if (!attemptId || stopping || opening) return;
     const id = attemptId;
     const slug = attemptSlug ?? getSlug();
     const elapsedMs = Date.now() - startedAt;
 
     stopping = true;
+    refreshLabels();
     clearTimeout(segmentTimer);
     say('Wrapping up — saving the last of what you said…', 'ok');
 
@@ -275,7 +326,9 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
         recorder.stop();
         await Promise.race([rolled, delay(3_000)]);
       }
-      if (pending.size) await Promise.race([Promise.allSettled([...pending]), delay(20_000)]);
+      if (pending.size) {
+        await Promise.race([Promise.allSettled([...pending]), delay(STOP_TRANSCRIPTION_TIMEOUT_MS)]);
+      }
     } catch { /* a failed segment must not strand the attempt open */ }
 
     teardown();
@@ -289,10 +342,13 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
     }
     attemptId = null;
     attemptSlug = null;
+    saveAttempt(null);
+    stopping = false;
+    refreshLabels();
     // Read after the flush, never before. Capturing it up front reported "nothing spoken"
     // on an attempt that had just been transcribed during the wait — a false statement
     // about what he did, which is the one kind of wrong this app must not be.
-    onAttemptEnd({ attemptId: id, slug, spokenMs: savedMs, elapsedMs });
+    onAttemptEnd({ attemptId: id, slug, title: attemptTitle, spokenMs: savedMs, elapsedMs });
   }
 
   function teardown() {
@@ -304,6 +360,7 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
     // that stays warm after you pressed stop is a betrayal, not a bug.
     for (const track of stream?.getTracks() ?? []) track.stop();
     stream = null;
+    window.removeEventListener('beforeunload', beforeUnload);
     root.classList.remove('is-live');
     toggle.setAttribute('aria-pressed', 'false');
     refreshLabels();
@@ -320,23 +377,14 @@ export function createRecorder({ getSlug, onAttemptStart = () => {}, onAttemptEn
     disposed = true;
     stopping = true;
     try { if (recorder?.state === 'recording') recorder.stop(); } catch { /* already gone */ }
-    // Navigating away mid-attempt still closes it. An attempt left open would swallow
-    // every later event on this problem into a window that never ended.
-    if (attemptId && attemptSlug) {
-      logSessionEvent(attemptSlug, 'attempt_ended', {
-        attemptId,
-        elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
-        spokenSeconds: Math.round(savedMs / 1000),
-        abandoned: true,
-      }).catch(() => {});
-    }
-    attemptId = null;
-    attemptSlug = null;
+    // Real teardown releases hardware but preserves the resumable identity. Routing
+    // never calls this: removing a view is not permission to end the learner's work.
+    persist();
     teardown();
     root.remove();
   }
 
-  return { root, start, stop, flush, dispose, isRecording: () => recorder !== null };
+  return { root, start, stop, flush, dispose, restore, refresh: refreshLabels, isLive: () => !!attemptId, isRecording: () => recorder !== null };
 }
 
 let active = null;
@@ -350,14 +398,14 @@ export async function flushRecorder() {
   await active.flush();
 }
 
-export function installRecorder(getSlug, { onAttemptStart, onAttemptEnd } = {}) {
-  if (active) active.dispose();
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return null;
+export function installRecorder(getSlug, { getTitle, onAttemptStart, onAttemptEnd } = {}) {
+  if (active) { mountRecorder(); return active; }
 
-  active = createRecorder({ getSlug, onAttemptStart, onAttemptEnd });
+  active = createRecorder({ getSlug, getTitle, onAttemptStart, onAttemptEnd });
   // Top right, in the bar. It used to float bottom-left, where it sat on top of the
   // problem statement and fought the coach launcher for a corner.
-  (document.getElementById('recmount') || document.body).append(active.root);
+  mountRecorder();
+  active.restore();
 
   // Alt-R, NOT Cmd/Ctrl-Shift-R. That one is hard reload in every browser, and taking
   // it meant the page could not be force-refreshed while a problem was open. A shortcut
@@ -367,8 +415,9 @@ export function installRecorder(getSlug, { onAttemptStart, onAttemptEnd } = {}) 
     if (event.code !== 'KeyR') return;              // code, not key: Alt-R types "®" on macOS
     const node = document.activeElement;
     if (node && (/^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName) || node.isContentEditable)) return;
+    if (!active.isLive() && !getSlug()) return;
     event.preventDefault();
-    if (active.isRecording()) active.stop(); else active.start();
+    if (active.isLive()) active.stop(); else active.start();
   };
   document.addEventListener('keydown', onKey);
 
@@ -377,6 +426,15 @@ export function installRecorder(getSlug, { onAttemptStart, onAttemptEnd } = {}) 
   return active;
 }
 
-export function removeRecorder() {
-  if (active) { active.dispose(); active = null; }
+export function mountRecorder() {
+  if (!active) return;
+  const workspace = document.querySelector('.ws .recmount');
+  const home = document.getElementById('rec-home');
+  // One id, one visible mount. The toolbar itself is replaceable; the recorder isn't.
+  home?.removeAttribute('id');
+  const fallback = home || document.querySelector('[data-rec-home]');
+  document.querySelectorAll('#recmount').forEach(node => node.removeAttribute('id'));
+  const mount = workspace || fallback;
+  if (mount) { mount.id = 'recmount'; mount.append(active.root); }
+  active.refresh();
 }

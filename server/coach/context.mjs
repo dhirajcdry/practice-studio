@@ -19,6 +19,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { unifiedDiff } from './diff.mjs';
+import { readProblemSessionEvents } from '../attempts/assemble.mjs';
 
 const MAX_BUFFER_CHARS = 60_000;
 const MAX_DIFF_CHARS = 20_000;
@@ -236,7 +237,7 @@ export function stitchNarration(transcripts, attempt) {
  * happening — "he said 'this is a hard one' four minutes before writing anything" is a
  * different observation from the same words said after a failed run.
  */
-async function recentTranscripts(problemDir, sinceMs, limit = 6, named = null) {
+async function recentTranscripts(problemDir, sinceMs, limit = 6, named = null, attemptId = null) {
   const dir = path.join(problemDir, 'transcripts');
   let names;
   try {
@@ -255,7 +256,7 @@ async function recentTranscripts(problemDir, sinceMs, limit = 6, named = null) {
     } catch {
       continue; // a corrupt take is not worth failing a turn over
     }
-    if (!belongsToSitting(name, take, sinceMs, named)) continue;
+    if (!(attemptId && take.attemptId === attemptId) && !belongsToSitting(name, take, sinceMs, named)) continue;
     if (typeof take?.text !== 'string' || !take.text.trim()) continue;
     takes.push({
       at: take.recordedAt ?? null,
@@ -292,7 +293,14 @@ export async function gatherContext({ root, slug, catalogEntry, sessionLog, atte
   const firstAt = events[0]?.at ? Date.parse(events[0].at) : null;
   const firstKeystroke = events.find((e) => e.type === 'first_keystroke');
   const transcripts = await recentTranscripts(problemDir, firstAt, 6, namedTranscripts(events));
-  const attemptWindow = findAttempt(events, attemptId);
+  const attemptEvents = await readProblemSessionEvents(root, slug);
+  const attemptWindow = findAttempt(attemptEvents.filter((e) => Date.parse(e.at) <= now), attemptId);
+  // Sitting fields stay local; the review gets the complete spoken attempt, without
+  // the recent-take cap or a sitting-start cutoff discarding its opening reasoning.
+  const attemptTranscripts = attemptWindow
+    ? await recentTranscripts(problemDir, attemptWindow.startMs, Infinity,
+      namedTranscripts(attemptWindow.events), attemptWindow.id)
+    : [];
 
   return {
     slug,
@@ -318,7 +326,7 @@ export async function gatherContext({ root, slug, catalogEntry, sessionLog, atte
     firstAtMs: firstAt,
     transcripts,
     attempt: attemptWindow
-      ? { ...attemptWindow, narration: stitchNarration(transcripts, attemptWindow) }
+      ? { ...attemptWindow, narration: stitchNarration(attemptTranscripts, attemptWindow) }
       : null,
     elapsedAtOf: (iso) => (firstAt === null || !iso ? null : Date.parse(iso) - firstAt),
   };

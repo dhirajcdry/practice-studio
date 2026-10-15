@@ -196,6 +196,7 @@ export function openSettings() {
       // remember twice; what this is for is answering "what was it again".
       el('div', { class: 'set-keys' }, [
         ...CHORDS.map((c) => keyRow(c.label, `Show or hide ${c.what}`)),
+        keyRow('⌘← · ⌘→', 'Move to the previous or next problem'),
         keyRow('⌘↵', 'Submit to LeetCode'),
         keyRow("⌘'", 'Run the example cases here'),
         keyRow('⌘S', 'Save to disk now'),

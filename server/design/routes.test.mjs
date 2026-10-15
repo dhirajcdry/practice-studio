@@ -420,3 +420,32 @@ test('a phase the interviewer invents is ignored rather than believed', async ()
     assert.equal((await new DesignStore({ root }).readState(id)).phase, 'requirements');
   } finally { await close(); }
 });
+
+test('disconnect and pause keep the full in-flight question and paused clock on disk', async () => {
+  const root = await workspace();
+  const { origin, close, svc } = await serve(root, { reply: CLEAN });
+  try {
+    const opening = await readStream(await post(origin, '/api/design/start', {}));
+    const id = opening.events.find(e => e.name === 'interview').payload.id;
+    const before = await svc.store.readTurns(id);
+    process.env.STUDIO_FAKE_CHUNK_DELAY = '20';
+    const res = await post(origin, '/api/design/turn', { interviewId: id, said: 'Use a cache.' });
+    const reader = res.body.getReader();
+    await reader.read();
+    await reader.cancel();
+    await post(origin, '/api/design/pause', { interviewId: id });
+    await svc.live.get(id)?.completion;
+    const state = await svc.store.readState(id);
+    assert.ok(state.pausedAt, 'completion must preserve the navigation pause');
+    const turns = await svc.store.readTurns(id);
+    assert.deepEqual(turns.slice(0, before.length), before);
+    assert.equal(turns.at(-1).asked, CLEAN);
+    assert.equal(turns.at(-1).said, 'Use a cache.');
+    const resumed = await (await post(origin, '/api/design/resume', { interviewId: id })).json();
+    assert.equal(resumed.turns.at(-1).asked, CLEAN);
+  } finally {
+    delete process.env.STUDIO_FAKE_CHUNK_DELAY;
+    await close();
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});

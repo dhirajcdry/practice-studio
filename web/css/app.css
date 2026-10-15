@@ -1408,3 +1408,9 @@ body.coach-open .coach-runs{bottom:20px}
 .plink:hover{color:var(--ink)}
 .set-head>.mono,.set-label{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;color:var(--ink-50)}
 .set-cardname{font:600 13px var(--ui);letter-spacing:0;text-transform:none}
+
+/* The return link names the attempt while browsing elsewhere, without growing the
+   toolbar or introducing another status colour. Its sibling remains the stop action. */
+.rec-problem{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11px var(--ui);color:var(--ink-70)}
+.rec[hidden],.rec-problem[hidden],.rec-end[hidden]{display:none}
+.rec-end{font:500 11px var(--ui)}

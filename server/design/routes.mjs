@@ -108,7 +108,6 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
   async function finish(sessionId = null, stoppedReason = null) {
     if (finished) return;
     finished = true;
-    svc.live.delete(id);
     if (!broke) {
       // Release anything the guard was still holding — a line that never became a
       // label must not cost the turn its last few words. The phase tag is held by the
@@ -127,10 +126,14 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
     } catch (err) {
       svc.log?.warn?.(`[design] ${id}: ${err.message}`);
     }
+    svc.live.delete(id);
+    settle();
     stream.send('done', { sessionId, stoppedReason, broke, asked });
     stream.end();
   }
 
+  let settle;
+  const completion = new Promise(resolve => { settle = resolve; });
   const child = runProviderTurn({
     choice,
     root: svc.root,
@@ -164,11 +167,14 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
       if (finished) return;
       finished = true;
       svc.live.delete(id);
+      settle();
       stream.error(message);
     },
     onDone: (sessionId, stoppedReason) => finish(sessionId, stoppedReason),
   });
 
+  child.completion = completion;
+  child.detachWaiters = settle;
   svc.live.set(id, child);
   stream.res.on('close', () => { /* a disconnect detaches a viewer; the turn continues */ });
   return child;
@@ -209,6 +215,10 @@ async function handleStart(req, res, ctx) {
       if (!state.prompt && asked) state.prompt = asked.trim().split('\n')[0].slice(0, 300);
       recordTurn(state, { asked, at: new Date().toISOString() });
       await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'opening', provider: choice.provider, model: choice.model, asked });
+      const current = await svc.store.readState(id);
+      for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
+        if (current && key in current) state[key] = current[key];
+      }
       await svc.store.writeState(id, state);
     },
   });
@@ -266,6 +276,10 @@ async function handleTurn(req, res, ctx) {
       if (due) state.curveballDone = true;
       recordTurn(state, { said, asked, at: new Date().toISOString(), gap: body.gap ?? null });
       await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'turn', provider: choice.provider, model: choice.model, said, asked, phase: state.phase });
+      const current = await svc.store.readState(id);
+      for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
+        if (current && key in current) state[key] = current[key];
+      }
       await svc.store.writeState(id, state);
     },
   });
@@ -318,6 +332,10 @@ async function handleDone(req, res, ctx) {
       state.debriefed = true;
       state.endedAt = Date.now();
       await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'debrief', provider: choice.provider, model: choice.model, asked });
+      const current = await svc.store.readState(id);
+      for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
+        if (current && key in current) state[key] = current[key];
+      }
       await svc.store.writeState(id, state);
       // Derived, and written here so the file exists the moment the interview ends.
       await writeInterviewDoc({ root: svc.root, id }).catch((err) => {
@@ -333,7 +351,7 @@ async function handleStop(req, res, ctx) {
   const body = await readJsonBody(req);
   const id = idFrom(body, ctx);
   const child = svc.live.get(id);
-  if (child) child.kill();
+  if (child) { child.kill(); child.detachWaiters?.(); }
   svc.live.delete(id);
   return sendJson(res, 200, { stopped: Boolean(child) });
 }
@@ -409,6 +427,8 @@ async function handleResume(req, res, ctx) {
   const svc = serviceFor(ctx);
   const body = await readJsonBody(req);
   const id = idFrom(body, ctx);
+  // Returning during generation waits for the recorded question, without a new turn.
+  await svc.live.get(id)?.completion;
   const state = await svc.store.readState(id);
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
   if (state.debriefed) {

@@ -23,7 +23,7 @@ const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 let prompt = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { prompt += c; });
-process.stdin.on('end', () => {
+process.stdin.on('end', async () => {
   if (process.env.STUDIO_FAKE_PROMPT_FILE) {
     fs.writeFileSync(process.env.STUDIO_FAKE_PROMPT_FILE, prompt);
   }
@@ -31,6 +31,7 @@ process.stdin.on('end', () => {
 
   // Four characters at a time, so "USER:" straddles a chunk boundary.
   for (let i = 0; i < reply.length; i += 4) {
+    if (process.env.STUDIO_FAKE_CHUNK_DELAY) await new Promise(resolve => setTimeout(resolve, Number(process.env.STUDIO_FAKE_CHUNK_DELAY)));
     emit({
       type: 'stream_event',
       event: {

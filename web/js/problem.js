@@ -230,8 +230,8 @@ export function renderProblem(entry, context) {
           const neighbour = neighbours[key];
           return el('button', {
             class: 'pnav-btn', type: 'button', text,
-            title: neighbour ? `${label}: ${neighbour.title}` : label,
-            'aria-label': neighbour ? `${label}: ${neighbour.title}` : label,
+            title: neighbour ? `${label}: ${neighbour.title} (⌘${key === 'previous' ? '←' : '→'})` : `${label} (⌘${key === 'previous' ? '←' : '→'})`,
+            'aria-label': neighbour ? `${label}: ${neighbour.title}; keyboard shortcut Command ${key === 'previous' ? 'Left Arrow' : 'Right Arrow'}` : `${label}; keyboard shortcut Command ${key === 'previous' ? 'Left Arrow' : 'Right Arrow'}`,
             disabled: !neighbour, onclick: () => { if (neighbour) onOpen(neighbour.slug); },
           });
         })),

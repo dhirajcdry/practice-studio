@@ -339,3 +339,40 @@ test('the review prompt grades the attempt and refuses to invent one from code a
   assert.match(prompt, /Never invent a performance from the code/);
   assert.doesNotMatch(prompt, /## THE USER SAYS/);
 });
+
+
+test('attempt review spans sittings and includes both tagged takes', async () => {
+  const { root, dir, log } = await workspace();
+  try {
+    const start = Date.now() - 120_000;
+    const attemptId = new Date(start).toISOString();
+    await fsp.mkdir(path.join(dir, 'transcripts'), { recursive: true });
+    await log.appendEvent('two-sum', 'attempt_started', { attemptId }, { now: start });
+    await log.appendEvent('two-sum', 'ran_locally', {}, { now: start + 1000 });
+    for (const [index, text] of ['opening reasoning', 'closing reasoning'].entries()) {
+      const now = start + 2000 + index * 60_000;
+      if (index) await log.appendEvent('two-sum', 'problem_opened', null, { now: now - 1000 });
+      const transcript = `${index}.json`;
+      await fsp.writeFile(path.join(dir, 'transcripts', transcript), JSON.stringify({
+        attemptId, recordedAt: new Date(now).toISOString(), text, durationSeconds: 2,
+      }));
+      await log.appendEvent('two-sum', 'recorded_audio', { attemptId, transcript }, { now });
+    }
+    await log.appendEvent('two-sum', 'attempt_ended', { attemptId }, { now: start + 70_000 });
+    assert.equal((await log.listSessionFiles('two-sum')).length, 2);
+    for (const requestedId of [attemptId, null]) {
+      const context = await gatherContext({ root, slug: 'two-sum', sessionLog: log, attemptId: requestedId });
+      assert.equal(context.attempt.ended, true);
+      assert.deepEqual(context.attempt.events.map(e => e.type), [
+        'attempt_started', 'ran_locally', 'recorded_audio', 'problem_opened', 'recorded_audio', 'attempt_ended',
+      ]);
+      assert.equal(context.attempt.narration.text, 'opening reasoning closing reasoning');
+      assert.equal(context.runCount, 0);
+      assert.equal(context.eventCount, 3);
+    }
+    const { gatherAttempt } = await import('../../attempts/assemble.mjs');
+    const assembled = await gatherAttempt({ root, slug: 'two-sum', attemptId });
+    assert.equal(assembled.ended.type, 'attempt_ended');
+    assert.equal(assembled.speech.length, 2);
+  } finally { await fsp.rm(root, { recursive: true, force: true }); }
+});

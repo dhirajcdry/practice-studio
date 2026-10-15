@@ -10,7 +10,7 @@ import { init as initDashboard } from './dashboard.js';
 import { initDesign } from './design.js';
 import { coachBeginAttempt, coachReviewAttempt } from './coach.js';
 import { installResizers } from './resize.js';
-import { installRecorder, removeRecorder } from './recorder.js';
+import { installRecorder, mountRecorder } from './recorder.js';
 import { installSettingsButton, apply as applySettings, onSettingsChange } from './settings.js';
 
 let dashboard = null;
@@ -189,6 +189,11 @@ function markNav() {
 }
 
 function render() {
+  installRecorder(currentSlug, {
+    getTitle: slug => bySlug.get(slug)?.title || slug,
+    onAttemptStart: detail => coachBeginAttempt(detail.slug),
+    onAttemptEnd: detail => coachReviewAttempt(detail),
+  });
   document.body.classList.toggle('browse-page', !currentSlug() && !location.hash.startsWith('#/design') && location.hash !== '#/progress');
   if (currentSlug()) progressLoadedAt = 0;
   markNav();
@@ -198,11 +203,11 @@ function render() {
   // The interview owns a live turn and an 8 MB canvas, so leaving the screen tears it
   // down explicitly rather than leaving both running behind another route.
   if (design) { design.destroy?.(); design = null; }
-  if (!currentSlug()) removeRecorder();
 
   if (location.hash === '#/design' || location.hash.startsWith('#/design/')) {
     replace(appEl, el('div', { class: 'view' }));
     design = initDesign(appEl);
+    mountRecorder();
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
@@ -210,6 +215,7 @@ function render() {
   if (location.hash === '#/progress') {
     replace(appEl, el('div', { class: 'view' }));
     dashboard = initDashboard(appEl, api);
+    mountRecorder();
     window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
@@ -224,31 +230,14 @@ function render() {
           'There is no problem with the slug ', el('b', { text: slug }), ' in the NeetCode 250.',
         ])),
       ]));
+      mountRecorder();
       return;
     }
     state.selectedSlug = slug;
     replace(appEl, renderProblem(entry, { neighbours: neighboursOf(slug), onBack: goBrowse, onOpen: handlers.onOpen }));
     window.scrollTo({ top: 0, behavior: 'auto' });
     installResizers();
-    // An attempt belongs to one problem, so navigating to another one ends it: the
-    // recorder is disposed here, which closes the window as abandoned rather than
-    // leaving it open to swallow the next problem's events. No review fires for an
-    // attempt you walked away from.
-    //
-    // Pressing record starts an attempt and a fresh coach thread; pressing stop closes it
-    // and asks for the end-to-end review. That is the whole loop — you never have to type
-    // "how did I do", because stopping the recording already said it.
-    installRecorder(() => currentSlug(), {
-      onAttemptStart: () => coachBeginAttempt(),
-      onAttemptEnd: (detail) => {
-        if (!detail?.attemptId) return;
-        // Nothing was said, so there is nothing to grade. Starting and stopping by
-        // accident, or thinking the whole way through in silence, must not spend a
-        // coach turn on an interview that has no spoken part to assess.
-        if (!detail.spokenMs) return;
-        coachReviewAttempt(detail);
-      },
-    });
+    mountRecorder();
     return;
   }
 
@@ -257,6 +246,7 @@ function render() {
   else if (location.hash === '#/') state.catalogMode = 'explorer';
   saveState();
   replace(appEl, renderCatalog());
+  mountRecorder();
   refreshCatalogProgress();
   const selected = state.selectedSlug && appEl.querySelector(`.prow[data-slug="${CSS.escape(state.selectedSlug)}"]`);
   if (selected) selected.scrollIntoView({ block: 'center', behavior: 'auto' });
@@ -283,6 +273,7 @@ async function refreshCatalogProgress() {
     if (document.body.classList.contains('browse-page')) {
       const y = window.scrollY;
       replace(appEl, renderCatalog());
+      mountRecorder();
       window.scrollTo({ top: y, behavior: 'instant' });
     }
   }
@@ -308,10 +299,23 @@ function moveSelection(step) {
 
 function inTextField() {
   const node = document.activeElement;
-  return node && /^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName);
+  return node && (/^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName)
+    || node.isContentEditable || node.closest?.('.monaco-editor'));
 }
 
 document.addEventListener('keydown', (event) => {
+  if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+    && (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
+    if (inTextField() || isDrawerOpen()) return;
+    const slug = currentSlug();
+    const entry = slug && bySlug.get(slug);
+    if (!entry) return;
+    const { previous, next } = neighboursOf(slug);
+    event.preventDefault();
+    const neighbour = event.code === 'ArrowLeft' ? previous : next;
+    if (neighbour) handlers.onOpen(neighbour.slug);
+    return;
+  }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
 
   if (event.key === 'Escape') {
@@ -367,6 +371,10 @@ searchEl.addEventListener('input', () => {
 
 scrimEl.addEventListener('click', closeDrawer);
 window.addEventListener('hashchange', render);
+// Leaving the page tears the design interview down so its last words are saved. A page
+// restored from the back/forward cache comes back with that screen already torn down,
+// so build it again rather than showing a dead board.
+window.addEventListener('pageshow', (event) => { if (event.persisted) render(); });
 
 setDrawerListener(() => {
   for (const button of document.querySelectorAll('.ptoggle')) {

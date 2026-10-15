@@ -10,6 +10,7 @@ import {
   isoWithOffset,
   newSessionId,
   SESSION_GAP_MS,
+  STALE_ATTEMPT_MS,
 } from '../sessions.mjs';
 
 async function tempRoot() {
@@ -178,4 +179,40 @@ test('a corrupt coach-session.json reads as "no session" rather than throwing', 
   await fsp.mkdir(path.join(root, 'problems', 'broken'), { recursive: true });
   await fsp.writeFile(store.file('broken'), '{not json');
   assert.equal(await store.read('broken'), null);
+});
+
+test('an attempt spans reopened sessions and resume does not create another attempt', async () => {
+  const root = await tempRoot();
+  try {
+    const log = new SessionLog({ root });
+    const now = Date.now();
+    await log.appendEvent('two-sum', 'attempt_started', { attemptId: 'original' }, { now });
+    await log.appendEvent('two-sum', 'problem_opened', null, { now: now + 1000 });
+    assert.equal(await log.openAttemptId('two-sum'), 'original');
+    await log.appendEvent('two-sum', 'attempt_resumed', { attemptId: 'original' }, { now: now + 2000 });
+    const run = await log.appendEvent('two-sum', 'ran_locally', {}, { now: now + 3000 });
+    assert.equal(run.event.data.attemptId, 'original');
+    await log.appendEvent('two-sum', 'attempt_ended', { attemptId: 'original' }, { now: now + 4000 });
+    assert.equal(await log.openAttemptId('two-sum'), null);
+    const events = (await log.readSessions('two-sum')).flatMap(s => s.events);
+    assert.equal(events.filter(e => e.type === 'attempt_started').length, 1);
+  } finally { await fsp.rm(root, { recursive: true, force: true }); }
+});
+
+test('openAttemptId expires stale attempts and falls back to attemptId timestamp', async () => {
+  const root = await tempRoot();
+  try {
+    const log = new SessionLog({ root });
+    const now = Date.parse('2026-07-25T18:00:00.000Z');
+    await log.appendEvent('stale', 'attempt_started', { attemptId: 'old-attempt' }, {
+      now: now - STALE_ATTEMPT_MS - 1,
+    });
+    assert.equal(await log.openAttemptId('stale', { now }), null);
+
+    await log.appendEvent('fallback', 'attempt_started', { attemptId: '2026-07-25T17:00:00.000Z' }, { now });
+    const [{ file }] = await log.listSessionFiles('fallback');
+    const raw = await fsp.readFile(file, 'utf8');
+    await fsp.writeFile(file, raw.replace(/"at":"[^"]+"/, '"at":"not-a-date"'));
+    assert.equal(await log.openAttemptId('fallback', { now }), '2026-07-25T17:00:00.000Z');
+  } finally { await fsp.rm(root, { recursive: true, force: true }); }
 });

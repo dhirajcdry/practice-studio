@@ -19,8 +19,10 @@ import { streamCoachMessage, api } from './api.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { flushRecorder } from './recorder.js';
+import { readAttempt, resumeDecision } from './attempt-state.js';
 import { renderHistory } from './history.js';
 import { onChord, chordLabel } from './shortcuts.js';
+import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft } from './drafts.js';
 import {
   startRun, runFor, watch, stopRun, markSeen, dismissRun, runsElsewhere, onRunsChange, adopt,
 } from './coachruns.js';
@@ -135,6 +137,25 @@ const STARTERS = [
 
 /* ============================== the panel ============================== */
 
+// An attempt's next thread belongs to the problem, not to whichever panel happens
+// to be mounted. Restoring only the label/flag never stops or clears a surviving run.
+const attemptThreads = new Map();
+function attemptThread(slug) {
+  if (!attemptThreads.has(slug)) attemptThreads.set(slug, { pending: false, live: false });
+  const state = attemptThreads.get(slug);
+  const saved = readAttempt();
+  if (saved?.slug === slug && resumeDecision(saved) === 'resume') state.live = true;
+  return state;
+}
+function reviewOptions({ attemptId, spokenMs = 0, elapsedMs = 0 }) {
+  const mins = Math.max(1, Math.round(elapsedMs / 60_000));
+  const spoke = spokenMs > 0
+    ? `${Math.floor(spokenMs / 60_000)}:${String(Math.round(spokenMs / 1000) % 60).padStart(2, '0')} spoken`
+    : 'nothing spoken';
+  return { kind: 'attempt-review', attemptId,
+    lead: `Attempt ended · ${mins} min · ${spoke} — reviewing it end to end.` };
+}
+
 /**
  * Build the coach for one problem.
  *
@@ -152,19 +173,21 @@ export function createCoachPanel(entry) {
   let turns = 0;
   // Set when an attempt opens, consumed by the first turn of that attempt, so the CLI
   // starts a fresh session rather than resuming the previous attempt's reasoning.
-  let pendingNewThread = false;
+  const thread = attemptThread(slug);
   // Set when a past conversation is chosen from the history view; consumed by the next
   // turn, so continuing one is an explicit act rather than a lasting mode.
   let resumeSessionId = null;
 
   const log = el('div', { class: 'coach-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Coach conversation' });
-  const stateLabel = el('span', { class: 'coach-state mono dim', text: 'Ready' });
+  const stateLabel = el('span', { class: 'coach-state mono dim', text: thread.live ? 'Attempt in progress' : 'Ready' });
 
   const input = el('textarea', {
     class: 'coach-input', rows: '2', spellcheck: 'true',
     placeholder: 'Ask the coach —  ⌘↵ to send',
     'aria-label': 'Message the coach',
   });
+  const restoredDraft = readDraft(slug);
+  if (restoredDraft?.text) input.value = restoredDraft.text;
 
   const sendLabel = el('span', { text: 'Ask' });
   const sendButton = el('button', { class: 'ws-run coach-send', type: 'button', onclick: () => submit() },
@@ -181,9 +204,11 @@ export function createCoachPanel(entry) {
     // sentence with a space rather than starting a new paragraph — it should read like
     // typing, because that is what it is standing in for.
     onTranscript: (text, meta) => {
+      if (disposed) { appendDraft(slug, text); return; }
       const existing = input.value;
       const gap = existing === '' || /\s$/.test(existing) ? '' : ' ';
       input.value = existing + gap + text;
+      saveDraft(slug, input.value);
       autosize();
       // Focus is NOT taken here: you may be reading your code while you talk, and
       // stealing the caret mid-sentence is how a shortcut turns into a typo.
@@ -196,7 +221,7 @@ export function createCoachPanel(entry) {
       sendButton.disabled = state !== 'idle' || streaming || changingModel;
       if (state === 'recording') stateLabel.textContent = 'Listening';
       else if (state === 'working') stateLabel.textContent = 'Transcribing';
-      else if (!streaming) stateLabel.textContent = 'Ready';
+      else if (!streaming) stateLabel.textContent = thread.live ? 'Attempt in progress' : 'Ready';
     },
   });
 
@@ -235,11 +260,11 @@ export function createCoachPanel(entry) {
     if (onHistory) {
       renderHistory(history, {
         slug,
-        onResume: (thread) => {
-          resumeSessionId = thread.sessionId;
-          pendingNewThread = false;
+        onResume: (past) => {
+          resumeSessionId = past.sessionId;
+          thread.pending = false;
           showTab('chat');
-          replayThread(thread);
+          replayThread(past);
           input.focus();
         },
       });
@@ -287,7 +312,11 @@ export function createCoachPanel(entry) {
     input.style.height = 'auto';
     input.style.height = Math.min(180, Math.max(46, input.scrollHeight)) + 'px';
   }
+  const unwatchDraft = watchDraft(slug, text => {
+    if (input.value !== text) { input.value = text; autosize(); }
+  });
   input.addEventListener('input', autosize);
+  input.addEventListener('input', () => saveDraft(slug, input.value));
 
   function atBottom() {
     return log.scrollHeight - log.scrollTop - log.clientHeight < 120;
@@ -340,7 +369,7 @@ export function createCoachPanel(entry) {
     replace(log, el('div', { class: 'coach-empty' }, [
       el('div', { class: 'coach-starters' }, STARTERS.map(starter => el('button', {
         class: 'chip', type: 'button', text: starter.label,
-        onclick: () => { input.value = starter.text; autosize(); input.focus(); },
+        onclick: () => { input.value = starter.text; saveDraft(slug, input.value); autosize(); input.focus(); },
       }))),
     ]));
   }
@@ -503,13 +532,12 @@ export function createCoachPanel(entry) {
           head: outcome.head,
           body: outcome.body,
           actions: outcome.retry
-            ? [{ label: 'Ask again', onClick: () => { input.value = run.ask; autosize(); input.focus(); } }]
+            ? [{ label: 'Ask again', onClick: () => { input.value = run.ask; saveDraft(slug, input.value); autosize(); input.focus(); } }]
             : [],
         }));
       }
 
-      setBusy(false, outcome && outcome.tone === 'err' ? 'Not available' : 'Ready');
-      pendingNewThread = false;
+      setBusy(false, outcome && outcome.tone === 'err' ? 'Not available' : thread.live ? 'Attempt in progress' : 'Ready');
       resumeSessionId = null;
       markSeen(slug);
       if (detachRun) { detachRun(); detachRun = null; }
@@ -539,6 +567,7 @@ export function createCoachPanel(entry) {
 
     if (!review) {
       input.value = '';
+      clearDraft(slug);
       autosize();
     }
     // attachRun owns both the question/review note and the reply. startRun announces
@@ -565,10 +594,11 @@ export function createCoachPanel(entry) {
       message,
       kind,
       attemptId,
-      newThread: newThread || pendingNewThread,
+      newThread: newThread || thread.pending,
       resumeSessionId,
       lead,
     });
+    thread.pending = false;
     attachRun(run, { printAsk: true });
   }
 
@@ -598,26 +628,24 @@ export function createCoachPanel(entry) {
       // A new attempt is a new conversation, so the previous turn is genuinely
       // unwanted — this is the one place that stops a run rather than letting it finish.
       stopRun(slug);
-      pendingNewThread = true;
+      thread.pending = true;
+      thread.live = true;
       resumeSessionId = null;
       showTab('chat');
       showEmptyState();
       stateLabel.textContent = 'Attempt in progress';
     },
 
+    endAttempt() {
+      thread.live = false;
+      if (!streaming && !voice.isBusy()) stateLabel.textContent = 'Ready';
+    },
+
     /** The attempt ended. Ask for the end-to-end review, with no typed question. */
-    reviewAttempt({ attemptId, spokenMs = 0, elapsedMs = 0 } = {}) {
-      const mins = Math.max(1, Math.round(elapsedMs / 60_000));
-      const spoke = spokenMs > 0
-        ? `${Math.floor(spokenMs / 60_000)}:${String(Math.round(spokenMs / 1000) % 60).padStart(2, '0')} spoken`
-        : 'nothing spoken';
+    reviewAttempt(detail = {}) {
+      thread.live = false;
       setOpen(true);
-      return submit({
-        kind: 'attempt-review',
-        attemptId,
-        newThread: pendingNewThread,
-        lead: `Attempt ended · ${mins} min · ${spoke} — reviewing it end to end.`,
-      });
+      return submit({ ...reviewOptions(detail), ask: '', newThread: thread.pending });
     },
     /**
      * Leaving the problem. The run is NOT stopped: it keeps going in the background and
@@ -627,7 +655,11 @@ export function createCoachPanel(entry) {
       if (disposed) return;
       disposed = true;
       if (detachRun) { detachRun(); detachRun = null; }
-      voice.dispose();
+      // Voice may finish outstanding phrases asynchronously; the callback above
+      // updates this same draft key as each phrase arrives.
+      unwatchDraft();
+      saveDraft(slug, input.value);
+      voice.dispose({ finish: true });
       modelPicker.dispose();
     },
   };
@@ -694,7 +726,9 @@ function ensureRunsChip() {
 
 function paintRunsChip() {
   if (!runsChip) return;
-  const here = /^#\/p\/([^/?]+)/.exec(location.hash)?.[1] || null;
+  const raw = /^#\/p\/([^/?]+)/.exec(location.hash)?.[1];
+  let here = null;
+  try { here = raw ? decodeURIComponent(raw) : null; } catch { /* malformed route */ }
   const others = runsElsewhere(here);
   runsChip.hidden = others.length === 0;
   // Two actions, so two buttons — the row cannot be one button with another inside it.
@@ -742,6 +776,7 @@ function ensureLauncher() {
  * Mount the coach for one problem and return the element to place in the DOM.
  * Called by problem.js, which owns the problem screen.
  */
+let adoption = null;
 export function mountCoach(entry) {
   if (active) active.dispose();
   const panel = createCoachPanel(entry);
@@ -754,7 +789,7 @@ export function mountCoach(entry) {
   // The server may still be writing an answer this page has never seen — the tab was
   // reloaded, or this is a second tab. Ask once; anything found announces itself and
   // arrives through showPendingRun.
-  adopt().catch(() => { /* the coach being unreachable is not this panel's failure */ });
+  if (!adoption) adoption = adopt().catch(() => { adoption = null; });
 
   // An answer that was still arriving when you left, or that finished while you were
   // away. It goes on screen once the panel is open — attaching into a hidden panel would
@@ -764,11 +799,28 @@ export function mountCoach(entry) {
   return panel.root;
 }
 
-/** An attempt started: hand the panel a clean thread. No-op when the coach is absent. */
-export function coachBeginAttempt() { active?.beginAttempt?.(); }
+/** A new attempt owns a fresh thread even if its panel is temporarily absent. */
+export function coachBeginAttempt(slug) {
+  const thread = attemptThread(slug);
+  thread.pending = true;
+  thread.live = true;
+  if (active?.slug === slug) active.beginAttempt();
+  else stopRun(slug);
+}
 
-/** An attempt ended: ask the coach to grade it. No-op when the coach is absent. */
-export function coachReviewAttempt(detail) { active?.reviewAttempt?.(detail); }
+/** Route the review to the attempt, using the same payload with or without a panel. */
+export function coachReviewAttempt(detail) {
+  const thread = attemptThread(detail.slug);
+  thread.live = false;
+  if (active?.slug === detail.slug) active.endAttempt();
+  if (!detail.attemptId || !detail.spokenMs) return;
+  if (active?.slug === detail.slug) return active.reviewAttempt(detail);
+  ensureRunsChip();
+  const run = startRun({ slug: detail.slug, title: detail.title || detail.slug,
+    ...reviewOptions(detail), newThread: thread.pending });
+  thread.pending = false;
+  return run;
+}
 
 export function teardownCoach() {
   if (active) { active.dispose(); active = null; }

@@ -198,6 +198,7 @@ export function createVoiceControl({
   let capTimer = null;
   let wantRecording = false;     // the button is *currently* held
   let disposed = false;
+  let finishing = false;
 
   const clock = el('span', { class: 'mono tnum vc-clock', text: '0:00' });
   const indicator = el('span', { class: 'vc-rec', hidden: true }, [
@@ -233,6 +234,12 @@ export function createVoiceControl({
 
   function setState(next) {
     state = next;
+    // The guard follows actual work, including a detached take's final request. An
+    // idle mounted composer must not make every page reload ask for confirmation.
+    if (next === 'idle') {
+      window.removeEventListener('beforeunload', beforeUnload);
+      if (finishing) { finishing = false; disposed = true; }
+    } else window.addEventListener('beforeunload', beforeUnload);
     root.classList.toggle('is-recording', next === 'recording');
     root.classList.toggle('is-working', next === 'working');
     indicator.hidden = next !== 'recording';
@@ -462,7 +469,7 @@ export function createVoiceControl({
       const entry = held.get(nextToEmit);
       held.delete(nextToEmit);
       nextToEmit += 1;
-      if (disposed) continue;
+      if (disposed && !finishing) continue;
       if (entry.text && entry.text.trim() !== '') {
         clearPreview();
         spokenChars += entry.text.length;
@@ -598,6 +605,11 @@ export function createVoiceControl({
   // microphone that opens without being asked is not a feature.
 
   const release = () => { if (wantRecording || state === 'recording') stop(); };
+  const beforeUnload = (event) => {
+    if (state === 'recording' || state === 'opening' || state === 'working') {
+      event.preventDefault(); event.returnValue = '';
+    }
+  };
 
   talkButton.addEventListener('click', (event) => {
     event.preventDefault();
@@ -622,14 +634,25 @@ export function createVoiceControl({
     isBusy: () => state !== 'idle',
     currentMode: () => mode,
     stop,
-    dispose() {
-      disposed = true;
+    dispose({ finish = false } = {}) {
+      if (finish && state !== 'idle') {
+        finishing = true;
+        stop();
+        // stop() releases tracks immediately; settle clears this once outstanding
+        // transcription promises have emitted in order.
+        if (state === 'idle') { finishing = false; disposed = true; }
+      } else {
+        disposed = true;
+      }
       clearPreview();
       wantRecording = false;
-      try { recorder?.stop(); } catch { /* noop */ }
+      if (!finish) { try { recorder?.stop(); } catch { /* noop */ } }
       recorder = null;
       releaseMicrophone();
       window.removeEventListener('blur', release);
+      // Keep the navigation guard until a finishing disposal has drained all
+      // outstanding transcription promises. `settle()` removes it at idle.
+      if (!finish || state === 'idle') window.removeEventListener('beforeunload', beforeUnload);
     },
   };
 }

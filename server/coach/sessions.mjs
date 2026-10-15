@@ -26,6 +26,7 @@ export const EVENT_TYPES = Object.freeze([
   // An attempt is the window between these two: press record, solve, press stop. It is
   // the unit an interview is graded in, so it is the unit the coach reviews.
   'attempt_started',
+  'attempt_resumed',
   'attempt_ended',
 ]);
 
@@ -34,6 +35,9 @@ const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 /** A gap longer than this starts a new session. Walking away for lunch and coming back is
  *  two sittings, and reporting it as one 90-minute solve would be a lie. */
 export const SESSION_GAP_MS = 45 * 60 * 1000;
+
+// Keep in sync with web/js/attempt-state.js STALE_ATTEMPT_MS.
+export const STALE_ATTEMPT_MS = 6 * 60 * 60 * 1000;
 
 export function isKnownEventType(type) {
   return typeof type === 'string' && EVENT_TYPE_SET.has(type);
@@ -183,16 +187,28 @@ export class SessionLog {
    * An `attempt_started` with no `attempt_ended` after it. Read from the log rather than
    * held in memory, so a server restart mid-attempt does not lose the thread.
    */
-  async openAttemptId(slug) {
+  async openAttemptId(slug, { now = Date.now() } = {}) {
     const files = await this.listSessionFiles(slug);
-    const latest = files[files.length - 1];
-    if (!latest) return null;
-    let open = null;
-    for (const event of await this.readSessionFile(latest.file)) {
-      if (event.type === 'attempt_started' && event.data?.attemptId) open = event.data.attemptId;
-      else if (event.type === 'attempt_ended') open = null;
+    const cutoff = now - STALE_ATTEMPT_MS;
+    // Opening the problem again creates a new session file, but is not an attempt
+    // boundary. Walk back to the latest explicit attempt event so navigation/reload
+    // cannot detach subsequent runs and edits from an attempt that is still live.
+    for (const { file } of files.reverse()) {
+      const events = await this.readSessionFile(file);
+      const eventTimes = events.map((event) => Date.parse(event.at)).filter((time) => !Number.isNaN(time));
+      if (eventTimes.length > 0 && Math.max(...eventTimes) < cutoff) break;
+      for (const event of events.reverse()) {
+        if (event.type === 'attempt_ended') return null;
+        if ((event.type === 'attempt_started' || event.type === 'attempt_resumed') && event.data?.attemptId) {
+          const eventAt = Date.parse(event.at);
+          const fallbackAt = Date.parse(event.data.attemptId);
+          const effectiveAt = Number.isNaN(eventAt) ? fallbackAt : eventAt;
+          if (!Number.isNaN(effectiveAt) && effectiveAt < cutoff) return null;
+          return event.data.attemptId;
+        }
+      }
     }
-    return open;
+    return null;
   }
 
   /**
@@ -228,7 +244,7 @@ export class SessionLog {
     // id the caller supplied is never overwritten, because the caller knows things this
     // does not (a late verdict belongs to the attempt that submitted it).
     if (type !== 'attempt_started' && !event.data?.attemptId) {
-      const open = await this.openAttemptId(slug);
+      const open = await this.openAttemptId(slug, { now });
       if (open) event.data = { ...(event.data ?? {}), attemptId: open };
     }
 
