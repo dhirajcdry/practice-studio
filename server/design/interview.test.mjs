@@ -253,8 +253,8 @@ test('the interviewer is told its own history is on disk, and how to use it', ()
 });
 
 test('memory is written at the debrief, not during the interview', () => {
-  assert.match(flat(debriefPrompt(newInterview({ startedAt: T0 }))), /update DESIGN\.md/);
-  assert.match(flat(systemPrompt()), /Update DESIGN\.md at the debrief, not during\./);
+  assert.match(flat(debriefPrompt(newInterview({ startedAt: T0 }))), /separate step after this reply sees the whole conversation and updates DESIGN\.md/);
+  assert.match(flat(systemPrompt()), /After the debrief, a separate memory step/);
 });
 
 test('the spoken medium is stated, because a paragraph read aloud is a monologue', () => {

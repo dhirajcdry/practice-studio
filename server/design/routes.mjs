@@ -18,6 +18,8 @@ import { HOME_ROOT } from '../paths.mjs';
 import { readJsonBody } from '../coach/http.mjs';
 import { SseStream } from '../coach/sse.mjs';
 import { readCoachChoice, runProviderTurn } from '../coach/provider.mjs';
+import { prepareClaudeMemory, withClaudeMemory } from '../coach/provider-context.mjs';
+import { upkeepQueue } from '../coach/upkeep.mjs';
 import { sceneToGraph } from './graph.mjs';
 import { createNarrationFilter, salvageQuestion } from './narration.mjs';
 import {
@@ -87,7 +89,18 @@ function idFrom(body, ctx) {
  * spoken. Cutting the stream is the only point at which the candidate can still be
  * prevented from seeing an answer they did not give.
  */
-function streamTurn(svc, { id, choice, prompt, system = null, resume = null, stream, onFinished }) {
+async function streamTurn(svc, { id, choice, prompt, system = null, resume = null, stream, onFinished, kind = 'turn' }) {
+  const memory = choice.provider === 'claude' ? await prepareClaudeMemory(svc.root, null, resume, { designId: id }) : null;
+  if (memory) prompt = withClaudeMemory(prompt, memory.memory);
+  const started = Date.now();
+  let first = null;
+  let tools = 0;
+  let timed = false;
+  const timing = () => {
+    if (timed) return;
+    timed = true;
+    svc.log?.info?.(`[coach] timing design:${id} ${kind} provider=${choice.provider} model=${choice.model} first=${first ?? '-'} total=${Date.now() - started} tools=${tools}`);
+  };
   const sessionKey = choice.provider === 'claude' ? id : `codex:${id}`;
   const filter = createNarrationFilter();
   let broke = false;
@@ -108,6 +121,7 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
   async function finish(sessionId = null, stoppedReason = null) {
     if (finished) return;
     finished = true;
+    timing();
     if (!broke) {
       // Release anything the guard was still holding — a line that never became a
       // label must not cost the turn its last few words. The phase tag is held by the
@@ -130,6 +144,12 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
     settle();
     stream.send('done', { sessionId, stoppedReason, broke, asked });
     stream.end();
+    timing();
+    if (!broke && sessionId && choice.provider === 'claude') {
+      memory.remember(sessionId);
+      if (kind === 'debrief') upkeepQueue.enqueue({ root: svc.root, binary: svc.binary, log: svc.log,
+        slug: `design:${id}`, sessionId, kind: 'design-debrief', model: choice.model });
+    }
   }
 
   let settle;
@@ -140,7 +160,9 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
     binary: svc.binary,
     prompt: system ? `${system}\n\n---\n\n${prompt}` : prompt,
     resumeSessionId: resume,
+    tools: 'Read,Glob',
     onToken: (text) => {
+      first ??= Date.now() - started;
       const { text: safe, tripped } = filter.push(text);
       // The phase tag rides the same pipe as speech, so it is pulled out here — before
       // a single character of it can be shown or spoken.
@@ -161,7 +183,7 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
         child.kill();
       }
     },
-    onTool: (name, summary) => stream.tool(name, summary),
+    onTool: (name, summary) => { tools++; stream.tool(name, summary); },
     onSessionId: (sid) => { if (sid) svc.sessions.set(sessionKey, sid); },
     onError: (message) => {
       if (finished) return;
@@ -169,10 +191,12 @@ function streamTurn(svc, { id, choice, prompt, system = null, resume = null, str
       svc.live.delete(id);
       settle();
       stream.error(message);
+      timing();
     },
     onDone: (sessionId, stoppedReason) => finish(sessionId, stoppedReason),
   });
 
+  child.exited?.then(timing, timing);
   child.completion = completion;
   child.detachWaiters = settle;
   svc.live.set(id, child);
@@ -201,11 +225,12 @@ async function handleStart(req, res, ctx) {
 
   // Only the opening turn carries the character; every later turn resumes the session.
   const avoid = state.prompt ? [] : await svc.store.pastPrompts();
-  streamTurn(svc, {
+  await streamTurn(svc, {
     id,
     choice,
     system: systemPrompt({ level: state.level, minutes: state.minutes }),
     prompt: openingPrompt(state, { avoid }),
+    kind: 'opening',
     resume: null,
     stream,
     onFinished: async (asked) => {
@@ -262,7 +287,7 @@ async function handleTurn(req, res, ctx) {
   }
 
   const stream = new SseStream(res);
-  streamTurn(svc, {
+  await streamTurn(svc, {
     id,
     choice,
     prompt,
@@ -320,11 +345,12 @@ async function handleDone(req, res, ctx) {
   const turn = buildTurn(state, { now: Date.now(), done: true }).text;
   const prompt = resume ? turn : `${rehydratePrompt(state, await svc.store.readTurns(id))}\n\n${turn}`;
   const stream = new SseStream(res);
-  streamTurn(svc, {
+  await streamTurn(svc, {
     id,
     choice,
     prompt,
     system: resume ? null : systemPrompt({ level: state.level, minutes: state.minutes }),
+    kind: 'debrief',
     resume,
     stream,
     onFinished: async (asked) => {

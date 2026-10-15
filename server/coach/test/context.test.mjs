@@ -148,7 +148,9 @@ test('the prompt states what the coach may and may not write', async () => {
   const { prompt } = buildPrompt({ context, message: 'hi' });
 
   assert.ok(prompt.includes('problems/two-sum/NOTES.md'));
-  assert.ok(prompt.includes('debriefs/'));
+  assert.ok(prompt.includes('separate step right after this reply'));
+  assert.ok(prompt.includes('Do not write or edit any file'));
+  for (const old of ['Read it before you answer', 'Files you may write this turn', 'update your memory as usual']) assert.ok(!prompt.includes(old));
   for (const forbidden of ['`meta.json`', '`index.json`', '`solution.py`', '`sessions/`']) {
     assert.ok(prompt.includes(forbidden), `prompt does not forbid ${forbidden}`);
   }

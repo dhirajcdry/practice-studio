@@ -28,7 +28,8 @@ if (process.env.FAKE_CLAUDE_ARGS_FILE) {
 
 const resumeIdx = args.indexOf('--resume');
 const sessionIdx = args.indexOf('--session-id');
-const sessionId =
+const fork = args.includes('--fork-session');
+const sessionId = fork ? 'fake-upkeep-fork' :
   resumeIdx !== -1 ? args[resumeIdx + 1] : sessionIdx !== -1 ? args[sessionIdx + 1] : 'unknown';
 
 function emit(obj) {
@@ -49,6 +50,10 @@ process.stdin.on('data', (c) => {
   prompt += c;
 });
 process.stdin.on('end', () => {
+  if (fork) {
+    emit({ type: 'result', subtype: 'success', is_error: false, session_id: sessionId, result: 'done' });
+    process.exit(0);
+  }
   if (process.env.FAKE_CLAUDE_PROMPT_FILE) {
     fs.writeFileSync(process.env.FAKE_CLAUDE_PROMPT_FILE, prompt);
   }

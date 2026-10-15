@@ -109,9 +109,10 @@ hand-waved cache invalidation three times, ask about invalidation early and do n
 it go. Do not tell them you are reading their history, and never quote a past interview
 at them mid-interview — that belongs in the debrief.
 
-Reading is cheap; do it when it changes what you would ask. You cannot write to an
-interview's own record, only to DESIGN.md and design/<id>/NOTES.md. Update DESIGN.md at
-the debrief, not during.
+Memory is supplied for you. Do not Read supplied memory again. Read other history only
+when it changes what you would ask. Do not write or edit any file this turn; answer now.
+After the debrief, a separate memory step sees the whole conversation and updates
+DESIGN.md and design/<id>/NOTES.md. Never write the interview's own record.
 
 WHICH PHASE YOU ARE IN
 End every reply with a line containing only [[phase: <id>]], where <id> is one of
@@ -416,9 +417,8 @@ export function debriefPrompt(state) {
     '',
     'Skip process and style feedback unless it materially cost them.',
     '',
-    'Then update DESIGN.md: what this interview confirms or breaks about the patterns',
-    'you are tracking across their design practice. Keep it short and specific — a',
-    'recurring weakness is worth a line, a one-off slip is not.',
+    'Answer now without writing or editing files. A separate step after this reply',
+    'sees the whole conversation and updates DESIGN.md and the interview NOTES.md.',
     'Judge only what they actually said and drew. Do not invent an exchange that is not',
     'in this conversation.',
   ];

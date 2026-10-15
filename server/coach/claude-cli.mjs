@@ -120,7 +120,7 @@ export function permissionArgs(root) {
  * @param {string|null} o.resumeSessionId session to resume, or null to start a new one
  * @param {string} [o.newSessionId] uuid to use when starting fresh
  */
-export function buildArgs({ root, resumeSessionId, newSessionId, model }) {
+export function buildArgs({ root, resumeSessionId, newSessionId, model, tools = 'Read,Glob,Write,Edit', forkSession = false, noSessionPersistence = false }) {
   const { allow, deny } = permissionArgs(root);
   const args = [
     '-p',
@@ -132,12 +132,14 @@ export function buildArgs({ root, resumeSessionId, newSessionId, model }) {
     '--permission-mode',
     'manual',
     '--tools',
-    'Read,Glob,Write,Edit',
+    tools,
     '--allowedTools',
-    ...allow,
+    ...allow.filter(rule => tools.split(',').includes(rule.split('(')[0])),
     '--disallowedTools',
     ...deny,
   ];
+  if (forkSession) args.push('--fork-session');
+  if (noSessionPersistence) args.push('--no-session-persistence');
   if (model) args.push('--model', model);
   if (resumeSessionId) args.push('--resume', resumeSessionId);
   else args.push('--session-id', newSessionId ?? crypto.randomUUID());
@@ -283,6 +285,7 @@ export function runCoachTurn({
   resumeSessionId = null,
   binary = 'claude',
   model = null,
+  tools, forkSession = false, noSessionPersistence = false,
   env = process.env,
   spawnFn = spawn,
   timeoutMs = TURN_TIMEOUT_MS,
@@ -308,7 +311,7 @@ export function runCoachTurn({
     onDone(sessionId, stoppedReason);
   };
 
-  const args = buildArgs({ root, resumeSessionId, model });
+  const args = buildArgs({ root, resumeSessionId, model, tools, forkSession, noSessionPersistence });
 
   try {
     child = spawnFn(binary, args, {

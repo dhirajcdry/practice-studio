@@ -62,3 +62,37 @@ test('read-only memory is bounded and does not follow symlinks outside workspace
   assert.match(prompt, /Earlier learner words/); assert.match(prompt, /"interrupted":true/);
   assert.match(prompt, /no tools or file access/); assert.ok(!prompt.includes('not coach context'));
 });
+
+test('Claude memory includes local journals and only repeats changed versions per session', async t => {
+  const { prepareClaudeMemory, withClaudeMemory, journalMemoryFiles } = await import('../provider-context.mjs');
+  const root = await workspace(t);
+  const now = new Date(2026, 0, 1, 0, 15);
+  assert.deepEqual(journalMemoryFiles(now), ['journal/2026-01-01.md', 'journal/2025-12-31.md']);
+  await fs.mkdir(path.join(root, 'problems/two-sum'), { recursive: true });
+  await fs.mkdir(path.join(root, 'journal'));
+  await fs.writeFile(path.join(root, 'TUTOR.md'), 'profile'.repeat(4500));
+  await fs.writeFile(path.join(root, 'problems/two-sum/NOTES.md'), 'old observation');
+  await fs.writeFile(path.join(root, 'journal/2025-12-31.md'), 'yesterday observation');
+  const first = await prepareClaudeMemory(root, 'two-sum', null, { now });
+  assert.equal(first.memory[0].text.length, 31500);
+  assert.match(withClaudeMemory('answer now', first.memory), /yesterday observation/);
+  first.remember('session');
+  const second = await prepareClaudeMemory(root, 'two-sum', 'session', { now });
+  assert.ok(second.memory.every(entry => entry.text === 'unchanged since earlier in this conversation'));
+  await fs.writeFile(path.join(root, 'problems/two-sum/NOTES.md'), 'new observation');
+  const changed = await prepareClaudeMemory(root, 'two-sum', 'session', { now });
+  assert.equal(changed.memory[1].text, 'new observation');
+  assert.equal(changed.memory[0].text, second.memory[0].text);
+  await fs.writeFile(path.join(root, 'TUTOR.md'), 'x'.repeat(65000));
+  const cut = await prepareClaudeMemory(root, 'two-sum', 'session', { now });
+  assert.equal(cut.memory[0].text.length, 64000);
+  assert.match(cut.memory[0].notice, /rest can be Read/);
+  cut.remember('session');
+  await fs.appendFile(path.join(root, 'TUTOR.md'), 'changed beyond cap');
+  assert.equal((await prepareClaudeMemory(root, 'two-sum', 'session', { now })).memory[0].truncated, true);
+  await fs.writeFile(path.join(root, 'DESIGN.md'), 'design history');
+  const design = await prepareClaudeMemory(root, null, null, { designId: 'test' });
+  assert.equal(design.memory[0].text, 'design history');
+  design.remember('design-session');
+  assert.match((await prepareClaudeMemory(root, null, 'design-session', { designId: 'test' })).memory[0].text, /unchanged/);
+});

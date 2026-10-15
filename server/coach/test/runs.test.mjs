@@ -146,7 +146,9 @@ async function fixture({ mode = 'slow', delayMs = 500 } = {}) {
     root,
     binary: FAKE,
     env: { ...process.env, FAKE_CLAUDE_MODE: mode, FAKE_CLAUDE_DELAY_MS: String(delayMs) },
-    spawnFn: (...args) => { spawns += 1; return spawn(...args); },
+    // Only answer turns count. The memory upkeep that follows a finished answer is a
+    // forked background process by design, not a second coach on the thread.
+    spawnFn: (...args) => { if (!args[1]?.includes('--fork-session')) spawns += 1; return spawn(...args); },
     timeoutMs: 15_000,
     log: { warn() {}, error() {} },
   });

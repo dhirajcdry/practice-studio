@@ -23,7 +23,8 @@ import { SessionLog, CoachSessionStore, EVENT_TYPES, isKnownEventType } from './
 import { gatherContext, buildPrompt } from './context.mjs';
 import { appendTurn, readThreads, readTurns } from './transcript.mjs';
 import { readCoachChoice, runProviderTurn, providerRoutes } from './provider.mjs';
-import { readCoachMemory, withConversation, conversationTurns } from './provider-context.mjs';
+import { readCoachMemory, withConversation, conversationTurns, prepareClaudeMemory, withClaudeMemory } from './provider-context.mjs';
+import { upkeepQueue } from './upkeep.mjs';
 import { CoachRuns } from './runs.mjs';
 
 /** Everything Phase 3 needs, in one object so tests can point it at a temp workspace. */
@@ -185,10 +186,21 @@ export async function handleCoachMessage(req, res, ctx) {
       prompt = withConversation(prompt, turns, memory, { readOnly: choice.provider === 'codex' });
     }
 
+    const memory = choice.provider === 'claude' ? await prepareClaudeMemory(svc.root, slug, resumeSessionId) : null;
+    if (memory) prompt = withClaudeMemory(prompt, memory.memory);
+    let started;
+    let first = null;
+
     // Accumulated so the turn can be filed after it finishes. The browser already has
     // the text; the point is that the workspace has it too, once the tab is gone.
     let answer = '';
     const toolLines = [];
+    let timed = false;
+    const timing = () => {
+      if (timed) return;
+      timed = true;
+      svc.log?.info?.(`[coach] timing ${slug} ${review ? 'attempt-review' : 'question'} provider=${choice.provider} model=${choice.model} first=${first ?? '-'} total=${Date.now() - started} tools=${toolLines.length}`);
+    };
 
     // Filed exactly once, on every exit path — finished, stopped, errored, tab closed.
     //
@@ -225,10 +237,12 @@ export async function handleCoachMessage(req, res, ctx) {
     // would cut the `done` event off the end of a stream the client is still reading.
     let finishing = null;
     await new Promise((resolve) => {
+      started = Date.now();
       child = runProviderTurn({
         choice,
         root: svc.root,
         prompt,
+        tools: 'Read,Glob',
         resumeSessionId,
         binary: svc.binary,
         env: svc.env,
@@ -237,21 +251,28 @@ export async function handleCoachMessage(req, res, ctx) {
         onSessionId: (id) => {
           finalSessionId = id;
         },
-        onToken: (text) => { answer += text; svc.runs.token(run, text); },
+        onToken: (text) => { first ??= Date.now() - started; answer += text; svc.runs.token(run, text); },
         onTool: (name, summary) => {
           toolLines.push(`${name} ${summary ?? ''}`.trim());
           svc.runs.tool(run, name, summary);
         },
         onDone: (sessionId, stoppedReason) => {
+          timing();
           finishing = (async () => {
             const id = sessionId ?? finalSessionId;
             if (id) await svc.coachSessions.remember(slug, id, choice).catch(() => {});
             await fileTurn(id, false);
             svc.runs.finish(run, { status: 'done', sessionId: id, stoppedReason });
+            if (run.status === 'done' && id && choice.provider === 'claude') {
+              memory.remember(id);
+              upkeepQueue.enqueue({ root: svc.root, binary: svc.binary, env: svc.env, spawnFn: svc.spawnFn,
+                log: svc.log, slug, sessionId: id, kind: review ? 'attempt-review' : 'question', model: choice.model });
+            }
           })();
           finishing.then(resolve, resolve);
         },
         onError: (message) => {
+          timing();
           finishing = (async () => {
             // A session id that no longer resumes must not poison every future turn.
             if (/resume the earlier conversation/i.test(message)) {
@@ -267,7 +288,7 @@ export async function handleCoachMessage(req, res, ctx) {
       // listening any more. Something still has to end this promise, or the request
       // handler waits forever on a process that already exited.
       run.child = child;
-      child.exited?.then(async () => { if (finishing) await finishing.catch(() => {}); resolve(); }, resolve);
+      child.exited?.then(async () => { timing(); if (finishing) await finishing.catch(() => {}); resolve(); }, resolve);
     });
     // Stopped: onDone never ran, so this is the only chance to keep what arrived.
     await fileTurn(finalSessionId, true);
@@ -293,7 +314,7 @@ export async function handleCoachMessage(req, res, ctx) {
 export async function handleCoachRuns(req, res, ctx) {
   const svc = serviceFor(ctx);
   svc.runs.sweep();
-  return sendJson(res, 200, { runs: svc.runs.summaries() });
+  return sendJson(res, 200, { runs: svc.runs.summaries(), upkeep: upkeepQueue.status() });
 }
 
 export async function handleCoachRunStream(req, res, ctx) {

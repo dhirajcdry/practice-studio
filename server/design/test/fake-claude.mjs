@@ -14,7 +14,8 @@ const reply = process.env.STUDIO_FAKE_REPLY ?? 'Design something.';
 
 const resumeIdx = args.indexOf('--resume');
 const sessionIdx = args.indexOf('--session-id');
-const sessionId = resumeIdx !== -1 ? args[resumeIdx + 1]
+const fork = args.includes('--fork-session');
+const sessionId = fork ? 'fake-upkeep-fork' : resumeIdx !== -1 ? args[resumeIdx + 1]
   : sessionIdx !== -1 ? args[sessionIdx + 1]
     : 'fake-session';
 
@@ -24,6 +25,10 @@ let prompt = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { prompt += c; });
 process.stdin.on('end', async () => {
+  if (fork) {
+    emit({ type: 'result', subtype: 'success', is_error: false, session_id: sessionId, result: 'done' });
+    process.exit(0);
+  }
   if (process.env.STUDIO_FAKE_PROMPT_FILE) {
     fs.writeFileSync(process.env.STUDIO_FAKE_PROMPT_FILE, prompt);
   }

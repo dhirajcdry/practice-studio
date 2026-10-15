@@ -322,3 +322,16 @@ test('a hung child is stopped by the turn timeout with one honest error', async 
   assert.match(seen.error, /longer than ten minutes|was stopped/);
   assert.match(seen.error, /Your work is untouched/);
 });
+
+test('answer tools are read-only; upkeep forks the full scoped permission set without persistence', () => {
+  const answer = buildArgs({ root: '/tmp/fixture', tools: 'Read,Glob' });
+  assert.equal(answer[answer.indexOf('--tools') + 1], 'Read,Glob');
+  const allow = answer.slice(answer.indexOf('--allowedTools') + 1, answer.indexOf('--disallowedTools'));
+  assert.ok(allow.every(rule => /^(Read|Glob)\(/.test(rule)));
+  assert.deepEqual(answer.slice(answer.indexOf('--disallowedTools') + 1, answer.indexOf('--session-id')), permissionArgs('/tmp/fixture').deny);
+  const upkeep = buildArgs({ root: '/tmp/fixture', resumeSessionId: 'original', forkSession: true, noSessionPersistence: true });
+  assert.equal(upkeep[upkeep.indexOf('--resume') + 1], 'original');
+  assert.ok(upkeep.includes('--fork-session'));
+  assert.ok(upkeep.includes('--no-session-persistence'));
+  assert.equal(upkeep[upkeep.indexOf('--tools') + 1], 'Read,Glob,Write,Edit');
+});
