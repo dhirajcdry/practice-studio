@@ -845,7 +845,7 @@ body.theme-dunes.is-dark{
 }
 
 /* Art stays behind an isolated body; one glass layer per pane keeps the painting luminous. */
-body.theme-art{background:transparent;isolation:isolate;--pane-edge:linear-gradient(140deg,rgba(var(--accent-rgb),.55),rgba(var(--ink-rgb),.08) 35%,rgba(var(--ink-rgb),.05) 65%,rgba(var(--accent-rgb),.30));--pane-shadow:0 12px 40px rgba(var(--ink-rgb),.10)}
+body.theme-art{background:transparent;isolation:isolate;--pane-shadow:0 12px 40px rgba(var(--ink-rgb),.10)}
 body.theme-art.is-dark{--pane-shadow:0 0 0 1px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.45),0 0 48px rgba(var(--accent-rgb),.08)}
 body.theme-art::before{
   content:"";position:fixed;inset:-3%;z-index:-1;
@@ -882,9 +882,9 @@ body.theme-art :is(.monaco-editor,.monaco-editor-background,.monaco-editor .marg
   body.theme-art.ws-wide .pbody.with-workspace{padding:10px 10px 10px 0}
   body.theme-art.ws-wide .workspace-rail{border-right:0}
   body.theme-art.ws-wide :is(.pcol,.ws,.coach){
-    border:1px solid transparent;border-radius:var(--r-pane);overflow:hidden;
-    background:linear-gradient(var(--glass),var(--glass)) padding-box,var(--pane-edge) border-box;
-    box-shadow:var(--pane-shadow);
+    border:1px solid rgba(var(--ink-rgb),.12);border-radius:var(--r-pane);overflow:hidden;
+    background:var(--glass);
+    box-shadow:inset 0 1px 0 rgba(var(--accent-rgb),.22),var(--pane-shadow);
   }
   body.theme-art.ws-wide .pcol{overflow-y:auto}
 }
@@ -908,17 +908,18 @@ body.theme-art :is(.ws-host,.ws-fallback,.monaco-editor .overflow-guard,.monaco-
 }
 body.theme-art ::selection{background:rgba(var(--accent-rgb),.35);color:inherit}
 
-/* Glass edges and quiet inner surfaces share the same accent light. */
+/* Glass edges are a plain hairline with a faint accent glint along the top. A gradient
+   painted under the border showed through the translucent fill and washed whole cards. */
 body.theme-art :is(.card,.psec,.dash-card){
   --art-card-fill:color-mix(in srgb,var(--card) 80%,transparent);
-  border:1px solid transparent;
-  background:linear-gradient(var(--art-card-fill),var(--art-card-fill)) padding-box,var(--pane-edge) border-box;
+  border:1px solid rgba(var(--ink-rgb),.10);
+  background:var(--art-card-fill);
   box-shadow:var(--pane-shadow);
 }
 body.theme-art :is(.ws,.coach,.pcol,.card,.psec,.dash-card,.roadmap-detail,.drawer,.dz-side) .card,
 body.theme-art .pcol .psec{
   --art-card-fill:rgba(var(--ink-rgb),.045);
-  background:linear-gradient(var(--art-card-fill),var(--art-card-fill)) padding-box,var(--pane-edge) border-box;
+  background:var(--art-card-fill);
 }
 body.theme-art :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){
   border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);border:1px solid rgba(var(--ink-rgb),.10);
