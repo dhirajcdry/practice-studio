@@ -119,3 +119,82 @@ export function parseMemoryMb(display) {
   const m = /^([0-9]+(?:\.[0-9]+)?)\s*mb$/i.exec(display.trim());
   return m ? Number(m[1]) : null;
 }
+
+/* ===================== NeetCode (premium problems) ===================== */
+//
+// Premium LeetCode problems are judged on neetcode.io instead. The Studio Connector
+// clicks NeetCode's own Submit button and reads the verdict NeetCode renders on its page
+// (extension/background.js, docs/SUBMITTING.md "Premium problems: NeetCode"). There is
+// no status code to lean on, so the rule here is the text NeetCode prints:
+//
+//   accepted  ⇔  the scraped status is exactly "Accepted"
+//
+// Not "contains accepted", not a CSS class, not "all tests passed". The LeetCode rules
+// above are untouched by any of this.
+
+const NEETCODE_ORIGIN = 'https://neetcode.io/';
+export const NEETCODE_DETAILS_MAX = 4000;
+
+const NEETCODE_KIND_BY_STATUS = {
+  'wrong answer': 'wrong_answer',
+  'time limit exceeded': 'time_limit',
+  'memory limit exceeded': 'memory_limit',
+  'output limit exceeded': 'output_limit',
+  'runtime error': 'runtime_error',
+  'compilation error': 'compile_error',
+  'compile error': 'compile_error',
+};
+
+function shortText(value, max) {
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  return s === '' ? null : s.slice(0, max);
+}
+
+function count(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/** A neetcode.io link, or null. Anything else the page might hand us is dropped. */
+export function neetcodeUrl(value) {
+  return typeof value === 'string' && value.startsWith(NEETCODE_ORIGIN) && value.length <= 500 ? value : null;
+}
+
+/**
+ * The verdict payload for a NeetCode result, in the same shape as `buildVerdict` so the
+ * panel, meta.json and the session log need no second vocabulary. `statusCode` and the
+ * percentiles are null because NeetCode has no such things.
+ *
+ * `result` is what the Connector scraped: `{ status, passed, total, memory, time,
+ * details, url }`. A missing field stays missing; nothing is defaulted into a number.
+ */
+export function buildNeetCodeVerdict(result, submissionId) {
+  const status = shortText(result?.status, 120);
+  const accepted = status === 'Accepted';
+  const details = typeof result?.details === 'string' && result.details.trim() !== ''
+    ? result.details.trim().slice(0, NEETCODE_DETAILS_MAX)
+    : null;
+  return {
+    ok: true,
+    accepted,
+    verdict: status ?? 'Unknown',
+    statusCode: null,
+    passed: count(result?.passed),
+    total: count(result?.total),
+    runtime: shortText(result?.time, 40),
+    memory: shortText(result?.memory, 40),
+    runtimePercentile: null,
+    memoryPercentile: null,
+    submissionId,
+    submissionUrl: neetcodeUrl(result?.url),
+    source: 'neetcode',
+    failure: accepted ? null : {
+      kind: NEETCODE_KIND_BY_STATUS[(status ?? '').toLowerCase()] ?? 'other',
+      statusMsg: status ?? 'Unknown verdict',
+      // NeetCode's console text, verbatim: the failing input, output and expected, or the
+      // error. The headline already says the status, so `message` does not repeat it.
+      message: null,
+      consoleOutput: details,
+    },
+  };
+}

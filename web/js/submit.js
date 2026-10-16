@@ -22,11 +22,34 @@
 //      the submission itself is still on LeetCode, and we link to it.
 //
 // Everything above the render functions is pure and covered by tests.js.
+//
+// Premium problems are judged on neetcode.io instead (docs/SUBMITTING.md, "Premium
+// problems: NeetCode"). The same panel shows them, told apart by `target: 'neetcode'`:
+// its own scope, links and failure states, and the same three rules.
 
 import { el, clear, replace } from './dom.js';
-import { submitCode } from './api.js';
+import { submitCode, neetcodeSubmitBlocker } from './api.js';
 
 const LOGIN_URL = 'https://leetcode.com/accounts/login/';
+
+const SITES = {
+  leetcode: { name: 'LeetCode', host: 'leetcode.com', login: LOGIN_URL },
+  neetcode: { name: 'NeetCode', host: 'neetcode.io', login: 'https://neetcode.io/' },
+};
+
+/** Where a submission is judged: 'neetcode' for premium problems, 'leetcode' otherwise. */
+export function targetOf(value) {
+  return value === 'neetcode' ? 'neetcode' : 'leetcode';
+}
+
+function siteOf(target) {
+  return SITES[targetOf(target)];
+}
+
+/** NeetCode's problem page and its submission history, for links. */
+export function neetcodeProblemUrl(neetcodeSlug, page = 'question') {
+  return `https://neetcode.io/problems/${encodeURIComponent(text(neetcodeSlug).trim())}/${page}`;
+}
 
 /* ============================== shaping (pure) ============================== */
 
@@ -51,8 +74,10 @@ export function formatPercentile(value) {
 }
 
 /** The public link to one submission, or '' when the judge gave us no id. */
-export function submissionUrlOf(raw) {
+export function submissionUrlOf(raw, target = 'leetcode') {
   const direct = text(raw?.submissionUrl).trim();
+  // NeetCode has no id we can link by, only the page the Connector was on.
+  if (targetOf(target) === 'neetcode') return /^https:\/\/neetcode\.io\//.test(direct) ? direct : '';
   if (/^https:\/\/leetcode\.com\//.test(direct)) return direct;
   const id = raw?.submissionId;
   if (typeof id === 'number' && isFinite(id) && id > 0) return `https://leetcode.com/submissions/detail/${id}/`;
@@ -78,6 +103,8 @@ const DETAIL_FIELDS = [
   { label: 'Expected output', wide: false, keys: ['expected', 'expectedOutput', 'expected_output'] },
   { label: 'Your output', wide: false, keys: ['actual', 'actualOutput', 'output', 'codeOutput', 'code_output'] },
   { label: 'Printed output', wide: true, keys: ['stdout', 'stdOutput', 'std_output'] },
+  // NeetCode's console text for a failed submission, verbatim: input, output, expected.
+  { label: 'NeetCode’s output', wide: true, keys: ['consoleOutput'] },
 ];
 
 /**
@@ -196,11 +223,76 @@ const BLOCKED = {
     retry: true,
     checkFirst: true,
   },
+
+  // ---- NeetCode only (premium problems) ----
+  nc_no_connector: {
+    tone: 'warn',
+    headline: 'Install the Studio Connector to submit to NeetCode',
+    message: 'Premium problems are judged on neetcode.io through your browser’s own NeetCode sign-in, using the extension that ships with Studio. It is not installed in this browser, so nothing was submitted.',
+    advice: 'One-time setup: open chrome://extensions (dia://extensions in Dia), turn on Developer mode, choose “Load unpacked” and pick the extension folder inside practice-studio. Then reload this page.',
+    retry: false,
+    fallback: true,
+  },
+  nc_old_connector: {
+    tone: 'warn',
+    headline: 'Update the Studio Connector',
+    message: 'The Studio Connector in this browser is older than 1.1.0 and cannot submit to NeetCode, so nothing was submitted.',
+    advice: 'Update the Studio Connector: reload it in chrome://extensions (the reload icon on its card), then reload this page.',
+    retry: false,
+    fallback: true,
+  },
+  nc_signed_out: {
+    tone: 'warn',
+    headline: 'You are not signed in to NeetCode',
+    message: 'Nothing was submitted. This browser is not signed in to neetcode.io.',
+    retry: false,
+    signIn: true,
+  },
+  nc_not_python: {
+    tone: 'warn',
+    headline: 'NeetCode’s editor is not set to Python',
+    message: 'Nothing was submitted. NeetCode’s editor is set to another language.',
+    advice: 'Switch NeetCode’s editor to Python once: open the problem on neetcode.io, choose Python above the editor, then submit again here.',
+    retry: false,
+    openProblem: true,
+  },
+  nc_stale_code: {
+    tone: 'err',
+    headline: 'Your code did not show up in NeetCode’s editor',
+    message: 'Studio did not press Submit, because NeetCode would have judged whatever was in its editor before. Nothing was submitted.',
+    // Safe to offer: nothing was sent, and the next press starts again from a fresh page.
+    retry: true,
+    openProblem: true,
+  },
+  nc_timeout: {
+    tone: 'warn',
+    headline: 'NeetCode has not shown a verdict',
+    message: 'Submit was pressed once on NeetCode, but no verdict appeared in time. This is not a verdict on your code. Look on NeetCode rather than submitting again.',
+    retry: false,
+    checkFirst: true,
+  },
+  nc_unreachable: {
+    tone: 'err',
+    headline: 'NeetCode could not be reached',
+    message: 'The NeetCode problem page did not load. Nothing was submitted.',
+    retry: true,
+  },
 };
 
-function blocked(kind, message, slug, raw = null) {
-  const preset = BLOCKED[kind] || BLOCKED.server;
-  const url = submissionUrlOf(raw);
+// The shared presets above are worded for LeetCode. On the NeetCode path the same
+// sentences are true with the site's name swapped, so they are reused that way rather
+// than copied; the NeetCode-only states have their own wording.
+function forSite(value, target) {
+  return targetOf(target) === 'neetcode' && value ? value.replace(/LeetCode/g, 'NeetCode') : value;
+}
+
+function blocked(kind, message, slug, raw = null, where = {}) {
+  const target = targetOf(where.target ?? raw?.target);
+  const neetcode = target === 'neetcode';
+  const ncSlug = where.neetcodeSlug || slug;
+  const base = BLOCKED[kind] || BLOCKED.server;
+  const preset = { ...base, headline: forSite(base.headline, target), message: forSite(base.message, target), advice: forSite(base.advice, target) };
+  const url = submissionUrlOf(raw, target);
   const challenge = raw?.challenge === true;
   const submissionState = raw?.submissionState || (url ? 'submitted' : null);
   return {
@@ -220,6 +312,8 @@ function blocked(kind, message, slug, raw = null) {
     signIn: preset.signIn === true,
     fallback: preset.fallback === true || (challenge && submissionState === 'not_sent'),
     advice: preset.advice || '',
+    openProblem: preset.openProblem === true,
+    target,
     note: '',
     passed: null,
     total: null,
@@ -228,8 +322,8 @@ function blocked(kind, message, slug, raw = null) {
     runtimePercentile: '',
     memoryPercentile: '',
     submissionUrl: url,
-    problemUrl: `https://leetcode.com/problems/${encodeURIComponent(slug)}/`,
-    submissionsUrl: submissionsUrlOf(slug),
+    problemUrl: neetcode ? neetcodeProblemUrl(ncSlug) : `https://leetcode.com/problems/${encodeURIComponent(slug)}/`,
+    submissionsUrl: neetcode ? neetcodeProblemUrl(ncSlug, 'history') : submissionsUrlOf(slug),
     details: [],
   };
 }
@@ -241,25 +335,33 @@ function blocked(kind, message, slug, raw = null) {
  * disagreeing with it is the single most common bug in third-party clients. A
  * response that claims `accepted:true` while carrying any other status code is
  * NOT shown as an acceptance.
+ *
+ * On NeetCode (`where.target` or `raw.target` 'neetcode') there is no status code, and
+ * acceptance is the verdict text being exactly "Accepted", as the server decides it.
  */
-export function shapeSubmitResult(raw, slug = '') {
+export function shapeSubmitResult(raw, slug = '', where = {}) {
+  const target = targetOf(where.target ?? raw?.target);
+  const neetcode = target === 'neetcode';
+  where = { ...where, target };
   if (!raw || typeof raw !== 'object') {
-    return blocked('server', 'The submit request produced no response at all. Nothing came back from the judge.', slug);
+    return blocked('server', 'The submit request produced no response at all. Nothing came back from the judge.', slug, null, where);
   }
 
   if (raw.ok === false) {
-    if (raw.code === 'DEMO_ONLY' || raw.kind === 'demo') return blocked('demo',null,slug);
+    if (raw.code === 'DEMO_ONLY' || raw.kind === 'demo') return blocked('demo', neetcode ? text(raw.message) || null : null, slug, null, where);
     // An unrecognised kind or an error code nobody here has heard of still gets
     // the server's own sentence, verbatim — a generic fallback would throw away
     // the only accurate thing in the response.
     const kind = typeof raw.kind === 'string' && BLOCKED[raw.kind] ? raw.kind : 'server';
-    return blocked(kind, text(raw.message) || null, slug, raw);
+    return blocked(kind, text(raw.message) || null, slug, raw, where);
   }
 
   const statusCode = typeof raw.statusCode === 'number' ? raw.statusCode : null;
   const verdict = text(raw.verdict).trim();
   const claimed = raw.accepted === true;
-  const accepted = claimed && (statusCode === null || statusCode === 10);
+  const accepted = neetcode
+    ? claimed && verdict === 'Accepted'
+    : claimed && (statusCode === null || statusCode === 10);
 
   const passed = Number.isFinite(raw.passed) ? raw.passed : null;
   const total = Number.isFinite(raw.total) ? raw.total : null;
@@ -274,8 +376,9 @@ export function shapeSubmitResult(raw, slug = '') {
     memory: text(raw.memory).trim(),
     runtimePercentile: formatPercentile(raw.runtimePercentile),
     memoryPercentile: formatPercentile(raw.memoryPercentile),
-    submissionUrl: submissionUrlOf(raw),
-    submissionsUrl: submissionsUrlOf(slug),
+    target,
+    submissionUrl: submissionUrlOf(raw, target),
+    submissionsUrl: neetcode ? neetcodeProblemUrl(where.neetcodeSlug || slug, 'history') : submissionsUrlOf(slug),
     note,
     details,
     failingInput,
@@ -308,7 +411,9 @@ export function shapeSubmitResult(raw, slug = '') {
     headline: verdict || 'Not accepted',
     message: claimed && statusCode !== null && statusCode !== 10
       ? `The response said it was accepted but carried status code ${statusCode}, and only status code 10 is an acceptance. It is reported here as not accepted.`
-      : '',
+      : neetcode && claimed
+        ? `The response said it was accepted, but NeetCode’s verdict reads “${verdict || 'nothing'}”, and only “Accepted” is an acceptance. It is reported here as not accepted.`
+        : '',
   };
 }
 
@@ -353,6 +458,7 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
   clear(target);
   if (!shaped) return target;
 
+  const site = siteOf(shaped.target);
   if (shaped.status === 'blocked') {
     const acts = [];
     if (shaped.retry && handlers.onResubmit) acts.push(el('button', { class: 'act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit }));
@@ -361,34 +467,35 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
       el('p', { text: shaped.message }),
       shaped.advice && !shaped.challenge ? el('p', { text: shaped.advice }) : null,
       shaped.fallback ? (() => {
-        const copyStatus = el('p', { role: 'status', text: 'Or submit by hand: copy your solution, paste it into LeetCode’s editor and submit there.' });
+        const copyStatus = el('p', { role: 'status', text: handlers.fallbackNote || `Or submit by hand: copy your solution, paste it into ${site.name}’s editor and submit there.` });
         const copy = el('button', { class: 'act', type: 'button', text: 'Copy current solution', onclick: async () => {
           try {
             await navigator.clipboard.writeText(handlers.getCode());
-            copyStatus.textContent = 'Solution copied. Paste it into LeetCode’s editor, check the language, then submit there. Studio has not submitted it.';
+            copyStatus.textContent = `Solution copied. Paste it into ${site.name}’s editor, check the language, then submit there. Studio has not submitted it.`;
           } catch {
-            copyStatus.textContent = 'Clipboard access failed. Select and copy your solution from the Studio editor, then paste it on LeetCode.';
+            copyStatus.textContent = `Clipboard access failed. Select and copy your solution from the Studio editor, then paste it on ${site.name}.`;
           }
         } });
         return el('div', {}, [
-          el('div', { class: 'acts' }, [handlers.getCode ? copy : null, linkOut(shaped.problemUrl, 'Open problem on LeetCode ↗')]),
+          el('div', { class: 'acts' }, [handlers.getCode ? copy : null, linkOut(shaped.problemUrl, `Open problem on ${site.name} ↗`)]),
           copyStatus,
         ]);
       })() : null,
-      shaped.signIn ? el('div', { class: 'acts' }, [linkOut(LOGIN_URL, 'Sign in to LeetCode ↗')]) : null,
+      shaped.signIn ? el('div', { class: 'acts' }, [linkOut(site.login, `Sign in to ${site.name} ↗`)]) : null,
+      shaped.openProblem && !shaped.fallback ? el('div', { class: 'acts' }, [linkOut(shaped.problemUrl, `Open problem on ${site.name} ↗`)]) : null,
       shaped.checkFirst
         ? el('p', { class: 'sub-check' }, shaped.submissionUrl
-          ? ['This submission is on LeetCode and will finish judging with or without this panel. ', linkOut(shaped.submissionUrl, 'Open it ↗')]
-          : ['Check your submissions on LeetCode before sending another — this one may already be there. ', linkOut(shaped.submissionsUrl, 'Submissions ↗')])
+          ? [`This submission is on ${site.name} and will finish judging with or without this panel. `, linkOut(shaped.submissionUrl, 'Open it ↗')]
+          : [`Check your submissions on ${site.name} before sending another — this one may already be there. `, linkOut(shaped.submissionsUrl, 'Submissions ↗')])
         : null,
       acts.length ? el('div', { class: 'acts' }, acts) : null,
     ]));
     return target;
   }
 
-  const counts = shaped.passed !== null && shaped.total !== null
-    ? `${shaped.passed} of ${shaped.total} tests passed`
-    : '';
+  const counts = shaped.passed === null || shaped.total === null ? ''
+    : shaped.target === 'neetcode' ? `${shaped.passed} / ${shaped.total} tests`
+      : `${shaped.passed} of ${shaped.total} tests passed`;
 
   target.append(el('div', { class: 'sub-verdict v-' + shaped.status }, [
     el('span', { class: 'sub-vdot' }),
@@ -403,7 +510,7 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
   // box stretched across the panel looked like a mistake, and saying it twice
   // did not make it any truer.
   const stats = [
-    stat('Runtime', shaped.runtime, shaped.runtimePercentile),
+    stat(shaped.target === 'neetcode' ? 'Time' : 'Runtime', shaped.runtime, shaped.runtimePercentile),
     stat('Memory', shaped.memory, shaped.memoryPercentile),
   ].filter(Boolean);
   if (stats.length) target.append(el('div', { class: 'sub-stats' }, stats));
@@ -430,12 +537,13 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
       shaped.details.length ? el('div', { class: 'sub-details' }, shaped.details.map(detailBlock)) : null,
     ]));
   } else if (shaped.status === 'rejected') {
-    target.append(el('p', { class: 'sub-msg', text: 'LeetCode returned this verdict without any failing input, output or error attached, so there is nothing more to show than the verdict itself.' }));
+    target.append(el('p', { class: 'sub-msg', text: `${site.name} returned this verdict without any failing input, output or error attached, so there is nothing more to show than the verdict itself.` }));
   }
 
   const foot = el('div', { class: 'sub-foot' }, [
-    shaped.submissionUrl ? linkOut(shaped.submissionUrl, 'This submission on LeetCode ↗') : null,
-    shaped.submissionUrl ? null : linkOut(shaped.submissionsUrl, 'Your submissions on LeetCode ↗'),
+    shaped.submissionUrl
+      ? linkOut(shaped.submissionUrl, shaped.target === 'neetcode' ? 'Open on NeetCode ↗' : 'This submission on LeetCode ↗')
+      : linkOut(shaped.submissionsUrl, `Your submissions on ${site.name} ↗`),
     el('span', { class: 'spacer' }),
     handlers.onResubmit
       ? el('button', { class: 'act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit })
@@ -457,10 +565,20 @@ export const WATCH_CAP_MS = 90000;
  *
  * Nothing in here submits by itself. `submit()` is called from a click and from
  * nowhere else — no timer, no retry, no batching, ever.
+ *
+ * `getTarget()` is read at each press: 'neetcode' sends a premium problem to neetcode.io
+ * (as `neetcodeSlug`), anything else to LeetCode. It is a function because whether a
+ * problem is premium is only known once its content has loaded.
  */
-export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFailingCase = null }) {
+export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFailingCase = null, getTarget = () => 'leetcode', neetcodeSlug = null }) {
   const body = el('div', { class: 'sub-body' });
   const scope = el('span', { class: 'mono sub-scope', text: 'leetcode.com' });
+  let where = { target: 'leetcode', neetcodeSlug: neetcodeSlug || slug };
+  function aim() {
+    where = { target: targetOf(getTarget()), neetcodeSlug: neetcodeSlug || slug };
+    scope.textContent = siteOf(where.target).host;
+    return where;
+  }
   const root = el('div', { class: 'sub', hidden: true }, [
     el('div', { class: 'sub-head' }, [
       el('span', { class: 'mono sub-mark', text: 'Submission' }),
@@ -481,7 +599,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     replace(body, el('div', { class: 'sub-judging' }, [
       el('div', { class: 'sub-progress' }, fill),
       el('div', { class: 'sub-runrow' }, [
-        el('span', { class: 'mono', text: 'Judging on LeetCode' }),
+        el('span', { class: 'mono', text: `Judging on ${siteOf(where.target).name}` }),
         clock,
         el('span', { class: 'spacer' }),
         el('button', { class: 'act', type: 'button', text: 'Stop waiting', onclick: () => stop('cancelled') }),
@@ -490,7 +608,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     ticker = setInterval(() => {
       const elapsed = Date.now() - started;
       clock.textContent = (elapsed / 1000).toFixed(1) + 's';
-      fill.style.width = Math.min(100, (elapsed / WATCH_CAP_MS) * 100).toFixed(1) + '%';
+      fill.style.transform = `scaleX(${Math.min(1, elapsed / WATCH_CAP_MS).toFixed(3)})`;
       if (elapsed >= WATCH_CAP_MS) stop('timeout');
     }, 100);
   }
@@ -498,10 +616,10 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
   function stop(reason) {
     if (!busy) return;
     if (controller) { try { controller.abort(); } catch { /* already gone */ } }
-    finish(shapeSubmitResult({ ok: false, kind: reason }, slug));
+    finish(shapeSubmitResult({ ok: false, kind: reason }, slug, where));
   }
 
-  function finish(shaped) {
+  function finish(shaped, extra = {}) {
     busy = false;
     controller = null;
     if (ticker) { clearInterval(ticker); ticker = null; }
@@ -510,6 +628,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     // useless (expired session) or unwelcome (rate limited).
     const allow = shaped.status !== 'blocked' || shaped.retry;
     renderSubmitResult(body, shaped, {
+      ...extra,
       getCode,
       ...(allow ? { onResubmit: submit } : {}),
       ...(onUseFailingCase ? { onUseFailingCase } : {}),
@@ -523,16 +642,31 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     busy = true;
     root.hidden = false;
     controller = new AbortController();
+    aim();
     onEvent({ type: 'start' });
     showJudging();
-    const raw = await submitCode(slug, getCode(), controller.signal);
+    const raw = await submitCode(slug, getCode(), controller.signal, where);
     if (!busy) return;               // stopped watching while we waited
-    finish(shapeSubmitResult(raw, slug));
+    finish(shapeSubmitResult(raw, slug, where));
+  }
+
+  /** Show why nothing can be submitted, without submitting: the caller has already
+   *  fallen back (for NeetCode, copied the code and opened the problem). */
+  function explain(kind, note = '') {
+    if (busy) return;
+    root.hidden = false;
+    aim();
+    finish(shapeSubmitResult({ ok: false, kind, target: where.target }, slug, where), note ? { fallbackNote: note } : {});
   }
 
   return {
     root,
     submit,
+    explain,
+    /** '' when a press can go through the Connector; otherwise the panel kind saying
+     *  why not ('nc_no_connector', 'nc_old_connector'). Only NeetCode checks ahead. */
+    blocker: () => (targetOf(getTarget()) === 'neetcode' ? neetcodeSubmitBlocker() : ''),
+    targetName: () => siteOf(where.target).name,
     stop: () => stop('cancelled'),
     isBusy: () => busy,
     lastResult: () => last,

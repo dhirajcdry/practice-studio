@@ -5,7 +5,7 @@
 //   { ok:true,  ...payload, source:'live'|'mock' }
 //   { ok:false, kind:'missing'|'premium'|'offline'|'timeout'|'server', message, code }
 
-import { connectorVersion, submitViaConnector } from './leetcode-bridge.js';
+import { connectorVersion, submitViaConnector, neetcodeConnectorProblem } from './leetcode-bridge.js';
 
 const REQUEST_TIMEOUT_MS = 8000;
 const BOOT_TIMEOUT_MS = 3500;
@@ -545,7 +545,9 @@ export function cancelRun(slug) {
 
 /** Dev switch for the verdict states without a judge: ?simsubmit=
  *  accepted|wrong|tle|mle|compile|runtime|nodetail
- *  |expired|nosession|noconnector|unreachable|judgetimeout|ratelimited|inflight|missing */
+ *  |expired|nosession|noconnector|unreachable|judgetimeout|ratelimited|inflight|missing
+ *  On a premium (NeetCode) problem: accepted|wrong|ncsignedout|ncpython|ncstale|nctimeout
+ *  |ncold|noconnector — see simulatedNeetCode. */
 export const simulateSubmit = flags.get('simsubmit') || '';
 
 /**
@@ -652,7 +654,8 @@ function simulatedSubmit(kind) {
  * function: it sends once, waits once, and reports whatever came back. Aborting
  * the signal stops us waiting; it does not and cannot cancel the submission.
  */
-export async function submitCode(slug, code, signal) {
+export async function submitCode(slug, code, signal, { target = 'leetcode', neetcodeSlug = null } = {}) {
+  if (target === 'neetcode') return submitToNeetCode(slug, code, signal, neetcodeSlug || slug);
   if (api.demo && !simulateSubmit) return {ok:false,kind:'demo',code:'DEMO_ONLY',message:'Submissions are unavailable in the demo. Nothing was sent to LeetCode.'};
   if (simulateSubmit) {
     await new Promise(r => setTimeout(r, 1200));
@@ -690,6 +693,131 @@ export async function submitCode(slug, code, signal) {
     submissionState: sent.submissionState ?? null,
     challenge: sent.challenge === true,
     source: 'live',
+  };
+}
+
+/* ---------------------- premium problems: NeetCode ---------------------- */
+
+/**
+ * The Connector's error codes on the NeetCode path, mapped onto `kind`. As for LeetCode,
+ * the words are always the Connector's own `message`; `kind` only picks the panel shape.
+ */
+const NEETCODE_KINDS = {
+  DEMO_ONLY: 'demo',
+  NO_CONNECTOR: 'nc_no_connector',
+  CONNECTOR_OUTDATED: 'nc_old_connector',
+  SIGNED_OUT: 'nc_signed_out',
+  NOT_PYTHON: 'nc_not_python',
+  STALE_CODE: 'nc_stale_code',
+  EDITOR_HIDDEN: 'nc_stale_code',
+  JUDGE_TIMEOUT: 'nc_timeout',
+  JUDGE_UNREACHABLE: 'nc_unreachable',
+  SUBMIT_IN_FLIGHT: 'in_flight',
+  CANCELLED: 'cancelled',
+};
+
+/**
+ * Why a premium submission cannot go through the Connector right now, as a panel kind,
+ * or '' when it can. editor.js asks this during the click, so that when the answer is
+ * "no" it can still open NeetCode in that same gesture (a popup opened after an await
+ * gets blocked). Simulation, the demo and an offline server are left to submitCode.
+ */
+export function neetcodeSubmitBlocker() {
+  if (simulateSubmit || api.demo || api.mode !== 'live') return '';
+  const problem = neetcodeConnectorProblem();
+  return problem === 'missing' ? 'nc_no_connector' : problem === 'outdated' ? 'nc_old_connector' : '';
+}
+
+const NC_SIM_URL = 'https://neetcode.io/problems/valid-tree/history?submissionIndex=3';
+const NC_SIM_ACCEPTED = {
+  ok: true, accepted: true, verdict: 'Accepted', statusCode: null, passed: 34, total: 34,
+  runtime: '28ms', memory: '8 MB', runtimePercentile: null, memoryPercentile: null,
+  submissionId: 'nc-1760568480000', submissionUrl: NC_SIM_URL, failure: null,
+};
+
+/** Canned NeetCode states for ?simsubmit= (accepted, wrong, ncsignedout, ncpython,
+ *  ncstale, nctimeout, ncold, noconnector). Never touches the network. */
+function simulatedNeetCode(kind) {
+  const nope = (k, code, message, extra = {}) => ({ ok: false, kind: k, code, message, ...extra });
+  switch (kind) {
+    case 'accepted': return { ...NC_SIM_ACCEPTED };
+    case 'wrong': return { ...NC_SIM_ACCEPTED, accepted: false, verdict: 'Wrong Answer', passed: 12, runtime: null, memory: null,
+      failure: { kind: 'wrong_answer', statusMsg: 'Wrong Answer', message: null,
+        consoleOutput: 'Input:\nn = 5\nedges = [[0,1],[1,2],[2,3],[1,3],[1,4]]\n\nYour Output:\ntrue\n\nExpected output:\nfalse' } };
+    case 'ncsignedout': return nope('nc_signed_out', 'SIGNED_OUT', 'This browser profile is not signed in to NeetCode. Sign in to neetcode.io in this browser, then submit again. Nothing was submitted.', { submissionState: 'not_sent' });
+    case 'ncpython': return nope('nc_not_python', 'NOT_PYTHON', 'NeetCode’s editor is set to Java, not Python. Switch NeetCode’s editor to Python once, then submit again. Nothing was submitted.', { submissionState: 'not_sent' });
+    case 'ncstale': return nope('nc_stale_code', 'STALE_CODE', 'NeetCode’s editor is not showing the code from Studio, so Studio did not press Submit: it would have judged whatever was there before. Nothing was submitted.', { submissionState: 'not_sent' });
+    case 'nctimeout': return nope('nc_timeout', 'JUDGE_TIMEOUT', `NeetCode had not shown a verdict after 60 seconds. Submit was pressed once; look on NeetCode: ${NC_SIM_URL}. Do not submit again.`, { submissionState: 'submitted', submissionUrl: NC_SIM_URL });
+    case 'ncold': return nope('nc_old_connector', 'CONNECTOR_OUTDATED', '');
+    case 'noconnector': return nope('nc_no_connector', 'NO_CONNECTOR', '');
+    default: return { ...NC_SIM_ACCEPTED };
+  }
+}
+
+/**
+ * Submit a premium problem on neetcode.io, through the Studio Connector (1.1.0 or later),
+ * then record what NeetCode said. Same rules as submitCode: one request, no retry, and
+ * the failure says whether anything was sent.
+ */
+async function submitToNeetCode(slug, code, signal, neetcodeSlug) {
+  const tag = { target: 'neetcode' };
+  if (api.demo && !simulateSubmit) return { ...tag, ok: false, kind: 'demo', code: 'DEMO_ONLY', message: 'Submissions are unavailable in the demo. Nothing was sent to NeetCode.' };
+  if (simulateSubmit) {
+    await new Promise(r => setTimeout(r, 1200));
+    return { ...simulatedNeetCode(simulateSubmit), ...tag, source: 'mock' };
+  }
+  if (api.mode !== 'live') {
+    return { ...tag, ok: false, source: 'mock', kind: 'offline', code: 'NO_SERVER',
+      message: 'Nothing was submitted. Submitting needs the studio server, which records every verdict, and it is not answering.' };
+  }
+  // An outdated Connector ignores `target` and would send this to LeetCode, so nothing
+  // is sent to one.
+  const problem = neetcodeConnectorProblem();
+  if (problem) {
+    return { ...tag, ok: false, source: 'live', kind: problem === 'missing' ? 'nc_no_connector' : 'nc_old_connector',
+      code: problem === 'missing' ? 'NO_CONNECTOR' : 'CONNECTOR_OUTDATED', message: '' };
+  }
+  const sent = await submitViaConnector({ slug, code, signal, target: 'neetcode', neetcodeSlug });
+  const link = typeof sent.url === 'string' && sent.url.startsWith('https://neetcode.io/') ? sent.url : null;
+  if (sent.ok || sent.submissionState === 'submitted') {
+    const recorded = await sendJson('/api/submit/record', {
+      method: 'POST',
+      body: { source: 'neetcode', slug, code, result: sent.ok ? sent.result : null, url: link, requestId: sent.requestId ?? null },
+    });
+    if (sent.ok) {
+      return recorded.ok
+        ? { ...recorded.data, ...tag, source: 'live' }
+        : { ...verdictFromNeetCode(sent.result), ...tag, source: 'live' };
+    }
+  }
+  return {
+    ...tag,
+    ok: false,
+    code: sent.code || 'CONNECTOR_ERROR',
+    kind: NEETCODE_KINDS[sent.code] || 'server',
+    message: typeof sent.message === 'string' ? sent.message : '',
+    submissionId: null,
+    submissionUrl: link,
+    submissionState: sent.submissionState ?? null,
+    source: 'live',
+  };
+}
+
+/** NeetCode's verdict as the Connector read it, for when the server could not record
+ *  it. Same rule as server/judge/verdict.mjs: only the exact text "Accepted" counts. */
+function verdictFromNeetCode(result) {
+  const status = typeof result?.status === 'string' ? result.status.trim() : '';
+  const accepted = status === 'Accepted';
+  const count = (v) => (Number.isInteger(v) && v >= 0 ? v : null);
+  const url = typeof result?.url === 'string' && result.url.startsWith('https://neetcode.io/') ? result.url : null;
+  return {
+    ok: true, accepted, verdict: status || 'Unknown', statusCode: null,
+    passed: count(result?.passed), total: count(result?.total),
+    runtime: result?.time || '', memory: result?.memory || '',
+    runtimePercentile: null, memoryPercentile: null,
+    submissionId: null, submissionUrl: url,
+    failure: accepted ? null : { statusMsg: status || 'Unknown verdict', message: null,
+      consoleOutput: typeof result?.details === 'string' ? result.details.slice(0, 4000) : null },
   };
 }
 

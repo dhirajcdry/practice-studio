@@ -128,14 +128,14 @@ are recorded.
 
 | File | Role |
 | --- | --- |
-| `extension/manifest.json` | Manifest V3. Permissions: `scripting`, `tabs`, `cookies`; host access to `https://leetcode.com/*` only |
+| `extension/manifest.json` | Manifest V3. Permissions: `scripting`, `tabs`, `cookies`; host access to `https://leetcode.com/*` and `https://neetcode.io/*` (premium problems; no NeetCode cookie is ever read) |
 | `extension/bridge.js` | Content script on local pages. Marks the page (`data-studio-connector`), relays one request and one answer |
-| `extension/background.js` | Service worker. Sign-in check, tab handling, the in-tab submit and poll, all error wording |
+| `extension/background.js` | Service worker. Sign-in check, tab handling, the in-tab submit and poll, all error wording; the NeetCode path (`submitNeetCode`, `pageStoreNeetCodeCode`, `pageNeetCodeSubmit`, `pageNeetCodeVerdict`) |
 | `web/js/leetcode-bridge.js` | The page side of the message exchange |
 | `web/js/api.js` → `submitCode` | Sends to the Connector, then to the record route |
 | `web/js/submit.js` | The verdict panel and every state in the table above |
 | `server/judge/routes.mjs` | `POST /api/submit/record`: validates and records |
-| `server/judge/verdict.mjs` | Turns LeetCode's `/check/` body into the verdict |
+| `server/judge/verdict.mjs` | Turns LeetCode's `/check/` body into the verdict; `buildNeetCodeVerdict` for NeetCode |
 | `server/judge/record.mjs` | Writes the code, the session events and `meta.json` |
 
 ### Messages
@@ -167,8 +167,9 @@ submission was already recorded.
 
 ## Developing and testing
 
-- `npm test` covers the record route (`server/judge/test/routes.test.mjs`) and the verdict
-  rules (`verdict.test.mjs`). Nothing in the suite talks to LeetCode.
+- `npm test` covers the record route (`server/judge/test/routes.test.mjs`), the verdict
+  rules (`verdict.test.mjs`) and the NeetCode verdict and recording (`neetcode.test.mjs`).
+  Nothing in the suite talks to LeetCode or NeetCode.
 - `web/tests.html` covers every panel state, including the install and sign-in states.
 - `?simsubmit=accepted|wrong|tle|compile|runtime|expired|nosession|noconnector|unreachable|judgetimeout|ratelimited|inflight`
   renders a state without touching the extension or LeetCode.
@@ -188,12 +189,76 @@ request is the browser's own, and there is nothing to copy.
 The underlying LeetCode endpoints are documented in [LEETCODE-API.md](LEETCODE-API.md)
 (Part 2).
 
-## Premium problems
+## Premium problems: NeetCode
 
-For `isPaidOnly` problems, **Submit on NeetCode ↗** copies the current editor code and
-opens the catalog's NeetCode problem page. Paste and submit there manually. If clipboard
-access fails, Studio says to copy manually. This path never calls the Studio Connector
-or records a LeetCode verdict; **Run** still uses the local runner.
+LeetCode premium problems (`isPaidOnly`) can't be judged on a free LeetCode account, so
+Studio judges them on **neetcode.io** instead, with the same Connector, in the same panel.
+The button reads **Submit on NeetCode** and the panel's scope says `neetcode.io`. This
+needs Connector **1.1.0** or later and a neetcode.io sign-in in the same browser profile,
+with NeetCode's editor set to Python.
+
+**After updating:** the Connector gained the `https://neetcode.io/*` host permission in
+1.1.0. Press the reload icon on its card in `chrome://extensions`, then reload Studio.
+An older Connector would ignore the NeetCode target and send the code to LeetCode, so
+Studio checks the version first and never sends anything to one.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as Studio page
+  participant W as Connector worker
+  participant T as neetcode.io tab
+  participant S as Studio server
+  P->>W: submit {target:'neetcode', slug, neetcodeSlug, code} (through the bridge)
+  W->>T: use an open neetcode.io tab, or open /problems/{ncSlug}/question in the background
+  W->>T: inject: write code into localStorage "{ncSlug}_python_tabs"[activeTab].code
+  W->>T: load /problems/{ncSlug}/question fresh
+  W->>T: inject: wait for Submit + editor, check Python, stale-code guard, press Submit ONCE
+  loop every 1 s, up to 60 s
+    W->>T: inject: read the new verdict off the page (read-only)
+  end
+  W-->>P: {ok, target:'neetcode', result:{status, passed, total, memory, time, details, url}}
+  P->>S: POST /api/submit/record {source:'neetcode', slug, code, result, url, requestId}
+  S-->>P: verdict (accepted ⇔ status is exactly "Accepted") + what was recorded
+```
+
+**Why localStorage.** NeetCode's editor is Monaco, but it isn't exposed to the page
+(`window.monaco` is undefined), and typing into it would fight auto-indent and bracket
+completion. NeetCode loads its editor from `localStorage`: `<ncSlug>_python_tabs` is a JSON
+array of tabs (`[{ "code": "…" }]`) and `<ncSlug>_python_activeTab` is the index as a
+string. The Connector writes the code into the active tab (keeping that tab's other fields,
+or creating `[{code}]` with index `"0"`), then loads the problem page fresh, which also
+means no earlier verdict is on the page.
+
+**The stale-code guard.** Before pressing Submit the Connector checks two things, and
+refuses with `not_sent` if either fails for 20 s: NeetCode's stored copy is still exactly
+our code (whitespace aside), and the text Monaco has painted (its `.view-line`s, in
+on-screen order, whitespace removed so wrapped lines and non-breaking spaces don't matter)
+is the start of our code. Comparing only the first line would not do: almost every solution
+starts with `class Solution:`. Any verdict already on the page is marked before the press,
+so only a new one is read. In a background tab Monaco may not paint at all; then the tab is
+brought to the front once, checked again, and Studio's tab is focused again afterwards.
+
+**Verdict.** NeetCode has no status code. The server accepts only the exact text
+`Accepted` (`buildNeetCodeVerdict` in `server/judge/verdict.mjs`). It records the code as
+`submissions/nc-<timestamp>.py`, a `submitted` and a `verdict` event with
+`source: 'neetcode'`, and a `meta.json` entry with that synthetic id, `source: 'neetcode'`
+and the NeetCode page as its link. Stats count an accepted NeetCode verdict like any other.
+If Submit was pressed but no verdict showed within 60 s, only the code and the `submitted`
+event are recorded, and the panel links to NeetCode.
+
+| Panel says | Meaning | What to do |
+| --- | --- | --- |
+| **Update the Studio Connector** | The Connector is older than 1.1.0 | Reload it in `chrome://extensions`, then reload Studio. Studio copies your code and opens NeetCode meanwhile |
+| **Install the Studio Connector to submit to NeetCode** | No Connector in this browser profile | [Set it up once](#set-it-up-once). Studio copies your code and opens NeetCode meanwhile |
+| **You are not signed in to NeetCode** | No Submit button, or a sign-in prompt, on NeetCode | Sign in on neetcode.io, then submit again |
+| **NeetCode's editor is not set to Python** | The language button shows another language | Switch NeetCode's editor to Python once, then submit again |
+| **Your code did not show up in NeetCode's editor** | The stale-code guard refused. Nothing was pressed | Submit again; if it repeats, open the problem on NeetCode and look |
+| **NeetCode has not shown a verdict** | Submit was pressed, nothing appeared in 60 s | Open the linked page on NeetCode; don't resubmit |
+
+Connector codes on this path: `NOT_PYTHON`, `STALE_CODE`, `EDITOR_HIDDEN`, `SIGNED_OUT`,
+`JUDGE_TIMEOUT`, `JUDGE_UNREACHABLE`, `SUBMIT_IN_FLIGHT`, `BAD_REQUEST`, `CONNECTOR_ERROR`
+(mapped in `NEETCODE_KINDS`, `web/js/api.js`). **Run** still uses the local runner.
 
 Missing premium statements and Python signatures are fetched lazily from
 [doocs/leetcode](https://github.com/doocs/leetcode) (CC BY-SA 4.0), with linked attribution

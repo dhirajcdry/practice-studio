@@ -1,9 +1,10 @@
 // Runs on local pages. Relays one Studio submit request to the background worker and
-// hands the answer back to the page. It never sees cookies and never talks to LeetCode.
+// hands the answer back to the page. It never sees cookies and never talks to LeetCode
+// or NeetCode.
 //
 // The marker attribute is how Studio knows the connector is installed. Requests are only
 // accepted from a page that declares itself as Practice Studio, so another local site
-// cannot use this browser's LeetCode account.
+// cannot use this browser's LeetCode or NeetCode account.
 
 document.documentElement.dataset.studioConnector = chrome.runtime.getManifest().version;
 
@@ -34,5 +35,6 @@ window.addEventListener('message', (event) => {
     reply({ ok: false, code: 'CONNECTOR_ERROR', submissionState: 'unknown',
       message: 'The Studio Connector stopped before it answered. Check your submissions on LeetCode before sending another.' });
   });
-  port.postMessage({ type: 'submit', slug: data.slug, code: data.code, lang: data.lang });
+  // `target` is 'neetcode' for premium problems (with `neetcodeSlug`); absent means LeetCode.
+  port.postMessage({ type: 'submit', slug: data.slug, code: data.code, lang: data.lang, target: data.target, neetcodeSlug: data.neetcodeSlug });
 });

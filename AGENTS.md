@@ -52,7 +52,7 @@ that a screen doesn't blink or an icon isn't misaligned.
 | `web/vendor/` | Monaco and Excalidraw, pre-bundled for a browser that has no CDN and no build step | generated, **committed** (see below) |
 | `data/catalog.json`, `data/solutions-index.json` | Problem catalog and reference-solution index | generated, `scripts/extract-catalog.mjs` / `scripts/index-solutions.mjs` |
 | `vendor/neetcode-solutions/` | Shallow clone of `neetcode-gh/leetcode` (MIT), reference solutions | generated, **gitignored** — re-clone before running anything that reads it |
-| `extension/` | The Studio Connector browser extension (Manifest V3, no build step) that submits to LeetCode; see `docs/SUBMITTING.md` | hand-written |
+| `extension/` | The Studio Connector browser extension (Manifest V3, no build step) that submits to LeetCode, and premium problems to NeetCode; see `docs/SUBMITTING.md` | hand-written |
 | `docs/` | Architecture and protocol notes (`ARCHITECTURE.md`, `SUBMITTING.md`, `API-CONTRACT*.md`, `LEETCODE-API.md`) | hand-written, read before touching the judge/coach boundary |
 | `asr/` | The on-device Swift transcriber (`studio-asr`) built against WhisperKit 0.18.0 | hand-written |
 

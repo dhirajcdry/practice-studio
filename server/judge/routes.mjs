@@ -5,6 +5,9 @@
 // It then hands this route the submission id and LeetCode's raw `/check/` body, and the
 // server records them: the submitted code, the session events and meta.json.
 //
+// Premium problems are judged on neetcode.io instead; those requests say
+// `source: 'neetcode'` and carry what the Connector read off NeetCode's page.
+//
 // Handlers are `(req, res, ctx)`. From `ctx` this module uses, all optionally:
 //   ctx.catalog                        an unknown slug is a 404
 //   ctx.homeRoot / ctx.paths.HOME_ROOT the workspace root, for meta.json
@@ -15,7 +18,7 @@
 import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { SessionLog, isoWithOffset } from '../coach/sessions.mjs';
-import { buildVerdict, submissionUrl } from './verdict.mjs';
+import { buildVerdict, submissionUrl, buildNeetCodeVerdict, neetcodeUrl } from './verdict.mjs';
 import { recordVerdict, logSubmitted, logVerdict, saveSubmittedCode } from './record.mjs';
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -104,6 +107,71 @@ export async function recordSubmission({ slug, code, submissionId, check = null,
   };
 }
 
+/** A synthetic, sortable id for a NeetCode submission, which has no id of its own that
+ *  we can read. Unique within this process even for two in the same millisecond. */
+let lastNeetCodeStamp = 0;
+export function neetcodeSubmissionId(now = Date.now()) {
+  lastNeetCodeStamp = Math.max(now, lastNeetCodeStamp + 1);
+  return `nc-${lastNeetCodeStamp}`;
+}
+
+/**
+ * Record one premium-problem submission that the Connector made on neetcode.io.
+ *
+ * `result` is what the Connector read off NeetCode's page (`{ status, passed, total,
+ * memory, time, details, url }`), or null when Submit was clicked but no verdict appeared
+ * in time: then only the code and the `submitted` event are recorded, as for LeetCode.
+ * `requestId` is the page's id for that one click, so a repeated call writes nothing twice.
+ */
+export async function recordNeetCodeSubmission({ slug, code, result = null, url = null, requestId = null, sessionLog = null, homeRoot, log = console }) {
+  if (typeof slug !== 'string' || slug === '') {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request did not say which problem it was for.');
+  }
+  if (typeof code !== 'string' || code.trim() === '') {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request did not include the submitted code.');
+  }
+  if (result !== null && (typeof result !== 'object' || Array.isArray(result) || typeof result.status !== 'string' || result.status.trim() === '')) {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request carried a NeetCode result without a verdict.');
+  }
+  if (requestId !== null && (typeof requestId !== 'string' || requestId.length > 100)) {
+    throw new HttpError(400, 'BAD_REQUEST', 'That record request carried an unreadable request id.');
+  }
+  if (requestId) {
+    const key = `neetcode:${requestId}:${result ? 'verdict' : 'submitted'}`;
+    if (recorded.has(key)) throw new HttpError(409, 'ALREADY_RECORDED', 'That NeetCode submission is already recorded.');
+    recorded.add(key);
+  }
+
+  const id = neetcodeSubmissionId();
+  const link = neetcodeUrl(result?.url) ?? neetcodeUrl(url);
+  const submittedAt = isoWithOffset();
+  const submittedLog = await logSubmitted(sessionLog, slug, {
+    submissionId: id, lang: 'python3', codeBytes: Buffer.byteLength(code, 'utf8'), submissionUrl: link, via: 'browser', source: 'neetcode',
+  });
+  const codeFile = await saveSubmittedCode({ root: homeRoot, slug, submissionId: id, code });
+  if (!result) {
+    return { ok: true, submissionId: id, submissionUrl: link, source: 'neetcode', recorded: { sessionEvents: submittedLog.written, meta: false, note: 'no verdict yet' } };
+  }
+
+  const verdict = buildNeetCodeVerdict({ ...result, url: link }, id);
+  const verdictLog = await logVerdict(sessionLog, slug, verdict);
+  const meta = homeRoot
+    ? await recordVerdict({ root: homeRoot, slug, verdict, at: isoWithOffset(), codeFile })
+    : { written: false, reason: 'no workspace root configured' };
+  for (const r of [submittedLog, verdictLog, meta]) {
+    if (!r.written && r.reason) log?.warn?.(`[judge] ${slug}: NeetCode verdict recorded only partially — ${r.reason}`);
+  }
+  return {
+    ...verdict,
+    submittedAt,
+    recorded: {
+      sessionEvents: submittedLog.written && verdictLog.written,
+      meta: meta.written,
+      note: meta.written ? null : (meta.reason ?? null),
+    },
+  };
+}
+
 /** POST /api/submit/record */
 export async function handleRecord(req, res, ctx = {}) {
   const body = await readJsonBody(req);
@@ -112,6 +180,18 @@ export async function handleRecord(req, res, ctx = {}) {
     throw new HttpError(404, 'PROBLEM_NOT_FOUND', `"${slug}" is not in the NeetCode 250.`);
   }
   const homeRoot = ctx.homeRoot ?? ctx.paths?.HOME_ROOT ?? HOME_ROOT;
+  if (body.source === 'neetcode') {
+    return sendJson(res, 200, await recordNeetCodeSubmission({
+      slug,
+      code: body.code,
+      result: body.result ?? null,
+      url: body.url ?? null,
+      requestId: body.requestId ?? null,
+      sessionLog: ctx.sessionLog ?? new SessionLog({ root: homeRoot }),
+      homeRoot,
+      log: ctx.log ?? console,
+    }));
+  }
   const payload = await recordSubmission({
     slug,
     code: body.code,

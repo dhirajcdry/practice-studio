@@ -70,7 +70,9 @@ export function submissionEntry(verdict, { at = isoWithOffset(), codeFile = null
     beatsMemoryPct: verdict.memoryPercentile,
     submissionId: verdict.submissionId,
     submissionUrl: verdict.submissionUrl,
-    source: 'studio',
+    // 'studio' is a LeetCode verdict Studio recorded; 'neetcode' is a premium problem
+    // judged on neetcode.io (verdict.mjs, buildNeetCodeVerdict).
+    source: verdict.source === 'neetcode' ? 'neetcode' : 'studio',
   };
 }
 
@@ -149,6 +151,8 @@ export async function logVerdict(sessionLog, slug, verdict) {
       memoryPercentile: verdict.memoryPercentile,
       submissionId: verdict.submissionId,
       failureKind: verdict.failure?.kind ?? null,
+      // Only NeetCode verdicts carry these, so LeetCode events keep their exact shape.
+      ...(verdict.source === 'neetcode' ? { source: 'neetcode', submissionUrl: verdict.submissionUrl } : {}),
     });
     return { written: true };
   } catch (err) {

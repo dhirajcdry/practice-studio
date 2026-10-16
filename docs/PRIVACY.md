@@ -16,6 +16,7 @@ contact LeetCode. The local server is bound to `127.0.0.1`.
 | Speech recognition | Audio decoded and transcribed on-device by Swift/WhisperKit 0.18.0 | Initial dependency/model downloads; recognition itself is on-device |
 | Interviewer speech output | Browser `speechSynthesis` | Voice availability and network behavior depend on browser/OS |
 | LeetCode submission | Verdict and submitted code recorded locally | Your browser, through the Studio Connector extension, sends your solution to LeetCode with its own sign-in and polls that submission's result |
+| NeetCode submission (premium problems) | Verdict and submitted code recorded locally | Your browser, through the Studio Connector extension, puts your solution into a neetcode.io tab's editor storage, presses NeetCode's Submit with its own sign-in and reads the verdict off that page. No NeetCode cookie is read |
 | Reference solutions/articles | Read from optional local checkout | Initial clone/update from GitHub |
 
 ## AI coaching

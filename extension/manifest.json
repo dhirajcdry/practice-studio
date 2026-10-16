@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Practice Studio Connector",
-  "version": "1.0.0",
-  "description": "Lets a local Practice Studio submit to LeetCode through this browser's own LeetCode sign-in.",
+  "version": "1.1.0",
+  "description": "Lets a local Practice Studio submit to LeetCode, and premium problems to NeetCode, through this browser's own sign-ins.",
   "permissions": ["scripting", "tabs", "cookies"],
-  "host_permissions": ["https://leetcode.com/*"],
+  "host_permissions": ["https://leetcode.com/*", "https://neetcode.io/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {

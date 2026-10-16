@@ -790,6 +790,55 @@ check('formatPercentile keeps the judge\'s own precision and refuses nonsense',
     && formatPercentile(null) === '' && formatPercentile(-1) === '' && formatPercentile(101) === '');
 
 
+group('Submit — premium problems judged on NeetCode');
+
+const NC = { target: 'neetcode', neetcodeSlug: 'valid-tree' };
+const NC_URL = 'https://neetcode.io/problems/valid-tree/history?submissionIndex=3';
+const NC_ACCEPTED = {
+  ok: true, accepted: true, verdict: 'Accepted', statusCode: null, passed: 34, total: 34,
+  runtime: '28ms', memory: '8 MB', runtimePercentile: null, memoryPercentile: null,
+  submissionId: 'nc-1', submissionUrl: NC_URL, failure: null,
+};
+const ncShaped = (over = {}) => shapeSubmitResult({ ...NC_ACCEPTED, ...over }, 'graph-valid-tree', NC);
+
+check('a NeetCode Accepted is an acceptance', ncShaped().status === 'accepted');
+check('a NeetCode verdict reads N / N tests, time and memory, and links to NeetCode', (() => {
+  const box = subRendered(ncShaped());
+  const link = [...box.querySelectorAll('a.sub-link')].find(a => a.textContent.includes('Open on NeetCode'));
+  return box.textContent.includes('34 / 34 tests') && box.textContent.includes('28ms') && box.textContent.includes('8 MB')
+    && link?.getAttribute('href') === NC_URL;
+})(), subRendered(ncShaped()).textContent.replace(/\s+/g, ' ').slice(0, 120));
+check('on NeetCode only the text "Accepted" is an acceptance, whatever the response claims',
+  ncShaped({ verdict: 'Wrong Answer' }).status === 'rejected' && ncShaped({ verdict: 'accepted' }).status === 'rejected');
+check('a NeetCode failure shows NeetCode\'s own output in a pre', (() => {
+  const s = ncShaped({ accepted: false, verdict: 'Wrong Answer', passed: 12,
+    failure: { kind: 'wrong_answer', statusMsg: 'Wrong Answer', message: null, consoleOutput: 'Input:\nn = 5\nExpected output:\nfalse' } });
+  const pre = subRendered(s).querySelector('.sub-detail pre');
+  return s.headline === 'Wrong Answer' && pre?.textContent.includes('Expected output');
+})());
+check('a non-NeetCode link is refused on the NeetCode path', ncShaped({ submissionUrl: 'https://leetcode.com/submissions/detail/1/' }).submissionUrl === '');
+check('an outdated Connector says to reload it and offers the manual NeetCode route', (() => {
+  const s = shapeSubmitResult({ ok: false, kind: 'nc_old_connector', message: '' }, 'graph-valid-tree', NC);
+  const box = subRendered(s, { getCode: () => 'x' });
+  return s.headline === 'Update the Studio Connector' && box.textContent.includes('chrome://extensions')
+    && box.querySelector('a.sub-link[href="https://neetcode.io/problems/valid-tree/question"]') !== null;
+})());
+check('not signed in to NeetCode links to NeetCode, not LeetCode', (() => {
+  const box = subRendered(shapeSubmitResult({ ok: false, kind: 'nc_signed_out' }, 'graph-valid-tree', NC));
+  return box.textContent.includes('Sign in to NeetCode') && !box.textContent.includes('Sign in to LeetCode');
+})());
+check('stale code offers a resubmit (nothing was sent); a NeetCode timeout does not', (() => {
+  const stale = shapeSubmitResult({ ok: false, kind: 'nc_stale_code', submissionState: 'not_sent' }, 'graph-valid-tree', NC);
+  const late = shapeSubmitResult({ ok: false, kind: 'nc_timeout', submissionState: 'submitted', submissionUrl: NC_URL }, 'graph-valid-tree', NC);
+  return stale.retry === true && late.retry === false && late.checkFirst === true && late.submissionUrl === NC_URL;
+})());
+check('the shared states name NeetCode on the NeetCode path',
+  shapeSubmitResult({ ok: false, kind: 'cancelled' }, 'graph-valid-tree', NC).message.includes('NeetCode')
+    && !shapeSubmitResult({ ok: false, kind: 'cancelled' }, 'graph-valid-tree', NC).message.includes('LeetCode'));
+check('every NeetCode state carries a real message',
+  ['nc_no_connector', 'nc_old_connector', 'nc_signed_out', 'nc_not_python', 'nc_stale_code', 'nc_timeout', 'nc_unreachable']
+    .every(kind => shapeSubmitResult({ ok: false, kind }, 'graph-valid-tree', NC).message.length > 40));
+
 const headline = document.getElementById('headline');
 headline.textContent = fail === 0 ? `All ${pass} tests pass` : `${fail} of ${pass + fail} tests FAILED`;
 headline.style.color = fail === 0 ? 'var(--easy)' : 'var(--hard)';

@@ -8,6 +8,10 @@
 //   * `question_id` is the INTERNAL questionId from GraphQL, not the displayed number.
 //   * `state: "SUCCESS"` means judging finished; the verdict itself is decided by Studio.
 //   * Every error says whether anything reached LeetCode (`submissionState`).
+//
+// Premium problems go to neetcode.io instead (`target: 'neetcode'`, further down). That
+// path never touches a cookie: it puts the code where NeetCode's own editor loads it
+// from, presses NeetCode's own Submit button once, and reads the verdict off the page.
 
 const LEETCODE = 'https://leetcode.com';
 const TAB_LOAD_MS = 25000;
@@ -24,7 +28,10 @@ chrome.runtime.onConnect.addListener((port) => {
   }
   port.onMessage.addListener(async (message) => {
     if (message?.type !== 'submit') return;
-    const result = await submit(message);
+    // Only an explicit target sends anywhere but LeetCode; the LeetCode path is unchanged.
+    const result = message.target === 'neetcode'
+      ? await submitNeetCode(message, port.sender?.tab?.id ?? null)
+      : await submit(message);
     try { port.postMessage(result); } catch { /* the Studio tab closed while judging */ }
   });
 });
@@ -105,6 +112,156 @@ async function inTab(tabId, func, args) {
   } catch {
     return null;
   }
+}
+
+/* ===== NeetCode: premium problems (target 'neetcode') ===== */
+//
+// LeetCode premium problems are judged on neetcode.io instead, in this browser's own
+// NeetCode sign-in. No cookie is read here, for NeetCode or anyone: the page's own
+// session does the work, exactly as when Dhiraj presses Submit there himself.
+//
+// The sequence, and why each step is there:
+//   1. Get a neetcode.io tab: reuse a loaded one, or open the problem in a background tab
+//      (closed again afterwards, only if we opened it).
+//   2. Write the code into localStorage under `<slug>_python_tabs`, which is where
+//      NeetCode's editor loads its code from on page load. Its Monaco editor is not
+//      reachable from outside the page (there is no window.monaco), and typing into it
+//      would fight auto-indent and bracket completion, so this is the one way to put the
+//      exact bytes there.
+//   3. Load /problems/<slug>/question fresh. The editor reads what we wrote, and no
+//      verdict from an earlier submission is on the page to be mistaken for ours.
+//   4. The stale-code guard. Before pressing anything, check that the editor SHOWS our
+//      code, and that NeetCode's stored copy is still ours. If not, stop with not_sent.
+//      Submitting whatever was in NeetCode's editor before is the one mistake this path
+//      must never make, so a doubt here is always a refusal, never a guess.
+//   5. Press NeetCode's Submit button ONCE. Then read the page once a second for a
+//      verdict that was not there before the press, for up to 60 s. Reading the page is
+//      not resubmitting, and nothing here ever presses Submit a second time.
+
+const NEETCODE = 'https://neetcode.io';
+const NC_PREPARE_MS = 20000;
+const NC_VERDICT_MS = 60000;
+const NC_POLL_MS = 1000;
+/** Polls to wait for the full verdict card once only the console line has appeared. */
+const NC_CARD_GRACE_POLLS = 3;
+
+async function submitNeetCode({ neetcodeSlug, code }, studioTabId) {
+  const slug = neetcodeSlug;
+  if (typeof slug !== 'string' || !SLUG.test(slug)) return fail('BAD_REQUEST', 'That submit request did not name a valid NeetCode problem. Nothing was submitted.');
+  if (typeof code !== 'string' || code.trim() === '') return fail('BAD_REQUEST', 'There is no code to submit. Nothing was submitted.');
+  const key = `neetcode:${slug}`;
+  if (inFlight.has(key)) {
+    return fail('SUBMIT_IN_FLIGHT', 'A submission for this problem is already on its way to NeetCode. Wait for it to finish. Nothing was sent twice.');
+  }
+  inFlight.add(key);
+  const questionUrl = `${NEETCODE}/problems/${slug}/question`;
+  let tab = null;
+  let activated = false;
+  let pressed = false;
+  try {
+    tab = await neetcodeTab(slug, questionUrl);
+    if (!tab) {
+      return fail('JUDGE_UNREACHABLE', 'A NeetCode tab could not be opened in time. Check your connection, then submit again. Nothing was submitted.');
+    }
+
+    const stored = await inTab(tab.id, pageStoreNeetCodeCode, [slug, code]);
+    if (!stored) return fail('CONNECTOR_ERROR', 'Studio Connector could not run inside the NeetCode tab. Nothing was submitted.');
+    if (!stored.ok) return stored;
+
+    if (!(await loadTab(tab.id, questionUrl))) {
+      return fail('JUDGE_UNREACHABLE', 'The NeetCode problem page did not finish loading. Check your connection, then submit again. Nothing was submitted.');
+    }
+
+    let sent = await inTab(tab.id, pageNeetCodeSubmit, [slug, code, NC_PREPARE_MS]);
+    // Monaco paints its lines on animation frames, which a background tab may not get, so
+    // in a hidden tab there can be nothing on screen to check. Bring the tab forward and
+    // run the same function once more. That is not a retry: the first call returned
+    // before pressing anything (EDITOR_HIDDEN is only ever answered before the press).
+    if (sent?.code === 'EDITOR_HIDDEN') {
+      activated = await chrome.tabs.update(tab.id, { active: true }).then(() => true, () => false);
+      if (activated) sent = await inTab(tab.id, pageNeetCodeSubmit, [slug, code, NC_PREPARE_MS]);
+    }
+    if (!sent) {
+      return fail('CONNECTOR_ERROR', 'Studio Connector stopped while working in the NeetCode tab. Check your submissions on NeetCode before sending another.', { submissionState: 'unknown', url: `${NEETCODE}/problems/${slug}/history` });
+    }
+    if (!sent.ok) return sent;
+    pressed = true;
+
+    // === Submit was pressed exactly once. From here on we only read. ===
+    const started = Date.now();
+    let grace = NC_CARD_GRACE_POLLS;
+    let lastUrl = sent.url || questionUrl;
+    let partial = null;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, NC_POLL_MS));
+      const seen = await inTab(tab.id, pageNeetCodeVerdict, []);
+      if (seen?.url) lastUrl = seen.url;
+      if (seen?.signInPrompt) {
+        return fail('SIGNED_OUT', 'NeetCode asked this browser to sign in instead of judging. Sign in on neetcode.io, then submit again. Check your submissions on NeetCode first.', { submissionState: 'unknown', url: lastUrl });
+      }
+      if (seen?.status) {
+        // The console line can land a moment before the verdict card with time and memory.
+        if (seen.complete || grace <= 0) return { ok: true, target: 'neetcode', result: seen };
+        partial = seen;
+        grace -= 1;
+      }
+      if (seen === null && !(await chrome.tabs.get(tab.id).then(() => true, () => false))) {
+        return fail('JUDGE_TIMEOUT', 'The NeetCode tab was closed before its verdict appeared. Submit was pressed once; check your submissions on NeetCode. Do not submit again.', { submissionState: 'submitted', url: `${NEETCODE}/problems/${slug}/history` });
+      }
+      if (Date.now() - started >= NC_VERDICT_MS) {
+        if (partial) return { ok: true, target: 'neetcode', result: partial };
+        return fail('JUDGE_TIMEOUT', `NeetCode had not shown a verdict after ${Math.round(NC_VERDICT_MS / 1000)} seconds. Submit was pressed once; look on NeetCode: ${lastUrl}. Do not submit again.`, { submissionState: 'submitted', url: lastUrl });
+      }
+    }
+  } catch {
+    return fail('CONNECTOR_ERROR', 'Studio Connector hit an unexpected error. Check your submissions on NeetCode before sending another.', { submissionState: pressed ? 'submitted' : 'unknown', url: `${NEETCODE}/problems/${slug}/history` });
+  } finally {
+    inFlight.delete(key);
+    if (activated && studioTabId !== null) chrome.tabs.update(studioTabId, { active: true }).catch(() => {});
+    if (tab?.created) chrome.tabs.remove(tab.id).catch(() => {});
+  }
+}
+
+/** A loaded neetcode.io tab (one already on this problem first), or a new background one. */
+async function neetcodeTab(slug, questionUrl) {
+  const open = await chrome.tabs.query({ url: `${NEETCODE}/*` });
+  const ready = open.filter((t) => !t.discarded && t.status === 'complete');
+  const same = ready.find((t) => (t.url || '').startsWith(`${NEETCODE}/problems/${slug}/`));
+  if (same || ready[0]) return { id: (same || ready[0]).id, created: false };
+
+  const created = await chrome.tabs.create({ url: questionUrl, active: false });
+  if (!(await whenLoaded(created.id, false))) {
+    chrome.tabs.remove(created.id).catch(() => {});
+    return null;
+  }
+  return { id: created.id, created: true };
+}
+
+/** Load `url` in the tab afresh (a reload when it is already there) and wait for it. */
+async function loadTab(tabId, url) {
+  const current = await chrome.tabs.get(tabId);
+  const loaded = whenLoaded(tabId, true);
+  if (current.url === url) await chrome.tabs.reload(tabId);
+  else await chrome.tabs.update(tabId, { url });
+  return loaded;
+}
+
+/** Resolves true on the tab's next `complete`. With `fresh`, only a `complete` that
+ *  follows a `loading`, so an earlier load finishing cannot be mistaken for this one. */
+function whenLoaded(tabId, fresh) {
+  return new Promise((resolve) => {
+    let sawLoading = !fresh;
+    const timer = setTimeout(() => { chrome.tabs.onUpdated.removeListener(watch); resolve(false); }, TAB_LOAD_MS);
+    function watch(id, change) {
+      if (id !== tabId) return;
+      if (change.status === 'loading') sawLoading = true;
+      if (change.status !== 'complete' || !sawLoading) return;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(watch);
+      resolve(true);
+    }
+    chrome.tabs.onUpdated.addListener(watch);
+  });
 }
 
 /* ===== Everything below runs inside the leetcode.com tab and must be self-contained. ===== */
@@ -204,4 +361,170 @@ async function pagePoll(submissionId, csrf, ceilingMs) {
     }
     await sleep(1000);
   }
+}
+
+/* ===== Everything below runs inside the neetcode.io tab and must be self-contained. ===== */
+
+/**
+ * Put `code` where NeetCode's editor loads it from: `<slug>_python_tabs`, a JSON array of
+ * editor tabs (`[{ code }]`), at the index in `<slug>_python_activeTab`. Every other field
+ * of that tab is kept. A missing or unreadable key becomes one tab holding our code.
+ */
+function pageStoreNeetCodeCode(slug, code) {
+  const tabsKey = `${slug}_python_tabs`;
+  const activeKey = `${slug}_python_activeTab`;
+  try {
+    let tabs = null;
+    try { tabs = JSON.parse(localStorage.getItem(tabsKey) ?? 'null'); } catch { tabs = null; }
+    let active = Number.parseInt(localStorage.getItem(activeKey) ?? '', 10);
+    if (!Array.isArray(tabs) || tabs.length === 0) {
+      tabs = [{ code }];
+      active = 0;
+    } else {
+      if (!Number.isInteger(active) || active < 0 || active >= tabs.length) active = 0;
+      const current = tabs[active] && typeof tabs[active] === 'object' && !Array.isArray(tabs[active]) ? tabs[active] : {};
+      tabs = tabs.slice();
+      tabs[active] = { ...current, code };
+    }
+    localStorage.setItem(tabsKey, JSON.stringify(tabs));
+    localStorage.setItem(activeKey, String(active));
+    return { ok: true, activeTab: active };
+  } catch {
+    return { ok: false, code: 'CONNECTOR_ERROR', submissionState: 'not_sent', message: 'NeetCode’s page would not let Studio Connector store your code. Nothing was submitted.' };
+  }
+}
+
+/**
+ * Wait for the editor, check it shows OUR code (the stale-code guard), then press Submit
+ * exactly once. Every answer before the press is not_sent.
+ *
+ * The guard has two halves, and both must hold:
+ *   * NeetCode's stored copy of the active tab is still our code. If the page wrote its
+ *     own code back over ours while loading, the editor is showing something else.
+ *   * What Monaco has painted is our code. Its `.view-line`s (sorted by their `top`, the
+ *     order Monaco lays them out in) are joined and compared with all whitespace removed,
+ *     because Monaco paints spaces as U+00A0, may draw whitespace markers, and wraps long
+ *     lines into several view-lines. The painted text must be the start of our code: all
+ *     of it when the code fits on screen, otherwise everything the viewport shows.
+ * The first-line check alone would not do: nearly every solution starts with
+ * `class Solution:`, so stale starter code would pass it.
+ */
+async function pageNeetCodeSubmit(slug, code, waitMs) {
+  const notSent = (errorCode, message) => ({ ok: false, code: errorCode, message, submissionState: 'not_sent' });
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const squash = (s) => String(s ?? '').replace(/[\s ·→⸱​‌‍﻿]/g, '');
+  const visible = (el) => el && el.getClientRects().length > 0;
+  const want = squash(code);
+  const started = Date.now();
+
+  const signInPrompt = () => [...document.querySelectorAll('a, button')]
+    .some((el) => visible(el) && /^\s*(sign\s*in|log\s*in|login)\s*$/i.test(el.textContent || ''));
+
+  function storedIsOurs() {
+    try {
+      const tabs = JSON.parse(localStorage.getItem(`${slug}_python_tabs`) ?? 'null');
+      const active = Number.parseInt(localStorage.getItem(`${slug}_python_activeTab`) ?? '0', 10) || 0;
+      return Array.isArray(tabs) && squash(tabs[active]?.code) === want;
+    } catch {
+      return false;
+    }
+  }
+
+  function painted() {
+    return [...document.querySelectorAll('.monaco-editor')].map((editor) => [...editor.querySelectorAll('.view-lines .view-line')]
+      .map((line) => ({ top: Number.parseFloat(line.style.top) || 0, text: line.textContent || '' }))
+      .sort((a, b) => a.top - b.top)
+      .map((line) => line.text)
+      .join('\n'));
+  }
+
+  const showsOurs = (texts) => texts.some((text) => {
+    const shown = squash(text);
+    return shown !== '' && want.startsWith(shown);
+  });
+
+  let lines = [];
+  for (;;) {
+    const language = document.querySelector('button.editor-language-btn');
+    if (language && !/python/i.test(language.textContent || '')) {
+      return notSent('NOT_PYTHON', `NeetCode’s editor is set to ${(language.textContent || '').trim() || 'another language'}, not Python. Switch NeetCode’s editor to Python once, then submit again. Nothing was submitted.`);
+    }
+    const button = document.querySelector('button.submit-btn');
+    lines = painted();
+    if (!button && signInPrompt() && Date.now() - started > 5000) {
+      return notSent('SIGNED_OUT', 'This browser profile is not signed in to NeetCode. Sign in to neetcode.io in this browser, then submit again. Nothing was submitted.');
+    }
+    if (button && !button.disabled && storedIsOurs() && showsOurs(lines)) break;
+    // A hidden tab may never paint Monaco. Say so early, so the worker can bring it forward.
+    if (button && document.hidden && lines.every((text) => text === '') && Date.now() - started > 4000) {
+      return notSent('EDITOR_HIDDEN', 'NeetCode’s editor did not draw in a background tab, so Studio could not check your code was in it. Keep a neetcode.io tab open in front once, then submit again. Nothing was submitted.');
+    }
+    if (Date.now() - started >= waitMs) {
+      if (!button) {
+        return signInPrompt()
+          ? notSent('SIGNED_OUT', 'This browser profile is not signed in to NeetCode. Sign in to neetcode.io in this browser, then submit again. Nothing was submitted.')
+          : notSent('JUDGE_UNREACHABLE', 'NeetCode’s problem page loaded, but its Submit button never appeared. Open the problem on neetcode.io to check it works, then submit again. Nothing was submitted.');
+      }
+      if (button.disabled) return notSent('JUDGE_UNREACHABLE', 'NeetCode’s Submit button stayed disabled. Nothing was submitted.');
+      return notSent('STALE_CODE', 'NeetCode’s editor is not showing the code from Studio, so Studio did not press Submit: it would have judged whatever was there before. Nothing was submitted.');
+    }
+    await sleep(500);
+  }
+
+  if (signInPrompt()) {
+    return notSent('SIGNED_OUT', 'This browser profile is not signed in to NeetCode. Sign in to neetcode.io in this browser, then submit again. Nothing was submitted.');
+  }
+  // Any verdict already on the page is not ours. Mark it, so the reader skips it.
+  for (const old of document.querySelectorAll('.submission-status-title, .output-header .status-row p')) old.dataset.studioSeen = '1';
+
+  // === the one and only press of Submit ===
+  document.querySelector('button.submit-btn').click();
+  return { ok: true, url: location.href };
+}
+
+/**
+ * Read the verdict NeetCode rendered after our press, or `{ status: null }` while there is
+ * none yet. Read-only; safe to call once a second.
+ *
+ * `accepted` is only a hint. The server decides acceptance, and only the exact status
+ * text "Accepted" counts (server/judge/verdict.mjs, buildNeetCodeVerdict).
+ */
+function pageNeetCodeVerdict() {
+  const PENDING = /^(pending|judging|running|queued|processing|submitting)\b/i;
+  const visible = (el) => el && el.getClientRects().length > 0;
+  const fresh = (selector) => [...document.querySelectorAll(selector)].find((el) => {
+    const text = (el.textContent || '').trim();
+    return el.dataset.studioSeen !== '1' && text !== '' && !PENDING.test(text);
+  });
+  const title = fresh('.submission-status-title');
+  const line = fresh('.output-header .status-row p[class*="submission-result-"]');
+  const shown = title || line;
+  if (!shown) {
+    const prompt = [...document.querySelectorAll('[role="dialog"], .modal, .cdk-overlay-pane, mat-dialog-container')]
+      .some((el) => visible(el) && /sign\s*in|log\s*in/i.test(el.textContent || ''));
+    return { status: null, signInPrompt: prompt, url: location.href };
+  }
+
+  const card = title ? (title.closest('.submission-detail') || document) : null;
+  const countText = (card?.querySelector('.test-case-count')?.textContent)
+    || (document.querySelector('.output-header .test-case-count')?.textContent) || '';
+  const counts = /(\d+)\s*\/\s*(\d+)/.exec(countText);
+  const metas = card ? [...card.querySelectorAll('.submission-meta span')].map((s) => (s.textContent || '').trim()) : [];
+  const meta = (label) => {
+    const hit = metas.find((t) => t.toLowerCase().startsWith(`${label}:`));
+    return hit ? hit.slice(label.length + 1).trim() || null : null;
+  };
+  const output = document.querySelector('.output-content');
+  const status = (shown.textContent || '').trim();
+  return {
+    status,
+    accepted: status === 'Accepted' || shown.classList.contains('submission-result-accepted'),
+    passed: counts ? Number(counts[1]) : null,
+    total: counts ? Number(counts[2]) : null,
+    memory: meta('memory'),
+    time: meta('time'),
+    details: ((output?.innerText ?? output?.textContent) || '').trim().slice(0, 4000),
+    url: location.href,
+    complete: Boolean(title),
+  };
 }
