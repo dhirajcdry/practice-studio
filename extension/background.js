@@ -516,6 +516,18 @@ function pageNeetCodeVerdict() {
   };
   const output = document.querySelector('.output-content');
   const status = (shown.textContent || '').trim();
+  // A failed submission shows labelled blocks: "Input:", "Your Output:", "Expected output:",
+  // each followed by a <code>. [VERIFIED 2026-10-16 on a Wrong Answer for valid-tree.]
+  // Read them by label so the page can offer the failing input as a test case.
+  const labelled = (pattern) => {
+    const label = [...(output?.querySelectorAll('.output-label') || [])]
+      .find((el) => pattern.test((el.textContent || '').trim()));
+    let node = label?.nextElementSibling;
+    while (node && node.tagName !== 'CODE' && !node.querySelector?.('code')) node = node.nextElementSibling;
+    const code = node?.tagName === 'CODE' ? node : node?.querySelector?.('code');
+    const text = (code?.textContent || '').trim();
+    return text ? text.slice(0, 4000) : null;
+  };
   return {
     status,
     accepted: status === 'Accepted' || shown.classList.contains('submission-result-accepted'),
@@ -524,6 +536,9 @@ function pageNeetCodeVerdict() {
     memory: meta('memory'),
     time: meta('time'),
     details: ((output?.innerText ?? output?.textContent) || '').trim().slice(0, 4000),
+    input: labelled(/^input:?$/i),
+    output: labelled(/^your output:?$/i),
+    expected: labelled(/^expected( output)?:?$/i),
     url: location.href,
     complete: Boolean(title),
   };

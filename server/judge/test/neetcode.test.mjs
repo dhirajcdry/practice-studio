@@ -213,3 +213,20 @@ test('malformed NeetCode record requests are refused and write nothing', async (
   });
   await assert.rejects(fsp.readdir(path.join(ctx.homeRoot, 'problems')), { code: 'ENOENT' });
 });
+
+test('a NeetCode failing input becomes a Studio test case', async () => {
+  const { neetcodeInputToTestcase, buildNeetCodeVerdict } = await import('../verdict.mjs');
+  assert.equal(neetcodeInputToTestcase('n=5\nedges=[[0,1],[1,3],[3,0],[2,4]]'), '5\n[[0,1],[1,3],[3,0],[2,4]]');
+  assert.equal(neetcodeInputToTestcase('s = "a=b"'), '"a=b"');
+  assert.equal(neetcodeInputToTestcase('[1,2]'), '[1,2]');
+  assert.equal(neetcodeInputToTestcase(''), null);
+
+  const verdict = buildNeetCodeVerdict({
+    status: 'Wrong Answer', passed: 4, total: 34,
+    input: 'n=5\nedges=[[0,1],[1,3],[3,0],[2,4]]', output: 'true', expected: 'false', details: 'console text',
+  }, 'nc-1');
+  assert.equal(verdict.failure.lastTestcase, '5\n[[0,1],[1,3],[3,0],[2,4]]');
+  assert.equal(verdict.failure.output, 'true');
+  assert.equal(verdict.failure.expectedOutput, 'false');
+  assert.equal(verdict.failure.consoleOutput, null);
+});

@@ -743,7 +743,7 @@ function simulatedNeetCode(kind) {
     case 'accepted': return { ...NC_SIM_ACCEPTED };
     case 'wrong': return { ...NC_SIM_ACCEPTED, accepted: false, verdict: 'Wrong Answer', passed: 12, runtime: null, memory: null,
       failure: { kind: 'wrong_answer', statusMsg: 'Wrong Answer', message: null,
-        consoleOutput: 'Input:\nn = 5\nedges = [[0,1],[1,2],[2,3],[1,3],[1,4]]\n\nYour Output:\ntrue\n\nExpected output:\nfalse' } };
+        lastTestcase: '5\n[[0,1],[1,2],[2,3],[1,3],[1,4]]', output: 'true', expectedOutput: 'false' } };
     case 'ncsignedout': return nope('nc_signed_out', 'SIGNED_OUT', 'This browser profile is not signed in to NeetCode. Sign in to neetcode.io in this browser, then submit again. Nothing was submitted.', { submissionState: 'not_sent' });
     case 'ncpython': return nope('nc_not_python', 'NOT_PYTHON', 'NeetCode’s editor is set to Java, not Python. Switch NeetCode’s editor to Python once, then submit again. Nothing was submitted.', { submissionState: 'not_sent' });
     case 'ncstale': return nope('nc_stale_code', 'STALE_CODE', 'NeetCode’s editor is not showing the code from Studio, so Studio did not press Submit: it would have judged whatever was there before. Nothing was submitted.', { submissionState: 'not_sent' });
@@ -817,7 +817,12 @@ function verdictFromNeetCode(result) {
     runtimePercentile: null, memoryPercentile: null,
     submissionId: null, submissionUrl: url,
     failure: accepted ? null : { statusMsg: status || 'Unknown verdict', message: null,
-      consoleOutput: typeof result?.details === 'string' ? result.details.slice(0, 4000) : null },
+      // Same mapping as server/judge/verdict.mjs: `name=value` lines become bare values.
+      lastTestcase: typeof result?.input === 'string' && result.input.trim()
+        ? result.input.trim().split(/\r?\n/).map((line) => line.replace(/^\s*[A-Za-z_]\w*\s*=\s*/, '')).join('\n') : null,
+      output: typeof result?.output === 'string' ? result.output.slice(0, 4000) : null,
+      expectedOutput: typeof result?.expected === 'string' ? result.expected.slice(0, 4000) : null,
+      consoleOutput: !result?.input && typeof result?.details === 'string' ? result.details.slice(0, 4000) : null },
   };
 }
 

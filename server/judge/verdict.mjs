@@ -168,6 +168,16 @@ export function neetcodeUrl(value) {
  * `result` is what the Connector scraped: `{ status, passed, total, memory, time,
  * details, url }`. A missing field stays missing; nothing is defaulted into a number.
  */
+/**
+ * NeetCode prints a failing input as `name=value` lines ("n=5\nedges=[[0,1]]"); Studio's
+ * cases, like LeetCode's, are the bare values one per line. Lines without a `name=`
+ * prefix are kept as they are.
+ */
+export function neetcodeInputToTestcase(text) {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  return text.trim().split(/\r?\n/).map((line) => line.replace(/^\s*[A-Za-z_]\w*\s*=\s*/, '')).join('\n');
+}
+
 export function buildNeetCodeVerdict(result, submissionId) {
   const status = shortText(result?.status, 120);
   const accepted = status === 'Accepted';
@@ -194,7 +204,12 @@ export function buildNeetCodeVerdict(result, submissionId) {
       // NeetCode's console text, verbatim: the failing input, output and expected, or the
       // error. The headline already says the status, so `message` does not repeat it.
       message: null,
-      consoleOutput: details,
+      // The labelled blocks, when NeetCode showed them, in the same fields a LeetCode
+      // failure uses, so the panel lists them and offers the input as a test case.
+      lastTestcase: neetcodeInputToTestcase(result?.input),
+      output: shortText(result?.output, NEETCODE_DETAILS_MAX),
+      expectedOutput: shortText(result?.expected, NEETCODE_DETAILS_MAX),
+      consoleOutput: result?.input ? null : details,
     },
   };
 }
