@@ -209,7 +209,8 @@ export function buildNeetCodeVerdict(result, submissionId) {
       lastTestcase: neetcodeInputToTestcase(result?.input),
       output: shortText(result?.output, NEETCODE_DETAILS_MAX),
       expectedOutput: shortText(result?.expected, NEETCODE_DETAILS_MAX),
-      consoleOutput: result?.input ? null : details,
+      fullRuntimeError: shortText(result?.error, NEETCODE_DETAILS_MAX),
+      consoleOutput: result?.input || result?.error ? null : details,
     },
   };
 }

@@ -159,7 +159,15 @@ async function submitNeetCode({ neetcodeSlug, code }, studioTabId) {
   let activated = false;
   let pressed = false;
   try {
-    tab = await neetcodeTab(slug, questionUrl);
+    // NeetCode's editor only draws, and its page only judges reliably, while its tab is on
+    // screen. A tab in another window cannot be put on screen from here (macOS hides an
+    // occluded window), so the tab has to live in Studio's own window, and it is shown
+    // for the few seconds the submission takes, then Studio comes back to the front.
+    const windowId = studioTabId !== null
+      ? await chrome.tabs.get(studioTabId).then((t) => t.windowId, () => undefined)
+      : undefined;
+    tab = await neetcodeTab(slug, questionUrl, windowId);
+    if (tab) activated = await chrome.tabs.update(tab.id, { active: true }).then(() => true, () => false);
     if (!tab) {
       return fail('JUDGE_UNREACHABLE', 'A NeetCode tab could not be opened in time. Check your connection, then submit again. Nothing was submitted.');
     }
@@ -201,7 +209,10 @@ async function submitNeetCode({ neetcodeSlug, code }, studioTabId) {
       }
       if (seen?.status) {
         // The console line can land a moment before the verdict card with time and memory.
-        if (seen.complete || grace <= 0) return { ok: true, target: 'neetcode', result: seen };
+        // A failure's test-case section can render a beat after its title; give it the
+        // same grace so the failing input comes back with the verdict.
+        const settled = seen.complete && (seen.accepted || seen.input || seen.error);
+        if (settled || grace <= 0) return { ok: true, target: 'neetcode', result: seen };
         partial = seen;
         grace -= 1;
       }
@@ -222,14 +233,14 @@ async function submitNeetCode({ neetcodeSlug, code }, studioTabId) {
   }
 }
 
-/** A loaded neetcode.io tab (one already on this problem first), or a new background one. */
-async function neetcodeTab(slug, questionUrl) {
-  const open = await chrome.tabs.query({ url: `${NEETCODE}/*` });
+/** A loaded neetcode.io tab in Studio's window (one already on this problem first), or a new one there. */
+async function neetcodeTab(slug, questionUrl, windowId) {
+  const open = await chrome.tabs.query(windowId === undefined ? { url: `${NEETCODE}/*` } : { url: `${NEETCODE}/*`, windowId });
   const ready = open.filter((t) => !t.discarded && t.status === 'complete');
   const same = ready.find((t) => (t.url || '').startsWith(`${NEETCODE}/problems/${slug}/`));
   if (same || ready[0]) return { id: (same || ready[0]).id, created: false };
 
-  const created = await chrome.tabs.create({ url: questionUrl, active: false });
+  const created = await chrome.tabs.create({ url: questionUrl, active: false, ...(windowId === undefined ? {} : { windowId }) });
   if (!(await whenLoaded(created.id, false))) {
     chrome.tabs.remove(created.id).catch(() => {});
     return null;
@@ -516,18 +527,34 @@ function pageNeetCodeVerdict() {
   };
   const output = document.querySelector('.output-content');
   const status = (shown.textContent || '').trim();
-  // A failed submission shows labelled blocks: "Input:", "Your Output:", "Expected output:",
-  // each followed by a <code>. [VERIFIED 2026-10-16 on a Wrong Answer for valid-tree.]
-  // Read them by label so the page can offer the failing input as a test case.
+  // A failed submission names its failing case in one of two layouts, and the label is
+  // followed by its value either way [VERIFIED 2026-10-16 on valid-tree and
+  // count-connected-components]:
+  //   the console:        p.output-label "Input:"   then <code>
+  //   the verdict card:   p.test-case-label "Input" then pre.test-case-value
+  // ("Your Output" / "Expected output" or "Expected Output" likewise). Read them by label
+  // so the page can offer the failing input as a test case.
+  const detail = card || document.querySelector('.submission-detail');
   const labelled = (pattern) => {
-    const label = [...(output?.querySelectorAll('.output-label') || [])]
-      .find((el) => pattern.test((el.textContent || '').trim()));
-    let node = label?.nextElementSibling;
-    while (node && node.tagName !== 'CODE' && !node.querySelector?.('code')) node = node.nextElementSibling;
-    const code = node?.tagName === 'CODE' ? node : node?.querySelector?.('code');
-    const text = (code?.textContent || '').trim();
-    return text ? text.slice(0, 4000) : null;
+    const labels = [
+      ...(detail?.querySelectorAll('.test-case-label') || []),
+      ...(output?.querySelectorAll('.output-label') || []),
+    ];
+    for (const label of labels) {
+      if (!pattern.test((label.textContent || '').trim())) continue;
+      let node = label.nextElementSibling;
+      while (node && !/^(PRE|CODE)$/.test(node.tagName) && !node.querySelector?.('pre, code')) {
+        if (node.matches?.('.test-case-label, .output-label')) { node = null; break; }
+        node = node.nextElementSibling;
+      }
+      const value = node && (/^(PRE|CODE)$/.test(node.tagName) ? node : node.querySelector('pre, code'));
+      const text = (value?.textContent || '').trim();
+      if (text) return text.slice(0, 4000);
+    }
+    return null;
   };
+  // A runtime error inside a failing case prints its traceback under "Error".
+  const errorText = ((detail || output)?.querySelector('[class*="error-text"]')?.textContent || '').trim();
   return {
     status,
     accepted: status === 'Accepted' || shown.classList.contains('submission-result-accepted'),
@@ -537,6 +564,7 @@ function pageNeetCodeVerdict() {
     time: meta('time'),
     details: ((output?.innerText ?? output?.textContent) || '').trim().slice(0, 4000),
     input: labelled(/^input:?$/i),
+    error: errorText ? errorText.slice(0, 4000) : null,
     output: labelled(/^your output:?$/i),
     expected: labelled(/^expected( output)?:?$/i),
     url: location.href,

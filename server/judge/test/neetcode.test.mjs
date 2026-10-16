@@ -230,3 +230,16 @@ test('a NeetCode failing input becomes a Studio test case', async () => {
   assert.equal(verdict.failure.expectedOutput, 'false');
   assert.equal(verdict.failure.consoleOutput, null);
 });
+
+test('a NeetCode traceback shows as the runtime error, not raw console text', async () => {
+  const { buildNeetCodeVerdict } = await import('../verdict.mjs');
+  const verdict = buildNeetCodeVerdict({
+    status: 'Wrong Answer', passed: 8, total: 34,
+    input: 'n=3\nedges=[[0,1],[0,2],[1,2]]', output: null, expected: '1',
+    error: 'Traceback (most recent call last):\n  File "/box/main.py", line 84', details: 'everything',
+  }, 'nc-2');
+  assert.equal(verdict.failure.lastTestcase, '3\n[[0,1],[0,2],[1,2]]');
+  assert.equal(verdict.failure.expectedOutput, '1');
+  assert.match(verdict.failure.fullRuntimeError, /^Traceback/);
+  assert.equal(verdict.failure.consoleOutput, null);
+});

@@ -822,7 +822,8 @@ function verdictFromNeetCode(result) {
         ? result.input.trim().split(/\r?\n/).map((line) => line.replace(/^\s*[A-Za-z_]\w*\s*=\s*/, '')).join('\n') : null,
       output: typeof result?.output === 'string' ? result.output.slice(0, 4000) : null,
       expectedOutput: typeof result?.expected === 'string' ? result.expected.slice(0, 4000) : null,
-      consoleOutput: !result?.input && typeof result?.details === 'string' ? result.details.slice(0, 4000) : null },
+      fullRuntimeError: typeof result?.error === 'string' && result.error.trim() ? result.error.slice(0, 4000) : null,
+      consoleOutput: !result?.input && !result?.error && typeof result?.details === 'string' ? result.details.slice(0, 4000) : null },
   };
 }
 
