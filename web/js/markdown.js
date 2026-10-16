@@ -64,6 +64,44 @@ export function codeBlock(code, language) {
   return pre;
 }
 
+export function looksLikeCode(text) {
+  const lines = text.split(/\r\n?|\n/).filter(line => line.trim() !== '');
+  if (lines.length < 2) return false;
+  const indented = lines.some(line => /^\s+\S/.test(line));
+  const ending = lines.some(line => /[:{};)]$/.test(line.trim()));
+  const keyword = /^\s*(def |class |return\b|for |while |if |elif |else:|import |from \S+ import|function |const |let |var |public |private )/;
+  return (indented && ending) || lines.filter(line => keyword.test(line)).length >= 2;
+}
+
+// User prose stays literal; only fences opt into code rendering.
+export function renderUserText(text) {
+  const out = document.createDocumentFragment();
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  let prose = [];
+  const flush = () => {
+    let start = 0;
+    let end = prose.length;
+    while (start < end && prose[start].trim() === '') start++;
+    while (end > start && prose[end - 1].trim() === '') end--;
+    if (start < end) out.append(el('p', { class: 'user-text', text: prose.slice(start, end).join('\n') }));
+    prose = [];
+  };
+  let i = 0;
+  while (i < lines.length) {
+    const fence = /^\s*(```+|~~~+)\s*([A-Za-z0-9+#-]*)\s*$/.exec(lines[i]);
+    if (!fence) { prose.push(lines[i++]); continue; }
+    flush();
+    const close = fence[1][0] === '`' ? /^\s*```/ : /^\s*~~~/;
+    const code = [];
+    i++;
+    while (i < lines.length && !close.test(lines[i])) code.push(lines[i++]);
+    if (i < lines.length) i++;
+    out.append(codeBlock(code.join('\n'), fence[2]));
+  }
+  flush();
+  return out;
+}
+
 function listBlock(items, ordered) {
   const list = el(ordered ? 'ol' : 'ul');
   for (const item of items) {

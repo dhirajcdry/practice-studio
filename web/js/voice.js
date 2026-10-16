@@ -179,11 +179,12 @@ function micGlyph() {
  * @param {object} options
  * @param {() => string} options.getSlug        the problem being recorded against
  * @param {(text:string, meta:object) => void} options.onTranscript  called only on a real transcript
+ * @param {(text:string) => void} [options.onPreview]  provisional text, empty when cleared
  * @param {(state:string) => void} [options.onState]  'idle' | 'recording' | 'working'
  * @returns {{root:HTMLElement, isRecording:() => boolean, stop:() => void, dispose:() => void}}
  */
 export function createVoiceControl({
-  getSlug, onTranscript, onState = () => {}, logTakes = true, onLevel = () => {},
+  getSlug, onTranscript, onPreview, onState = () => {}, logTakes = true, onLevel = () => {},
 }) {
   // Dictation, not think-aloud. The floating recorder owns thinking aloud; this is here
   // so a long message to the coach can be spoken instead of typed, and it must not be
@@ -303,8 +304,11 @@ export function createVoiceControl({
   let previewController = null;
 
   function clearPreview() {
-    preview.hidden = true;
-    preview.textContent = '';
+    if (onPreview) onPreview('');
+    else {
+      preview.hidden = true;
+      preview.textContent = '';
+    }
     previewController?.abort();
   }
 
@@ -318,8 +322,11 @@ export function createVoiceControl({
         filename: `preview.${extensionFor(current.mimeType)}`, mode: 'dictation', signal: controller.signal,
       });
       if (!disposed && !controller.signal.aborted && recorder === current && state === 'recording' && result.ok) {
-        preview.textContent = result.text;
-        preview.hidden = false;
+        if (onPreview) onPreview(result.text);
+        else {
+          preview.textContent = result.text;
+          preview.hidden = false;
+        }
       }
     } finally {
       previewBusy = false;

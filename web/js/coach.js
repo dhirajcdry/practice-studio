@@ -13,7 +13,7 @@
 // assigned anywhere in this file.
 
 import { el, clear, replace } from './dom.js';
-import { renderMarkdown } from './markdown.js';
+import { renderMarkdown, renderUserText, looksLikeCode } from './markdown.js';
 import { splitDiagramBlocks, renderDiagram } from './illustrator.js';
 import { streamCoachMessage, api } from './api.js';
 import { createVoiceControl } from './voice.js';
@@ -188,6 +188,18 @@ export function createCoachPanel(entry) {
   });
   const restoredDraft = readDraft(slug);
   if (restoredDraft?.text) input.value = restoredDraft.text;
+  let ghost = '';
+
+  // The provisional words of the phrase still being spoken, shown at the end of the box.
+  // Once anything is typed after them they are yours, and are never cut out again —
+  // searching for them elsewhere could delete words you typed yourself.
+  function committed() {
+    const value = input.value;
+    if (!ghost) return value;
+    if (value.endsWith(ghost)) return value.slice(0, -ghost.length);
+    ghost = '';
+    return value;
+  }
 
   const sendLabel = el('span', { text: 'Ask' });
   const sendButton = el('button', { class: 'ws-run coach-send', type: 'button', onclick: () => submit() },
@@ -200,6 +212,20 @@ export function createCoachPanel(entry) {
 
   const voice = createVoiceControl({
     getSlug: () => slug,
+    onPreview: text => {
+      if (disposed) return;
+      input.value = committed();
+      ghost = '';
+      if (text) {
+        const gap = input.value === '' || /\s$/.test(input.value) ? '' : ' ';
+        ghost = gap + text;
+        input.value += ghost;
+      }
+      autosize();
+      if (document.activeElement === input) {
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    },
     // Dictation lands phrase by phrase while you are still speaking, so it joins the
     // sentence with a space rather than starting a new paragraph — it should read like
     // typing, because that is what it is standing in for.
@@ -208,7 +234,7 @@ export function createCoachPanel(entry) {
       const existing = input.value;
       const gap = existing === '' || /\s$/.test(existing) ? '' : ' ';
       input.value = existing + gap + text;
-      saveDraft(slug, input.value);
+      saveDraft(slug, committed());
       autosize();
       // Focus is NOT taken here: you may be reading your code while you talk, and
       // stealing the caret mid-sentence is how a shortcut turns into a typo.
@@ -229,7 +255,6 @@ export function createCoachPanel(entry) {
   // above them, which gave the composer three stacked rows to say two things.
   const composer = el('div', { class: 'coach-compose' }, [
     input,
-    api.demo ? null : voice.preview,
     el('div', { class: 'coach-actions' }, [
       api.demo ? null : voice.root,
       el('span', { class: 'spacer' }),
@@ -313,10 +338,19 @@ export function createCoachPanel(entry) {
     input.style.height = Math.min(180, Math.max(46, input.scrollHeight)) + 'px';
   }
   const unwatchDraft = watchDraft(slug, text => {
-    if (input.value !== text) { input.value = text; autosize(); }
+    // Saving committed text must leave the visible provisional phrase in place.
+    if (committed() !== text) { input.value = text; ghost = ''; autosize(); }
   });
   input.addEventListener('input', autosize);
-  input.addEventListener('input', () => saveDraft(slug, input.value));
+  input.addEventListener('input', () => saveDraft(slug, committed()));
+  input.addEventListener('paste', event => {
+    const text = event.clipboardData?.getData('text/plain') || '';
+    const fences = input.value.slice(0, input.selectionStart).match(/```/g) || [];
+    if (!/[\r\n]/.test(text) || fences.length % 2 || !looksLikeCode(text)) return;
+    event.preventDefault();
+    input.setRangeText('```python\n' + text.replace(/[\r\n]+$/, '') + '\n```\n', input.selectionStart, input.selectionEnd, 'end');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 
   function atBottom() {
     return log.scrollHeight - log.scrollTop - log.clientHeight < 120;
@@ -400,7 +434,7 @@ export function createCoachPanel(entry) {
     ]);
     if (log.querySelector('.coach-empty')) clear(log);
     log.append(message);
-    if (role === 'you') bodyEl.append(el('p', { text }));
+    if (role === 'you') bodyEl.append(renderUserText(text));
     scrollDown(true);
     return { message, bodyEl };
   }
@@ -658,7 +692,7 @@ export function createCoachPanel(entry) {
       // Voice may finish outstanding phrases asynchronously; the callback above
       // updates this same draft key as each phrase arrives.
       unwatchDraft();
-      saveDraft(slug, input.value);
+      saveDraft(slug, committed());
       voice.dispose({ finish: true });
       modelPicker.dispose();
     },

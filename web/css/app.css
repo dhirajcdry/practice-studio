@@ -793,6 +793,9 @@ body.coach-open .coach-launch{display:none}
   padding:10px 13px;font-size:14px;color:var(--ink);
 }
 .cmsg.you .cmsg-body p{margin:0}
+.cmsg.you .cmsg-body .user-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.cmsg.you .cmsg-body pre{white-space:pre;max-width:100%;min-width:0;margin-bottom:0}
+.cmsg.you .cmsg-body > * + *{margin-top:8px}
 .cmsg.reply .cmsg-body{font-family:var(--prose);font-size:14.5px;line-height:1.62}
 .cmsg.reply .cmsg-body > *:last-child{margin-bottom:0}
 .cmsg .state{margin-top:8px}
