@@ -481,3 +481,489 @@ body.theme-terminal .coach-input{caret-color:var(--accent)}
 .theme-accent-bar{height:7px;width:25%;margin-top:7px;background:var(--half-accent)}
 [data-theme-preview="terminal"] .theme-title-line{height:6px;background:transparent;position:relative}
 [data-theme-preview="terminal"] .theme-title-line::before{content:'›_';position:absolute;top:-6px;font:11px var(--mono)}
+
+
+/* Painted worlds keep complete palettes so switching families leaves no inherited colours. */
+body.theme-nebula{
+  --ink-rgb:29,23,51;
+  --on-ink-rgb:246,243,251;
+  --on-ink:#F6F3FB;
+  --canvas:#F6F3FB;
+  --card:#FFFFFF;
+  --ink:#1D1733;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#6B3FD4;
+  --accent-rgb:107,63,212;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#6B3FD4;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#6B3FD4;
+  --solid-hover:#5B32BD;
+  --easy:#1F7A55;
+  --easy-rgb:31,122,85;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#94650C;
+  --med-rgb:148,101,12;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B83A4B;
+  --hard-rgb:184,58,75;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#8A2BB8;
+  --tok-def:#2160A8;
+  --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:"Avenir Next",var(--ui);
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/nebula-light.jpg);
+  --glass:rgba(255,255,255,.55);
+}
+
+body.theme-nebula.is-dark{
+  --ink-rgb:236,232,255;
+  --on-ink-rgb:11,10,26;
+  --on-ink:#0B0A1A;
+  --canvas:#0B0A1A;
+  --card:#15122B;
+  --ink:#ECE8FF;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#B69CFF;
+  --accent-rgb:182,156,255;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#7B5CFF;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#7B5CFF;
+  --solid-hover:#8C70FF;
+  --easy:#6EE7B7;
+  --easy-rgb:110,231,183;
+  --easy-soft:rgba(var(--easy-rgb),.14);
+  --med:#F5C46B;
+  --med-rgb:245,196,107;
+  --med-soft:rgba(var(--med-rgb),.14);
+  --hard:#FF8A9A;
+  --hard-rgb:255,138,154;
+  --hard-soft:rgba(var(--hard-rgb),.14);
+  --tok-kw:#E59CFF;
+  --tok-def:#7FE3FF;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:"Avenir Next",var(--ui);
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/nebula-dark.jpg);
+  --glass:rgba(14,11,32,.50);
+}
+
+body.theme-horizon{
+  --ink-rgb:34,24,12;
+  --on-ink-rgb:251,246,236;
+  --on-ink:#FBF6EC;
+  --canvas:#FBF6EC;
+  --card:#FFFDF8;
+  --ink:#22180C;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#B4600A;
+  --accent-rgb:180,96,10;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#B4600A;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#B4600A;
+  --solid-hover:#9C5208;
+  --easy:#2E6B4F;
+  --easy-rgb:46,107,79;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#8C5A06;
+  --med-rgb:140,90,6;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B33A1A;
+  --hard-rgb:179,58,26;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#A04E00;
+  --tok-def:#6B4A12;
+  --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:Didot,"Bodoni 72","Iowan Old Style",serif;
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/horizon-light.jpg);
+  --glass:rgba(255,252,244,.55);
+}
+
+body.theme-horizon.is-dark{
+  --ink-rgb:243,236,224;
+  --on-ink-rgb:8,7,10;
+  --on-ink:#08070A;
+  --canvas:#08070A;
+  --card:#121016;
+  --ink:#F3ECE0;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#FFB25C;
+  --accent-rgb:255,178,92;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#E8892B;
+  --solid-fg:#160C02;
+  --solid-edge:#E8892B;
+  --solid-hover:#F29A3E;
+  --easy:#7FD4A0;
+  --easy-rgb:127,212,160;
+  --easy-soft:rgba(var(--easy-rgb),.14);
+  --med:#FFD27A;
+  --med-rgb:255,210,122;
+  --med-soft:rgba(var(--med-rgb),.14);
+  --hard:#FF7F6B;
+  --hard-rgb:255,127,107;
+  --hard-soft:rgba(var(--hard-rgb),.14);
+  --tok-kw:#FFB25C;
+  --tok-def:#F2D49B;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:Didot,"Bodoni 72","Iowan Old Style",serif;
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/horizon-dark.jpg);
+  --glass:rgba(10,8,12,.50);
+}
+
+body.theme-abyss{
+  --ink-rgb:11,42,51;
+  --on-ink-rgb:238,248,248;
+  --on-ink:#EEF8F8;
+  --canvas:#EEF8F8;
+  --card:#FFFFFF;
+  --ink:#0B2A33;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#00808A;
+  --accent-rgb:0,128,138;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#00808A;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#00808A;
+  --solid-hover:#006B74;
+  --easy:#1F7A55;
+  --easy-rgb:31,122,85;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#8C5A06;
+  --med-rgb:140,90,6;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B33A1A;
+  --hard-rgb:179,58,26;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#006D77;
+  --tok-def:#1F5FA8;
+  --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:"Avenir Next",var(--ui);
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/abyss-light.jpg);
+  --glass:rgba(250,255,255,.55);
+}
+
+body.theme-abyss.is-dark{
+  --ink-rgb:221,246,247;
+  --on-ink-rgb:4,16,26;
+  --on-ink:#04101A;
+  --canvas:#04101A;
+  --card:#08192A;
+  --ink:#DDF6F7;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#3FF0D0;
+  --accent-rgb:63,240,208;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#14B8A6;
+  --solid-fg:#021614;
+  --solid-edge:#14B8A6;
+  --solid-hover:#22CDBA;
+  --easy:#5EE6A0;
+  --easy-rgb:94,230,160;
+  --easy-soft:rgba(var(--easy-rgb),.14);
+  --med:#F2CB6C;
+  --med-rgb:242,203,108;
+  --med-soft:rgba(var(--med-rgb),.14);
+  --hard:#FF8A80;
+  --hard-rgb:255,138,128;
+  --hard-soft:rgba(var(--hard-rgb),.14);
+  --tok-kw:#5CF2DA;
+  --tok-def:#7DB8FF;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:"Avenir Next",var(--ui);
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/abyss-dark.jpg);
+  --glass:rgba(4,16,28,.50);
+}
+
+body.theme-dunes{
+  --ink-rgb:42,26,16;
+  --on-ink-rgb:251,242,232;
+  --on-ink:#FBF2E8;
+  --canvas:#FBF2E8;
+  --card:#FFFBF6;
+  --ink:#2A1A10;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#C2491D;
+  --accent-rgb:194,73,29;
+  --accent-soft:rgba(var(--accent-rgb),.09);
+  --solid-bg:#C2491D;
+  --solid-fg:#FFFFFF;
+  --solid-edge:#C2491D;
+  --solid-hover:#A93D17;
+  --easy:#2E6B4F;
+  --easy-rgb:46,107,79;
+  --easy-soft:rgba(var(--easy-rgb),.09);
+  --med:#8C5A06;
+  --med-rgb:140,90,6;
+  --med-soft:rgba(var(--med-rgb),.09);
+  --hard:#B33A1A;
+  --hard-rgb:179,58,26;
+  --hard-soft:rgba(var(--hard-rgb),.09);
+  --tok-kw:#B0431C;
+  --tok-def:#2F5D7C;
+  --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:Futura,"Avenir Next",var(--ui);
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/dunes-light.jpg);
+  --glass:rgba(255,250,244,.55);
+}
+
+body.theme-dunes.is-dark{
+  --ink-rgb:233,228,218;
+  --on-ink-rgb:8,20,26;
+  --on-ink:#08141A;
+  --canvas:#08141A;
+  --card:#0F1E26;
+  --ink:#E9E4DA;
+  --ink-70:rgba(var(--ink-rgb),.72);
+  --ink-50:rgba(var(--ink-rgb),.5);
+  --ink-35:rgba(var(--ink-rgb),.34);
+  --hair-20:rgba(var(--ink-rgb),.2);
+  --hair-10:rgba(var(--ink-rgb),.11);
+  --hair-06:rgba(var(--ink-rgb),.07);
+  --accent:#FF9A62;
+  --accent-rgb:255,154,98;
+  --accent-soft:rgba(var(--accent-rgb),.14);
+  --solid-bg:#E0703A;
+  --solid-fg:#1A0B03;
+  --solid-edge:#E0703A;
+  --solid-hover:#EE8350;
+  --easy:#7FD4A0;
+  --easy-rgb:127,212,160;
+  --easy-soft:rgba(var(--easy-rgb),.14);
+  --med:#F2CB6C;
+  --med-rgb:242,203,108;
+  --med-soft:rgba(var(--med-rgb),.14);
+  --hard:#FF8A80;
+  --hard-rgb:255,138,128;
+  --hard-soft:rgba(var(--hard-rgb),.14);
+  --tok-kw:#FF9A62;
+  --tok-def:#8CC7D9;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
+  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --texture:none;
+  --r-sm:8px;
+  --r-md:12px;
+  --r-pane:14px;
+  --pane-gap:10px;
+  --display:Futura,"Avenir Next",var(--ui);
+  --prose:var(--ui);
+  --serif:var(--ui);
+  --art:url(../img/themes/dunes-dark.jpg);
+  --glass:rgba(8,20,26,.50);
+}
+
+/* Art stays behind an isolated body; one glass layer per pane keeps the painting luminous. */
+body.theme-art{background:transparent;isolation:isolate;--pane-edge:linear-gradient(140deg,rgba(var(--accent-rgb),.55),rgba(var(--ink-rgb),.08) 35%,rgba(var(--ink-rgb),.05) 65%,rgba(var(--accent-rgb),.30));--pane-shadow:0 12px 40px rgba(var(--ink-rgb),.10)}
+body.theme-art.is-dark{--pane-shadow:0 0 0 1px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.45),0 0 48px rgba(var(--accent-rgb),.08)}
+body.theme-art::before{
+  content:"";position:fixed;inset:-3%;z-index:-1;
+  background:var(--canvas) var(--art) center/cover no-repeat;pointer-events:none;
+  animation:art-drift 90s ease-in-out infinite alternate;
+}
+@keyframes art-drift{from{transform:scale(1) translate(0,0)}to{transform:scale(1.06) translate(1%,-1%)}}
+body.theme-art.reduce-motion::before{animation:none}
+@media(prefers-reduced-motion:reduce){body.theme-art::before{animation:none}}
+body.theme-art :is(.topbar,.pcol,.ws,.coach,.filterbar,.dz-side,.dz-canvas){
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(28px) saturate(1.6);backdrop-filter:blur(28px) saturate(1.6);
+}
+body.theme-art :is(.card,.psec,.dash-card,.dash-stats,.roadmap-node,.roadmap-graph-col,.roadmap-detail,.dzl-list,.dz-setup){
+  background:color-mix(in srgb,var(--card) 80%,transparent);
+  -webkit-backdrop-filter:blur(28px) saturate(1.6);backdrop-filter:blur(28px) saturate(1.6);
+}
+body.theme-art :is(.settings,.navmenu,.drawer,.rec-note,.coach-run,.coach-launch,.monaco-editor .suggest-widget,.monaco-editor .monaco-hover,.monaco-editor .find-widget){
+  background:color-mix(in srgb,var(--card) 92%,transparent);
+  -webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);
+}
+body.theme-art .ws{background:var(--glass)}
+body.theme-art .filterbar::before{content:none}
+body.theme-art .workspace-rail{background:transparent}
+body.theme-art :is(.ws,.coach,.pcol,.card,.psec,.dash-card,.roadmap-detail,.drawer,.dz-side) .card,
+body.theme-art .pcol .psec,
+body.theme-art :is(.editor-tabs,.editor-file,.ws-host,.ws-fallback,.ws-bar,.ws-results,.ws .sub,.coach-identity,.coach-compose,.coach-input,.dz-compose,.dz-input,.settings .set-seg,.drawer .dtabs){
+  background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;
+}
+body.theme-art .roadmap-viewport{background-color:transparent}
+body.theme-art .roadmap-graph-col{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+body.theme-art :is(.monaco-editor,.monaco-editor-background,.monaco-editor .margin){background:transparent}
+@media(min-width:1081px){
+  body.theme-art.ws-wide .pbody.with-workspace{padding:10px 10px 10px 0}
+  body.theme-art.ws-wide .workspace-rail{border-right:0}
+  body.theme-art.ws-wide :is(.pcol,.ws,.coach){
+    border:1px solid transparent;border-radius:var(--r-pane);overflow:hidden;
+    background:linear-gradient(var(--glass),var(--glass)) padding-box,var(--pane-edge) border-box;
+    box-shadow:var(--pane-shadow);
+  }
+  body.theme-art.ws-wide .pcol{overflow-y:auto}
+}
+
+/* Display type and restrained light connect the controls to their painted world. */
+body.theme-art .wordmark .solid{background:linear-gradient(100deg,var(--ink),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+body.theme-art.is-dark :is(.ws-run,.coach-send,.set-seg button[aria-pressed="true"]){box-shadow:0 0 0 1px rgba(var(--accent-rgb),.35),0 6px 24px rgba(var(--accent-rgb),.35)}
+body.theme-art :is(h1,h2,h3),body.theme-art :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-family:var(--display)}
+body.theme-horizon :is(h1,h2,h3){font-weight:400;letter-spacing:.01em}
+body.theme-dunes :is(.phero,.viewhead,.dash-head,.roadmap) h1{text-transform:uppercase;letter-spacing:.08em;font-weight:500}
+body.theme-art :is(input,textarea){caret-color:var(--accent)}
+/* Focus rings belong to controls, never the code canvas or Monaco's hidden input. */
+body.theme-art :is(input,textarea,select):not(.monaco-editor *):not(.ws-fallback):focus,
+body.theme-art .searchbox:focus-within{
+  outline:none;border-color:rgba(var(--accent-rgb),.6);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.22);
+}
+body.theme-art .searchbox input:focus{border:0;outline:none;box-shadow:none}
+body.theme-art .monaco-editor,body.theme-art .monaco-editor.focused,
+body.theme-art :is(.ws-host,.ws-fallback,.monaco-editor .overflow-guard,.monaco-editor .inputarea){
+  outline:none;border:0;box-shadow:none;
+}
+body.theme-art ::selection{background:rgba(var(--accent-rgb),.35);color:inherit}
+
+/* Glass edges and quiet inner surfaces share the same accent light. */
+body.theme-art :is(.card,.psec,.dash-card){
+  --art-card-fill:color-mix(in srgb,var(--card) 80%,transparent);
+  border:1px solid transparent;
+  background:linear-gradient(var(--art-card-fill),var(--art-card-fill)) padding-box,var(--pane-edge) border-box;
+  box-shadow:var(--pane-shadow);
+}
+body.theme-art :is(.ws,.coach,.pcol,.card,.psec,.dash-card,.roadmap-detail,.drawer,.dz-side) .card,
+body.theme-art .pcol .psec{
+  --art-card-fill:rgba(var(--ink-rgb),.045);
+  background:linear-gradient(var(--art-card-fill),var(--art-card-fill)) padding-box,var(--pane-edge) border-box;
+}
+body.theme-art :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){
+  border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);border:1px solid rgba(var(--ink-rgb),.10);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
+body.theme-art :is(.tag,.tc-tab,.tc-add,.ws-bar .ws-mini,.ws-bar .btn,.tc .btn,.ws-submit){border-radius:999px}
+body.theme-art :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){
+  background:rgba(var(--accent-rgb),.16);color:var(--accent);border-color:rgba(var(--accent-rgb),.45);
+}
+body.theme-art:not(.is-dark) :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){color:var(--ink)}
+body.theme-art .tc-tab.is-on .tc-mark{color:inherit}
+body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit){transition:border-color 150ms,background 150ms,color 150ms}
+body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit):hover:not(:disabled){
+  border-color:rgba(var(--accent-rgb),.5);background:rgba(var(--accent-rgb),.08);color:var(--ink);
+}
+body.theme-art .ws-submit{background:transparent}
+body.theme-art .ws-submit:hover:not(:disabled) .ws-submitscope{color:inherit}
+/* The file tab is always active; replace its top stripe and the other tabs' filled states. */
+body.theme-art :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){
+  position:relative;border-color:transparent;background:transparent;box-shadow:none;
+}
+body.theme-art :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;
+  background:linear-gradient(90deg,var(--accent),transparent);
+}
+body.theme-art.is-dark :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{box-shadow:0 2px 12px rgba(var(--accent-rgb),.5)}
+body.theme-art :is(.ws-run,.ws-run.tc-run,.coach-send){
+  background:linear-gradient(var(--solid-bg),color-mix(in srgb,var(--solid-bg) 88%,black));
+  color:var(--solid-fg);border-color:var(--solid-edge);border-radius:999px;
+}
+body.theme-art .topbar{
+  border-bottom:0;background-color:var(--glass);
+  background-image:linear-gradient(90deg,transparent,rgba(var(--accent-rgb),.5),transparent);
+  background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;
+}
+body.theme-art,body.theme-art *{scrollbar-width:thin;scrollbar-color:rgba(var(--accent-rgb),.35) transparent}
+body.theme-art ::-webkit-scrollbar{width:8px;height:8px}
+body.theme-art ::-webkit-scrollbar-track{background:transparent}
+body.theme-art ::-webkit-scrollbar-thumb{background:rgba(var(--accent-rgb),.35);border-radius:999px}
+body.theme-art ::-webkit-scrollbar-corner{background:transparent}
+
+/* A small veil keeps the preview's type bars legible over both paintings. */
+.theme-preview:is([data-theme-preview="nebula"],[data-theme-preview="horizon"],[data-theme-preview="abyss"],[data-theme-preview="dunes"]){--preview-radius:12px}
+.theme-preview[data-art] .theme-half.light{background:var(--pl-art) center/cover}
+.theme-preview[data-art] .theme-half.dark{background:var(--pd-art) center/cover}
+.theme-preview[data-art] .theme-half{position:relative;isolation:isolate}
+.theme-preview[data-art] .theme-half::before{content:"";position:absolute;inset:0;z-index:-1;background:color-mix(in srgb,var(--half-paper) 55%,transparent)}
+.theme-preview[data-art] .theme-text-line{opacity:.65}

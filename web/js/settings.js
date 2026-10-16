@@ -16,6 +16,10 @@ export const THEMES = [
   { id: 'editorial', name: 'Editorial', blurb: 'Serif prose, double rules, a printed page.', light: { paper: '#F4EFE6', ink: '#1A1614', accent: '#9B2C2C' }, dark: { paper: '#16120F', ink: '#ECE3D4', accent: '#E07B6E' } },
   { id: 'ink', name: 'Ink', blurb: 'Banded headers, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
   { id: 'terminal', name: 'Terminal', blurb: 'Split panes, a status line, [ bracketed ] controls.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#A35F00' }, dark: { paper: '#0D0D0D', ink: '#D9DED9', accent: '#5FD38D' } },
+  { id: 'nebula', name: 'Nebula', blurb: 'Violet star clouds behind frosted glass.', art: true, light: { paper: '#F6F3FB', ink: '#1D1733', accent: '#6B3FD4' }, dark: { paper: '#0B0A1A', ink: '#ECE8FF', accent: '#B69CFF' } },
+  { id: 'horizon', name: 'Event Horizon', blurb: "A black hole's golden ring; a white-gold corona by day.", art: true, light: { paper: '#FBF6EC', ink: '#22180C', accent: '#B4600A' }, dark: { paper: '#08070A', ink: '#F3ECE0', accent: '#FFB25C' } },
+  { id: 'abyss', name: 'Abyss', blurb: 'Bioluminescent alien deep; a sunlit lagoon by day.', art: true, light: { paper: '#EEF8F8', ink: '#0B2A33', accent: '#00808A' }, dark: { paper: '#04101A', ink: '#DDF6F7', accent: '#3FF0D0' } },
+  { id: 'dunes', name: 'Twin Suns', blurb: 'An alien desert under a ringed planet.', art: true, light: { paper: '#FBF2E8', ink: '#2A1A10', accent: '#C2491D' }, dark: { paper: '#08141A', ink: '#E9E4DA', accent: '#FF9A62' } },
 ];
 
 export function themeById(id) {
@@ -83,6 +87,7 @@ export function apply() {
     if (name.startsWith('theme-')) document.body.classList.remove(name);
   }
   document.body.classList.add(`theme-${current.theme}`);
+  document.body.classList.toggle('theme-art', Boolean(themeById(current.theme).art));
   // Monaco cannot read CSS variables, so a dark theme has to be told explicitly.
   document.body.classList.toggle('is-dark', isDark());
   root.style.setProperty('--code-size', `${current.codeSize}px`);
@@ -96,13 +101,13 @@ export function toggleDark() { setSetting('mode', isDark() ? 'light' : 'dark'); 
 
 function themeCard(theme, onPick) {
   const chosen = current.theme === theme.id;
+  const previewStyle = `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}${theme.art ? `;--pl-art:url(img/themes/${theme.id}-light.jpg);--pd-art:url(img/themes/${theme.id}-dark.jpg)` : ''}`;
   return el('button', {
     class: 'set-card set-theme', type: 'button', 'aria-pressed': String(chosen),
     onclick: () => onPick(theme.id),
   }, [
     el('div', {
-      class: 'theme-preview', 'data-theme-preview': theme.id, 'aria-hidden': 'true',
-      style: `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}`,
+      class: 'theme-preview', 'data-theme-preview': theme.id, 'aria-hidden': 'true', ...(theme.art ? { 'data-art': '' } : {}), style: previewStyle,
     }, ['light', 'dark'].map((mode) => el('i', { class: `theme-half ${mode}` }, [
       el('b', { class: 'theme-title-line' }),
       el('b', { class: 'theme-text-line' }),

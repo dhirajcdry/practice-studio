@@ -261,9 +261,18 @@ function defineTheme(monaco) {
     ['ps-editorial-dark', 'vs-dark', '#1E1915', '#ECE3D4', '#27211C', '#8E8172', '#E07B6E', '#D3A6E0', '#8DBFE0', '#A8CC9A', '#D9B061', '#E07B6E33', ''],
     ['ps-ink-dark', 'vs-dark', '#141414', '#F4F4F0', '#1E1E1E', '#8A8A86', '#6E8BFF', '#9DB0FF', '#7FD1C7', '#4ED68C', '#F0B429', '#6E8BFF40', 'bold'],
     ['ps-terminal-light', 'vs', '#FAF8F0', '#17301F', '#F0EDE0', '#6F7A66', '#A35F00', '#0F5C33', '#5A4A00', '#1D7A45', '#8A5A00', '#A35F0033', 'bold'],
+    ['ps-nebula-light', 'vs', '#F6F3FB00', '#1D1733', '#6B3FD412', '#7F7A8D', '#6B3FD4', '#8A2BB8', '#2160A8', '#1F7A55', '#94650C', '#6B3FD433', ''],
+    ['ps-nebula-dark', 'vs-dark', '#0B0A1A00', '#ECE8FF', '#B69CFF12', '#878498', '#B69CFF', '#E59CFF', '#7FE3FF', '#6EE7B7', '#F5C46B', '#B69CFF33', ''],
+    ['ps-horizon-light', 'vs', '#FBF6EC00', '#22180C', '#B4600A12', '#847C71', '#B4600A', '#A04E00', '#6B4A12', '#2E6B4F', '#8C5A06', '#B4600A33', ''],
+    ['ps-horizon-dark', 'vs-dark', '#08070A00', '#F3ECE0', '#FFB25C12', '#898580', '#FFB25C', '#FFB25C', '#F2D49B', '#7FD4A0', '#FFD27A', '#FFB25C33', ''],
+    ['ps-abyss-light', 'vs', '#EEF8F800', '#0B2A33', '#00808A12', '#71878C', '#00808A', '#006D77', '#1F5FA8', '#1F7A55', '#8C5A06', '#00808A33', ''],
+    ['ps-abyss-dark', 'vs-dark', '#04101A00', '#DDF6F7', '#3FF0D012', '#7B8F94', '#3FF0D0', '#5CF2DA', '#7DB8FF', '#5EE6A0', '#F2CB6C', '#3FF0D033', ''],
+    ['ps-dunes-light', 'vs', '#FBF2E800', '#2A1A10', '#C2491D12', '#887B71', '#C2491D', '#B0431C', '#2F5D7C', '#2E6B4F', '#8C5A06', '#C2491D33', ''],
+    ['ps-dunes-dark', 'vs-dark', '#08141A00', '#E9E4DA', '#FF9A6212', '#848684', '#FF9A62', '#FF9A62', '#8CC7D9', '#7FD4A0', '#F2CB6C', '#FF9A6233', ''],
   ];
   for (const [name, base, background, foreground, line, dim, accent, keyword, type, string, number, selection, fontStyle] of palettes) {
     const dark = base === 'vs-dark';
+    const art = name.startsWith('ps-nebula-') || name.startsWith('ps-horizon-') || name.startsWith('ps-abyss-') || name.startsWith('ps-dunes-');
     monaco.editor.defineTheme(name, {
       base, inherit: true,
       rules: [
@@ -283,8 +292,8 @@ function defineTheme(monaco) {
         'editor.selectionBackground': selection, 'editorIndentGuide.background1': dark ? '#FFFFFF12' : '#00000012',
         'editorIndentGuide.activeBackground1': dark ? '#FFFFFF2E' : '#0000002E',
         'editorWhitespace.foreground': dark ? '#FFFFFF18' : '#00000018',
-        ...widgetColors({ ground: background, raised: line, ink: foreground, dim,
-          edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: dark ? background : '#FFFFFF', match: `${accent}40`,
+        ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? background.slice(0, 7) : line, ink: foreground, dim,
+          edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: art ? (dark ? background.slice(0, 7) : '#FFFFFF') : (dark ? background : '#FFFFFF'), match: `${accent}40`,
           matchDim: `${accent}1F`, hoverWash: dark ? '#FFFFFF12' : '#0000000D' }),
       },
     });
