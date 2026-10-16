@@ -31,11 +31,23 @@ export function progressFor(slug, progressMap) {
   return { status, label: LABELS[status] || LABELS.unknown };
 }
 
-export async function loadCatalogProgress({ signal } = {}) {
-  const response = await fetch('/api/stats', { signal, headers: { accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Progress request failed (${response.status})`);
-  const data = await response.json();
+/** Accepted / total for each difficulty, in the order given, from the same evidence. */
+export function summarizeByDifficulty(problems = [], progressMap = null, difficulties = ['Easy', 'Medium', 'Hard']) {
+  return difficulties.map((difficulty) => {
+    const items = (problems || []).filter(problem => problem.difficulty === difficulty);
+    return { difficulty, ...summarizeProgress(items, progressMap) };
+  });
+}
+
+/** The /api/stats payload's per-problem records, keyed by slug. Throws on a bad shape. */
+export function progressMapFrom(data) {
   if (!Array.isArray(data?.problems)) throw new Error('Progress response did not contain a problems array');
   return new Map(data.problems.filter(problem => problem && typeof problem.slug === 'string')
     .map(problem => [problem.slug, problem]));
+}
+
+export async function loadCatalogProgress({ signal } = {}) {
+  const response = await fetch('/api/stats', { signal, headers: { accept: 'application/json' } });
+  if (!response.ok) throw new Error(`Progress request failed (${response.status})`);
+  return progressMapFrom(await response.json());
 }

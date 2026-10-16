@@ -2,7 +2,9 @@
 
 import { el, replace } from './dom.js';
 import { loadCatalog, api } from './api.js';
-import { loadCatalogProgress } from './catalog-progress.js';
+import { progressMapFrom } from './catalog-progress.js';
+import { loadStats } from './streak.js';
+import { installStreakPill } from './streak-pill.js';
 import { renderBrowse, visibleProblems, filteredProblems } from './browse.js';
 import { renderRoadmap } from './roadmap.js';
 import { renderProblem, openPanel, closeDrawer, isDrawerOpen, setDrawerListener, drawerKind } from './problem.js';
@@ -27,6 +29,7 @@ const state = {
   catalogMode: 'explorer',
   pattern: null,
   progress: null,
+  stats: null,
   progressState: 'loading',
   query: '',
   list: 'neetcode250',
@@ -124,7 +127,10 @@ function closeNav(refocus = false) {
   if (refocus) navButton.focus();
 }
 
-function openNav(focusIndex = -1) {
+// A pointer open grows the menu from its button; a keyboard open is instant, because
+// the arrow keys are how you move fast.
+function openNav(focusIndex = -1, { instant = false } = {}) {
+  if (instant) navMenu.dataset.instant = ''; else delete navMenu.dataset.instant;
   navMenu.hidden = false;
   navButton.setAttribute('aria-expanded', 'true');
   const items = navItems();
@@ -142,8 +148,8 @@ navButton.addEventListener('click', () => {
 });
 
 navButton.addEventListener('keydown', (event) => {
-  if (event.key === 'ArrowDown') { event.preventDefault(); openNav(0); }
-  else if (event.key === 'ArrowUp') { event.preventDefault(); openNav(-1); }
+  if (event.key === 'ArrowDown') { event.preventDefault(); openNav(0, { instant: true }); }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); openNav(-1, { instant: true }); }
 });
 
 // The menu's own keys are handled before the app's global map sees them, so Escape here
@@ -208,7 +214,7 @@ function render() {
     replace(appEl, el('div', { class: 'view' }));
     design = initDesign(appEl);
     mountRecorder();
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
     return;
   }
 
@@ -216,7 +222,7 @@ function render() {
     replace(appEl, el('div', { class: 'view' }));
     dashboard = initDashboard(appEl, api);
     mountRecorder();
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
     return;
   }
 
@@ -235,13 +241,13 @@ function render() {
     }
     state.selectedSlug = slug;
     replace(appEl, renderProblem(entry, { neighbours: neighboursOf(slug), onBack: goBrowse, onOpen: handlers.onOpen }));
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
     installResizers();
     mountRecorder();
     return;
   }
 
-  closeDrawer();
+  closeDrawer({ instant: true });
   if (location.hash === '#/roadmap') state.catalogMode = 'roadmap';
   else if (location.hash === '#/') state.catalogMode = 'explorer';
   saveState();
@@ -249,7 +255,7 @@ function render() {
   mountRecorder();
   refreshCatalogProgress();
   const selected = state.selectedSlug && appEl.querySelector(`.prow[data-slug="${CSS.escape(state.selectedSlug)}"]`);
-  if (selected) selected.scrollIntoView({ block: 'center', behavior: 'auto' });
+  if (selected) selected.scrollIntoView({ block: 'center', behavior: 'instant' });
 }
 
 function renderCatalog() {
@@ -258,14 +264,24 @@ function renderCatalog() {
 
 let progressLoadedAt = 0;
 let progressPending = false;
+let statsReadOnce = false;
+let streakPill = null;
 async function refreshCatalogProgress() {
   if (progressPending || Date.now() - progressLoadedAt < 30_000) return;
   progressPending = true;
   try {
-    state.progress = await loadCatalogProgress({ signal: AbortSignal.timeout(8000) });
+    // The first read shares the top bar pill's request; later ones ask again.
+    const timeout = new Promise(resolve => setTimeout(resolve, 8000, null));
+    const stats = await Promise.race([loadStats({ fresh: statsReadOnce }), timeout]);
+    statsReadOnce = true;
+    if (!stats) throw new Error('Progress unavailable');
+    state.progress = progressMapFrom(stats);
+    state.stats = stats;
+    streakPill?.update(stats);
     state.progressState = 'ready';
   } catch {
     state.progress = null;
+    state.stats = null;
     state.progressState = 'unavailable';
   } finally {
     progressPending = false;
@@ -292,7 +308,7 @@ function moveSelection(step) {
     row.classList.toggle('sel', row.dataset.slug === state.selectedSlug);
   }
   const row = appEl.querySelector(`.prow[data-slug="${CSS.escape(state.selectedSlug)}"]`);
-  if (row) row.scrollIntoView({ block: 'nearest' });
+  if (row) row.scrollIntoView({ block: 'nearest', behavior: 'instant' });
 }
 
 /* --------------------------------- keyboard -------------------------------- */
@@ -319,7 +335,7 @@ document.addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
 
   if (event.key === 'Escape') {
-    if (isDrawerOpen()) { closeDrawer(); return; }
+    if (isDrawerOpen()) { closeDrawer({ instant: true }); return; }
     if (inTextField()) { searchEl.blur(); return; }
     if (state.query) { state.query = ''; searchEl.value = ''; render(); return; }
     if (currentSlug()) goBrowse();
@@ -347,8 +363,9 @@ document.addEventListener('keydown', (event) => {
   if (slug) {
     const entry = bySlug.get(slug);
     if (!entry) return;
-    if (event.key === 's') { event.preventDefault(); openPanel(entry, 'solution'); return; }
-    if (event.key === 'a') { event.preventDefault(); openPanel(entry, 'article'); return; }
+    // Keyboard opens skip the slide: a shortcut is for getting there now.
+    if (event.key === 's') { event.preventDefault(); openPanel(entry, 'solution', { instant: true }); return; }
+    if (event.key === 'a') { event.preventDefault(); openPanel(entry, 'article', { instant: true }); return; }
     if (isDrawerOpen()) return;
     const { previous, next } = neighboursOf(slug);
     if ((event.key === 'j' || event.key === 'ArrowDown') && next) { event.preventDefault(); handlers.onOpen(next.slug); }
@@ -369,7 +386,7 @@ searchEl.addEventListener('input', () => {
   render();
 });
 
-scrimEl.addEventListener('click', closeDrawer);
+scrimEl.addEventListener('click', () => closeDrawer());
 window.addEventListener('hashchange', render);
 // Leaving the page tears the design interview down so its last words are saved. A page
 // restored from the back/forward cache comes back with that screen already torn down,
@@ -407,6 +424,13 @@ function setSourceLabel() {
 async function boot() {
   applySettings();
   installSettingsButton(document.getElementById('setmount'));
+  streakPill = installStreakPill(document.getElementById('streakmount'));
+  // An accepted submission changes the numbers; the catalog re-reads next time it shows.
+  window.addEventListener('studio:stats-changed', () => {
+    // The pill's listener ran first and already re-read, so share its request.
+    progressLoadedAt = 0; statsReadOnce = false;
+    if (document.body.classList.contains('browse-page')) refreshCatalogProgress();
+  });
   // A layout change moves the panes, so anything that measured them has to measure
   // again — the resize handles sit in the gaps between columns that just moved.
   onSettingsChange(() => { if (currentSlug()) installResizers(); });

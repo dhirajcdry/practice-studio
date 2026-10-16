@@ -1,0 +1,128 @@
+/* Progress at a glance: the catalog's overview band, the slim meters shared by the
+   tree and section headers, the flame, and the streak pill in the top bar.
+   Loaded after themes.css so the art themes' glass and every palette's tokens apply.
+   Colours are tokens only: accent for "solved", the difficulty tokens for difficulty. */
+
+/* ---------------- shared meter ---------------- */
+.meter{display:block;position:relative;width:100%;height:5px;border-radius:999px;background:var(--hair-10);overflow:hidden;flex:1 1 auto}
+.meter>i{position:absolute;inset:0;border-radius:inherit;background:var(--accent);transform-origin:left center;transform:scaleX(var(--to))}
+.meter.tone-easy>i{background:var(--easy)}
+.meter.tone-medium>i{background:var(--med)}
+.meter.tone-hard>i{background:var(--hard)}
+.meter>i.grow{animation:meter-grow .9s cubic-bezier(.2,.7,.2,1) both}
+@keyframes meter-grow{from{transform:scaleX(var(--from))}to{transform:scaleX(var(--to))}}
+
+/* ---------------- flame ---------------- */
+.flame{display:block;width:18px;height:18px;flex-shrink:0;color:var(--ink-35)}
+.flame .flame-outer{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}
+.flame .flame-core{fill:none;stroke:currentColor;stroke-width:1.3;stroke-linejoin:round;opacity:.7}
+.flame.lit{color:var(--accent)}
+.flame.lit .flame-outer{fill:currentColor;stroke:none}
+.flame.lit .flame-core{fill:var(--card);stroke:none;opacity:.6}
+
+/* ---------------- overview band ---------------- */
+.catalog .ov{display:grid;grid-template-columns:auto minmax(200px,1fr) minmax(230px,1.05fr) minmax(250px,1.1fr);align-items:stretch;margin:0 0 26px;padding:22px 8px;border-radius:var(--r-md);box-shadow:var(--shadow);overflow:visible}
+.ov>*{padding:0 26px;min-width:0}
+.ov>*+*{border-left:1px solid var(--hair-10)}
+.ov-kicker{font:600 10px/1.3 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-50)}
+
+/* ring */
+.ov-ring{position:relative;width:136px;height:136px;align-self:center;box-sizing:content-box}
+.ring-svg{display:block;width:136px;height:136px}
+.ring-track{fill:none;stroke:var(--hair-10);stroke-width:10}
+.ring-value{fill:none;stroke:var(--accent);stroke-width:10;stroke-linecap:round;filter:drop-shadow(0 0 6px rgba(var(--accent-rgb),.25))}
+.ring-value.sweep{animation:ring-sweep 1.2s cubic-bezier(.2,.7,.2,1) both}
+@keyframes ring-sweep{from{stroke-dashoffset:var(--ring-from)}}
+.ov-ring-centre{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1}
+.ov-ring-centre b{font:700 38px/1 var(--display);letter-spacing:-.04em;color:var(--ink);font-variant-numeric:tabular-nums}
+.ov-ring-label{margin-top:4px;font:600 10px/1.2 var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.ov-ring-of{margin-top:5px;font:11px/1.2 var(--ui);color:var(--ink-50);font-variant-numeric:tabular-nums}
+
+/* difficulty */
+.ov-diff{display:flex;flex-direction:column;justify-content:center;gap:13px}
+.ov-diff-row{display:grid;grid-template-columns:56px minmax(0,1fr) 54px;align-items:center;gap:12px}
+.ov-diff-name{font:500 12px var(--ui);color:var(--ink-70)}
+.ov-diff-row .meter{height:7px}
+.ov-diff-n{font:11px var(--mono);color:var(--ink-50);text-align:right;font-variant-numeric:tabular-nums}
+.ov-diff-n b{font-weight:600;color:var(--ink)}
+
+/* counts + next up */
+.ov-mid{display:flex;flex-direction:column;justify-content:center;gap:16px}
+.ov-counts{display:flex;flex-wrap:wrap;gap:8px 20px}
+.ov-count{display:inline-flex;align-items:center;gap:7px;font:12px var(--ui);color:var(--ink-50);white-space:nowrap}
+.ov-count b{font:600 15px var(--ui);color:var(--ink);font-variant-numeric:tabular-nums}
+.ov-next{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;padding:11px 14px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--hair-06);color:var(--ink);transition:border-color .15s ease,background-color .15s ease,transform .15s ease}
+.ov-next:hover{border-color:color-mix(in srgb,var(--accent) 50%,transparent);background:var(--accent-soft)}
+.ov-next:hover .ov-next-go{transform:translateX(3px);color:var(--accent)}
+.ov-next-title{font:600 14px/1.3 var(--ui);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-next-meta{display:flex;align-items:center;gap:8px;font:11px var(--ui);color:var(--ink-50);min-width:0}
+.ov-next-meta .tag{font:10px var(--ui);padding:2px 6px;border-radius:var(--r-sm)}
+.ov-next-go{margin-left:auto;font:14px var(--ui);color:var(--ink-35);transition:transform .15s ease,color .15s ease}
+.ov-next.done{flex-direction:row;align-items:center;gap:10px;background:var(--accent-soft);border-color:transparent;font:500 12px var(--ui);color:var(--accent)}
+.ov-done-check{width:16px;height:16px;padding:3px;border-radius:50%;background:var(--accent);color:var(--card);flex-shrink:0}
+
+/* streak */
+.ov-streak{display:flex;flex-direction:column;justify-content:center;gap:12px}
+.ov-streak-head{display:flex;align-items:center;gap:12px}
+.ov-flame{padding:8px;border-radius:50%;box-sizing:border-box;width:40px;height:40px;background:var(--hair-06)}
+.ov-streak.lit .ov-flame{background:var(--accent-soft)}
+.ov-streak.today .ov-flame{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.25),0 0 18px rgba(var(--accent-rgb),.28)}
+.ov-streak-n{font:650 17px/1.2 var(--display);letter-spacing:-.02em;color:var(--ink)}
+.ov-streak-best{margin-top:3px;font:12px/1.35 var(--ui);color:var(--ink-50)}
+.ov-days{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:4px;list-style:none;margin:0;padding:0;max-width:280px}
+.ov-days li{aspect-ratio:1;max-height:18px;border-radius:calc(var(--r-sm) * .6);background:var(--hair-10)}
+.ov-days li.on{background:var(--accent)}
+.ov-days li.now{outline:1.5px solid var(--accent);outline-offset:1.5px}
+.ov-days li.now:not(.on){background:transparent;box-shadow:inset 0 0 0 1px var(--hair-20)}
+.ov-days-axis{display:flex;justify-content:space-between;max-width:280px;margin-top:-6px;font:10px var(--ui);color:var(--ink-35)}
+
+/* entrance: the band rises in once; meters and ring carry their own motion */
+.catalog .ov:not(.ov-loading){animation:ov-in .5s cubic-bezier(.2,.7,.2,1) both}
+@keyframes ov-in{from{opacity:0;transform:translateY(6px)}}
+.catalog .ov.seen{animation:none}
+
+/* loading + unavailable keep the band's footprint so nothing jumps */
+.ov-loading{min-height:195px}
+.ov-skel-ring{display:block;width:116px;height:116px;margin:10px;border-radius:50%;border:10px solid var(--hair-06);box-sizing:border-box}
+.ov-skel{display:flex;flex-direction:column;justify-content:center;gap:14px}
+.ov-skel i{display:block;height:9px;border-radius:999px;background:linear-gradient(90deg,var(--hair-06),var(--hair-10),var(--hair-06));background-size:200% 100%;animation:sweep 1.4s linear infinite}
+.ov-skel i.short{width:55%}
+.catalog .ov.ov-unavailable{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 24px;min-height:0}
+.ov-unavailable>*{padding:0;border:0 !important}
+.ov-retry{padding:8px 16px;border:1px solid var(--hair-20);border-radius:var(--r-sm);font:500 12px var(--ui);color:var(--accent);background:var(--card)}
+.ov-retry:hover{border-color:var(--accent)}
+
+@media(max-width:1250px){
+  .catalog .ov{grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);row-gap:22px}
+  .ov-streak{grid-column:1/-1;border-left:0 !important;border-top:1px solid var(--hair-10);padding-top:20px;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:12px 28px}
+  .ov-streak .ov-days{flex:1 1 220px}
+  .ov-streak .ov-days-axis{display:none}
+}
+@media(max-width:850px){
+  .catalog .ov{grid-template-columns:auto minmax(0,1fr);padding:18px 4px}
+  .ov>*{padding:0 18px}
+  .ov-mid{grid-column:1/-1;border-left:0 !important;border-top:1px solid var(--hair-10);padding-top:18px}
+  .ov-ring,.ring-svg{width:116px;height:116px}
+  .ov-ring-centre b{font-size:32px}
+}
+@media(max-width:520px){
+  .catalog .ov{grid-template-columns:minmax(0,1fr)}
+  .ov-diff{border-left:0 !important;border-top:1px solid var(--hair-10);padding-top:18px}
+  .ov-ring{justify-self:center}
+}
+
+/* ---------------- streak pill (top bar) ---------------- */
+.streakmount{display:flex;align-items:center}
+.streakpill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px 0 8px;border:1px solid var(--hair-10);border-radius:999px;background:var(--card);color:var(--ink-70);text-decoration:none;font:600 12px/1 var(--ui);font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease,box-shadow .2s ease}
+.streakpill .flame{width:16px;height:16px}
+.streakpill:hover{border-color:var(--hair-20);color:var(--ink)}
+.streakpill.active{color:var(--ink);border-color:rgba(var(--accent-rgb),.45);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.10),0 0 16px rgba(var(--accent-rgb),.22)}
+.streakpill.active .flame{animation:flame-flicker 2.8s ease-in-out infinite;transform-origin:50% 90%}
+.streakpill.cold{color:var(--ink-50)}
+@keyframes flame-flicker{0%,100%{transform:scale(1) rotate(0)}30%{transform:scale(1.06,.97) rotate(-2deg)}60%{transform:scale(.97,1.05) rotate(1.5deg)}}
+body.theme-art .streakpill{background:color-mix(in srgb,var(--card) 70%,transparent)}
+
+@media(prefers-reduced-motion:reduce){
+  .meter>i.grow,.ring-value.sweep,.catalog .ov,.streakpill.active .flame,.ov-skel i{animation:none}
+  .ov-next,.ov-next-go,.streakpill{transition:none}
+}
