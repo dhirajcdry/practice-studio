@@ -3,6 +3,8 @@
 // will later execute code and hold a LeetCode session, so it must not be reachable.
 
 import http from 'node:http';
+import path from 'node:path';
+import { PremiumStatementCache } from './premium-statement.mjs';
 
 import {
   CATALOG_FILE,
@@ -22,7 +24,11 @@ import { createApp } from './app.mjs';
 export function boot({ quiet = false } = {}) {
   const solutions = loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT);
   const catalog = loadCatalog(CATALOG_FILE, solutions);
-  const leetcode = new LeetCodeContentCache({ cacheDir: LEETCODE_CACHE_DIR });
+  const leetcode = new LeetCodeContentCache({
+    cacheDir: LEETCODE_CACHE_DIR,
+    premiumCache: new PremiumStatementCache({ cacheDir: path.join(LEETCODE_CACHE_DIR, '..', 'premium-statements') }),
+    entryFor: (slug) => catalog.get(slug),
+  });
   const site = new StaticSite(WEB_DIR);
   const app = createApp({ catalog, solutions, leetcode, site });
   return { solutions, catalog, leetcode, site, app };

@@ -187,3 +187,19 @@ request is the browser's own, and there is nothing to copy.
 
 The underlying LeetCode endpoints are documented in [LEETCODE-API.md](LEETCODE-API.md)
 (Part 2).
+
+## Premium problems
+
+For `isPaidOnly` problems, **Submit on NeetCode ↗** copies the current editor code and
+opens the catalog's NeetCode problem page. Paste and submit there manually. If clipboard
+access fails, Studio says to copy manually. This path never calls the Studio Connector
+or records a LeetCode verdict; **Run** still uses the local runner.
+
+Missing premium statements and Python signatures are fetched lazily from
+[doocs/leetcode](https://github.com/doocs/leetcode) (CC BY-SA 4.0), with linked attribution
+under the statement. Successful fetches are cached permanently in
+`STUDIO_HOME/cache/premium-statements/`; a failed fetch leaves the premium notice.
+Only class/method headers and node-definition comments are retained from the Python
+solution, with method bodies replaced by `pass`. Existing saved code and recovery drafts
+keep precedence. Example outputs are used only when their parsed inputs match all of
+LeetCode's supplied example cases; ambiguous formats retain unpublished expectations.

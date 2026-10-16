@@ -261,14 +261,15 @@ export function renderProblem(entry, context) {
   // and closed until asked for — the launcher in the corner and `c` open it. When it
   // is closed the grid falls back to two columns and the editor keeps its width.
   enableWideLayout(true);
+  const contentPromise = loadProblem(entry.slug, entry);
   view.append(workspaceRail());
   view.append(el('div', { class: 'pbody with-workspace' }, [
     el('div', { class: 'pcol' }, [hero, descCard]),
-    mountWorkspace(entry),
+    mountWorkspace(entry, { contentPromise }),
     mountCoach(entry),
   ]));
 
-  loadProblem(entry.slug, entry).then(result => {
+  contentPromise.then(result => {
     if (!document.body.contains(descCard)) return; // navigated away
     fillDescription(descCard, tags, titleEl, badgeRow, entry, result);
   });
@@ -326,14 +327,15 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
     tags.append(el('span', { class: 'tag quiet', text: String(topic), 'data-topic': '1' }));
   }
 
-  // `content.isPaidOnly` is the ONLY authority on "you cannot read this here".
+  // Only LeetCode marks premium; a mirrored statement still renders normally.
   // catalog.isPro is NeetCode-pro, a different thing entirely, and is never used here.
-  if (content && content.isPaidOnly === true) {
+  if (content?.isPaidOnly === true && !content.descriptionHtml) {
     target.append(stateBlock({
       tone: 'warn',
       head: 'This one is LeetCode premium',
       body: [
-        'LeetCode does not serve the statement for premium problems without a subscription, so there is nothing to show here.',
+        'LeetCode does not serve the statement for premium problems without a subscription.',
+        'The statement could not be fetched from doocs/leetcode.',
         entry.hasArticle || entry.hasPythonSolution
           ? 'The NeetCode article and reference solution still describe the problem and the approach — open them from the buttons above.'
           : 'There is no article or reference solution for this one either; you will have to read it on LeetCode directly.',
@@ -381,6 +383,12 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
   rich.append(sanitizeHtml(content.descriptionHtml));
   dropSpacerParagraphs(rich);
   target.append(rich);
+  if (content.statementSource) {
+    target.append(el('p', { class: 'dim', style: 'font-size:11px' }, el('a', {
+      href: content.statementSource.url, target: '_blank', rel: 'noopener noreferrer',
+      text: 'Statement via doocs/leetcode (CC BY-SA 4.0)',
+    })));
+  }
 }
 
 /** LeetCode pads its statements with `<p>&nbsp;</p>`. Real spacing comes from CSS. */

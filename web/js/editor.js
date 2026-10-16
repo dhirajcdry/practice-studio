@@ -461,6 +461,8 @@ export function mountWorkspace(entry, options = {}) {
   if (active) active.dispose();
 
   const slug = entry.slug;
+  let premium = false;
+  let contentReady = !options.contentPromise;
   let editor = null;
   let loaded = null;            // last value known to match the server; null = none does
   let stubCode = null;          // the starter, while we still have it
@@ -534,10 +536,21 @@ export function mountWorkspace(entry, options = {}) {
   // doSubmit, not in an extra modifier nobody remembers.
   const submitLabel = el('span', { text: 'Submit' });
   const submitButton = el('button', {
-    class: 'ws-submit', type: 'button',
+    class: 'ws-submit', type: 'button', disabled: !contentReady,
     title: 'Send this code to LeetCode and run every hidden test (⌘↵)',
     onclick: () => doSubmit(),
   }, [submitLabel]);
+
+  options.contentPromise?.then((result) => {
+    if (disposed) return;
+    contentReady = result.ok === true;
+    premium = result.content?.isPaidOnly === true;
+    submitButton.disabled = !contentReady;
+    if (premium) {
+      submitLabel.textContent = 'Submit on NeetCode ↗';
+      submitButton.title = 'Copy your code and open NeetCode (⌘↵)';
+    }
+  }).catch(() => {});
 
   const noticeEl = el('div', { class: 'ws-notice', hidden: true });
   const host = el('div', { class: 'ws-host' });
@@ -726,7 +739,18 @@ export function mountWorkspace(entry, options = {}) {
   // true rather than aspirational; a keystroke he pressed is an explicit action, a
   // second attempt fired by the app on his behalf would not be.
   function doSubmit() {
-    if (judge.isBusy()) return;
+    if (!contentReady || !editor || judge.isBusy()) return;
+    if (premium) {
+      // Open during the gesture; awaiting the clipboard can lose popup permission.
+      const code = editor.getValue();
+      window.open(`https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`, '_blank', 'noopener,noreferrer');
+      Promise.resolve().then(() => navigator.clipboard.writeText(code)).then(() => {
+        if (!disposed) showNotice({ head: 'Code copied — paste it into NeetCode and submit there', body: '' });
+      }).catch(() => {
+        if (!disposed) showNotice({ head: 'NeetCode opened', body: 'Copy your code and paste it into NeetCode to submit.' });
+      });
+      return;
+    }
     flushNow();                       // what is judged should be what is on disk
     showResults('judge');
     judge.submit();
@@ -885,6 +909,13 @@ export function mountWorkspace(entry, options = {}) {
     const [result] = await Promise.all([loadCode(slug, entry)]);
     if (disposed) return;
 
+    // A fresh buffer can wait for the mirror; existing work must open immediately.
+    if (result.ok && result.isStub && options.contentPromise) {
+      const problem = await options.contentPromise.catch(() => null);
+      if (disposed) return;
+      const starter = problem?.content?.codeSnippets?.find(s => s.langSlug === 'python3')?.code;
+      if (starter) { result.code = starter; result.stub = starter; }
+    }
     const draft = readDraft(slug);
     let text = '';
     let restored = false;

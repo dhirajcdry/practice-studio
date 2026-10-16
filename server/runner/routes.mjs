@@ -1,3 +1,4 @@
+import { premiumCaseDescription } from '../premium-cases.mjs';
 // The runner's route table. The main agent wires this into the router; nothing here
 // touches server/app.mjs or server/index.mjs.
 //
@@ -77,7 +78,8 @@ async function loadProblemContext(ctx, slug, body) {
   return {
     metaData,
     exampleTestcases: content?.exampleTestcases ?? result?.question?.exampleTestcases ?? null,
-    descriptionHtml: content?.descriptionHtml ?? result?.question?.content ?? null,
+    descriptionHtml: content?.statementSource ? premiumCaseDescription(content)
+      : content?.descriptionHtml ?? result?.question?.content ?? null,
     // LeetCode's own python3 starter. Used only to settle what `manual` means for this
     // problem — see stub.mjs.
     pythonStub: pythonSnippetOf(result?.question?.codeSnippets ?? content?.codeSnippets),

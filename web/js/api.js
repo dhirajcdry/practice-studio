@@ -138,7 +138,7 @@ export async function loadCatalog() {
 /** GET /api/problems/:slug — catalog entry plus live LeetCode content. */
 export async function loadProblem(slug, entry) {
   if (api.mode === 'live') {
-    const result = await fetchJson(`/api/problems/${encodeURIComponent(slug)}`);
+    const result = await fetchJson(`/api/problems/${encodeURIComponent(slug)}`, 65000);
     if (result.ok) return { ok: true, source: 'live', ...result.data };
     return { ...result, source: 'live' };
   }
@@ -474,7 +474,7 @@ export async function loadHistory(slug) {
 /** The cases a local run will use, fetched without running anything. */
 export async function loadTestcases(slug) {
   if (api.mode !== 'live') return { ok: false, reason: 'The studio server is not answering.' };
-  const result = await fetchJson(`/api/problems/${encodeURIComponent(slug)}/testcases`);
+  const result = await fetchJson(`/api/problems/${encodeURIComponent(slug)}/testcases`, 65000);
   if (!result.ok) return { ok: false, reason: 'The example cases could not be loaded.' };
   const cases = Array.isArray(result.data?.cases) ? result.data.cases : [];
   return {

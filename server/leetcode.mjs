@@ -160,8 +160,10 @@ export function toContent(question, { fetchedAt, stale = false }) {
 }
 
 export class LeetCodeContentCache {
-  constructor({ cacheDir, fetchImpl = fetch, fetchQuestionImpl = fetchQuestion } = {}) {
+  constructor({ cacheDir, fetchImpl = fetch, fetchQuestionImpl = fetchQuestion, premiumCache = null, entryFor = () => null } = {}) {
     this.cacheDir = cacheDir;
+    this.premiumCache = premiumCache;
+    this.entryFor = entryFor;
     this.fetchImpl = fetchImpl;
     this.fetchQuestionImpl = fetchQuestionImpl;
     this.inFlight = new Map();
@@ -212,7 +214,26 @@ export class LeetCodeContentCache {
     const existing = this.inFlight.get(slug);
     if (existing) return existing;
 
-    const work = this._getContent(slug).finally(() => this.inFlight.delete(slug));
+    const work = this._getContent(slug).then(async (result) => {
+      const content = result.content;
+      if (!content.isPaidOnly || content.descriptionHtml != null || !this.premiumCache) return result;
+      // The catalog spells the number `number` and title-cases the title; LeetCode's own
+      // title matches the mirror's folder names, so it wins when present.
+      const entry = this.entryFor(slug);
+      const number = entry?.number ?? entry?.leetcodeProblemNumber;
+      const statement = number ? await this.premiumCache.getStatement({
+        slug, leetcodeProblemNumber: number, title: content.title || entry.title,
+      }).catch(() => null) : null;
+      if (!statement) return { ...result, content: { ...content, statementUnavailable: true } };
+      return { ...result, content: {
+        ...content,
+        descriptionHtml: statement.descriptionHtml,
+        statementSource: statement.statementSource,
+        statementExamples: statement.examples,
+        codeSnippets: content.codeSnippets ?? (statement.stub
+          ? [{ lang: 'Python3', langSlug: 'python3', code: statement.stub }] : null),
+      } };
+    }).finally(() => this.inFlight.delete(slug));
     this.inFlight.set(slug, work);
     return work;
   }
