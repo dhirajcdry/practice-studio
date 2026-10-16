@@ -22,7 +22,10 @@ import { getSettings, isDark, onSettingsChange } from './settings.js';
 import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, api } from './api.js';
 import { createRunPanel, summaryLine } from './run.js';
 import { createSubmitPanel, submitLine } from './submit.js';
+import { celebrate } from './celebrate.js';
 import { onChord, chordLabel } from './shortcuts.js';
+import { attachTypingFx } from './typing-fx.js';
+import { attachTypingReveal } from './typing-reveal.js';
 
 const MONACO_BASE = new URL('../vendor/monaco/vs', import.meta.url).href;
 const SAVE_DEBOUNCE_MS = 900;
@@ -317,8 +320,12 @@ function editorOptions() {
     detectIndentation: false,
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
-    smoothScrolling: true,
-    cursorBlinking: 'smooth',
+    // Scrolling here is keyboard-driven (PageDown, find-next, go-to-line) and happens all
+    // day; an animated scroll is latency, not polish.
+    smoothScrolling: false,
+    cursorBlinking: getSettings().motion ? 'smooth' : 'solid',
+    // The caret glides to each new character, so the reveal and the caret travel together.
+    cursorSmoothCaretAnimation: getSettings().motion && getSettings().typingFx !== false ? 'on' : 'off',
     renderLineHighlight: 'line',
     renderWhitespace: 'selection',
     lineNumbersMinChars: 3,
@@ -389,6 +396,8 @@ function textareaEditor(host, initial) {
 
 function monacoEditor(monaco, host, initial, { onRun, onSubmit, onSave, onEscape }) {
   const instance = monaco.editor.create(host, { ...editorOptions(), value: initial });
+  const stopFx = attachTypingFx(instance, host, monaco);
+  const stopReveal = attachTypingReveal(instance, monaco, { getSettings, onSettingsChange });
   let changed = () => {};
   instance.onDidChangeModelContent(() => changed());
 
@@ -418,13 +427,17 @@ function monacoEditor(monaco, host, initial, { onRun, onSubmit, onSave, onEscape
     onChange: (fn) => { changed = fn; },
     onCursorChange: (fn) => instance.onDidChangeCursorPosition((event) => fn(event.position)),
     setFontSize: (px) => instance.updateOptions({ fontSize: px }),
+    setMotion: (on, typing = true) => instance.updateOptions({
+      cursorBlinking: on ? 'smooth' : 'solid',
+      cursorSmoothCaretAnimation: on && typing ? 'on' : 'off',
+    }),
     setTheme: (name) => monaco.editor.setTheme(name),
     // Monaco measures its container once and caches it; a collapsed pane or a resized
     // column has to say so.
     layout: () => instance.layout(),
     // The standalone editor owns the model it created from `value`; disposing the
     // model separately makes Monaco throw on the way out.
-    dispose: () => instance.dispose(),
+    dispose: () => { stopFx(); stopReveal(); instance.dispose(); },
   };
 }
 
@@ -547,8 +560,8 @@ export function mountWorkspace(entry, options = {}) {
     premium = result.content?.isPaidOnly === true;
     submitButton.disabled = !contentReady;
     if (premium) {
-      submitLabel.textContent = 'Submit on NeetCode ↗';
-      submitButton.title = 'Copy your code and open NeetCode (⌘↵)';
+      submitLabel.textContent = 'Submit on NeetCode';
+      submitButton.title = 'Send this code to NeetCode’s judge through the Studio Connector (⌘↵)';
     }
   }).catch(() => {});
 
@@ -559,7 +572,14 @@ export function mountWorkspace(entry, options = {}) {
   const judge = createSubmitPanel({
     slug,
     getCode: () => (editor ? editor.getValue() : ''),
-    onEvent: onSubmitEvent,
+    // Premium problems are judged on neetcode.io (docs/SUBMITTING.md).
+    getTarget: () => (premium ? 'neetcode' : 'leetcode'),
+    neetcodeSlug: entry.neetcodeSlug || entry.slug,
+    onEvent: (event) => {
+      onSubmitEvent(event);
+      // onSubmitEvent puts the plain "Submit" label back; a premium problem keeps its own.
+      if (premium && event.type !== 'start') submitLabel.textContent = 'Submit on NeetCode';
+    },
     // A wrong answer hands back the exact input that broke. It belongs in the local
     // cases, not just on screen.
     onUseFailingCase: (detail) => {
@@ -740,15 +760,23 @@ export function mountWorkspace(entry, options = {}) {
   // second attempt fired by the app on his behalf would not be.
   function doSubmit() {
     if (!contentReady || !editor || judge.isBusy()) return;
-    if (premium) {
-      // Open during the gesture; awaiting the clipboard can lose popup permission.
+    // Premium problems are submitted on NeetCode through the Studio Connector, in the
+    // same panel. Only when the Connector is missing or too old to do that (an old one
+    // would send it to LeetCode instead) does it fall back to copy-and-open, and the
+    // panel says why. That check happens here, inside the gesture, because a popup
+    // opened after an await gets blocked.
+    const blocker = premium ? judge.blocker() : '';
+    if (blocker) {
       const code = editor.getValue();
-      window.open(`https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`, '_blank', 'noopener,noreferrer');
+      window.open(`https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}/question`, '_blank', 'noopener,noreferrer');
+      showResults('judge');
+      judge.explain(blocker, 'Studio opened the problem on NeetCode and copied your code instead: paste it into NeetCode’s editor and submit there. Studio has not submitted it.');
       Promise.resolve().then(() => navigator.clipboard.writeText(code)).then(() => {
         if (!disposed) showNotice({ head: 'Code copied — paste it into NeetCode and submit there', body: '' });
       }).catch(() => {
         if (!disposed) showNotice({ head: 'NeetCode opened', body: 'Copy your code and paste it into NeetCode to submit.' });
       });
+      results.scrollTop = 0;
       return;
     }
     flushNow();                       // what is judged should be what is on disk
@@ -764,6 +792,7 @@ export function mountWorkspace(entry, options = {}) {
     submitLabel.textContent = busy ? 'Judging' : 'Submit';
     if (!busy) results.scrollTop = 0;
     showLane(lane);
+    if (event.type === 'result' && event.shaped?.status === 'accepted') celebrate({ origin: submitButton.getBoundingClientRect() });
   }
 
   /* ---- the two collapses ---- */
@@ -815,7 +844,7 @@ export function mountWorkspace(entry, options = {}) {
     if (!judgeStub.hidden) {
       replace(judgeStub, [
         el('span', { class: 'mono ws-stubmark', text: 'Submission' }),
-        el('span', { class: 'ws-stubline', text: judge.isBusy() ? 'Judging on LeetCode…' : submitLine(verdict) }),
+        el('span', { class: 'ws-stubline', text: judge.isBusy() ? `Judging on ${judge.targetName?.() || 'LeetCode'}…` : submitLine(verdict) }),
       ]);
       judgeStub.dataset.tone = verdict?.tone ?? '';
     }
@@ -890,6 +919,7 @@ export function mountWorkspace(entry, options = {}) {
   const stopWatchingSettings = onSettingsChange((settings) => {
     if (!editor) return;
     editor.setFontSize?.(settings.codeSize);
+    editor.setMotion?.(settings.motion, settings.typingFx !== false);
     editor.setTheme?.(monacoThemeFor(settings.theme, isDark()));
     requestAnimationFrame(() => editor.layout?.());
   });

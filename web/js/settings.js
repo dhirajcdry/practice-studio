@@ -30,12 +30,16 @@ export function isDark() {
   return current.mode === 'dark' || (current.mode === 'system' && systemPrefersDark());
 }
 
+function systemPrefersReducedMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
 /** What the operating system is set to, when nothing has been chosen here yet. */
 function systemPrefersDark() {
   try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; }
 }
 
-const DEFAULTS = { theme: 'studio', mode: 'system', codeSize: 14, motion: true };
+const DEFAULTS = { theme: 'studio', mode: 'system', codeSize: 14, motion: true, typingFx: true, typingSparks: false, celebrations: true };
 const LEGACY = { paper: ['studio', 'light'], slate: ['studio', 'dark'], editorial: ['editorial', 'light'], ink: ['ink', 'light'], blueprint: ['studio', 'dark'], phosphor: ['terminal', 'dark'] };
 
 function read() {
@@ -47,7 +51,12 @@ function read() {
     return {
       theme, mode: mode || DEFAULTS.mode,
       codeSize: Number(raw.codeSize) >= 10 && Number(raw.codeSize) <= 20 ? Number(raw.codeSize) : DEFAULTS.codeSize,
-      motion: raw.motion !== false,
+      // Never chosen here: follow the system's reduce-motion setting rather than assume.
+      motion: typeof raw.motion === 'boolean' ? raw.motion : !systemPrefersReducedMotion(),
+      typingFx: raw.typingFx !== false,
+      // The reveal is the typing effect; sparks are an extra he opts into.
+      typingSparks: raw.typingSparks === true,
+      celebrations: raw.celebrations !== false,
     };
   } catch {
     return { ...DEFAULTS }; // private browsing: it works, it just forgets
@@ -70,14 +79,21 @@ export function onSettingsChange(fn) { listeners.add(fn); return () => listeners
 
 export function setSetting(key, value) {
   if (current[key] === value) return;
-  if (!['theme', 'mode', 'codeSize', 'motion'].includes(key)) return;
+  if (!['theme', 'mode', 'codeSize', 'motion', 'typingFx', 'typingSparks', 'celebrations'].includes(key)) return;
   if (key === 'theme' && !THEMES.some(t => t.id === value)) return;
   if (key === 'mode' && !['system', 'light', 'dark'].includes(value)) return;
   current = { ...current, [key]: value };
-  const { theme, mode, codeSize, motion } = current;
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ theme, mode, codeSize, motion })); } catch { /* forgets */ }
-  apply();
-  for (const fn of listeners) fn(getSettings());
+  const { theme, mode, codeSize, motion, typingFx, typingSparks, celebrations } = current;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ theme, mode, codeSize, motion, typingFx, typingSparks, celebrations })); } catch { /* forgets */ }
+  const commit = () => { apply(); for (const fn of listeners) fn(getSettings()); };
+  // A new theme or appearance crossfades instead of repainting in one jarring frame, which
+  // also hides the frame where the page has switched and Monaco has not yet. Only these two
+  // keys: the code-size slider fires on every pixel of a drag. Opacity only, so it stays
+  // on with motion off.
+  if ((key === 'theme' || key === 'mode') && typeof document.startViewTransition === 'function') {
+    try { document.startViewTransition(commit); return; } catch { /* fall through */ }
+  }
+  commit();
 }
 
 /** Put the settings onto the document. Safe to call at any time, including before boot. */
@@ -91,7 +107,7 @@ export function apply() {
   // Monaco cannot read CSS variables, so a dark theme has to be told explicitly.
   document.body.classList.toggle('is-dark', isDark());
   root.style.setProperty('--code-size', `${current.codeSize}px`);
-  document.body.classList.toggle('reduce-motion', current.motion === false);
+  document.body.classList.toggle('motion-off', current.motion === false);
 }
 
 /** Pin the opposite appearance without changing the family. */
@@ -170,6 +186,15 @@ export function openSettings() {
     ...(current.motion ? { checked: 'checked' } : {}),
     onchange: (event) => setSetting('motion', event.target.checked),
   });
+  const toggle = (key, label) => el('label', { class: 'set-row' }, [
+    el('span', { class: 'set-rowname', text: label }),
+    el('span', { class: 'spacer' }),
+    el('input', {
+      type: 'checkbox', class: 'set-check', 'aria-label': label,
+      ...(current[key] ? { checked: 'checked' } : {}),
+      onchange: (event) => setSetting(key, event.target.checked),
+    }),
+  ]);
 
   coachPicker = createCoachModelPicker();
   panel = el('aside', { class: 'settings', role: 'dialog', 'aria-label': 'Settings' }, [
@@ -196,6 +221,9 @@ export function openSettings() {
         el('span', { class: 'spacer' }),
         motion,
       ]),
+      toggle('typingFx', 'Typing effects: each character reveals itself as you type'),
+      toggle('typingSparks', 'Sparks too: a few sparks and a soft glow at the caret'),
+      toggle('celebrations', 'Celebrate accepted submissions'),
       el('div', { class: 'mono dim set-label', text: 'Keys' }),
       // Listed, not configurable. A shortcut you can rebind is a shortcut you have to
       // remember twice; what this is for is answering "what was it again".

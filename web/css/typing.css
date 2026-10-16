@@ -1,0 +1,33 @@
+/* Typing effects (web/js/typing-fx.js). The canvas sits over Monaco's text but under its
+   widgets (suggest, find, hover), and never takes a click. */
+.typing-fx{position:absolute;left:0;top:0;pointer-events:none;z-index:4;contain:strict}
+
+/* Typed characters reveal themselves (typing-reveal.js): opacity up from nothing, a blur
+   coming into focus, a small slide in from the left, travelling with the caret, and an accent glow that dies as it lands.
+   inline-block lets the glyph move without reflowing the line; Monaco's monospace grid
+   keeps every advance width the same either way. The tr-N classes resume a reveal at its
+   true age after Monaco re-renders the line, so fast typing never restarts one. */
+.monaco-editor .tr-reveal{
+  display:inline-block;transform-origin:left center;
+  animation:tr-reveal 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.monaco-editor .tr-0{animation-delay:-0ms}
+.monaco-editor .tr-1{animation-delay:-20ms}
+.monaco-editor .tr-2{animation-delay:-40ms}
+.monaco-editor .tr-3{animation-delay:-60ms}
+.monaco-editor .tr-4{animation-delay:-80ms}
+.monaco-editor .tr-5{animation-delay:-100ms}
+.monaco-editor .tr-6{animation-delay:-120ms}
+.monaco-editor .tr-7{animation-delay:-140ms}
+.monaco-editor .tr-8{animation-delay:-160ms}
+.monaco-editor .tr-9{animation-delay:-180ms}
+.monaco-editor .tr-10{animation-delay:-200ms}
+.monaco-editor .tr-11{animation-delay:-220ms}
+.monaco-editor .tr-12{animation-delay:-240ms}
+@keyframes tr-reveal{
+  0%{opacity:0;filter:blur(4px);transform:translateX(-.55em) scaleX(.85);text-shadow:0 0 10px rgba(var(--accent-rgb),.95)}
+  45%{opacity:.85;filter:blur(.6px);text-shadow:0 0 8px rgba(var(--accent-rgb),.6)}
+  100%{opacity:1;filter:blur(0);transform:none;text-shadow:0 0 0 rgba(var(--accent-rgb),0)}
+}
+@media (prefers-reduced-motion:reduce){.monaco-editor .tr-reveal{animation:none}}
+body.motion-off .monaco-editor .tr-reveal{animation:none}

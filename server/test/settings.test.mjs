@@ -80,14 +80,14 @@ test('toggle pins the opposite effective mode and preserves the family', async (
   assert.equal(settings.getSettings().theme, 'desk');
 });
 
-test('only four known keys are persisted and invalid theme/mode writes are ignored', async () => {
+test('only the known keys are persisted and invalid theme/mode writes are ignored', async () => {
   const { settings, data } = await setup({ theme: 'desk', mode: 'light', lightTheme: 'paper', darkTheme: 'slate', workspace: 'old', workspaceThemes: {} });
   settings.setSetting('codeSize', 16);
-  assert.deepEqual(JSON.parse(data.get('studio.settings.v1')), { theme: 'desk', mode: 'light', codeSize: 16, motion: true });
+  assert.deepEqual(JSON.parse(data.get('studio.settings.v1')), { theme: 'desk', mode: 'light', codeSize: 16, motion: true, typingFx: true, typingSparks: false, celebrations: true });
   settings.setSetting('theme', 'unknown');
   settings.setSetting('mode', 'unknown');
   settings.setSetting('workspace', 'old');
-  assert.deepEqual(settings.getSettings(), { theme: 'desk', mode: 'light', codeSize: 16, motion: true, dark: false });
+  assert.deepEqual(settings.getSettings(), { theme: 'desk', mode: 'light', codeSize: 16, motion: true, typingFx: true, typingSparks: false, celebrations: true, dark: false });
 });
 
 test('missing matchMedia is safe', async () => {

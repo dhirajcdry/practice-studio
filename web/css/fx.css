@@ -1,0 +1,68 @@
+/* The Accepted celebration: the canvas it plays on and the toast that names the win.
+   Everything reads theme tokens, so it belongs to whichever of the nine themes is on. */
+
+.fx-canvas{
+  position:fixed;inset:0;width:100vw;height:100vh;
+  pointer-events:none;z-index:2147483000;
+}
+
+/* Below the canvas on purpose: confetti flying over the card is the point. */
+.fx-toast{
+  position:fixed;top:calc(var(--topbar-h, 52px) + 14px);left:50%;z-index:2147482000;
+  display:flex;align-items:center;gap:12px;
+  min-width:212px;max-width:min(440px, calc(100vw - 32px));
+  padding:11px 18px 11px 12px;
+  background:var(--card);color:var(--ink);
+  border:1px solid var(--hair-10);border-radius:var(--r-md, 8px);
+  box-shadow:var(--shadow-lift);
+  font:500 13px/1.35 var(--ui, system-ui, sans-serif);
+  cursor:pointer;user-select:none;
+  opacity:0;transform:translate(-50%, -14px) scale(.96);
+  transition:opacity .22s ease, transform .5s cubic-bezier(.2, 1.3, .4, 1);
+}
+.fx-toast.is-in{opacity:1;transform:translate(-50%, 0) scale(1)}
+.fx-toast.is-leaving{opacity:0;transform:translate(-50%, -8px) scale(.98);transition:opacity .2s ease, transform .25s ease}
+.fx-toast.is-still,
+.fx-toast.is-still.is-leaving{transform:translate(-50%, 0);transition:opacity .2s ease}
+
+.fx-toast-mark{
+  flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;
+  background:var(--easy);color:var(--card);
+  box-shadow:0 0 0 4px var(--easy-soft);
+}
+.fx-toast-mark svg{fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.fx-toast-mark path{stroke-dasharray:22;stroke-dashoffset:22}
+.fx-toast.is-in .fx-toast-mark path{animation:fx-draw .42s .16s cubic-bezier(.6, 0, .3, 1) forwards}
+.fx-toast.is-still .fx-toast-mark path{animation:none;stroke-dashoffset:0}
+
+.fx-toast-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fx-toast-head{font:650 15px/1.2 var(--display, var(--ui, system-ui));letter-spacing:-.01em;color:var(--easy)}
+.fx-toast-meta{
+  display:flex;flex-wrap:wrap;align-items:center;gap:0 6px;
+  color:var(--ink-70);font-size:12.5px;font-variant-numeric:tabular-nums;
+  max-height:0;opacity:0;overflow:hidden;
+  transition:opacity .3s ease, max-height .3s ease;
+}
+.fx-toast-meta.is-filled{max-height:40px;opacity:1}
+.fx-toast-meta b{color:var(--ink);font-weight:650}
+.fx-toast-dot{color:var(--ink-35)}
+.fx-toast-streak{display:inline-flex;align-items:center;gap:4px;color:var(--ink)}
+
+.fx-flame{flex:none;overflow:visible;transform-origin:50% 90%}
+.fx-flame-outer{fill:var(--hard)}
+.fx-flame-inner{fill:var(--med)}
+.fx-toast.is-in:not(.is-still) .fx-flame{animation:fx-flicker 1.1s ease-in-out infinite alternate}
+
+@keyframes fx-draw{to{stroke-dashoffset:0}}
+@keyframes fx-flicker{
+  0%{transform:scale(1, 1) rotate(-2deg)}
+  50%{transform:scale(.94, 1.06) rotate(1.5deg)}
+  100%{transform:scale(1.03, .97) rotate(-1deg)}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .fx-toast,.fx-toast.is-leaving{transform:translate(-50%, 0);transition:opacity .2s ease}
+  .fx-toast-mark path{animation:none !important;stroke-dashoffset:0}
+  .fx-flame{animation:none !important}
+}
+body.motion-off .fx-flame{animation:none !important}
