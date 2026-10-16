@@ -708,6 +708,10 @@ body.hide-results .ws-results{display:none}
 }
 .rr-field.bad pre{border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
 .rr-field.wide{margin-top:10px}
+/* Printed output runs to its full length: the results pane is the one scroller. A capped
+   box scrolling inside a scrolling pane caught the wheel, and the rest of the output read
+   as unreachable. Long lines still wrap. */
+.rr-field.wide:not(.trace) pre{max-height:none;overflow:visible}
 .rr-field.trace pre{border-color:rgba(var(--hard-rgb),.3);background:var(--hard-soft);white-space:pre;max-height:230px}
 .rr-msg{font-size:13.5px;color:var(--ink-70);margin:0 0 10px;max-width:70ch}
 .rr-note{font-size:13px;color:var(--med);margin:0 0 10px}
