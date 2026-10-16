@@ -50,16 +50,30 @@ function licenseFooter(license, sourcePath) {
 
 export function isDrawerOpen() { return drawerState.kind !== null; }
 
-export function closeDrawer() {
+// The slide's length lives in CSS (--dur-drawer, 0ms under reduced motion). A timer,
+// not transitionend: a 0ms transition never fires one.
+function drawerMs() {
+  const value = parseFloat(getComputedStyle(document.body).getPropertyValue('--dur-drawer'));
+  return Number.isFinite(value) ? value : 240;
+}
+
+// Keyboard opens and closes (s, a, Esc) are instant; pointer ones slide.
+function setInstant(instant) {
+  drawerEl.classList.toggle('is-instant', instant);
+  scrimEl.classList.toggle('is-instant', instant);
+}
+
+export function closeDrawer({ instant = false } = {}) {
   if (!drawerState.kind) return;
   drawerState = { slug: null, kind: null };
+  setInstant(instant);
   drawerEl.classList.remove('show');
   scrimEl.classList.remove('show');
   drawerEl.setAttribute('aria-hidden', 'true');
   setTimeout(() => {
     if (drawerState.kind) return;
     drawerEl.hidden = true; scrimEl.hidden = true; clear(drawerEl);
-  }, 240);
+  }, instant ? 0 : drawerMs());
   onDrawerChange();
 }
 
@@ -84,14 +98,18 @@ function drawerShell(entry, kind) {
   return body;
 }
 
-export async function openPanel(entry, kind) {
+export async function openPanel(entry, kind, { instant = false } = {}) {
   const sameAgain = drawerState.slug === entry.slug && drawerState.kind === kind;
-  if (sameAgain) { closeDrawer(); return; }
+  if (sameAgain) { closeDrawer({ instant }); return; }
 
   drawerState = { slug: entry.slug, kind };
+  setInstant(instant);
   drawerEl.hidden = false; scrimEl.hidden = false;
   drawerEl.setAttribute('aria-hidden', 'false');
-  requestAnimationFrame(() => { drawerEl.classList.add('show'); scrimEl.classList.add('show'); });
+  // Coming out of display:none, the closed position has to be computed once before
+  // .show lands, or the browser starts from the open position and nothing slides.
+  drawerEl.getBoundingClientRect();
+  drawerEl.classList.add('show'); scrimEl.classList.add('show');
   onDrawerChange();
 
   const body = drawerShell(entry, kind);

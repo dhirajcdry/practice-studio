@@ -131,7 +131,7 @@ export function createRecorder({ getSlug, getTitle = slug => slug, onAttemptStar
     if (!sticky && text) {
       fadeTimer = setTimeout(() => {
         note.classList.add('fade');
-        fadeTimer = setTimeout(() => { note.hidden = true; note.classList.remove('fade'); }, 600);
+        fadeTimer = setTimeout(() => { note.hidden = true; note.classList.remove('fade'); }, 200);
       }, 5_000);
     }
   }

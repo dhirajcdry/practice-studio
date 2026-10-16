@@ -847,25 +847,23 @@ body.theme-dunes.is-dark{
 /* Art stays behind an isolated body; one glass layer per pane keeps the painting luminous. */
 body.theme-art{background:transparent;isolation:isolate;--pane-shadow:0 12px 40px rgba(var(--ink-rgb),.10)}
 body.theme-art.is-dark{--pane-shadow:0 0 0 1px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.45),0 0 48px rgba(var(--accent-rgb),.08)}
+/* The painting is still. A slow drift was invisible behind the frosted panes and made
+   every one of them re-blur on every frame, even with nothing else happening. */
 body.theme-art::before{
-  content:"";position:fixed;inset:-3%;z-index:-1;
+  content:"";position:fixed;inset:0;z-index:-1;
   background:var(--canvas) var(--art) center/cover no-repeat;pointer-events:none;
-  animation:art-drift 90s ease-in-out infinite alternate;
 }
-@keyframes art-drift{from{transform:scale(1) translate(0,0)}to{transform:scale(1.06) translate(1%,-1%)}}
-body.theme-art.reduce-motion::before{animation:none}
-@media(prefers-reduced-motion:reduce){body.theme-art::before{animation:none}}
 body.theme-art :is(.topbar,.pcol,.ws,.coach,.filterbar,.dz-side,.dz-canvas){
   background:var(--glass);
-  -webkit-backdrop-filter:blur(28px) saturate(1.6);backdrop-filter:blur(28px) saturate(1.6);
+  -webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
 }
 body.theme-art :is(.card,.psec,.dash-card,.dash-stats,.roadmap-node,.roadmap-graph-col,.roadmap-detail,.dzl-list,.dz-setup){
   background:color-mix(in srgb,var(--card) 80%,transparent);
-  -webkit-backdrop-filter:blur(28px) saturate(1.6);backdrop-filter:blur(28px) saturate(1.6);
+  -webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
 }
 body.theme-art :is(.settings,.navmenu,.drawer,.rec-note,.coach-run,.coach-launch,.monaco-editor .suggest-widget,.monaco-editor .monaco-hover,.monaco-editor .find-widget){
   background:color-mix(in srgb,var(--card) 92%,transparent);
-  -webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4);
 }
 body.theme-art .ws{background:var(--glass)}
 body.theme-art .filterbar::before{content:none}
@@ -878,6 +876,19 @@ body.theme-art :is(.editor-tabs,.editor-file,.ws-host,.ws-fallback,.ws-bar,.ws-r
 body.theme-art .roadmap-viewport{background-color:transparent}
 body.theme-art .roadmap-graph-col{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
 body.theme-art :is(.monaco-editor,.monaco-editor-background,.monaco-editor .margin){background:transparent}
+/* Sticky scroll pins the enclosing class/def lines over the code and takes its colour from
+   the editor background, which is transparent here, so the code scrolled visibly through
+   it. Its own surface is a near-opaque bar; the line parts inherit it. Monaco's other
+   overlays that inherit the editor background get the same footing. */
+body.theme-art .monaco-editor .sticky-widget{
+  background-color:color-mix(in srgb,var(--card) 94%,transparent)!important;
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--hair-10);box-shadow:0 8px 16px -10px rgba(0,0,0,.45)!important;
+}
+body.theme-art .monaco-editor :is(.parameter-hints-widget,.rename-box,.monaco-menu-container .monaco-menu,.peekview-widget,.zone-widget-container){
+  background-color:color-mix(in srgb,var(--card) 96%,transparent)!important;
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+}
 @media(min-width:1081px){
   body.theme-art.ws-wide .pbody.with-workspace{padding:10px 10px 10px 0}
   body.theme-art.ws-wide .workspace-rail{border-right:0}
@@ -921,6 +932,14 @@ body.theme-art .pcol .psec{
   --art-card-fill:rgba(var(--ink-rgb),.045);
   background:var(--art-card-fill);
 }
+/* The catalog stacks dozens of sections; a blur layer under each one is dozens of
+   blurs per scroll frame. They take a plain translucent fill instead, and the glass
+   stays on the larger panes (top bar, filter bar, tree). */
+body.theme-art .catalog .psec{
+  --art-card-fill:color-mix(in srgb,var(--card) 82%,transparent);
+  background:var(--art-card-fill);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
 body.theme-art :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){
   border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);border:1px solid rgba(var(--ink-rgb),.10);
   -webkit-backdrop-filter:none;backdrop-filter:none;
@@ -931,7 +950,7 @@ body.theme-art :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed=
 }
 body.theme-art:not(.is-dark) :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){color:var(--ink)}
 body.theme-art .tc-tab.is-on .tc-mark{color:inherit}
-body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit){transition:border-color 150ms,background 150ms,color 150ms}
+body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit){transition:border-color var(--dur-hover) ease,background var(--dur-hover) ease,color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out)}
 body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit):hover:not(:disabled){
   border-color:rgba(var(--accent-rgb),.5);background:rgba(var(--accent-rgb),.08);color:var(--ink);
 }

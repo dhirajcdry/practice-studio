@@ -60,14 +60,23 @@
   --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
   --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
   --topbar-h:56px;
+  /* Motion. One set of curves and durations so every surface moves alike. */
+  --ease-out:cubic-bezier(0.23, 1, 0.32, 1);      /* entrances and exits: fast start */
+  --ease-in-out:cubic-bezier(0.77, 0, 0.175, 1);  /* movement across the screen */
+  --ease-drawer:cubic-bezier(0.32, 0.72, 0, 1);   /* side sheets: iOS-like settle */
+  --dur-hover:120ms;   /* colour, border, background on hover */
+  --dur-turn:150ms;    /* carets, icon lifts, press feedback (movement) */
+  --dur-fade:200ms;    /* opacity fades */
+  --dur-drawer:240ms;  /* drawer and settings sheet slides (movement) */
 }
+/* Reduced motion zeroes the movement tokens and keeps the fades. */
+body.motion-off{--dur-turn:0ms;--dur-drawer:0ms}
+@media (prefers-reduced-motion:reduce){body{--dur-turn:0ms;--dur-drawer:0ms}}
 
 *{margin:0;padding:0;box-sizing:border-box}
 /* Several components below set `display`, which would otherwise beat the UA's
    [hidden] rule and leave an empty strip or an invisible click-blocking layer. */
 [hidden]{display:none !important}
-html{scroll-behavior:smooth}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{
   background:var(--canvas);color:var(--ink);
   font-family:var(--serif);font-size:15px;line-height:1.55;
@@ -133,14 +142,20 @@ select:not([multiple]){appearance:none;-webkit-appearance:none;cursor:pointer;
 }
 .navbtn:hover{color:var(--ink);border-color:var(--hair-20)}
 .navbtn[aria-expanded="true"]{color:var(--ink);border-color:var(--ink)}
-.navcaret{flex:0 0 auto;opacity:.55;transition:transform .12s ease}
+.navcaret{flex:0 0 auto;opacity:.55;transition:transform var(--dur-turn) var(--ease-out)}
 .navbtn[aria-expanded="true"] .navcaret{transform:rotate(180deg)}
-body.reduce-motion .navcaret{transition:none}
+body.motion-off .navcaret{transition:none}
+@media (prefers-reduced-motion:reduce){.navcaret{transition:none}}
 
 .navmenu{
   position:absolute;top:calc(100% + 7px);left:0;z-index:70;min-width:178px;padding:5px;
   background:var(--card);border:1px solid var(--hair-20);border-radius:var(--r-md);box-shadow:var(--shadow-lift);
+  /* Grows from the button it hangs off. A keyboard open sets data-instant and skips it. */
+  transform-origin:top left;transition:opacity 150ms var(--ease-out),transform 150ms var(--ease-out);
 }
+@starting-style{.navmenu{opacity:0;transform:scale(0.97)}}
+@media (prefers-reduced-motion:reduce){.navmenu{transition:opacity 150ms var(--ease-out)}}
+.navmenu[data-instant]{transition:none}
 .navmenu a{
   display:flex;align-items:center;justify-content:space-between;gap:12px;
   color:var(--ink-70);text-decoration:none;padding:7px 9px;border-radius:var(--r-sm);white-space:nowrap;
@@ -154,7 +169,6 @@ body.reduce-motion .navcaret{transition:none}
 .topbar{
   position:sticky;top:0;z-index:60;height:var(--topbar-h);
   background:var(--canvas);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   border-bottom:1px solid var(--hair-20);
   /* Four links became one control, and the room that freed up goes into the gaps
      rather than into making anything bigger. */
@@ -257,7 +271,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{
   padding:5px 11px;border:1px solid var(--hair-20);border-radius:999px;
-  background:var(--card);color:var(--ink-50);white-space:nowrap;transition:background .12s,color .12s,border-color .12s;
+  background:var(--card);color:var(--ink-50);white-space:nowrap;transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .chip:hover{border-color:var(--ink);color:var(--ink)}
@@ -284,7 +298,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
   align-items:center;gap:14px;text-align:left;padding:13px 16px;
 }
 .phead:hover{background:rgba(var(--ink-rgb),.028)}
-.phead .caret{color:var(--ink-35);font-size:10px;line-height:1;transition:transform .16s ease;justify-self:center}
+.phead .caret{color:var(--ink-35);font-size:10px;line-height:1;transition:transform var(--dur-turn) var(--ease-out);justify-self:center}
 @media (prefers-reduced-motion:reduce){.phead .caret{transition:none}}
 .phead[aria-expanded="true"] .caret{transform:rotate(90deg)}
 .phead .pidx{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-35);font-variant-numeric:tabular-nums}
@@ -344,7 +358,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .ptoggle{
   display:inline-flex;align-items:center;gap:9px;
   padding:7px 14px;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);color:var(--ink-70);
-  transition:background .12s,color .12s,border-color .12s;
+  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease;
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .ptoggle:hover{border-color:var(--ink);color:var(--ink)}
@@ -405,17 +419,17 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .tok-bi{color:var(--tok-def)}
 
 /* ---------------- drawer ---------------- */
-.scrim{position:fixed;inset:0;z-index:70;background:rgba(var(--ink-rgb),.16);opacity:0;transition:opacity .2s ease}
+.scrim{position:fixed;inset:0;z-index:70;background:rgba(var(--ink-rgb),.16);opacity:0;transition:opacity var(--dur-fade) ease}
 .scrim.show{opacity:1}
-@media (prefers-reduced-motion:reduce){.scrim{transition:none}}
 .drawer{
   position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(760px,100vw);
   background:var(--card);border-left:1px solid var(--hair-20);box-shadow:var(--shadow-lift);
   display:flex;flex-direction:column;
-  transform:translateX(100%);transition:transform .24s cubic-bezier(.22,.68,.28,1);
+  transform:translateX(100%);transition:transform var(--dur-drawer) var(--ease-drawer);
 }
 .drawer.show{transform:translateX(0)}
-@media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+/* Opened or closed from the keyboard (s, a, Esc): no slide, no fade. */
+:is(.drawer,.scrim).is-instant{transition:none}
 .dhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--hair-10);flex:0 0 auto;flex-wrap:wrap}
 .dtabs{display:flex;gap:2px;border:1px solid var(--hair-20);border-radius:var(--r-md);padding:2px;background:var(--canvas)}
 .dtab{
@@ -579,7 +593,7 @@ body.hide-problem .ws-probtitle{
 .ws-mini{
   display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
   border:1px solid var(--hair-20);border-radius:var(--r-md);padding:6px 11px;background:var(--card);color:var(--ink-50);
-  transition:background .12s,color .12s,border-color .12s;
+  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .ws-mini:hover{color:var(--ink);border-color:var(--ink)}
@@ -589,6 +603,7 @@ body.hide-problem .ws-probtitle{
 .ws-run{
   display:inline-flex;align-items:center;gap:8px;
   background:var(--solid-bg);color:var(--solid-fg);border:1px solid var(--solid-edge);border-radius:var(--r-md);padding:7px 14px;
+  transition:background var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .ws-run:hover{background:var(--solid-hover)}
@@ -637,7 +652,7 @@ body.hide-results .ws-results{display:none}
 
 .rr-running{padding:0 0 13px}
 .rr-bar{height:2px;background:var(--hair-10);overflow:hidden}
-.rr-bar i{display:block;height:100%;width:36%;background:var(--accent);animation:rr-slide 1.05s ease-in-out infinite}
+.rr-bar i{display:block;height:100%;width:36%;background:var(--accent);animation:rr-slide 1.05s linear infinite}
 @keyframes rr-slide{from{transform:translateX(-110%)}to{transform:translateX(320%)}}
 @media (prefers-reduced-motion:reduce){.rr-bar i{animation:none;width:100%;opacity:.25}}
 .rr-runrow{display:flex;align-items:center;gap:12px;padding:13px 16px 0}
@@ -654,6 +669,9 @@ body.hide-results .ws-results{display:none}
   box-shadow:0 1px 0 var(--hair-06);
 }
 .rr-summary .spacer{flex:1 1 auto}
+/* A fresh result fades in, once per render. Opacity only: it lands where it belongs. */
+.rr-summary,.rr-cases{transition:opacity 120ms var(--ease-out)}
+@starting-style{.rr-summary,.rr-cases{opacity:0}}
 .rr-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
 .rr-headline{font-weight:700;font-size:15px;letter-spacing:-.02em}
 .rr-summary.s-pass .rr-dot{background:var(--easy)}
@@ -666,7 +684,7 @@ body.hide-results .ws-results{display:none}
 .rr-case + .rr-case{border-top:1px solid var(--hair-06)}
 .rr-casehead{width:100%;display:flex;align-items:center;gap:10px;padding:8px 16px;text-align:left}
 .rr-casehead:hover{background:rgba(var(--ink-rgb),.028)}
-.rr-caret{color:var(--ink-35);font-size:12px;line-height:1;flex:0 0 auto;transition:transform .16s ease}
+.rr-caret{color:var(--ink-35);font-size:12px;line-height:1;flex:0 0 auto;transition:transform var(--dur-turn) var(--ease-out)}
 @media (prefers-reduced-motion:reduce){.rr-caret{transition:none}}
 .rr-casehead[aria-expanded="true"] .rr-caret{transform:rotate(90deg)}
 .rr-caseno{flex:0 0 auto;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -733,14 +751,19 @@ body.hide-results .ws-results{display:none}
   display:inline-flex;align-items:center;gap:9px;
   background:var(--card);border:1px solid var(--hair-20);border-radius:999px;padding:9px 16px;
   color:var(--ink-70);box-shadow:var(--shadow);
-  transition:background .12s,color .12s,border-color .12s,transform .12s;
+  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
-.coach-launch:hover{border-color:var(--ink);color:var(--ink);transform:translateY(-1px)}
+.coach-launch:hover{border-color:var(--ink);color:var(--ink)}
+/* The lift is for a real pointer; a tap fires a hover that would stick. */
+@media (hover:hover) and (pointer:fine){
+  .coach-launch:hover{transform:translateY(-1px)}
+  .coach-launch:hover:active{transform:translateY(-1px) scale(0.97)}
+}
 .coach-launch kbd{font-family:var(--mono);font-size:9px;border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:0 4px;opacity:.7}
 .coach-launch[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .coach-launch[aria-pressed="true"] kbd{border-color:currentColor;opacity:.55}
-@media (prefers-reduced-motion:reduce){.coach-launch{transition:none}}
+@media (prefers-reduced-motion:reduce){.coach-launch{transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease}}
 
 /* ---- the panel, as a third column beside the editor ---- */
 .coach{
@@ -987,7 +1010,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 .ws-submit{
   display:inline-flex;align-items:baseline;gap:7px;white-space:nowrap;
   background:var(--card);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-md);padding:7px 13px;
-  transition:background .12s,color .12s;
+  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 .ws-submit:hover:not(:disabled){background:var(--accent);color:var(--on-ink)}
@@ -998,7 +1021,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 }
 .ws-submit:disabled{cursor:default;background:var(--accent-soft)}
 .ws-submit.busy{border-style:dashed}
-@media (prefers-reduced-motion:reduce){.ws-submit{transition:none}}
+@media (prefers-reduced-motion:reduce){.ws-submit{transition:background var(--dur-hover) ease,color var(--dur-hover) ease}}
 
 /* ---- the collapsed lane ---- */
 /* The pane shows one lane. The other is this: a single line saying what it holds, so a
@@ -1039,7 +1062,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 /* judging — determinate against the cap, so it can never spin forever */
 .sub-judging{padding:0 0 2px}
 .sub-progress{height:3px;background:rgba(var(--ink-rgb),.09)}
-.sub-progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s linear}
+.sub-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;background:var(--accent);transition:transform .12s linear}
 @media (prefers-reduced-motion:reduce){.sub-progress i{transition:none}}
 .sub-runrow{display:flex;align-items:center;gap:12px;padding:13px 16px 0}
 .sub-runrow .spacer{flex:1 1 auto}
@@ -1172,7 +1195,7 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   display:inline-flex;align-items:center;gap:9px;
   background:var(--card);border:1px solid var(--hair-20);border-radius:999px;
   padding:8px 15px;box-shadow:var(--shadow);
-  transition:border-color .14s ease,box-shadow .14s ease;
+  transition:border-color var(--dur-hover) ease,box-shadow var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
 }
 .rec-toggle:hover{border-color:var(--ink-35)}
 
@@ -1204,12 +1227,16 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(46ch,60vw);
   font-size:12.5px;color:var(--ink-50);background:var(--card);
   border:1px solid var(--hair-10);border-radius:var(--r-md);padding:7px 11px;box-shadow:var(--shadow);
+  /* Enters from the recorder above it, once per show; text updates while shown don't replay it. */
+  transform-origin:top right;transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out);
 }
+@starting-style{.rec-note{opacity:0;transform:translateY(-6%) scale(0.97)}}
+@media (prefers-reduced-motion:reduce){.rec-note{transition:opacity 180ms var(--ease-out)}}
 .rec-note[data-tone="ok"]{color:var(--easy)}
 .rec-note[data-tone="warn"]{color:var(--med)}
 .rec-note[data-tone="err"]{color:var(--hard);border-color:rgba(var(--hard-rgb),.3)}
 /* It floats over the page, so it may not stay there once it has been read. */
-.rec-note.fade{opacity:0;transition:opacity .5s ease;pointer-events:none}
+.rec-note.fade{opacity:0;transition:opacity var(--dur-fade) var(--ease-out);pointer-events:none}
 
 .recmount{display:flex;align-items:center}
 .recmount:not(:empty){margin-right:4px}
@@ -1227,13 +1254,17 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
 }
 .set-open:hover{color:var(--ink);border-color:var(--hair-20)}
 
-.set-scrim{position:fixed;inset:0;background:rgba(var(--ink-rgb),.18);z-index:90}
+.set-scrim{position:fixed;inset:0;background:rgba(var(--ink-rgb),.18);z-index:90;transition:opacity var(--dur-fade) ease}
+@starting-style{.set-scrim{opacity:0}}
 .settings{
   position:fixed;top:0;right:0;z-index:91;
   width:min(420px,94vw);height:100vh;
   background:var(--card);border-left:1px solid var(--hair-20);box-shadow:var(--shadow-lift);
   display:flex;flex-direction:column;
+  /* Slides in from the edge it lives on. Closing stays instant. */
+  transition:transform var(--dur-drawer) var(--ease-drawer);
 }
+@starting-style{.settings{transform:translateX(100%)}}
 .set-head{
   display:flex;align-items:center;gap:10px;
   padding:0 16px;height:var(--topbar-h);flex:0 0 auto;
@@ -1249,7 +1280,7 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
 .set-card{
   display:block;text-align:left;width:100%;
   border:1px solid var(--hair-20);border-radius:var(--r-md);padding:11px 12px;background:var(--card);
-  transition:border-color .12s ease,background .12s ease;
+  transition:border-color var(--dur-hover) ease,background var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
 }
 .set-card:hover{border-color:var(--ink-35)}
 .set-card[aria-pressed="true"]{border-color:var(--ink);background:rgba(var(--ink-rgb),.03)}
@@ -1264,7 +1295,9 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
 .set-value{flex:0 0 auto;font-size:10px}
 .set-check{width:16px;height:16px;accent-color:var(--ink)}
 
-body.reduce-motion *{animation:none !important;transition:none !important}
+/* Reduce motion: nothing loops or moves. Colour and opacity changes still ease, because
+   they explain a change of state without moving anything. */
+body.motion-off :is(*,*::before,*::after){animation:none !important;transition-property:opacity,color,background-color,border-color !important}
 
 /* Theme palettes and character live in themes.css. */
 
@@ -1417,3 +1450,16 @@ body.coach-open .coach-runs{bottom:20px}
 .rec-problem{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11px var(--ui);color:var(--ink-70)}
 .rec[hidden],.rec-problem[hidden],.rec-end[hidden]{display:none}
 .rec-end{font:500 11px var(--ui)}
+
+/* Press feedback: buttons give a little under the pointer. Each one's transition list
+   carries transform var(--dur-turn), which reduced motion zeroes. */
+:is(.ws-run,.ws-submit,.ws-mini,.rec-toggle,.coach-launch,.btn,.act,.chip,.set-card):active:not(:disabled){transform:scale(0.97)}
+:is(.btn,.act){transition:transform var(--dur-turn) var(--ease-out)}
+
+/* Theme and appearance changes crossfade (settings.js startViewTransition). */
+::view-transition-old(root),::view-transition-new(root){animation-duration:var(--dur-fade);animation-timing-function:var(--ease-out)}
+
+/* The verdict lands rather than jumping in: one short beat after seconds of judging. */
+.sub-verdict{transition:opacity var(--dur-fade) var(--ease-out),transform var(--dur-fade) var(--ease-out)}
+.sub-verdict + .sub-msg{transition:opacity var(--dur-fade) var(--ease-out) 40ms}
+@starting-style{.sub-verdict{opacity:0;transform:translateY(6px)}.sub-verdict + .sub-msg{opacity:0}}
