@@ -346,18 +346,19 @@ export function renderBrowse(data, state, handlers) {
   ]));
   view.append(progressOverview(collection, state, handlers));
 
+  // One toolbar, aligned to the column it filters: two segmented controls (which list,
+  // which level) and the count. Labels moved into aria: the options say what they are.
+  const segment = (label, options) => el('div', { class: 'seg', role: 'group', 'aria-label': label }, options);
   const controls = el('div', { class: 'filterbar' }, [
-    el('div', { class: 'fgroup' }, [
-      el('span', { class: 'mono dim', text: 'List' }),
-      el('div', { class: 'chips' }, LIST_FILTERS.map(f =>
-        chip(f.label, state.list === f.id, () => handlers.onList(f.id)))),
-    ]),
-    el('div', { class: 'fgroup' }, [
-      el('span', { class: 'mono dim', text: 'Level' }),
-      el('div', { class: 'chips' }, [
-        chip('All', state.difficulty === 'all', () => handlers.onDifficulty('all')),
-        ...DIFFICULTIES.map(d => chip(d, state.difficulty === d, () => handlers.onDifficulty(d), d.toLowerCase())),
-      ]),
+    segment('List', LIST_FILTERS.map(f =>
+      chip(f.label, state.list === f.id, () => handlers.onList(f.id), 'seg-opt'))),
+    segment('Level', [
+      chip('All levels', state.difficulty === 'all', () => handlers.onDifficulty('all'), 'seg-opt'),
+      ...DIFFICULTIES.map(d => {
+        const option = chip(d, state.difficulty === d, () => handlers.onDifficulty(d), 'seg-opt ' + d.toLowerCase());
+        option.prepend(el('i', { class: 'seg-dot', 'aria-hidden': 'true' }));
+        return option;
+      }),
     ]),
     el('span', { class: 'spacer' }),
     // Plain numerals here: the boxed-digit treatment read as "1 3 of 250" at this size.

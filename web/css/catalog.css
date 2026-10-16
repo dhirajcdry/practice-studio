@@ -47,13 +47,48 @@ body.browse-page main{max-width:1680px;padding:32px 28px 48px}
 .catalog-content{min-width:0}
 .catalog-path{display:flex;align-items:center;gap:10px;font:12px var(--ui);color:var(--ink-50);margin:2px 0 14px}
 .catalog-path strong{font-weight:600;color:var(--ink)}
-.catalog .filterbar{position:sticky;top:var(--topbar-h);margin:0 0 16px;padding:10px 0 16px;gap:14px;background:var(--canvas);z-index:2}
+.catalog .filterbar{
+  position:sticky;top:calc(var(--topbar-h) + 10px);z-index:20;
+  margin:0 0 18px;padding:6px 6px 6px 6px;gap:8px 10px;
+  display:flex;align-items:center;flex-wrap:wrap;
+  background:var(--card);border:1px solid var(--hair-10);border-radius:var(--r-md);box-shadow:var(--shadow);
+}
+/* The bar used to bleed 20px past the column and paint a full-width band behind itself;
+   as a contained toolbar its edges are the column's edges. */
 .catalog .filterbar::before{content:none}
-.catalog .filterbar .mono{font:10px var(--ui);text-transform:none;letter-spacing:0}
-.catalog .fgroup{flex-wrap:wrap;gap:8px}
-.catalog .chip{font:11px var(--ui);text-transform:none;letter-spacing:0;padding:7px 11px;border-radius:var(--r-sm);transition:border-color var(--dur-hover) ease,color var(--dur-hover) ease,background-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out)}
-.catalog .countpill{gap:0;font:12px var(--ui);color:var(--ink-50);letter-spacing:0;white-space:pre}
+/* A segmented control: a recessed track, the chosen option raised out of it. */
+.catalog .seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:calc(var(--r-md) - 3px);background:rgba(var(--ink-rgb),.055)}
+.catalog .seg-opt{
+  display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:6px 12px;
+  border:0;border-radius:calc(var(--r-md) - 5px);background:transparent;box-shadow:none;
+  color:var(--ink-50);font:500 12px/1.2 var(--ui);letter-spacing:0;text-transform:none;white-space:nowrap;
+  transition:color var(--dur-hover) ease,background-color var(--dur-hover) ease,box-shadow var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
+}
+.catalog .seg-opt:hover{color:var(--ink);background:rgba(var(--ink-rgb),.05);border:0}
+.catalog .seg-opt[aria-pressed="true"],
+.catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
+  color:var(--ink);background:var(--card);border:0;
+  box-shadow:0 1px 2px rgba(var(--ink-rgb),.12),0 0 0 1px var(--hair-10);
+}
+body.is-dark .catalog .seg-opt[aria-pressed="true"],
+body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
+  background:rgba(var(--ink-rgb),.13);box-shadow:inset 0 1px 0 rgba(var(--ink-rgb),.08),0 1px 3px rgba(var(--on-ink-rgb),.5);
+}
+.catalog .seg-dot{width:7px;height:7px;border-radius:50%;flex:none;opacity:.75;transition:opacity var(--dur-hover) ease}
+.catalog .seg-opt.easy .seg-dot{background:var(--easy)}
+.catalog .seg-opt.medium .seg-dot{background:var(--med)}
+.catalog .seg-opt.hard .seg-dot{background:var(--hard)}
+.catalog .seg-opt[aria-pressed="true"] .seg-dot{opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 0%,transparent)}
+.catalog .seg-opt.easy[aria-pressed="true"] .seg-dot{box-shadow:0 0 0 3px var(--easy-soft)}
+.catalog .seg-opt.medium[aria-pressed="true"] .seg-dot{box-shadow:0 0 0 3px var(--med-soft)}
+.catalog .seg-opt.hard[aria-pressed="true"] .seg-dot{box-shadow:0 0 0 3px var(--hard-soft)}
+.catalog .filterbar .spacer{flex:1 1 auto}
+.catalog .countpill{gap:0;padding:0 4px;font:12px var(--ui);color:var(--ink-50);letter-spacing:0;white-space:pre}
 .catalog .countpill b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.catalog .filterbar .linkbtn{min-height:30px;padding:6px 10px;border-radius:calc(var(--r-md) - 5px);font:500 12px var(--ui);color:var(--ink-50)}
+.catalog .filterbar .linkbtn:hover{color:var(--ink);background:rgba(var(--ink-rgb),.05);text-decoration:none}
+@media(max-width:1080px){.catalog .filterbar{position:static;margin:0 0 14px}}
+@media(max-width:620px){.catalog .seg{max-width:100%;overflow-x:auto}.catalog .filterbar .spacer{display:none}}
 .catalog .linkbtn{font:11px var(--ui);text-transform:none;letter-spacing:0;min-height:30px}
 
 /* ---------------- pattern sections ---------------- */
