@@ -16,10 +16,10 @@ export const THEMES = [
   { id: 'editorial', name: 'Editorial', blurb: 'Serif prose, double rules, a printed page.', light: { paper: '#F4EFE6', ink: '#1A1614', accent: '#9B2C2C' }, dark: { paper: '#16120F', ink: '#ECE3D4', accent: '#E07B6E' } },
   { id: 'ink', name: 'Ink', blurb: 'Banded headers, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
   { id: 'terminal', name: 'Terminal', blurb: 'Split panes, a status line, [ bracketed ] controls.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#A35F00' }, dark: { paper: '#0D0D0D', ink: '#D9DED9', accent: '#5FD38D' } },
-  { id: 'nebula', name: 'Nebula', blurb: 'Violet star clouds behind frosted glass.', art: true, light: { paper: '#F6F3FB', ink: '#1D1733', accent: '#6B3FD4' }, dark: { paper: '#0B0A1A', ink: '#ECE8FF', accent: '#B69CFF' } },
-  { id: 'horizon', name: 'Event Horizon', blurb: "A black hole's golden ring; a white-gold corona by day.", art: true, light: { paper: '#FBF6EC', ink: '#22180C', accent: '#B4600A' }, dark: { paper: '#08070A', ink: '#F3ECE0', accent: '#FFB25C' } },
-  { id: 'abyss', name: 'Abyss', blurb: 'Bioluminescent alien deep; a sunlit lagoon by day.', art: true, light: { paper: '#EEF8F8', ink: '#0B2A33', accent: '#00808A' }, dark: { paper: '#04101A', ink: '#DDF6F7', accent: '#3FF0D0' } },
-  { id: 'dunes', name: 'Twin Suns', blurb: 'An alien desert under a ringed planet.', art: true, light: { paper: '#FBF2E8', ink: '#2A1A10', accent: '#C2491D' }, dark: { paper: '#08141A', ink: '#E9E4DA', accent: '#FF9A62' } },
+  { id: 'nebula', name: 'Nebula', blurb: 'An observatory readout: bracketed frames, lit controls.', art: true, light: { paper: '#F6F3FB', ink: '#1D1733', accent: '#6B3FD4' }, dark: { paper: '#0B0A1A', ink: '#ECE8FF', accent: '#B69CFF' } },
+  { id: 'horizon', name: 'Event Horizon', blurb: 'Art deco in gold: double rules, Didot, gilt buttons.', art: true, light: { paper: '#FBF6EC', ink: '#22180C', accent: '#B4600A' }, dark: { paper: '#08070A', ink: '#F3ECE0', accent: '#FFB25C' } },
+  { id: 'abyss', name: 'Abyss', blurb: 'Rounded and soft-lit, like something glowing in the deep.', art: true, light: { paper: '#EEF8F8', ink: '#0B2A33', accent: '#00808A' }, dark: { paper: '#04101A', ink: '#DDF6F7', accent: '#3FF0D0' } },
+  { id: 'dunes', name: 'Twin Suns', blurb: 'Matte field kit: survey stripes, two suns, two shadows.', art: true, light: { paper: '#FBF2E8', ink: '#2A1A10', accent: '#C2491D' }, dark: { paper: '#08141A', ink: '#E9E4DA', accent: '#FF9A62' } },
 ];
 
 export function themeById(id) {

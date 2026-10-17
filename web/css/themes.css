@@ -845,7 +845,7 @@ body.theme-dunes.is-dark{
 }
 
 /* Art stays behind an isolated body; one glass layer per pane keeps the painting luminous. */
-body.theme-art{background:transparent;isolation:isolate;--pane-shadow:0 12px 40px rgba(var(--ink-rgb),.10)}
+body.theme-art{background:transparent;isolation:isolate;--blur:20px;--sat:1.6;--pill:999px;--pane-shadow:0 12px 40px rgba(var(--ink-rgb),.10)}
 body.theme-art.is-dark{--pane-shadow:0 0 0 1px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.45),0 0 48px rgba(var(--accent-rgb),.08)}
 /* The painting is still. A slow drift was invisible behind the frosted panes and made
    every one of them re-blur on every frame, even with nothing else happening. */
@@ -855,15 +855,15 @@ body.theme-art::before{
 }
 body.theme-art :is(.topbar,.pcol,.ws,.coach,.filterbar,.dz-side,.dz-canvas){
   background:var(--glass);
-  -webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));backdrop-filter:blur(var(--blur)) saturate(var(--sat));
 }
 body.theme-art :is(.card,.psec,.dash-card,.dash-stats,.roadmap-node,.roadmap-graph-col,.roadmap-detail,.dzl-list,.dz-setup){
   background:color-mix(in srgb,var(--card) 80%,transparent);
-  -webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));backdrop-filter:blur(var(--blur)) saturate(var(--sat));
 }
 body.theme-art :is(.settings,.navmenu,.drawer,.rec-note,.coach-run,.coach-launch,.monaco-editor .suggest-widget,.monaco-editor .monaco-hover,.monaco-editor .find-widget){
   background:color-mix(in srgb,var(--card) 92%,transparent);
-  -webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(1.4);backdrop-filter:blur(var(--blur)) saturate(1.4);
 }
 body.theme-art .ws{background:var(--glass)}
 body.theme-art .filterbar::before{content:none}
@@ -944,7 +944,7 @@ body.theme-art :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){
   border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);border:1px solid rgba(var(--ink-rgb),.10);
   -webkit-backdrop-filter:none;backdrop-filter:none;
 }
-body.theme-art :is(.tag,.tc-tab,.tc-add,.ws-bar .ws-mini,.ws-bar .btn,.tc .btn,.ws-submit){border-radius:999px}
+body.theme-art :is(.tag,.tc-tab,.tc-add,.ws-bar .ws-mini,.ws-bar .btn,.tc .btn,.ws-submit){border-radius:var(--pill)}
 body.theme-art :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){
   background:rgba(var(--accent-rgb),.16);color:var(--accent);border-color:rgba(var(--accent-rgb),.45);
 }
@@ -967,7 +967,7 @@ body.theme-art :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],
 body.theme-art.is-dark :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{box-shadow:0 2px 12px rgba(var(--accent-rgb),.5)}
 body.theme-art :is(.ws-run,.ws-run.tc-run,.coach-send){
   background:linear-gradient(var(--solid-bg),color-mix(in srgb,var(--solid-bg) 88%,black));
-  color:var(--solid-fg);border-color:var(--solid-edge);border-radius:999px;
+  color:var(--solid-fg);border-color:var(--solid-edge);border-radius:var(--pill);
 }
 body.theme-art .topbar{
   border-bottom:0;background-color:var(--glass);
@@ -981,9 +981,173 @@ body.theme-art ::-webkit-scrollbar-thumb{background:rgba(var(--accent-rgb),.35);
 body.theme-art ::-webkit-scrollbar-corner{background:transparent}
 
 /* A small veil keeps the preview's type bars legible over both paintings. */
-.theme-preview:is([data-theme-preview="nebula"],[data-theme-preview="horizon"],[data-theme-preview="abyss"],[data-theme-preview="dunes"]){--preview-radius:12px}
+.theme-preview[data-theme-preview="nebula"]{--preview-radius:2px;border-color:color-mix(in srgb,var(--pd-accent) 70%,transparent)}
+.theme-preview[data-theme-preview="horizon"]{--preview-radius:0px;border:1px solid var(--pl-accent);outline:1px solid color-mix(in srgb,var(--pl-accent) 40%,transparent);outline-offset:-4px}
+.theme-preview[data-theme-preview="abyss"]{--preview-radius:22px;border-color:color-mix(in srgb,var(--pd-accent) 50%,transparent)}
+.theme-preview[data-theme-preview="dunes"]{--preview-radius:2px;border:1.5px solid var(--pl-ink);box-shadow:-3px 3px 0 color-mix(in srgb,var(--pl-accent) 70%,transparent),3px 3px 0 color-mix(in srgb,var(--pl-ink) 30%,transparent)}
 .theme-preview[data-art] .theme-half.light{background:var(--pl-art) center/cover}
 .theme-preview[data-art] .theme-half.dark{background:var(--pd-art) center/cover}
 .theme-preview[data-art] .theme-half{position:relative;isolation:isolate}
 .theme-preview[data-art] .theme-half::before{content:"";position:absolute;inset:0;z-index:-1;background:color-mix(in srgb,var(--half-paper) 55%,transparent)}
 .theme-preview[data-art] .theme-text-line{opacity:.65}
+
+/* The four paintings share the backdrop mechanics above and nothing else. Each one below
+   gets its own material, frame, controls and type, so changing the painting changes how
+   the whole app is built, not just what is behind it. Selectors start with
+   body.theme-art.theme-* so they outrank the shared rules without !important. */
+
+/* NEBULA: an observatory readout. Square hairline frames with bright corner brackets,
+   thin display type, monospaced uppercase controls, and lit instruments rather than fills. */
+body.theme-art.theme-nebula{--pill:2px;--r-sm:2px;--r-md:3px;--r-pane:3px;--blur:28px;--sat:1.25;
+  --brk:rgba(var(--accent-rgb),.9);--hud:500 10.5px/1 var(--mono)}
+body.theme-art.theme-nebula :is(.ws,.coach,.pcol,.catalog .psec,.dash-card,.roadmap-detail){
+  background-image:
+    linear-gradient(var(--brk),var(--brk)),linear-gradient(var(--brk),var(--brk)),
+    linear-gradient(var(--brk),var(--brk)),linear-gradient(var(--brk),var(--brk)),
+    linear-gradient(var(--brk),var(--brk)),linear-gradient(var(--brk),var(--brk)),
+    linear-gradient(var(--brk),var(--brk)),linear-gradient(var(--brk),var(--brk));
+  background-size:14px 1.5px,1.5px 14px,14px 1.5px,1.5px 14px,14px 1.5px,1.5px 14px,14px 1.5px,1.5px 14px;
+  background-position:left top,left top,right top,right top,left bottom,left bottom,right bottom,right bottom;
+  background-repeat:no-repeat}
+@media(min-width:1081px){
+  body.theme-art.theme-nebula.ws-wide :is(.pcol,.ws,.coach){
+    border:1px solid rgba(var(--accent-rgb),.2);
+    box-shadow:inset 0 0 60px rgba(var(--accent-rgb),.07),0 0 0 1px rgba(0,0,0,.06)}
+}
+body.theme-art.theme-nebula.is-dark.ws-wide :is(.pcol,.ws,.coach){box-shadow:inset 0 0 80px rgba(var(--accent-rgb),.09),0 0 30px rgba(var(--accent-rgb),.06)}
+body.theme-art.theme-nebula :is(.card,.psec,.dash-card){border-color:rgba(var(--accent-rgb),.2);box-shadow:none}
+body.theme-art.theme-nebula .wordmark :is(.solid,.outline){font:600 12px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase}
+body.theme-art.theme-nebula :is(h1,h2,h3),body.theme-art.theme-nebula :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:300;letter-spacing:.01em}
+body.theme-art.theme-nebula .phero .pno{color:var(--accent);font-size:12px}
+body.theme-art.theme-nebula .phero .pno::before{content:"#"}
+/* Controls read like instrument labels. */
+body.theme-art.theme-nebula :is(.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt,.dash-card > header h2,.phead .pname){
+  font:var(--hud);letter-spacing:.14em;text-transform:uppercase}
+body.theme-art.theme-nebula .phead .pname{font-size:11.5px}
+body.theme-art.theme-nebula :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){color:var(--accent);text-shadow:0 0 10px rgba(var(--accent-rgb),.55)}
+body.theme-art.theme-nebula :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{
+  left:50%;right:auto;width:22px;height:2px;transform:translateX(-50%);background:var(--accent);box-shadow:0 0 10px var(--accent)}
+body.theme-art.theme-nebula :is(.ws-run,.ws-run.tc-run,.coach-send){
+  background:rgba(var(--accent-rgb),.14);color:var(--accent);border:1px solid var(--accent);
+  box-shadow:0 0 18px rgba(var(--accent-rgb),.3),inset 0 0 12px rgba(var(--accent-rgb),.2)}
+body.theme-art.theme-nebula :is(.ws-run,.ws-run.tc-run,.coach-send):hover:not(:disabled){background:rgba(var(--accent-rgb),.26)}
+body.theme-art.theme-nebula:not(.is-dark) :is(.ws-run,.ws-run.tc-run,.coach-send){background:var(--accent);color:#fff}
+body.theme-art.theme-nebula :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"]){box-shadow:0 0 12px rgba(var(--accent-rgb),.35)}
+body.theme-art.theme-nebula .workspace-rail button[aria-pressed="true"]{filter:drop-shadow(0 0 6px rgba(var(--accent-rgb),.8))}
+body.theme-art.theme-nebula .catalog .prow.sel{box-shadow:inset 0 0 24px rgba(var(--accent-rgb),.12)}
+body.theme-art.theme-nebula .topbar{background-image:linear-gradient(90deg,transparent 5%,rgba(var(--accent-rgb),.7) 50%,transparent 95%)}
+
+/* EVENT HORIZON: art deco in gold. Square panes framed by a double gilt rule, Didot
+   headings, letter-spaced capitals, a diamond on the active tab, and metallic buttons. */
+body.theme-art.theme-horizon{--pill:0px;--r-sm:0px;--r-md:0px;--r-pane:0px;--blur:16px;--sat:1.2;
+  --gilt:linear-gradient(135deg,#7A4A0C 0%,#D9A54A 30%,#FBE3A6 50%,#C98E2E 70%,#8A5612 100%);
+  --rule:rgba(var(--accent-rgb),.6);--rule-soft:rgba(var(--accent-rgb),.28)}
+body.theme-art.theme-horizon.is-dark{--gilt:linear-gradient(135deg,#B57A22 0%,#F2C877 32%,#FFF0C8 50%,#E3A64B 68%,#A86A16 100%)}
+@media(min-width:1081px){
+  body.theme-art.theme-horizon.ws-wide :is(.pcol,.ws,.coach){
+    border:1px solid var(--rule);outline:1px solid var(--rule-soft);outline-offset:-5px;box-shadow:var(--pane-shadow)}
+}
+body.theme-art.theme-horizon :is(.card,.psec,.dash-card){border-color:var(--rule-soft);outline:1px solid rgba(var(--accent-rgb),.14);outline-offset:-4px}
+body.theme-art.theme-horizon .topbar{background-image:none;border-bottom:3px double var(--rule)}
+body.theme-art.theme-horizon .wordmark :is(.solid,.outline){font-family:var(--display);font-weight:400;letter-spacing:.16em;text-transform:uppercase;font-size:15px}
+body.theme-art.theme-horizon .wordmark .solid{background:var(--gilt);-webkit-background-clip:text;background-clip:text;color:transparent}
+body.theme-art.theme-horizon .phero h1{font-size:30px;font-weight:400;letter-spacing:.02em}
+body.theme-art.theme-horizon :is(.viewhead,.dash-head,.roadmap) h1{font-size:40px;font-style:italic}
+body.theme-art.theme-horizon :is(.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt){
+  font-weight:600;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase}
+body.theme-art.theme-horizon :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){overflow:visible}
+body.theme-art.theme-horizon :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{
+  left:50%;right:auto;bottom:-4px;width:7px;height:7px;transform:translateX(-50%) rotate(45deg);background:var(--gilt);box-shadow:none;z-index:1}
+body.theme-art.theme-horizon :is(.ws-run,.ws-run.tc-run,.coach-send){
+  background:var(--gilt);color:#2A1702;border:1px solid #8A5612;text-shadow:0 1px 0 rgba(255,240,200,.5);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 10px rgba(var(--accent-rgb),.25)}
+body.theme-art.theme-horizon :is(.ws-run,.ws-run.tc-run,.coach-send):hover:not(:disabled){filter:brightness(1.08)}
+body.theme-art.theme-horizon :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit,.tag){border-color:var(--rule-soft)}
+body.theme-art.theme-horizon .tag.pattern::before{content:"◆ ";font-size:.8em;color:var(--accent)}
+body.theme-art.theme-horizon :is(.phero,.viewhead) h1::after{content:"";display:block;width:64px;height:1px;margin-top:10px;background:var(--gilt)}
+body.theme-art.theme-horizon .phero .row1{align-items:flex-start}
+body.theme-art.theme-horizon .catalog .prow.sel{border-left-width:3px;border-left-style:double}
+body.theme-art.theme-horizon .workspace-rail button[aria-pressed="true"]::before{width:3px;background:var(--gilt)}
+
+/* ABYSS: soft-bodied and bioluminescent. Rounded type, deep rounding everywhere, no hard
+   edges: panes are membranes with an inner glow and a caustic sheen, the active tab is a
+   lit capsule, and Run breathes. */
+body.theme-art.theme-abyss{--pill:999px;--r-sm:12px;--r-md:18px;--r-pane:26px;--blur:36px;--sat:1.8;
+  --ui:ui-rounded,"SF Pro Rounded","Avenir Next",sans-serif;--display:var(--ui)}
+@media(min-width:1081px){
+  body.theme-art.theme-abyss.ws-wide .pbody.with-workspace{padding:14px 14px 14px 4px}
+  body.theme-art.theme-abyss.ws-wide :is(.pcol,.ws,.coach){
+    border:0;
+    background:radial-gradient(120% 50% at 15% 0%,rgba(var(--accent-rgb),.12),transparent 60%),var(--glass);
+    box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.2),inset 0 1px 30px rgba(var(--accent-rgb),.10),0 24px 60px rgba(0,0,0,.25)}
+}
+body.theme-art.theme-abyss :is(.card,.psec,.dash-card){border:0;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.18),0 14px 40px rgba(0,0,0,.18)}
+body.theme-art.theme-abyss :is(h1,h2,h3),body.theme-art.theme-abyss :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:600;letter-spacing:-.01em}
+body.theme-art.theme-abyss.is-dark :is(.phero,.viewhead,.dash-head) h1{text-shadow:0 0 22px rgba(var(--accent-rgb),.35)}
+body.theme-art.theme-abyss :is(.rr-tab,.coach-tab,.editor-file){border-radius:999px;margin:5px 2px;padding-inline:14px}
+body.theme-art.theme-abyss :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){
+  background:rgba(var(--accent-rgb),.16);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 18px rgba(var(--accent-rgb),.22)}
+body.theme-art.theme-abyss :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{content:none}
+body.theme-art.theme-abyss :is(.editor-tabs,.rr-tabs){border-bottom-color:transparent}
+body.theme-art.theme-abyss :is(.ws-run,.ws-run.tc-run,.coach-send){
+  background:radial-gradient(120% 140% at 30% 20%,color-mix(in srgb,var(--solid-bg) 60%,white),var(--solid-bg) 60%);
+  border:0;box-shadow:0 0 0 1px rgba(var(--accent-rgb),.4),0 0 22px rgba(var(--accent-rgb),.45)}
+body.theme-art.theme-abyss:not(.motion-off) :is(.ws-run,.coach-send):not(:disabled){animation:abyss-breathe 3.6s ease-in-out infinite}
+@keyframes abyss-breathe{50%{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.55),0 0 34px rgba(var(--accent-rgb),.7)}}
+@media(prefers-reduced-motion:reduce){body.theme-art.theme-abyss :is(.ws-run,.coach-send){animation:none}}
+body.theme-art.theme-abyss .workspace-rail button[aria-pressed="true"]::before{left:5px;top:50%;bottom:auto;width:6px;height:6px;margin-top:-3px;border-radius:50%;box-shadow:0 0 10px 2px rgba(var(--accent-rgb),.8)}
+body.theme-art.theme-abyss :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){border-radius:14px;border:0;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.16)}
+body.theme-art.theme-abyss .catalog .prow{border-radius:14px;border-left-color:transparent}
+body.theme-art.theme-abyss .catalog .prow.sel{border-left-color:transparent;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 20px rgba(var(--accent-rgb),.15)}
+body.theme-art.theme-abyss .topbar{background-image:none;box-shadow:0 1px 0 rgba(var(--accent-rgb),.18),0 10px 30px rgba(var(--accent-rgb),.06)}
+
+/* TWIN SUNS: expedition kit, sun-baked and matte. No frosted glass: panes are solid
+   grained board, every pane casts two hard shadows (one per sun), bars carry a survey
+   stripe, controls are stencilled Futura capitals, and buttons press down. */
+body.theme-art.theme-dunes{--pill:2px;--r-sm:2px;--r-md:3px;--r-pane:3px;--pane-gap:16px;
+  --sun-a:rgba(var(--accent-rgb),.85);--sun-b:rgba(var(--ink-rgb),.55);
+  --board:color-mix(in srgb,var(--card) 88%,transparent);
+  --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23g)' opacity='.07'/></svg>");
+  --stencil:500 11px/1 Futura,"Avenir Next",sans-serif}
+body.theme-art.theme-dunes.is-dark{--sun-a:rgba(var(--accent-rgb),.7);--sun-b:rgba(0,0,0,.7)}
+body.theme-art.theme-dunes :is(.topbar,.pcol,.ws,.coach,.filterbar,.dz-side,.dz-canvas,.card,.psec,.dash-card,.dash-stats,.roadmap-node,.roadmap-detail,.dzl-list,.dz-setup,.settings,.navmenu,.drawer){
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+@media(min-width:1081px){
+  body.theme-art.theme-dunes.ws-wide .pbody.with-workspace{padding:14px 18px 22px 8px}
+  body.theme-art.theme-dunes.ws-wide :is(.pcol,.ws,.coach){
+    background:var(--grain),var(--board);border:1.5px solid rgba(var(--ink-rgb),.55);
+    box-shadow:-6px 6px 0 var(--sun-a),6px 6px 0 var(--sun-b)}
+}
+body.theme-art.theme-dunes .ws{background:var(--grain),var(--board)}
+body.theme-art.theme-dunes :is(.card,.psec,.dash-card){
+  --art-card-fill:var(--board);background:var(--grain),var(--board);border:1.5px solid rgba(var(--ink-rgb),.5);box-shadow:-6px 6px 0 var(--sun-a),6px 6px 0 var(--sun-b)}
+body.theme-art.theme-dunes .catalog .psec{box-shadow:-4px 4px 0 var(--sun-a),4px 4px 0 var(--sun-b)}
+body.theme-art.theme-dunes :is(.ws,.coach,.pcol,.card,.psec,.dash-card,.roadmap-detail,.drawer,.dz-side) :is(.card,.psec){background:rgba(var(--ink-rgb),.05);box-shadow:none;border:1px dashed rgba(var(--ink-rgb),.3)}
+body.theme-art.theme-dunes .topbar{
+  border-bottom:0;box-shadow:0 2px 0 rgba(var(--ink-rgb),.6);
+  background-color:color-mix(in srgb,var(--card) 90%,transparent);
+  background-image:repeating-linear-gradient(-45deg,var(--accent) 0 8px,transparent 8px 16px),var(--grain);
+  background-size:100% 5px,auto;background-position:left bottom,0 0;background-repeat:no-repeat,repeat}
+body.theme-art.theme-dunes .wordmark :is(.solid,.outline){font:600 13px/1 Futura,"Avenir Next",sans-serif;letter-spacing:.22em;text-transform:uppercase}
+body.theme-art.theme-dunes .wordmark .solid{background:none;color:var(--accent)}
+body.theme-art.theme-dunes :is(.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt,.dash-card > header h2,.phead .pname){
+  font:var(--stencil);letter-spacing:.16em;text-transform:uppercase}
+body.theme-art.theme-dunes .phead .pname{font-size:13px}
+body.theme-art.theme-dunes :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){color:var(--ink)}
+body.theme-art.theme-dunes :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{height:4px;background:var(--accent);box-shadow:none}
+body.theme-art.theme-dunes .phero .pno{display:inline-block;padding:3px 7px 2px;border:1.5px solid var(--accent);color:var(--accent);font:600 12px/1 Futura,var(--ui);letter-spacing:.08em;transform:rotate(-3deg)}
+body.theme-art.theme-dunes .phero .pno::before{content:"Nº "}
+body.theme-art.theme-dunes :is(.ws-run,.ws-run.tc-run,.coach-send){
+  background:var(--solid-bg);color:var(--solid-fg);border:1.5px solid rgba(var(--ink-rgb),.7);
+  box-shadow:0 3px 0 rgba(var(--ink-rgb),.7);transform:translateY(-1px);transition:transform 80ms ease,box-shadow 80ms ease}
+body.theme-art.theme-dunes :is(.ws-run,.ws-run.tc-run,.coach-send):active:not(:disabled){transform:translateY(2px);box-shadow:0 0 0 rgba(var(--ink-rgb),.7)}
+body.theme-art.theme-dunes :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit){border:1.5px solid rgba(var(--ink-rgb),.55)}
+body.theme-art.theme-dunes :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){
+  background:var(--solid-bg);color:var(--solid-fg);border-color:rgba(var(--ink-rgb),.7)}
+body.theme-art.theme-dunes .catalog .prow.sel{border-left-width:4px}
+body.theme-art.theme-dunes .workspace-rail button[aria-pressed="true"]::before{width:4px}
+body.theme-art.theme-dunes :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){border-radius:2px;border:1px dashed rgba(var(--ink-rgb),.35)}
+body.theme-art.theme-horizon:not(.is-dark) .wordmark .solid{background:none;color:var(--accent)}
+/* "solution.py" already names the language; in Abyss the PY badge becomes the same lit dot the rail uses. */
+body.theme-art.theme-abyss .file-language{width:6px;height:6px;border-radius:50%;overflow:hidden;font-size:0;color:transparent;background:var(--accent);box-shadow:0 0 8px 1px rgba(var(--accent-rgb),.7)}
+body.theme-art.theme-abyss .editor-file{margin-left:12px}
