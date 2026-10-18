@@ -39,7 +39,7 @@ export async function appendTurn({ root, slug, turn, log = console }) {
     sessionId: turn.sessionId ?? null,
     ...(turn.provider ? { provider: turn.provider, model: turn.model ?? null } : {}),
     ...(turn.continuedFromSessionId ? { continuedFromSessionId: turn.continuedFromSessionId } : {}),
-    kind: turn.kind === 'attempt-review' ? 'attempt-review' : 'question',
+    kind: ['attempt-review', 'recall-notes'].includes(turn.kind) ? turn.kind : 'question',
     attemptId: turn.attemptId ?? null,
     ask: String(turn.ask ?? '').slice(0, MAX_STORED_CHARS),
     answer: answer.slice(0, MAX_STORED_CHARS),
@@ -48,6 +48,8 @@ export async function appendTurn({ root, slug, turn, log = console }) {
     // (without Undo — the case list has moved on since).
     ...(Array.isArray(turn.actions) && turn.actions.length
       ? { actions: turn.actions.slice(0, 60).map((a) => ({
+        ...(typeof a.url === 'string' ? { url: a.url.slice(0, 2000) } : {}),
+        ...(typeof a.revisionId === 'string' ? { revisionId: a.revisionId.slice(0, 100) } : {}),
         id: String(a.id ?? ''), tool: String(a.tool ?? ''), summary: String(a.summary ?? '').slice(0, 300), ok: a.ok === true,
       })) }
       : {}),

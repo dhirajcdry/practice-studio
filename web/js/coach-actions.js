@@ -27,7 +27,7 @@ import { reportCoachAction, undoCoachAction } from './api.js';
 /** The studio tools, by their bare names. MCP delivers them as `mcp__studio__<name>`. */
 export const STUDIO_TOOLS = Object.freeze([
   'get_submissions', 'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
-  'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note',
+  'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note', 'get_recall_evidence', 'save_recall_note',
 ]);
 
 /** `mcp__studio__add_case` or `add_case` → `add_case`; anything else → null. */

@@ -78,3 +78,12 @@ test('a problem that was never discussed has no threads and does not throw', asy
   const root = await workspace();
   assert.deepEqual(await readThreads({ root, slug: 'never-opened' }), []);
 });
+
+test('recall turn kind and delivery receipt survive replay', async t => {
+  const root = await workspace(); t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const action = { id: 'recall-action', tool: 'save_recall_note', summary: 'Pending sync', ok: true, revisionId: 'a'.repeat(64) };
+  await appendTurn({ root, slug: 'two-sum', turn: turn({ kind: 'recall-notes', actions: [action] }) });
+  const rows = await readTurns({ root, slug: 'two-sum' });
+  assert.equal(rows[0].kind, 'recall-notes');
+  assert.deepEqual(rows[0].actions, [action]);
+});

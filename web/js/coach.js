@@ -98,6 +98,7 @@ export function shapeCoachOutcome(result, hadText = false) {
 
 /** What a Studio tool line says when no receipt covers it. Its arguments are never shown. */
 const STUDIO_TOOL_LINES = {
+  get_recall_evidence: 'Read practice evidence', save_recall_note: 'Saving recall notes',
   get_submissions: 'Read your submissions',
   get_state: 'Looked at your cases and runs',
   add_case: 'Added a case', update_case: 'Changed a case', remove_case: 'Removed a case',
@@ -196,9 +197,11 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
   const summary = receiptSummary(action);
   const undoable = !!onUndo && !ui.undone && canUndo(action);
   const why = status === 'failed' ? String(action.message || '').trim() : '';
-  return el('div', { class: `cmsg-receipt is-${status}`, 'data-tool': tool }, [
+  const row = el('div', { class: `cmsg-receipt is-${status}`, 'data-tool': tool }, [
     el('span', { class: 'cr-glyph', 'aria-hidden': 'true', text: receiptGlyph(tool) }),
-    el('span', { class: 'cr-text', text: summary }),
+    action.url && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(action.url)
+      ? el('a', { class: 'cr-text', text: summary, href: action.url, target: '_blank', rel: 'noopener noreferrer' })
+      : el('span', { class: 'cr-text', text: summary }),
     status === 'pending' ? el('span', { class: 'cr-state', text: 'working…' }) : null,
     status === 'failed' ? el('span', { class: 'cr-state', text: 'not done' }) : null,
     status === 'undone' ? el('span', { class: 'cr-state', text: 'Undone' }) : null,
@@ -212,6 +215,23 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
     why ? el('div', { class: 'cr-why', text: why }) : null,
     ui.error ? el('div', { class: 'cr-why', text: ui.error }) : null,
   ]);
+  if (tool === 'save_recall_note' && action.revisionId && !action.url) {
+    const refresh = async () => {
+      if (!row.isConnected) return;
+      try {
+        const response = await fetch(`/api/coach/recall/${encodeURIComponent(action.revisionId)}`);
+        const result = await response.json();
+        if (result.status === 'saved' && /^http:\/\/127\.0\.0\.1(?::\d+)?\//.test(result.url)) {
+          row.querySelector('.cr-text').replaceWith(el('a', { class: 'cr-text', text: 'Saved to Studycraft ↗',
+            href: result.url, target: '_blank', rel: 'noopener noreferrer' }));
+          return;
+        }
+      } catch { /* Keep the durable pending receipt while Studio is unreachable. */ }
+      setTimeout(refresh, 30000);
+    };
+    setTimeout(refresh, 1000);
+  }
+  return row;
 }
 
 function noticeBlock({ tone = '', head, body, actions = [] }) {
@@ -353,7 +373,11 @@ export function createCoachPanel(entry) {
 
   // One row: microphone, then the send controls. The mic used to sit on its own line
   // above them, which gave the composer three stacked rows to say two things.
+  const recallButton = el('button', { class: 'chip coach-recall', type: 'button',
+    text: 'Make recall notes', onclick: () => submit({ kind: 'recall-notes',
+      ask: 'Make recall notes from my practice evidence and save them to Studycraft.' }) });
   const composer = el('div', { class: 'coach-compose' }, [
+    api.demo ? null : el('div', { class: 'coach-starters' }, [recallButton]),
     input,
     el('div', { class: 'coach-actions' }, [
       api.demo ? null : voice.root,
@@ -736,6 +760,7 @@ export function createCoachPanel(entry) {
     if (!pastChats.hidden) renderHistory(pastChats, { slug, onResume: chooseThread, disabled: on });
     sendButton.disabled = on || voice.isBusy() || changingModel;
     modelPicker.setBusy(on);
+    recallButton.disabled = on || changingModel || voice.isBusy();
     sendLabel.textContent = on ? 'Asking' : 'Ask';
     sendButton.classList.toggle('busy', on);
     stopButton.hidden = !on;
@@ -880,7 +905,7 @@ export function createCoachPanel(entry) {
     const message = ask !== null ? ask : input.value.trim();
     if (!review && message === '') { input.focus(); return; }
 
-    if (!review) {
+    if (!review && kind !== 'recall-notes') {
       input.value = '';
       clearDraft(slug);
       autosize();

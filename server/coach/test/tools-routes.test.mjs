@@ -197,3 +197,28 @@ test('the memory upkeep step is never given studio tools', async () => {
   assert.equal(opts.studioTools, undefined);
   assert.equal(opts.toolSession, undefined);
 });
+
+for (const provider of ['claude', 'codex']) test(`${provider}: recall uses bounded evidence, saves offline and skips upkeep`, async t => {
+  const oldToken = process.env.STUDYCRAFT_RECALL_TOKEN;
+  const oldBinary = process.env.STUDIO_CODEX_BINARY;
+  process.env.STUDYCRAFT_RECALL_TOKEN = '';
+  process.env.STUDIO_CODEX_BINARY = FAKE_CODEX;
+  t.after(() => {
+    if (oldToken === undefined) delete process.env.STUDYCRAFT_RECALL_TOKEN; else process.env.STUDYCRAFT_RECALL_TOKEN = oldToken;
+    if (oldBinary === undefined) delete process.env.STUDIO_CODEX_BINARY; else process.env.STUDIO_CODEX_BINARY = oldBinary;
+  });
+  const calls = JSON.stringify([
+    { tool: 'get_recall_evidence', arguments: { patternId: 'hashing-complement' } },
+    { tool: 'save_recall_note', arguments: { patternId: 'hashing-complement', title: 'Hashing: complement',
+      body: 'Look up first.', intuition: 'Keep previous values.', recall: 'Why look up first?',
+      trap: 'No trap recorded.', failingCase: 'No failing case recorded.' } },
+  ]);
+  const f = await fixture(t, { provider, env: { FAKE_CLAUDE_MODE: 'tools', FAKE_CLAUDE_TOOL_CALLS: calls, FAKE_CODEX_TOOL_CALLS: calls } });
+  const events = await stream(await fetch(f.base + '/api/coach/message', { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'two-sum', kind: 'recall-notes', message: 'Make recall notes' }) }));
+  assert.equal(events.at(-1).event, 'done');
+  assert.equal(events.find(e => e.event === 'action' && e.data.tool === 'save_recall_note').data.summary, 'Pending sync');
+  const turns = await readTurns({ root: f.root, slug: 'two-sum' });
+  assert.equal(turns.at(-1).kind, 'recall-notes');
+  assert.equal(await f.coach.coachSessions.read('two-sum'), null);
+});

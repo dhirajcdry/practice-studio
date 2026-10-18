@@ -83,6 +83,10 @@ export function permissionArgs(root) {
     p('Edit', '/DESIGN.md'),
   ];
   const deny = [
+    p('Write', '/recall/**'),
+    p('Edit', '/recall/**'),
+    p('Read', '/recall/**'),
+    p('Glob', '/recall/**'),
     // The server owns these. Stated in the prompt and enforced here, because a rule that
     // lives only in a prompt is a request, not a boundary.
     p('Write', '/problems/*/meta.json'),
@@ -333,7 +337,7 @@ export function runCoachTurn({
   try {
     child = spawnFn(binary, args, {
       cwd: root,
-      env,
+      env: Object.fromEntries(Object.entries(env).filter(([key]) => key !== 'STUDYCRAFT_RECALL_TOKEN')),
       // Its own process group, so a disconnect kills the CLI *and* anything it started.
       detached: true,
       stdio: ['pipe', 'pipe', 'pipe'],

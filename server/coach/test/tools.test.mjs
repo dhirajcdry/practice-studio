@@ -46,7 +46,7 @@ function viewer() {
 // ------------------------------------------------------------------- validation
 
 test('every spec is a closed object schema with a description', () => {
-  assert.equal(TOOL_SPECS.length, 11);
+  assert.equal(TOOL_SPECS.length, 13);
   for (const spec of TOOL_SPECS) {
     assert.equal(spec.inputSchema.type, 'object');
     assert.equal(spec.inputSchema.additionalProperties, false);
@@ -577,4 +577,19 @@ test('statement text keeps example blocks and caps its length', () => {
   assert.equal(statementText('<p>a&nbsp;&lt;b&gt;</p><pre>x\n  y</pre>'), 'a <b>\nx\ny');
   assert.match(statementText(`<p>${'z'.repeat(7000)}</p>`), /truncated at 6000 characters/);
   assert.equal(statementText(null), '');
+});
+
+test('recall tools require evidence and produce a durable pending receipt', async t => {
+  const w = await workspace(); t.after(w.cleanup);
+  const previous = process.env.STUDYCRAFT_RECALL_TOKEN;
+  process.env.STUDYCRAFT_RECALL_TOKEN = '';
+  t.after(() => { if (previous === undefined) delete process.env.STUDYCRAFT_RECALL_TOKEN; else process.env.STUDYCRAFT_RECALL_TOKEN = previous; });
+  const { tools } = session(w.root);
+  const note = { patternId: 'hashing-complement', title: 'Complement lookup', body: 'Look up before insertion.',
+    intuition: 'Keep previous values.', recall: 'Why look up first?', trap: 'No trap recorded.', failingCase: 'No failing case recorded.' };
+  assert.equal((await tools.call('save_recall_note', note)).ok, false);
+  assert.equal((await tools.call('get_recall_evidence', { patternId: note.patternId })).ok, true);
+  assert.equal((await tools.call('save_recall_note', note)).ok, true);
+  assert.equal(tools.actions.at(-1).summary, 'Pending sync');
+  assert.match(tools.actions.at(-1).revisionId, /^[a-f0-9]{64}$/);
 });

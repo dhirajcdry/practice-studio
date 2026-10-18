@@ -48,12 +48,13 @@ function fake({ finalOnly = false, failure = false, hang = false, approval = fal
 test('streaming and final-only replies complete once, reuse local grouping, and release process/temp files', async () => {
   for (const finalOnly of [false, true]) {
     const f = fake({ finalOnly, approval: true }), tokens = [], done = [], errors = [];
-    const turn = runCoachTurn({ prompt: 'question', resumeSessionId: 'local-group', spawnFn: f.spawnFn, env: { OPENAI_API_KEY: 'must-not-pass' },
+    const turn = runCoachTurn({ prompt: 'question', resumeSessionId: 'local-group', spawnFn: f.spawnFn, env: { OPENAI_API_KEY: 'must-not-pass', STUDYCRAFT_RECALL_TOKEN: 'secret' },
       onToken: t => tokens.push(t), onDone: id => done.push(id), onError: e => errors.push(e) });
     await turn.exited;
     assert.deepEqual(tokens, ['reply']); assert.deepEqual(done, ['local-group']); assert.deepEqual(errors, []);
     assert.equal(fs.existsSync(f.options.cwd), false);
     assert.equal(f.options.env.OPENAI_API_KEY, undefined);
+    assert.equal(f.options.env.STUDYCRAFT_RECALL_TOKEN, undefined);
     assert.ok(f.requests.find(r => r.id === 90 && r.error));
     const thread = f.requests.find(r => r.method === 'thread/start').params;
     assert.equal(thread.ephemeral, true); assert.equal(thread.sandbox, 'read-only'); assert.equal(thread.model, 'gpt-6-astra');

@@ -340,3 +340,21 @@ test('submission code and sidecars are denied to both Write and Edit', () => {
   const { deny } = permissionArgs('/scratch');
   for (const tool of ['Write', 'Edit']) assert.ok(deny.includes(`${tool}(//scratch/problems/*/submissions/**)`));
 });
+
+
+test('recall outbox and mappings are server-owned, including delivery secrets', () => {
+  const { deny } = permissionArgs('/scratch');
+  for (const tool of ['Read', 'Glob', 'Write', 'Edit']) {
+    assert.ok(deny.includes(`${tool}(//scratch/recall/**)`));
+  }
+});
+
+test('Studycraft import credentials never reach the Claude subprocess', async t => {
+  const root = await tempRoot(); t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  let received;
+  const { handle } = collect({ root, prompt: 'test', env: { STUDYCRAFT_RECALL_TOKEN: 'secret', TEST: 'kept' },
+    spawnFn: (_binary, _args, options) => { received = options.env; throw Object.assign(Error('fake'), { code: 'ENOENT' }); } });
+  await handle.exited;
+  assert.equal(received.STUDYCRAFT_RECALL_TOKEN, undefined);
+  assert.equal(received.TEST, 'kept');
+});

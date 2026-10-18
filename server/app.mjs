@@ -150,6 +150,11 @@ function tapRunResult(res, slug, log) {
           total: body?.summary?.total ?? null,
           totalMs: body?.summary?.totalMs ?? null,
           errorKind: body?.error?.kind ?? null,
+          // Bounded raw failure evidence for later recall notes; old summaries stay valid.
+          failures: (body?.cases ?? []).filter(c => c.passed === false).slice(0, 3).map(c => ({
+            input: String(c.input ?? '').slice(0, 600), expected: String(c.expected ?? '').slice(0, 600),
+            actual: String(c.actual ?? '').slice(0, 600), error: c.error?.message ? String(c.error.message).slice(0, 300) : null,
+          })),
         })
         .catch(() => {});
     } catch {

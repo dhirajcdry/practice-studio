@@ -39,6 +39,7 @@ export function connection({ binary = 'codex', env = process.env, spawnFn = spaw
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-studio-codex-'));
   const childEnv = { ...env };
   delete childEnv.OPENAI_API_KEY;
+  delete childEnv.STUDYCRAFT_RECALL_TOKEN;
   let child;
   try { child = spawnFn(binary, buildArgs({ imageGeneration }), { cwd, env: childEnv, detached: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
   catch (error) { fs.rmSync(cwd, { recursive: true, force: true }); throw error; }

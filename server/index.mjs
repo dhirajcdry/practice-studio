@@ -3,6 +3,8 @@
 // will later execute code and hold a LeetCode session, so it must not be reachable.
 
 import http from 'node:http';
+import { startRecallSync } from './recall/index.mjs';
+import { HOME_ROOT } from './paths.mjs';
 import path from 'node:path';
 import { PremiumStatementCache } from './premium-statement.mjs';
 
@@ -62,6 +64,8 @@ export function start() {
   report(catalog, solutions, site);
 
   const server = http.createServer(app);
+  const stopRecall = startRecallSync({ root: HOME_ROOT });
+  server.on('close', stopRecall);
 
   server.on('clientError', (_err, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
