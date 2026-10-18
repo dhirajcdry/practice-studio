@@ -185,11 +185,12 @@ function micGlyph() {
  */
 export function createVoiceControl({
   getSlug, onTranscript, onPreview, onState = () => {}, logTakes = true, onLevel = () => {},
+  recordingMode = 'dictation', getAttemptId = () => null, maxTakeMs = MAX_TAKE_MS,
 }) {
   // Dictation, not think-aloud. The floating recorder owns thinking aloud; this is here
   // so a long message to the coach can be spoken instead of typed, and it must not be
   // counted as practice speech.
-  let mode = 'dictation';
+  let mode = recordingMode;
   let state = 'idle';            // idle | opening | recording | working
   let stream = null;
   let recorder = null;
@@ -449,7 +450,7 @@ export function createVoiceControl({
     try {
       const result = await transcribeAudio(getSlug(), blob, {
         filename: `phrase.${extensionFor(mimeType)}`,
-        mode,
+        mode, attemptId: getAttemptId(),
       });
       const shaped = shapeTranscription(result);
       if (shaped.ok) text = result.text;
@@ -583,7 +584,7 @@ export function createVoiceControl({
       if (state !== 'recording') return;
       stop();
       note('warn', 'Five minutes', 'That is the longest the microphone stays open in one go, so it was closed here.');
-    }, MAX_TAKE_MS);
+    }, maxTakeMs);
   }
 
   function stop() {

@@ -1,3 +1,4 @@
+import { activeInterview, createInterviewPanel } from './interview.js';
 import { tooltip } from './tooltip.js';
 // The coach panel — a streaming conversation beside the editor (ARCHITECTURE.md §5,
 // API-CONTRACT-P2.md Phase 3).
@@ -240,7 +241,7 @@ function attemptThread(slug) {
   if (!attemptThreads.has(slug)) attemptThreads.set(slug, { pending: false, live: false });
   const state = attemptThreads.get(slug);
   const saved = readAttempt();
-  if (saved?.slug === slug && resumeDecision(saved) === 'resume') state.live = true;
+  if (saved?.slug === slug && !saved.archiveId && resumeDecision(saved) === 'resume') state.live = true;
   return state;
 }
 function reviewOptions({ attemptId, spokenMs = 0, elapsedMs = 0 }) {
@@ -1017,6 +1018,7 @@ function showPendingRun() {
 
 /** Open or close the panel. The editor keeps its width when the coach is away. */
 export function setOpen(open, { focus = true } = {}) {
+  if (active && activeInterview(active.slug)) open = true;
   document.body.classList.toggle('coach-open', open);
   writeOpen(open);
   if (launcher) launcher.setAttribute('aria-pressed', String(open));
@@ -1109,11 +1111,11 @@ function ensureLauncher() {
 let adoption = null;
 export function mountCoach(entry) {
   if (active) active.dispose();
-  const panel = createCoachPanel(entry);
+  const panel = activeInterview(entry.slug) ? createInterviewPanel(entry, { onBack: () => swapInterview(entry) }) : createCoachPanel(entry);
   active = panel;
   ensureLauncher();
   ensureRunsChip();
-  setOpen(openOnMount || readOpen(), { focus: false });
+  setOpen(Boolean(activeInterview(entry.slug)) || openOnMount || readOpen(), { focus: false });
   openOnMount = false;
 
   // The server may still be writing an answer this page has never seen — the tab was
@@ -1128,6 +1130,29 @@ export function mountCoach(entry) {
 
   return panel.root;
 }
+
+// Swap the whole panel atomically: coach controls and its microphone are absent
+// while interviewing. The editor and its undo history stay mounted.
+function swapInterview(entry, recordId = null) {
+  if (!active || active.slug !== entry.slug) return;
+  const previous = active;
+  const panel = recordId || activeInterview(entry.slug)
+    ? createInterviewPanel(entry, { id: recordId, onBack: () => swapInterview(entry) })
+    : createCoachPanel(entry);
+  previous.dispose();
+  previous.root.replaceWith(panel.root);
+  active = panel;
+  setOpen(true, { focus: false });
+}
+window.addEventListener('studio-interview-change', () => {
+  const interview = activeInterview();
+  if (!interview || active?.slug !== interview.slug || active.root.classList.contains('ci-panel')) return;
+  stopRun(interview.slug);
+  swapInterview({ slug: interview.slug, title: interview.title });
+});
+window.addEventListener('studio-interview-open', event => {
+  if (active?.slug === event.detail.slug) swapInterview({ slug: event.detail.slug }, event.detail.id);
+});
 
 /** A new attempt owns a fresh thread even if its panel is temporarily absent. */
 export function coachBeginAttempt(slug) {

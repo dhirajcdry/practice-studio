@@ -77,13 +77,21 @@ export async function runVisualAudit({ origin, target, output }) {
   const editor = `const inst = window.monaco.editor.getEditors()[0]; if (!inst) throw Error('No editor'); inst.focus();`;
   const problem = '/#/p/jump-game';
   const states = {
+    reference: { url: problem, setup: `need('[data-panel="solution"]').click();`, ready: '.drawer.show .drawer-resize', assert: `need('.scrim.show'); if (getComputedStyle(need('.scrim')).backdropFilter !== 'blur(5px)') throw Error('Reference blur missing');` },
+    interviewTyped: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-panel[data-mode="typed"] .ci-input', assert: `need('.ci-phases');` },
+    interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-state');` },
+    interviewDebrief: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003');`, ready: '.ci-panel[data-debriefed="true"] .ci-debrief h3', assert: `
+      const headings = [...need('.ci-debrief').querySelectorAll('h3')];
+      const sections = ['Problem solving', 'Coding', 'Communication', 'Testing & verification', 'Hire signal', 'Hints used', 'Time per phase', 'Practise next'];
+      if (headings.length !== sections.length || headings.some((node, i) => !visible(node) || node.textContent !== sections[i])) throw Error('Missing or incorrect rendered debrief sections');
+    ` },
     catalog: { url: '/#/', ready: '.catalog' },
     roadmap: { url: '/#/roadmap', ready: '.roadmap' },
     progress: { url: '/#/progress', ready: '.dash-card' },
     design: { url: '/#/design', ready: '.dzl-list' },
     problem: { url: problem, ready: '.ws-bar', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
     chat: { url: problem, setup: coach, ready: '.recent-chat' },
-    chatActive: { url: problem, setup: `${coach} need('.recent-chat').click(); await sleep(300); need('.coach-bar [aria-label="History"]').click();`, ready: '.chat-history-popover .recent-chat' },
+    chatActive: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); need('.coach-bar [aria-label="History"]').click();`, ready: '.chat-history-popover .recent-chat' },
     subsList: { url: problem, setup: submissions, ready: '.submission-row' },
     subsAccepted: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Accepted')); if (!row) throw Error('No accepted fixture'); row.click();`, ready: '.submission-hero.accepted', assert: `need('.submission-chart');` },
     subsTle: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Time Limit Exceeded')); if (!row) throw Error('No TLE fixture'); row.click();`, ready: '.submission-hero.rejected' },
@@ -114,6 +122,7 @@ export async function runVisualAudit({ origin, target, output }) {
       if (background.startsWith('rgba(') && !background.endsWith(', 1)')) throw Error('Reading overlay is translucent: ' + background);` },
   };
   const findings = [];
+  const syntaxContrast = [];
   try {
     await send('Page.enable');
     await send('Runtime.enable');
@@ -130,6 +139,7 @@ export async function runVisualAudit({ origin, target, output }) {
         try {
           // A full document reset prevents a prior popover/widget from satisfying
           // the next state's readiness check while a same-route navigation settles.
+          await evaluate("localStorage.removeItem('studio.interview.active.v1');");
           await send('Page.navigate', { url: 'about:blank' });
           await until("location.href === 'about:blank' && document.readyState === 'complete'", 'blank page');
           await send('Page.navigate', { url: `${origin}${config.url}` });
@@ -144,6 +154,47 @@ export async function runVisualAudit({ origin, target, output }) {
           await until(`(() => { const n = document.querySelector(${JSON.stringify(config.ready)}); return n && n.getClientRects().length && !n.closest('[hidden]') && getComputedStyle(n).visibility !== 'hidden'; })()`, config.ready);
           await evaluate('await document.fonts.ready; await sleep(250);');
           if (config.assert) await evaluate(config.assert);
+          if (state === 'reference') {
+            // Exercise every token through the real highlighter on the real drawer
+            // surface, including tokens absent from the selected reference solution.
+            const samples = await evaluate(`
+              const pre = need('pre.solutioncode');
+              const probe = document.createElement('span');
+              probe.append((await import('/js/highlight.js')).highlightPython('def sample(): # comment' + String.fromCharCode(10) + '    return len("amber") + 42'));
+              pre.append(probe);
+              try {
+                const luminance = channels => {
+                  channels = channels.map(v => {
+                    v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
+                  });
+                  return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
+                };
+                let background;
+                for (let node = pre; node; node = node.parentElement) {
+                  const style = getComputedStyle(node);
+                  if (style.backgroundImage !== 'none') throw Error('Syntax surface requires painted-background review');
+                  if (style.backgroundColor.startsWith('rgb(')) { background = style.backgroundColor; break; }
+                }
+                if (!background) throw Error('Missing opaque syntax surface');
+                return ['kw', 'str', 'num', 'com', 'def', 'bi'].map(token => {
+                  const node = probe.querySelector('.tok-' + token);
+                  if (!node) throw Error('Missing highlighter token: ' + token);
+                  const foreground = getComputedStyle(node).color;
+                  const fg = foreground.match(/[0-9.]+/g).map(Number);
+                  const bg = background.match(/[0-9.]+/g).map(Number);
+                  const alpha = fg[3] ?? 1;
+                  const a = luminance(fg.slice(0, 3).map((v, i) => v * alpha + bg[i] * (1 - alpha))), b = luminance(bg);
+                  return { token, foreground, background, ratio: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) };
+                });
+              } finally { probe.remove(); }
+            `);
+            syntaxContrast.push(...samples.map(sample => ({ theme, mode, ...sample })));
+            for (const sample of samples) if (sample.ratio < 4.5) findings.push({
+              theme, mode, state, kind: 'contrast', where: 'pre.solutioncode .tok-' + sample.token,
+              detail: sample.ratio.toFixed(2) + ':1 (needs 4.5) ' + sample.foreground + ' on ' + sample.background,
+            });
+            await fsp.writeFile(path.join(output, 'syntax-contrast.json'), JSON.stringify(syntaxContrast, null, 2));
+          }
           const rows = await evaluate(lint);
           if (!Array.isArray(rows)) throw Error('Visual lint did not return findings');
           findings.push(...rows.map(row => ({ theme, mode, state, ...row })));

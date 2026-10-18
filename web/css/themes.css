@@ -78,6 +78,9 @@ body.theme-studio.is-dark{
   --texture:none;
 }
 
+/* Keep reference-code numbers amber with AA contrast on the Desk paper. */
+body.theme-desk:not(.is-dark){--tok-num:#93650B}
+
 body.theme-desk{
   --verdict-easy:#356747;
   --verdict-hard:#B4432A;
@@ -998,6 +1001,11 @@ body.theme-art :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){
   border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);border:1px solid rgba(var(--ink-rgb),.10);
   -webkit-backdrop-filter:none;backdrop-filter:none;
 }
+/* Reference syntax needs a solid surface above the drawer's artwork. */
+/* Code in the reference drawer sits on a solid surface in art themes: a painted scene behind
+   syntax colours makes them unreadable and unmeasurable. Specificity must beat the art-theme :is(.rich pre, …, .cmsg.you .cmsg-body) rule, which
+   takes its highest argument (0,4,1). */
+body.theme-art aside.drawer.show .dbody :is(.rich pre,pre.solutioncode){background:var(--canvas)}
 body.theme-art :is(.tag,.tc-tab,.tc-add,.ws-bar .ws-mini,.ws-bar .btn,.tc .btn,.ws-submit){border-radius:var(--pill)}
 body.theme-art :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){
   background:rgba(var(--accent-rgb),.16);color:var(--accent);border-color:rgba(var(--accent-rgb),.45);

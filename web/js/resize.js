@@ -346,3 +346,67 @@ export function installResizers() {
 }
 
 export default installResizers;
+
+/** A right-anchored reading pane; independent of the workspace grid splits. */
+export function installDrawerResizer(drawer) {
+  const key = 'studio.reference.width.v1';
+  const handle = makeHandle('col', 'Reference width');
+  handle.className = 'drawer-resize';
+  drawer.prepend(handle);
+  let preferred = 760;
+  try {
+    const saved = Number(localStorage.getItem(key));
+    if (Number.isFinite(saved) && saved > 0) preferred = saved;
+  } catch { /* Storage is optional. */ }
+  const apply = () => {
+    const max = Math.floor(window.innerWidth * .8);
+    const min = Math.min(360, max);
+    const width = Math.min(max, Math.max(min, preferred));
+    drawer.style.width = `${width}px`;
+    handle.setAttribute('aria-valuemin', min);
+    handle.setAttribute('aria-valuemax', max);
+    handle.setAttribute('aria-valuenow', width);
+    handle.setAttribute('aria-valuetext', `${width} pixels`);
+  };
+  const save = () => {
+    preferred = drawer.getBoundingClientRect().width;
+    try { localStorage.setItem(key, String(preferred)); } catch { /* Storage is optional. */ }
+  };
+  let endDrag = () => {};
+  handle.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    endDrag();
+    handle.focus();
+    const startX = event.clientX;
+    const startWidth = drawer.getBoundingClientRect().width;
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add('is-splitting');
+    const move = e => { preferred = startWidth + startX - e.clientX; apply(); };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      handle.removeEventListener('lostpointercapture', end);
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      document.body.classList.remove('is-splitting');
+      save();
+      endDrag = () => {};
+    };
+    endDrag = end;
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+    handle.addEventListener('lostpointercapture', end);
+  });
+  handle.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault(); event.stopPropagation();
+    preferred = drawer.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? 1 : -1) * (event.shiftKey ? 80 : 20);
+    apply(); save();
+  });
+  handle.addEventListener('dblclick', () => { preferred = 760; apply(); save(); });
+  window.addEventListener('resize', apply);
+  apply();
+  return () => { endDrag(); window.removeEventListener('resize', apply); handle.remove(); };
+}

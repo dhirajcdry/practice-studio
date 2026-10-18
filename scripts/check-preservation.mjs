@@ -138,6 +138,11 @@ try {
 
   await go('two-sum');
   await evaluate(`document.querySelector('.rec-toggle').click()`);
+  // Start now opens the interview choices. This preservation case exercises the
+  // background recorder, so explicitly choose the silent interviewer path rather
+  // than accidentally starting a typed interview.
+  await waitFor(`document.querySelector('.ci-setup')`);
+  await evaluate(`(() => { const group=document.querySelector('.ci-segment[aria-label="Interviewer"]'); [...group.querySelectorAll('button')].find(button => button.textContent.trim() === 'Off').click(); document.querySelector('.ci-setup form').requestSubmit(); })()`);
   await waitFor(`document.querySelector('.rec.is-live') && localStorage.getItem('studio.attempt.v1')`);
   const attempt = await evaluate(`JSON.parse(localStorage.getItem('studio.attempt.v1'))`);
   for (const hash of ['#/p/contains-duplicate', '#/', '#/roadmap', '#/progress', '#/design', '#/p/two-sum']) {

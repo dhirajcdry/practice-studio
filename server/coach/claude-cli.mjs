@@ -99,6 +99,8 @@ export function permissionArgs(root) {
     p('Edit', '/problems/*/coach-session.json'),
     p('Write', '/index.json'),
     p('Edit', '/index.json'),
+    p('Write', '/problems/*/interviews/**'),
+    p('Edit', '/problems/*/interviews/**'),
     // An interview's own record. The transcript, the boards and the state machine are
     // the only evidence of what was actually asked, drawn and answered — a debrief that
     // grades an edited record grades nothing. Reading them is the point; writing them

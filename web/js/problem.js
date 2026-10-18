@@ -10,12 +10,30 @@ import { loadProblem, loadSolution, loadArticle, logSessionEvent, api } from './
 import { mountWorkspace, enableWideLayout } from './editor.js';
 import { mountCoach } from './coach.js';
 import { workspaceRail } from './workspace.js';
+import { installDrawerResizer } from './resize.js';
 
 const drawerEl = document.getElementById('drawer');
 const scrimEl = document.getElementById('scrim');
 
 let drawerState = { slug: null, kind: null };
 let onDrawerChange = () => {};
+let removeResizer = () => {};
+let returnFocus = null;
+const drawerFocusable = () => [...drawerEl.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')]
+  .filter(node => !node.disabled && node.getClientRects().length);
+drawerEl.setAttribute('role', 'dialog');
+drawerEl.setAttribute('aria-modal', 'true');
+drawerEl.setAttribute('aria-label', 'Reference');
+drawerEl.addEventListener('keydown', event => {
+  if (event.key !== 'Tab' || !isDrawerOpen()) return;
+  const items = drawerFocusable();
+  const index = items.indexOf(document.activeElement);
+  event.preventDefault();
+  items[(index + (event.shiftKey ? -1 : 1) + items.length) % items.length]?.focus();
+});
+document.addEventListener('focusin', event => {
+  if (isDrawerOpen() && !drawerEl.contains(event.target)) drawerFocusable()[0]?.focus();
+});
 
 /* ------------------------------- small pieces ------------------------------- */
 
@@ -66,6 +84,9 @@ function setInstant(instant) {
 export function closeDrawer({ instant = false } = {}) {
   if (!drawerState.kind) return;
   drawerState = { slug: null, kind: null };
+  removeResizer();
+  returnFocus?.isConnected && returnFocus.focus({ preventScroll: true });
+  returnFocus = null;
   setInstant(instant);
   drawerEl.classList.remove('show');
   scrimEl.classList.remove('show');
@@ -94,7 +115,9 @@ function drawerShell(entry, kind) {
     el('button', { class: 'dclose', type: 'button', text: 'Close esc', onclick: closeDrawer }),
   ]);
   const body = el('div', { class: 'dbody' });
+  removeResizer();
   replace(drawerEl, [head, body]);
+  removeResizer = installDrawerResizer(drawerEl);
   return body;
 }
 
@@ -102,6 +125,7 @@ export async function openPanel(entry, kind, { instant = false } = {}) {
   const sameAgain = drawerState.slug === entry.slug && drawerState.kind === kind;
   if (sameAgain) { closeDrawer({ instant }); return; }
 
+  if (!isDrawerOpen()) returnFocus = document.activeElement;
   drawerState = { slug: entry.slug, kind };
   setInstant(instant);
   drawerEl.hidden = false; scrimEl.hidden = false;
@@ -113,6 +137,7 @@ export async function openPanel(entry, kind, { instant = false } = {}) {
   onDrawerChange();
 
   const body = drawerShell(entry, kind);
+  drawerEl.querySelector('.dclose').focus({ preventScroll: true });
   body.append(skeleton(5));
 
   const result = kind === 'solution'

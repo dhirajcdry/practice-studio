@@ -6,6 +6,7 @@ import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { readJsonBody } from './http.mjs';
 import { runCoachTurn as runClaude } from './claude-cli.mjs';
+import { runConversationTurn } from './codex-conversation.mjs';
 import { runCoachTurn as runCodex, listCodexModels } from './codex-cli.mjs';
 
 export const DEFAULT_COACH = Object.freeze({ provider: 'codex', model: 'gpt-6-astra' });
@@ -54,6 +55,7 @@ export async function saveCoachChoice(root, value, { models = codexCatalog } = {
   return choice;
 }
 export function runProviderTurn({ choice, binary, ...options }) {
+  if (choice.provider === 'codex' && options.conversation) return runConversationTurn({ ...options, model: choice.model, binary: process.env.STUDIO_CODEX_BINARY || 'codex' });
   return choice.provider === 'codex'
     ? runCodex({ ...options, model: choice.model, binary: process.env.STUDIO_CODEX_BINARY || 'codex' })
     : runClaude({ ...options, binary: binary || 'claude', model: choice.model === 'default' ? null : choice.model });

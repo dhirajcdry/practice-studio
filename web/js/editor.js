@@ -723,6 +723,7 @@ export function mountWorkspace(entry, options = {}) {
   function onEdit() {
     if (!editor) return;
     touched = true;
+    window.dispatchEvent(new CustomEvent('studio-interview-work', { detail: { slug, type: 'typing' } }));
     paintNeetCodeNotice();
     if (saveState !== 'failed' && saveState !== 'local') setSave('dirty');
     else paintStatus();
@@ -800,6 +801,14 @@ export function mountWorkspace(entry, options = {}) {
   }
 
   function onRunEvent(event) {
+    if (event.type === 'result') {
+      const result = event.shaped;
+      window.dispatchEvent(new CustomEvent('studio-interview-work', { detail: {
+        slug, type: 'run_result', ...result?.summary,
+        firstFailingCase: (() => { const item = result?.cases?.find(item => !item.passed); return item ? Object.fromEntries(Object.entries(item).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 2000) : value])) : null; })(),
+        error: result?.message || result?.traceback || null,
+      } }));
+    }
     if (event.type === 'start') {
       runButton.disabled = true;
       runLabel.textContent = 'Running';
@@ -853,6 +862,10 @@ export function mountWorkspace(entry, options = {}) {
   }
 
   function onSubmitEvent(event) {
+    if (event.type === 'result') window.dispatchEvent(new CustomEvent('studio-interview-work', { detail: {
+      slug, type: 'verdict', verdict: event.shaped?.headline || event.shaped?.status,
+      status: event.shaped?.status, accepted: event.shaped?.status === 'accepted',
+    } }));
     const busy = event.type === 'start';
     submitButton.disabled = busy;
     submitButton.classList.toggle('busy', busy);

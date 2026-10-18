@@ -10,6 +10,7 @@ import { routes as workspaceRoutes, snapshotAttempt } from './workspace/routes.m
 import { routes as statsRoutes } from './stats/routes.mjs';
 import { routes as asrRoutes } from './asr/routes.mjs';
 import { routes as judgeRoutes } from './judge/routes.mjs';
+import { interviewRoutes } from './interview/routes.mjs';
 import { routes as designRoutes } from './design/routes.mjs';
 import { scheduleMirror } from './mirror/daily.mjs';
 import { SessionLog, onSessionEvent } from './coach/sessions.mjs';
@@ -25,6 +26,7 @@ const MODULE_ROUTES = {
   ...asrRoutes,
   ...judgeRoutes,
   ...designRoutes,
+  ...interviewRoutes,
 };
 
 const sessionLog = new SessionLog({ root: HOME_ROOT });

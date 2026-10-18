@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { newState } from '../server/interview/state.mjs';
+import { InterviewStore } from '../server/interview/store.mjs';
 import { runVisualAudit } from './visual-audit.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
@@ -51,6 +53,19 @@ async function seed() {
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, 'solution.py'), solution);
     await json(path.join(dir, 'cases.json'), { cases: [{ input, expected: slug === 'jump-game' ? 'true' : '200', source: 'custom' }] });
+  }
+  const store = new InterviewStore({ root: home });
+  for (const [id, mode, done] of [['1760000000000-00000001', 'typed', false], ['1760000000000-00000002', 'voice', false], ['1760000000000-00000003', 'typed', true]]) {
+    const state = newState({ slug: 'jump-game', mode, startedAt: Date.now() });
+    state.phase = 'approach'; state.coachProvider = 'claude'; state.coachModel = 'default';
+    state.debriefed = done; state.endedAt = done ? Date.now() : null;
+    // Audit fixtures are paused so reading a screen cannot wake a model. The setup
+    // below paints a running header with DOM only; no microphone or turn is started.
+    if (!done) state.pausedAt = Date.now();
+    await store.create('jump-game', id, state);
+    await store.append('jump-game', id, { kind: 'opening', elapsedMs: 0, asked: 'Read the problem and walk me through your approach.' });
+    await store.append('jump-game', id, { kind: 'candidate', elapsedMs: 30000, said: 'I would track the furthest reachable index.' });
+    if (done) await store.append('jump-game', id, { kind: 'debrief', elapsedMs: 45000, asked: '## Problem solving\nSolid — 00:30: “I would track the furthest reachable index.”\n## Coding\nMixed — No evidence recorded.\n## Communication\nSolid — The approach was stated.\n## Testing & verification\nWeak — No evidence recorded.\n## Hire signal\nLean no — Implementation and testing were not demonstrated.\n## Hints used\n0\n## Time per phase\nClarify 00:45\n## Practise next\n1. State complexity.\n2. Trace a zero.\n3. Test boundaries.' });
   }
   const dir = path.join(home, 'problems', 'jump-game');
   const rows = [

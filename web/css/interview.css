@@ -1,0 +1,46 @@
+/* Coding interview — quiet conversation beside the editor. */
+.ci-panel{flex-direction:column;min-height:0;background:var(--card);color:var(--ink);overflow:hidden}
+.ci-header{display:flex;align-items:center;gap:12px;padding:14px 16px 8px;flex-shrink:0}
+.ci-identity{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.ci-identity strong{font-size:14px;font-weight:600}
+.ci-model{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci-clock{font-size:22px;letter-spacing:-.04em;line-height:1.2}
+.ci-clock[data-urgency="med"]{color:var(--med)}
+.ci-clock[data-urgency="hard"]{color:var(--hard)}
+.ci-phases{display:flex;gap:4px;margin:0;padding:8px 16px;list-style:none;flex-shrink:0;flex-wrap:wrap}
+.ci-phases li{font-size:10px;color:var(--ink-50);padding:3px 5px;border-bottom:2px solid transparent}
+.ci-phases li[aria-current="step"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.ci-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 16px 10px;border-bottom:1px solid var(--hair-10);flex-shrink:0}
+.ci-state{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--ink-70)}
+.ci-meter{display:inline-flex;align-items:center;width:16px;height:12px;background:var(--hair-06);border-radius:var(--r-sm);overflow:hidden}
+.ci-meter i{width:25%;height:100%;background:var(--easy);transition:width var(--dur-hover) var(--ease-out)}
+.ci-meter.is-loud i{width:100%}
+.ci-log{flex:1;min-height:0;overflow:auto;padding:16px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.ci-entry{padding:0 0 18px;margin:0;overflow-wrap:anywhere}
+.ci-who{display:flex;gap:10px;align-items:center;margin-bottom:7px;font-size:10px;color:var(--ink-70)}
+.ci-text{font-size:13px;line-height:1.65;white-space:pre-wrap}
+.ci-candidate .ci-text{background:var(--hair-06);border-radius:var(--r-md);padding:10px 12px}
+.ci-debrief .ci-text{white-space:normal}
+.ci-debrief h2,.ci-debrief h3{font-size:14px;margin:18px 0 8px}
+.ci-debrief p{margin:8px 0}
+.ci-debrief ul{padding-left:18px}
+.ci-notice{margin:0 16px 10px;padding:9px 11px;background:var(--med-soft);border-radius:var(--r-sm);font-size:12px;line-height:1.5}
+.ci-composer{padding:12px 16px;border-top:1px solid var(--hair-10);flex-shrink:0}
+.ci-input{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;max-height:180px}
+.ci-actions{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:8px}
+.ci-live-words{font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:120px;overflow:auto;color:var(--ink-70)}
+.ci-interrupt-hint{font-size:12px;text-align:center;padding:8px;margin:0}
+body[class] .ci-panel button,body[class] .ci-setup button,body[class] .ci-setup select{height:var(--control-h);min-height:var(--control-h);box-sizing:border-box;padding-block:0;display:inline-flex;align-items:center;justify-content:center}
+.ci-panel [hidden],.ci-setup [hidden]{display:none!important}
+
+/* Start choices share the existing compact segmented control. */
+.ci-setup{width:min(360px,calc(100vw - 40px));box-sizing:border-box;border:1px solid var(--hair-20);border-radius:var(--r-md);padding:22px;background:var(--card);color:var(--ink);box-shadow:var(--shadow-lift);font-family:var(--ui)}
+.ci-setup::backdrop{background:var(--hair-20)}
+.ci-setup h2{font-size:18px;margin:0 0 20px;font-weight:600}
+.ci-field{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:14px 0;font-size:13px}
+.ci-setup select{border:1px solid var(--hair-20);border-radius:var(--r-sm);padding-inline:10px;background:var(--card);color:var(--ink);font:inherit}
+.ci-segment{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--hair-06)}
+.ci-segment button{border:0;background:transparent;color:var(--ink-70);padding-inline:14px;border-radius:var(--r-sm);font:inherit;cursor:pointer}
+.ci-segment button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.ci-setup .ci-actions{margin-top:22px}
+@media(prefers-reduced-motion:reduce){.ci-meter i{transition:none}}

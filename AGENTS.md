@@ -83,7 +83,7 @@ violating one of these, stop and say so rather than finding a workaround.
   instruction, and permission scoping is the actual enforcement of that, not a formality.
 - **The coach's Read/Write/Glob are scoped to `~/LeetCodeTutor/` only**, and even inside
   that root it must never write `meta.json`, `index.json`, `solution.py`, `attempts/`, `problems/*/submissions/**`,
-  `chats.jsonl`, `sessions/*.jsonl`, or — for the design-interview feature —
+  `chats.jsonl`, `sessions/*.jsonl`, `problems/*/interviews/**`, or — for the design-interview feature —
   `design/*/interview.json`, `design/*/turns.jsonl`, `design/*/scenes/**`,
   `design/*/interview.md`. Those are the server's raw record; the coach may only write
   `design/*/NOTES.md` and the top-level `DESIGN.md`. See `server/coach/claude-cli.mjs`'s

@@ -10,6 +10,7 @@ import { renderRoadmap } from './roadmap.js';
 import { renderProblem, openPanel, closeDrawer, isDrawerOpen, setDrawerListener, drawerKind } from './problem.js';
 import { init as initDashboard } from './dashboard.js';
 import { initDesign } from './design.js';
+import { showInterviewSetup, activeInterview, interviewAction } from './interview.js';
 import { coachBeginAttempt, coachReviewAttempt } from './coach.js';
 import { installResizers } from './resize.js';
 import { installRecorder, mountRecorder } from './recorder.js';
@@ -197,6 +198,9 @@ function markNav() {
 function render() {
   installRecorder(currentSlug, {
     getTitle: slug => bySlug.get(slug)?.title || slug,
+    onRequestStart: showInterviewSetup,
+    getInterview: activeInterview,
+    onInterviewAction: interviewAction,
     onAttemptStart: detail => coachBeginAttempt(detail.slug),
     onAttemptEnd: detail => coachReviewAttempt(detail),
   });

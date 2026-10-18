@@ -1,6 +1,7 @@
 // Recent conversations for the composer and its history popover. Opening a thread
 // resumes the saved conversation without replacing the mounted composer.
 import { el, replace } from './dom.js';
+import { openInterviewRecord } from './interview.js';
 import { loadHistory } from './api.js';
 
 /** "3 minutes ago", "yesterday 14:20", "Jul 24 09:15" — precision that matches distance. */
@@ -47,14 +48,29 @@ export async function renderHistory(mount, { slug, onResume, current = null, dis
     replace(mount, el('p', { class: 'dim', text: 'Recent chats could not be loaded.' }));
     return;
   }
-  const threads = data.threads;
+  const threads = [...data.threads];
+  try {
+    const response = await fetch('/api/interview?slug=' + encodeURIComponent(slug));
+    if (!response.ok) throw Error('Interview history unavailable');
+    const { interviews } = await response.json();
+    for (const item of interviews || []) {
+      const elapsed = Math.max(0, Math.min(item.endedAt || Date.now(), item.pausedAt || Infinity) - Number(item.startedAt) - (item.pausedMs || 0));
+      threads.push({ interviewId: item.id, startedAt: new Date(item.startedAt).toISOString(), turns: [],
+        title: `Interview · ${Math.round(elapsed / 60000)} min · ${item.hireSignal || (item.debriefed ? 'Debrief' : 'In progress')}` });
+    }
+    threads.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+  } catch {
+    // A history failure must not erase the ordinary coach conversations.
+    threads.push({ unavailable: true, turns: [], title: 'Interview history could not be loaded.' });
+  }
+  if (!mount.isConnected) return;
   function paint(all = false) {
     const rows = (all ? threads : threads.slice(0, limit)).map(thread => el('button', {
-      type: 'button', class: 'recent-chat hover-surface hover-divided', disabled,
-      onclick: () => onResume(thread),
+      type: 'button', class: 'recent-chat hover-surface hover-divided', disabled: disabled || thread.unavailable,
+      onclick: () => thread.interviewId ? openInterviewRecord(slug, thread.interviewId) : onResume(thread),
     }, [
-      el('span', { class: 'recent-title', text: thread.turns[0]?.ask || 'Attempt review' }),
-      el('span', { class: 'mono dim', text: `${when(thread.startedAt, now)} · ${thread.turns.length} turn${thread.turns.length === 1 ? '' : 's'}` }),
+      el('span', { class: 'recent-title', text: thread.title || thread.turns[0]?.ask || 'Attempt review' }),
+      el('span', { class: 'mono dim', text: thread.interviewId || thread.unavailable ? when(thread.startedAt, now) : `${when(thread.startedAt, now)} · ${thread.turns.length} turn${thread.turns.length === 1 ? '' : 's'}` }),
       thread.turns.some(t => t.kind === 'attempt-review') ? el('span', { class: 'submission-tag', text: 'Review' }) : null,
       thread.sessionId === current ? el('span', { class: 'submission-tag current', text: 'Current' }) : null,
     ]));

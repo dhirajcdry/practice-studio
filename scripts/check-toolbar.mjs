@@ -205,6 +205,47 @@ try {
     }
   }
 
+  /* ---- 4. Reference drawer: real pointer resize, persistence and scrim ---- */
+  const openReference = async () => {
+    await evaluate(`(async () => {
+      for (let i = 0; i < 100 && !document.querySelector('[data-panel="solution"]'); i++) await new Promise(r => setTimeout(r, 100));
+      document.querySelector('[data-panel="solution"]').click();
+    })()`);
+    await sleep(350);
+  };
+  const width = () => evaluate(`document.querySelector('#drawer').getBoundingClientRect().width`);
+  await openReference();
+  await evaluate(`document.querySelector('.drawer-resize').focus()`);
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+  if (!await evaluate(`document.querySelector('#drawer').contains(document.activeElement)`)) throw Error('Reference focus escaped on Shift-Tab');
+  const originalWidth = await width();
+  const handle = await evaluate(`(() => { const r = document.querySelector('.drawer-resize').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 180 }; })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...handle });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...handle, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: handle.x - 120, y: handle.y, button: 'left', buttons: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: handle.x - 120, y: handle.y, button: 'left', clickCount: 1 });
+  const draggedWidth = await width();
+  if (Math.abs(draggedWidth - originalWidth - 120) > 2) throw Error('Reference drag did not grow width by 120px');
+  await send('Page.reload', { ignoreCache: true });
+  await sleep(500);
+  await openReference();
+  if (Math.abs(await width() - draggedWidth) > 1) throw Error('Reference width did not survive reload');
+  await evaluate(`document.querySelector('.drawer-resize').focus()`);
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 8 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 8 });
+  if (Math.abs(await width() - draggedWidth + 80) > 1) throw Error('Shift-arrow did not resize reference by 80px');
+  const scrim = await evaluate(`(() => {
+    const n = document.querySelector('#scrim'); const css = getComputedStyle(n);
+    return !n.hidden && n.classList.contains('show') && css.backdropFilter === 'blur(5px)' && Number(css.opacity) === 1;
+  })()`);
+  if (!scrim) throw Error('Reference scrim is not visible with blur');
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 20, y: 200, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 20, y: 200, button: 'left', clickCount: 1 });
+  await sleep(350);
+  if (!await evaluate(`document.querySelector('#drawer').hidden && document.querySelector('#scrim').hidden`)) throw Error('Scrim click did not close reference');
+  ok('reference drag, persisted width, keyboard resize, and scrim dismissal');
+
   close();
 } finally {
   chrome.kill();
