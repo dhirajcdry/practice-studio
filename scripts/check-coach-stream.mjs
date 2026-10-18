@@ -20,11 +20,16 @@
 // touches the workspace.
 
 import { spawn } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { startScratch } from './check-scratch.mjs';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const ORIGIN = process.env.STUDIO_ORIGIN || 'http://127.0.0.1:4173';
+const scratch = process.env.STUDIO_ORIGIN ? null : await startScratch(4183);
+const ORIGIN = process.env.STUDIO_ORIGIN || scratch?.origin;
 const PORT = 9335;
+const PROFILE = await fsp.mkdtemp(`${os.tmpdir()}/studio-stream-profile-`);
 
 async function cdp() {
   const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
@@ -51,8 +56,8 @@ async function cdp() {
 // 1280 wide, not 1600: the coach column has to be narrow enough that a real answer is
 // several screens tall. At 1600 the same answer fits and the bug hides.
 const chrome = spawn(CHROME, [
-  '--headless=new', `--remote-debugging-port=${PORT}`,
-  `--user-data-dir=${process.env.TMPDIR || '/tmp'}/studio-stream-check`,
+  '--headless=new', '--disable-background-networking', '--no-first-run', `--remote-debugging-port=${PORT}`,
+  `--user-data-dir=${PROFILE}`,
   '--window-size=1280,1000', 'about:blank',
 ], { stdio: 'ignore' });
 
@@ -62,18 +67,19 @@ try {
   const { send, evaluate, close } = await cdp();
   await send('Page.enable');
   await send('Network.enable');
+  await send('Network.setBlockedURLs', { urls: ['https://*', 'http://leetcode.com/*', 'http://*.leetcode.com/*', 'http://neetcode.io/*', 'http://*.neetcode.io/*'] });
   await send('Network.setCacheDisabled', { cacheDisabled: true });
   await send('Page.navigate', { url: `${ORIGIN}/#/p/contains-duplicate` });
   await sleep(2800);
 
-  const r = await evaluate(String.raw`(async () => {
+  await evaluate(String.raw`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     document.body.classList.add('coach-open');
     for (let i = 0; i < 100 && !document.querySelector('.coach-compose textarea'); i++) await sleep(100);
     const ta = document.querySelector('.coach-compose textarea');
-    if (!ta) return { error: 'the coach panel never mounted' };
+    if (!ta) throw Error('the coach panel never mounted');
 
-    // A long answer, arriving a token at a time over a couple of seconds.
+    // A long answer that keeps arriving throughout the hold and resume checks.
     const LINE = 'The interviewer would stop you here, because the second pass is doing work the first one already paid for. ';
     const realFetch = window.fetch;
     window.fetch = (url, opts) => {
@@ -81,7 +87,7 @@ try {
       const body = new ReadableStream({
         async start(c) {
           const enc = new TextEncoder();
-          for (let n = 0; n < 400; n++) {
+          for (let n = 0; n < 1000; n++) {
             await sleep(8);
             c.enqueue(enc.encode('event: token\ndata: ' + JSON.stringify({ text: LINE + (n % 4 === 3 ? '\n\n' : '') }) + '\n\n'));
           }
@@ -98,29 +104,39 @@ try {
 
     const log = document.querySelector('.coach-log');
     await sleep(2400);
-    const tall = log.scrollHeight;
+    window.streamCheck = { log, realFetch, tall: log.scrollHeight };
+  })()`);
 
-    // Scroll up, the way a trackpad does it: a wheel event, then the scroll itself.
-    log.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true }));
-    log.scrollTop = Math.max(0, log.scrollHeight - log.clientHeight - 400);
+  const point = await evaluate(`(() => {
+    const r = window.streamCheck.log.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  })()`);
+  // One real browser wheel tick, including the native default scroll action.
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: -100 });
+  await evaluate(`(async () => {
+    const { log } = window.streamCheck;
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    await sleep(100); // allow the native wheel animation to settle
     const placed = log.scrollTop;
-    await sleep(1400);                       // several more paints land in here
-    const held = log.scrollTop;
-
-    // Back to the bottom by hand: following must resume, or the panel is dead weight.
-    log.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, bubbles: true }));
-    log.scrollTop = log.scrollHeight;
-    await sleep(900);
-    const fromBottom = log.scrollHeight - log.scrollTop - log.clientHeight;
-
+    const stoppedAboveBottom = log.scrollHeight - log.clientHeight - placed;
+    const charsBefore = log.innerText.length;
+    let drift = 0;
+    for (let n = 0; n < 125; n++) {
+      await sleep(16);
+      drift = Math.max(drift, Math.abs(log.scrollTop - placed));
+    }
+    const growth = log.innerText.length - charsBefore;
+    window.streamCheck.held = { placed, drift, growth, stoppedAboveBottom };
+  })()`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: 100000 });
+  const r = await evaluate(`(async () => {
+    const { log, realFetch, tall, held } = window.streamCheck;
+    const resumeChars = log.innerText.length;
+    await new Promise(resolve => setTimeout(resolve, 900));
     window.fetch = realFetch;
-    return {
-      chars: log.innerText.length,
+    return { ...held, chars: log.innerText.length, resumeGrowth: log.innerText.length - resumeChars,
       screens: +(tall / log.clientHeight).toFixed(1),
-      placed: Math.round(placed),
-      drift: Math.round(held - placed),
-      fromBottom: Math.round(fromBottom),
-    };
+      fromBottom: log.scrollHeight - log.scrollTop - log.clientHeight };
   })()`);
 
   const problems = [];
@@ -130,9 +146,12 @@ try {
     // The clipping bug shows up exactly here: 20k characters that occupy one screen are
     // 20k characters you cannot reach.
     if (r.screens < 3) problems.push(`${r.chars} characters occupy only ${r.screens} screens — the answer is being clipped, not scrolled`);
+    if (r.growth < 8000) problems.push('answer did not keep streaming throughout the hold');
+    if (r.stoppedAboveBottom < 90) problems.push('the first wheel tick did not stop following');
+    if (r.resumeGrowth < 1000) problems.push('stream did not continue after following resumed');
     if (r.placed <= 0) problems.push('could not scroll up at all');
-    if (Math.abs(r.drift) > 40) problems.push(`scrolling up was undone by ${r.drift}px while the answer kept streaming`);
-    if (r.fromBottom > 120) problems.push('scrolling back to the bottom did not resume following the stream');
+    if (Math.abs(r.drift) > 1) problems.push(`scrolling up was undone by ${r.drift}px while the answer kept streaming`);
+    if (r.fromBottom > 1) problems.push('scrolling back to the bottom did not resume following the stream');
   }
 
   if (problems.length) {
@@ -146,9 +165,15 @@ try {
 } catch (err) {
   failed = true;
   console.error(`could not run the check: ${err.message}`);
-  console.error('Chrome and a running studio server are both required.');
+  console.error('Chrome and permission to bind a loopback scratch server are required.');
 } finally {
+  // Chrome keeps writing its profile while it shuts down; deleting it underneath fails ENOTEMPTY.
+  const chromeExited = chrome.exitCode === null && chrome.signalCode === null
+    ? new Promise((resolve) => chrome.once('exit', resolve)) : Promise.resolve();
   chrome.kill();
+  await chromeExited;
+  await scratch?.cleanup();
+  await fsp.rm(PROFILE, { recursive: true, force: true, maxRetries: 5 });
 }
 
 process.exit(failed ? 1 : 0);

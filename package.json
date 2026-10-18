@@ -19,10 +19,13 @@
     "check:layout": "node scripts/check-layout.mjs",
     "check:shortcuts": "node scripts/check-shortcuts.mjs",
     "check:preservation": "node scripts/check-preservation.mjs",
-    "check": "node scripts/check-layout.mjs && node scripts/check-coach-stream.mjs && node scripts/check-shortcuts.mjs && node scripts/check-toolbar.mjs && node scripts/check-lanes.mjs && node scripts/check-coach-reload.mjs && node scripts/check-runchip.mjs && node scripts/check-find.mjs && node scripts/check-design.mjs && node scripts/check-preservation.mjs",
+    "check": "node scripts/check-layout.mjs && node scripts/check-coach-stream.mjs && node scripts/check-shortcuts.mjs && node scripts/check-toolbar.mjs && node scripts/check-lanes.mjs && node scripts/check-coach-reload.mjs && node scripts/check-runchip.mjs && node scripts/check-find.mjs && node scripts/check-design.mjs && node scripts/check-preservation.mjs && node scripts/check-submissions.mjs && node scripts/check-visual.mjs",
     "vendor:excalidraw": "node scripts/vendor-excalidraw.mjs",
     "demo": "node scripts/capture-demo.mjs --serve",
     "demo:capture": "node scripts/capture-demo.mjs",
-    "demo:voice": "node scripts/demo/transcribe-sample.mjs"
+    "demo:voice": "node scripts/demo/transcribe-sample.mjs",
+    "check:submissions": "node scripts/check-submissions.mjs",
+    "check:controls": "node scripts/check-controls.mjs",
+    "check:visual": "node scripts/check-visual.mjs"
   }
 }

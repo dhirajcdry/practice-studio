@@ -293,7 +293,7 @@ try {
   if (library.actions?.filter((a) => a === 'Resume').length === 2) ok('every unfinished interview offers Resume');
   else bad('an unfinished interview can be resumed', JSON.stringify(library.actions));
 
-  if (library.notes?.some((n) => n && /fresh thread/.test(n))) {
+  if (library.notes?.some((n) => n && /saved transcript/.test(n))) {
     ok('the unfinished interview with no thread says resuming rebuilds one');
   } else {
     bad('a threadless interview explains what resuming will do', JSON.stringify(library.notes));

@@ -11,11 +11,16 @@
 // the exact condition for "the browser still gets it".
 
 import { spawn } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { startScratch } from './check-scratch.mjs';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const ORIGIN = process.env.STUDIO_ORIGIN || 'http://127.0.0.1:4173';
+const scratch = process.env.STUDIO_ORIGIN ? null : await startScratch(4182);
+const ORIGIN = process.env.STUDIO_ORIGIN || scratch?.origin;
 const PORT = 9334;
+const PROFILE = await fsp.mkdtemp(`${os.tmpdir()}/studio-shortcut-profile-`);
 
 // key, and the modifiers the browser reserves it with.
 const RESERVED = [
@@ -74,8 +79,8 @@ async function cdp() {
 }
 
 const chrome = spawn(CHROME, [
-  '--headless=new', `--remote-debugging-port=${PORT}`,
-  `--user-data-dir=${process.env.TMPDIR || '/tmp'}/studio-shortcut-check`,
+  '--headless=new', '--disable-background-networking', '--no-first-run', `--remote-debugging-port=${PORT}`,
+  `--user-data-dir=${PROFILE}`,
   '--window-size=1600,1000', 'about:blank',
 ], { stdio: 'ignore' });
 
@@ -85,6 +90,7 @@ try {
   const { send, evaluate, close } = await cdp();
   await send('Page.enable');
   await send('Network.enable');
+  await send('Network.setBlockedURLs', { urls: ['https://*', 'http://leetcode.com/*', 'http://*.leetcode.com/*', 'http://neetcode.io/*', 'http://*.neetcode.io/*'] });
   await send('Network.setCacheDisabled', { cacheDisabled: true });
   await send('Page.navigate', { url: `${ORIGIN}/#/p/contains-duplicate` });
   await sleep(2800);
@@ -125,9 +131,15 @@ try {
 } catch (err) {
   failed = true;
   console.error(`could not run the check: ${err.message}`);
-  console.error('Chrome and a running studio server are both required.');
+  console.error('Chrome and permission to bind a loopback scratch server are required.');
 } finally {
+  // Chrome keeps writing its profile while it shuts down; deleting it underneath fails ENOTEMPTY.
+  const chromeExited = chrome.exitCode === null && chrome.signalCode === null
+    ? new Promise((resolve) => chrome.once('exit', resolve)) : Promise.resolve();
   chrome.kill();
+  await chromeExited;
+  await scratch?.cleanup();
+  await fsp.rm(PROFILE, { recursive: true, force: true, maxRetries: 5 });
 }
 
 process.exit(failed ? 1 : 0);
