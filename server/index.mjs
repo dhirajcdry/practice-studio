@@ -3,6 +3,7 @@
 // will later execute code and hold a LeetCode session, so it must not be reachable.
 
 import http from 'node:http';
+import { ttsWorker } from './tts/routes.mjs';
 import { startRecallSync } from './recall/index.mjs';
 import { HOME_ROOT } from './paths.mjs';
 import path from 'node:path';
@@ -66,6 +67,7 @@ export function start() {
   const server = http.createServer(app);
   const stopRecall = startRecallSync({ root: HOME_ROOT });
   server.on('close', stopRecall);
+  server.on('close', () => ttsWorker.close());
 
   server.on('clientError', (_err, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
@@ -91,6 +93,7 @@ export function start() {
 
   const shutdown = () => {
     console.log('\nShutting down.');
+    ttsWorker.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   };

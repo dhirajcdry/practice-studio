@@ -1,13 +1,13 @@
+import { voicePreferences } from './speech-preferences.js';
+
 // The interviewer's voice, and knowing when your turn is over.
 //
 // An interview you have to press Send to participate in is not an interview, it is a
 // form. These are the two pieces that close the loop: the question is spoken aloud, and
 // going quiet is what ends your answer.
 //
-// SPEECH OUT is the browser's own speechSynthesis. It uses the same macOS system voices
-// as `say`, so it works with the wifi off, needs no server round trip, and — the reason
-// it beats doing this server-side — can be cancelled in one call, which is what makes
-// interrupting possible at all.
+// SPEECH OUT uses local Kokoro when available, with browser speech as a fallback.
+// Cancellation owns both playback and pending synthesis.
 //
 // SPEECH IN already existed: web/js/voice.js has an RMS analyser with an adaptive noise
 // floor, built for cutting dictation into phrases. Ending a *turn* is a different
@@ -101,7 +101,7 @@ function pickVoice(synth) {
 }
 
 export function speechSupported() {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  return typeof window !== 'undefined' && (typeof window.Audio === 'function' || ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window));
 }
 
 /**
@@ -111,59 +111,112 @@ export function speechSupported() {
  * the interrupt. `onStateChange(speaking)` fires on every transition, and the caller
  * uses it to hold the microphone shut.
  */
-export function createSpeaker({ onStateChange = () => {}, rate = 1.04 } = {}) {
-  if (!speechSupported()) {
-    return {
-      supported: false,
-      say() {}, cancel() {}, get speaking() { return false; }, dispose() {},
-    };
+export function createSpeaker({ onStateChange = () => {}, preferences = voicePreferences } = {}) {
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+  let disposed = false, speaking = false, generation = 0, running = false;
+  let queue = [], active = null, audio = null, finishPlayback = null;
+  let status = null, failed = false;
+  const controllers = new Set();
+  const setSpeaking = next => {
+    if (speaking !== next) { speaking = next; onStateChange(next); }
+  };
+  async function request(url, options = {}) {
+    const controller = new AbortController(); controllers.add(controller);
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      if (!response.ok) throw Error('Speech unavailable');
+      return url.endsWith('/status') ? await response.json() : await response.blob();
+    } finally { clearTimeout(timer); controllers.delete(controller); }
   }
-  const synth = window.speechSynthesis;
-  let voice = pickVoice(synth);
-  let speaking = false;
-  let disposed = false;
-  // Voices load asynchronously in Chrome; the first call often sees an empty list.
-  const onVoices = () => { voice = pickVoice(synth) ?? voice; };
-  synth.addEventListener?.('voiceschanged', onVoices);
-
-  function setSpeaking(next) {
-    if (speaking === next) return;
-    speaking = next;
-    onStateChange(next);
+  function prepare(item) {
+    if (item.prepared) return;
+    // Catch here: a prefetched failure must never become an unhandled rejection.
+    item.prepared = (async () => {
+      if (item.options.engine === 'system' || failed) return null;
+      status ??= request('/api/tts/status');
+      if (!(await status).available || item.generation !== generation) return null;
+      return await request('/api/tts', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: item.text, voice: item.options.voice, speed: item.options.speed }),
+      });
+    })().catch(() => { if (item.generation === generation) failed = true; return null; });
   }
-
+  function systemSpeak(item) {
+    if (!synth || !window.SpeechSynthesisUtterance) return Promise.resolve();
+    return new Promise(resolve => {
+      finishPlayback = resolve;
+      const utterance = new window.SpeechSynthesisUtterance(item.text);
+      const voice = pickVoice(synth);
+      if (voice) utterance.voice = voice;
+      utterance.rate = item.options.speed;
+      utterance.onend = utterance.onerror = resolve;
+      try { synth.speak(utterance); } catch { resolve(); }
+    });
+  }
+  async function play(blob) {
+    audio ??= new window.Audio();
+    const url = URL.createObjectURL(blob);
+    try {
+      await new Promise((resolve, reject) => {
+        finishPlayback = resolve;
+        audio.onended = resolve;
+        audio.onerror = () => reject(Error('Audio playback failed'));
+        audio.src = url;
+        Promise.resolve(audio.play()).catch(reject);
+      });
+    } finally {
+      if (audio.src === url) audio.removeAttribute('src');
+      URL.revokeObjectURL(url);
+    }
+  }
+  async function drain(token) {
+    running = true;
+    try {
+      while (queue.length && token === generation && !disposed) {
+        active = queue.shift();
+        const item = active;
+        prepare(item);
+        if (queue[0]) prepare(queue[0]);
+        const blob = await item.prepared;
+        if (token !== generation || disposed) return;
+        if (blob) {
+          try { await play(blob); }
+          catch { if (token === generation) { failed = true; await systemSpeak(item); } }
+        } else await systemSpeak(item);
+        if (token !== generation) return;
+        active = null; finishPlayback = null;
+      }
+    } finally {
+      if (token === generation) { running = false; active = null; setSpeaking(false); }
+    }
+  }
+  function cancel() {
+    generation += 1;
+    queue = []; active = null; running = false;
+    for (const controller of controllers) controller.abort();
+    controllers.clear(); status = null;
+    if (audio) { audio.pause(); audio.onended = audio.onerror = null; }
+    try { synth?.cancel(); } catch { /* already stopped */ }
+    finishPlayback?.(); finishPlayback = null;
+    setSpeaking(false);
+  }
   return {
-    supported: true,
-
+    supported: speechSupported(),
     say(text) {
       if (disposed) return;
       const clean = stripForSpeech(text);
       if (!clean) return;
-      const utterance = new SpeechSynthesisUtterance(clean);
-      if (voice) utterance.voice = voice;
-      utterance.rate = rate;
-      utterance.onstart = () => setSpeaking(true);
-      // `speaking` follows the queue, not one utterance: the gap between two queued
-      // sentences must not read as "your turn".
-      const settle = () => { if (!synth.speaking && !synth.pending) setSpeaking(false); };
-      utterance.onend = settle;
-      utterance.onerror = settle;
-      synth.speak(utterance);
+      const { ready, rest } = splitForSpeech(clean);
+      for (const sentence of [...ready, ...(rest.trim() ? [rest.trim()] : [])]) {
+        queue.push({ text: sentence, options: preferences(), generation });
+      }
       setSpeaking(true);
+      if (!running) void drain(generation);
+      else if (queue[0]) prepare(queue[0]);
     },
-
-    cancel() {
-      if (disposed) return;
-      try { synth.cancel(); } catch { /* nothing queued */ }
-      setSpeaking(false);
-    },
-
+    cancel,
     get speaking() { return speaking; },
-
-    dispose() {
-      disposed = true;
-      try { synth.cancel(); } catch { /* noop */ }
-      synth.removeEventListener?.('voiceschanged', onVoices);
-    },
+    dispose() { cancel(); disposed = true; },
   };
 }

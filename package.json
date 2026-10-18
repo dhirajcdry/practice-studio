@@ -24,6 +24,7 @@
     "demo": "node scripts/capture-demo.mjs --serve",
     "demo:capture": "node scripts/capture-demo.mjs",
     "demo:voice": "node scripts/demo/transcribe-sample.mjs",
+    "tts:setup": "node scripts/setup-tts.mjs",
     "check:submissions": "node scripts/check-submissions.mjs",
     "check:controls": "node scripts/check-controls.mjs",
     "check:visual": "node scripts/check-visual.mjs",

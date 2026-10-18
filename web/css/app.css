@@ -1548,3 +1548,8 @@ body.ws-wide .coach-bar{--control-h-sm:32px;flex-wrap:nowrap}
    Centre it on the row and pull it in to match the controls beside it. `body` outranks
    Monaco's own rule, which loads after this sheet. */
 body .monaco-editor .find-widget>.button.codicon-widget-close{top:7.5px;right:8px}
+
+/* Voice follows the settings controls and theme tokens. */
+.set-voice .set-row{flex-wrap:wrap}
+.set-voice select{min-width:0;max-width:100%;flex:1;padding:6px 9px;min-height:32px;background:var(--card);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--radius,4px);font:inherit;font-size:13px}
+.set-voice select:disabled{opacity:.5}

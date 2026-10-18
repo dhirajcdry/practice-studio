@@ -15,7 +15,7 @@ contact LeetCode. The local server is bound to `127.0.0.1`.
 | AI coaching | Local CLI process, context assembly, session files | CLI sends the prompt/context to its configured service |
 | System-design interview | Canvas, scene snapshots, transcript, phase state | New interviewer turns use the same connected CLI |
 | Speech recognition | Audio decoded and transcribed on-device by Swift/WhisperKit 0.18.0 | Initial dependency/model downloads; recognition itself is on-device |
-| Interviewer speech output | Browser `speechSynthesis` | Voice availability and network behavior depend on browser/OS |
+| Interviewer speech output | Local Kokoro ONNX, with browser `speechSynthesis` fallback | Kokoro synthesis sends nothing off-device; setup downloads dependencies and models. System voice behavior depends on browser/OS |
 | LeetCode submission | Verdict and submitted code recorded locally | Your browser, through the Studio Connector extension, sends your solution to LeetCode with its own sign-in and polls that submission's result |
 | NeetCode submission (premium problems) | Verdict and submitted code recorded locally | Your browser, through the Studio Connector extension, puts your solution into a neetcode.io tab's editor storage, presses NeetCode's Submit with its own sign-in and reads the verdict off that page. No NeetCode cookie is read |
 | Reference solutions/articles | Read from optional local checkout | Initial clone/update from GitHub |
@@ -45,8 +45,16 @@ The route removes that temporary file afterward. Coding transcripts can be store
 Studio's transcription route doesn't send audio to a speech API. Text produced from audio
 can subsequently be included in a coach/interviewer prompt.
 
-The app uses your browser's microphone and speech-output facilities. Microphone permission
-and selected TTS voices are managed by the browser and macOS.
+Natural speech uses a long-lived local Python/Kokoro process. Sentence text travels only
+between the browser and the loopback server; WAV audio stays in memory. No speech text
+or audio leaves the machine through Kokoro. Settings → Voice stores the output mode,
+voice and speed in browser localStorage. Natural defaults to Heart at 1.0× and falls
+back to the browser's system voice if unavailable. System voice availability and network
+behavior depend on the browser and OS. Microphone permission is managed by the browser.
+
+`npm run tts:setup` is an explicit, one-time network install of Kokoro 0.4.9 and verified
+model files under `~/Library/Application Support/PracticeStudio/tts/`. Startup and checks
+never install or download TTS models.
 
 The recognizer first checks the selected `modelName` in the `com.justwisper.app` UserDefaults
 domain, defaulting to `small.en`; `STUDIO_ASR_MODEL` overrides that selection. Existing

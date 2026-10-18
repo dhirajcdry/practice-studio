@@ -15,8 +15,9 @@ The browser talks to a local Node server on `127.0.0.1`; there is no hosted Stud
 backend or Studio account. The local Claude Code CLI subprocess uses its configured
 authentication and online service, sending session context there. Speech recognition is
 on-device with WhisperKit 0.18.0, reusing justwisper's selected cached model read-only
-or downloading into Studio's own cache; speech output uses browser
-`speechSynthesis`, whose voice behavior depends on browser/OS. LeetCode content fetches
+or downloading into Studio's own cache; speech output uses local Kokoro ONNX with browser `speechSynthesis` fallback, whose
+voice behavior depends on browser/OS. `npm run tts:setup` is user-invoked only; TTS tests
+and checks must use a fake helper, never the real model. LeetCode content fetches
 and optional submissions also use the network. See `docs/PRIVACY.md` for the boundary.
 
 No build step. `web/` is served as-is; anything the browser can't import bare (Monaco,

@@ -317,6 +317,7 @@ export function createInterviewPanel(entry, { id = null, onBack = () => {} } = {
           restoreDraft(); persist(); announce();
         } else if (name === 'accepted') {
           accepted = true;
+          if (action === 'turn' && payload.said) bubble('You', payload.said);
           const delivered = new Set((extra.events || []).map(event => event.requestId));
           eventQueue = eventQueue.filter(event => !delivered.has(event.requestId)); saveEvents();
           if (extra.said && input.value === extra.said) { setDraft(''); clearDraft(draftKey()); requestId = null; rememberRequest(null); }
@@ -353,11 +354,11 @@ export function createInterviewPanel(entry, { id = null, onBack = () => {} } = {
         const saved = await interviewJson(detailUrl(slug, state.id));
         state = { ...state, ...saved }; replay(saved.turns); restoreDraft();
       }
-      if (result.duplicate) {
+      if (result.duplicate || result.skipped) {
         const saved = await interviewJson(detailUrl(slug, state.id)); replay(saved.turns);
-        if (extra.said && input.value === extra.said) { setDraft(''); clearDraft(draftKey()); }
+        if (extra.said && input.value === extra.said) { setDraft(''); clearDraft(draftKey()); requestId = null; rememberRequest(null); }
       }
-      return result.interjected === false ? 'suppressed' : accepted || result.existing || result.duplicate;
+      return result.interjected === false || result.skipped ? 'suppressed' : accepted || result.existing || result.duplicate;
     } catch (failure) {
       if (!gone && !(action === 'event' && failure.status === 409)) error(failure.message);
       return false;
@@ -377,7 +378,6 @@ export function createInterviewPanel(entry, { id = null, onBack = () => {} } = {
     requestId ||= crypto.randomUUID();
     setDraft(said); rememberRequest({ said, requestId });
     lastSpeech = Date.now(); recovered = false;
-    bubble('You', said);
     await request('turn', { said, requestId, events: [...eventQueue] });
   }
   async function finish() {

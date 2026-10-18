@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import { filterTranscript, hasVoicedAudio } from '../../web/js/transcript-filter.js';
 
 // Exercise the actual control without a microphone, server, or learner records.
 const source = (await fs.readFile(new URL('../../web/js/voice.js', import.meta.url), 'utf8'))
@@ -11,7 +12,7 @@ class Element extends EventTarget {
   setAttribute(k, v) { this[k] = v; }
   append(...nodes) { this.children.push(...nodes); }
 }
-function harness({ meter = true, result = { ok: true, text: 'Hello world' }, permission = null } = {}) {
+function harness({ signal = () => 0.08, meter = true, result = { ok: true, text: 'Hello world' }, permission = null } = {}) {
   let now = 0, stopped = 0;
   const timers = new Map(), requests = [], emitted = [];
   let timerId = 0;
@@ -26,7 +27,7 @@ function harness({ meter = true, result = { ok: true, text: 'Hello world' }, per
   const window = new EventTarget();
   Object.assign(window, { MediaRecorder: Recorder, AudioContext: class {
     constructor() { if (!meter) throw new Error('No meter'); this.state = 'running'; }
-    createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData(a) { a.fill(0.08); } }; }
+    createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData(a) { a.fill(signal(now)); } }; }
     createMediaStreamSource() { return { connect() {} }; }
     close() {}
   } });
@@ -34,7 +35,7 @@ function harness({ meter = true, result = { ok: true, text: 'Hello world' }, per
     const e = new Element(); Object.assign(e, props); e.textContent = props.text || ''; e.children = children.filter(Boolean); return e;
   };
   const ctx = vm.createContext({
-    window, MediaRecorder: Recorder, Blob, AbortController,
+    window, MediaRecorder: Recorder, Blob, AbortController, filterTranscript, hasVoicedAudio,
     navigator: { mediaDevices: { getUserMedia: async () => { if (permission) await permission; return { getTracks: () => [{ stop() { stopped++; } }] }; } } },
     document: { createElementNS: () => new Element() },
     el, clear: (e) => { e.children = []; }, replace: (e, nodes) => { e.children = nodes.filter(Boolean); },
@@ -64,9 +65,11 @@ test('live preview appears before pause; final phrase is inserted only once', as
   h.voice.dispose();
 });
 
-test('missing audio meter still sends recording rather than discarding every segment', async () => {
+test('missing audio meter releases the microphone without transcribing unchecked audio', async () => {
   const h = harness({ meter: false }); await h.voice.start(); await h.advance(3100);
-  assert.deepEqual(h.emitted, ['Hello world']);
+  assert.deepEqual(h.emitted, []);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.stopped(), 1);
   h.voice.stop(); await h.flush(); h.voice.dispose();
 });
 
@@ -142,4 +145,24 @@ test('recording navigation drains its tail and guards unload only until it finis
   assert.deepEqual(h.emitted, ['The last words']);
   assert.equal(guarded(), false);
   assert.equal(h.stopped(), 1);
+});
+
+
+test('silence and isolated typing bursts never reach ASR, even on Stop', async () => {
+  for (const signal of [() => 0, now => now % 500 === 0 ? 0.1 : 0]) {
+    const h = harness({ signal }); await h.voice.start(); await h.advance(14000);
+    h.voice.stop(); await h.flush();
+    assert.equal(h.requests.length, 0);
+    assert.deepEqual(h.emitted, []); h.voice.dispose();
+  }
+});
+
+test('noise transcripts cannot enter preview or composer; real short answers can', async () => {
+  for (const text of ['[DOOR SLAMS]', '(keyboard clicking) Thanks.', 'Yes.', 'O(n).', 'Two pointers.']) {
+    const h = harness({ result: { ok: true, text } });
+    await h.voice.start(); await h.advance(1700);
+    assert.equal(h.voice.preview.textContent, filterTranscript(text));
+    h.voice.stop(); await h.flush();
+    assert.deepEqual(h.emitted, filterTranscript(text) ? [text] : []); h.voice.dispose();
+  }
 });

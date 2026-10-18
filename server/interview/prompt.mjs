@@ -22,7 +22,7 @@ export function rehydratePrompt(state, turns) {
 export function turnPrompt(state, { kind = 'turn', said = '', code, now = Date.now(), full = false, events = state.pendingEvents } = {}) {
   const lines = [factBlock(state, now), data('Buffer', codeContext(state.lastCode, code, state.turns, full)), data('New results and events', events)];
   if (kind === 'opening') lines.push(data('Cached statement', state.statement), 'State the problem in one or two sentences. Ask the candidate to read it and talk through their approach, then wait.');
-  else lines.push(said ? data('Candidate said', said) : 'The candidate has said nothing new.');
+  else lines.push(said ? data('Candidate said', said) : 'The candidate has said nothing substantive. Stay silent about filler or acknowledgements (for example, “Mm-hm”, “Sure”, or “Take your time”); ask a question only when the record contains a substantive answer or a safe interjection is due.');
   if (kind === 'event') lines.push('A safe interjection is due. Ask one brief, relevant question; give them the floor again.');
   if (!state.warningGiven && state.minutes * 60000 - (now - state.startedAt - state.pausedMs) <= 120000) lines.push('There are at most two minutes remaining. Mention this once, briefly.');
   return lines.join('\n\n');

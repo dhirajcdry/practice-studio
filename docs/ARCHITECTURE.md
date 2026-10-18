@@ -183,8 +183,13 @@ The composer microphone shows a provisional transcript below the draft while spe
 continues. It requests a cumulative audio snapshot about every 1.5 seconds, with at most
 one preview request in flight and no preview queued behind unfinished final phrases.
 Pauses finalize phrases into the editable draft; previews never become saved evidence.
-The final phrase is drained before Ask becomes available again. Audio-meter failure
-falls back to three-second recordings rather than discarding the audio.
+The final phrase is drained before Ask becomes available again. Phrases require sustained
+voiced duration and RMS energy before preview or final transcription; Stop uses the same
+gate. Audio-meter failure releases the microphone and asks the user to try again. Shared
+transcript filtering removes sound annotations and short known Whisper hallucinations.
+Coding interviews also reject noise at the server boundary, recording a skipped-noise
+event without a candidate turn or model call. Filler-only interviewer replies are suppressed
+before any text or speech is emitted.
 
 `studio-asr --worker` retains one loaded WhisperKit model and processes newline-delimited
 requests sequentially. The server restarts a failed worker for subsequent queued requests;

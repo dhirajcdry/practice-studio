@@ -20,6 +20,7 @@
 
 import { el, clear, replace } from './dom.js';
 import { transcribeAudio, logSessionEvent } from './api.js';
+import { filterTranscript, hasVoicedAudio } from './transcript-filter.js';
 
 /** A hard ceiling, so a stuck key cannot leave the microphone open all afternoon. */
 const MAX_TAKE_MS = 5 * 60 * 1000;
@@ -295,6 +296,7 @@ export function createVoiceControl({
   let lastLoudAt = 0;
   let phraseStartedAt = 0;
   let phraseHadSpeech = false;
+  let voicedMs = 0, sustainedMs = 0, currentVoicedMs = 0, energy = 0;
   let closing = 0;
   let sending = 0;             // phrases in flight
   let seq = 0;                 // order in, order out
@@ -316,7 +318,7 @@ export function createVoiceControl({
   }
 
   async function showPreview(current, blob) {
-    if (previewBusy || sending || disposed || recorder !== current || state !== 'recording') return;
+    if (previewBusy || sending || disposed || recorder !== current || state !== 'recording' || !phraseHadSpeech) return;
     previewBusy = true;
     const controller = new AbortController();
     previewController = controller;
@@ -325,9 +327,10 @@ export function createVoiceControl({
         filename: `preview.${extensionFor(current.mimeType)}`, mode: 'dictation', signal: controller.signal,
       });
       if (!disposed && !controller.signal.aborted && recorder === current && state === 'recording' && result.ok) {
-        if (onPreview) onPreview(result.text);
+        const text = filterTranscript(result.text);
+        if (onPreview) onPreview(text);
         else {
-          preview.textContent = result.text;
+          preview.textContent = text;
           preview.hidden = false;
         }
       }
@@ -362,20 +365,25 @@ export function createVoiceControl({
       // read as continuous speech and a silent one does not need a magic constant.
       noiseFloor = rms < noiseFloor ? rms : noiseFloor * 0.995 + rms * 0.005;
       const loud = rms > Math.max(SPEECH_RMS, noiseFloor * 3);
-      if (loud) { lastLoudAt = now; phraseHadSpeech = true; }
+      if (loud) {
+        lastLoudAt = now;
+        voicedMs += 100; currentVoicedMs += 100; energy += rms * rms * 100;
+        sustainedMs = Math.max(sustainedMs, currentVoicedMs);
+      } else currentVoicedMs = 0;
+      phraseHadSpeech = hasVoicedAudio({ voicedMs, sustainedMs, energy });
 
       // The same signal, offered to whoever is listening. The design interview uses it
       // to decide the turn is over; nothing here needs to know that.
-      onLevel({ loud, sinceLoud: now - lastLoudAt, pending: sending + closing });
+      onLevel({ loud: loud && phraseHadSpeech, sinceLoud: now - lastLoudAt, pending: sending + closing });
 
       const decision = phraseDecision({
         age: now - phraseStartedAt,
         sinceLoud: now - lastLoudAt,
         hadSpeech: phraseHadSpeech,
       });
-      // Periodically check quiet audio too: metering must not discard a soft voice.
+      // Unvoiced audio is discarded, including periodic cuts and Stop.
       if (decision === 'cut') cutPhrase();
-      else if (decision === 'drop') cutPhrase({ force: true });
+      else if (decision === 'drop') cutPhrase({ drop: true });
       else if (now - lastPreviewAt >= PREVIEW_MS && now - phraseStartedAt >= PREVIEW_MS && !previewBusy && !sending) {
         lastPreviewAt = now;
         recorder?.requestData();
@@ -384,11 +392,11 @@ export function createVoiceControl({
   }
 
   /** Close the current phrase; a new one starts immediately unless the take is over. */
-  function cutPhrase({ drop = false, final = false, force = false } = {}) {
+  function cutPhrase({ drop = false, final = false } = {}) {
     if (!recorder) return;
     const current = recorder;
     previewController?.abort();
-    const hadSpeech = (phraseHadSpeech || force) && !drop;
+    const hadSpeech = phraseHadSpeech && !drop;
     const startedThisPhrase = phraseStartedAt;
     recorder = null;
     closing += 1;
@@ -424,6 +432,7 @@ export function createVoiceControl({
     lastPreviewAt = phraseStartedAt;
     lastLoudAt = phraseStartedAt;
     phraseHadSpeech = false;
+    voicedMs = sustainedMs = currentVoicedMs = energy = 0;
     const current = recorder;
     recorder.addEventListener('dataavailable', (event) => {
       if (event.data && event.data.size > 0) {
@@ -453,7 +462,7 @@ export function createVoiceControl({
         mode, attemptId: getAttemptId(),
       });
       const shaped = shapeTranscription(result);
-      if (shaped.ok) text = result.text;
+      if (shaped.ok) text = filterTranscript(result.text);
       // A phrase that came back empty is not an error worth interrupting for: you
       // paused, or coughed. The take as a whole is checked when it ends.
       else if (!['no_audio', 'empty_transcript'].includes(result.kind)) {
@@ -566,8 +575,10 @@ export function createVoiceControl({
       samples = new Float32Array(analyser.fftSize);
       audioCtx.createMediaStreamSource(stream).connect(analyser);
     } catch {
-      // No level metering: fall back to fixed-length phrases rather than no dictation.
-      closeAudio();
+      // Without a meter we cannot distinguish silence from a recording.
+      closeAudio(); releaseMicrophone(); setState('idle');
+      note('warn', 'Audio meter unavailable', 'Try opening the microphone again.');
+      return;
     }
 
     if (!wantRecording || disposed) { releaseMicrophone(); setState('idle'); return; }
@@ -579,7 +590,6 @@ export function createVoiceControl({
     clock.textContent = '0:00';
     ticker = setInterval(() => { clock.textContent = formatTake(Date.now() - startedAt); }, 250);
     if (analyser) watchLevel();
-    else levelTimer = setInterval(() => { if (state === 'recording') cutPhrase({ force: true }); }, 3000);
     capTimer = setTimeout(() => {
       if (state !== 'recording') return;
       stop();
@@ -597,9 +607,8 @@ export function createVoiceControl({
     // you press Stop rather than whenever the last phrase finishes uploading.
     const last = recorder;
     setState('working');
-    // If the meter never heard anything all take, send the audio anyway rather than
-    // silently discarding it. Metering is an optimisation; the recording is the point.
-    if (last) cutPhrase({ final: true, force: Date.now() - phraseStartedAt > 500 });
+    // Stop uses the same audio gate as an automatic phrase boundary.
+    if (last) cutPhrase({ final: true });
     releaseMicrophone();
     if (!last) settle();
   }

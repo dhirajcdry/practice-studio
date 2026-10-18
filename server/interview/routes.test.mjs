@@ -133,3 +133,55 @@ test('provider switching rehydrates full evidence and never cross-resumes native
   await call('POST /api/interview/turn', { ...body, said: 'Explain the cost.', requestId: 'provider-4' });
   assert.equal(calls.at(-1).resumeSessionId, null); assert.match(calls.at(-1).prompt, /Codex fixture reply/);
 });
+
+test('noise turns are skipped before the provider and remain idempotent', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum', mode: 'typed' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  let calls = 0;
+  interview.run = options => { calls++; options.onDone('noise-session'); return { kill() {} }; };
+  const body = { slug: 'two-sum', interviewId: id, said: '(keyboard clicking) Thanks.', requestId: 'noise-1' };
+  const firstOutput = (await call('POST /api/interview/turn', body)).output;
+  assert.match(firstOutput, /"skipped"\s*:\s*true/); assert.equal(calls, 0);
+  const secondOutput = (await call('POST /api/interview/turn', body)).output;
+  assert.match(secondOutput, /"duplicate"\s*:\s*true/); assert.match(secondOutput, /"skipped"\s*:\s*true/); assert.equal(calls, 0);
+  const turns = await interview.store.readTurns('two-sum', id);
+  assert.equal(turns.filter(row => row.kind === 'candidate').length, 0);
+  assert.deepEqual(turns.find(row => row.kind === 'skipped_noise').raw, '(keyboard clicking) Thanks.');
+});
+
+test('candidate transcript is cleaned before recording and prompting', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum', mode: 'typed' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  let prompt = '';
+  interview.run = options => { prompt = options.prompt; options.onDone('clean-session'); return { kill() {} }; };
+  await call('POST /api/interview/turn', { slug: 'two-sum', interviewId: id, said: 'I will [background noise] use a map.', requestId: 'clean-1' });
+  assert.match(prompt, /I will use a map/); assert.doesNotMatch(prompt, /background noise/);
+  const turns = await interview.store.readTurns('two-sum', id);
+  assert.equal(turns.find(row => row.kind === 'candidate').said, 'I will use a map.');
+});
+
+test('filler provider replies are suppressed while substantive split replies are emitted', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum', mode: 'typed' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  const body = { slug: 'two-sum', interviewId: id };
+  const state = await interview.store.readState('two-sum', id);
+  state.pendingEvents = [{ type: 'verdict', verdict: 'Accepted', elapsedMs: 12 }];
+  const phase = state.phase;
+  await interview.store.writeState('two-sum', id, state);
+  interview.run = options => {
+    options.onToken('Sure, take'); options.onToken(' your time. [[phase: followup]] [[hint: nudge]]'); options.onDone('filler-session'); return { kill() {} };
+  };
+  const filler = await call('POST /api/interview/turn', { ...body, said: 'I have an approach.', requestId: 'filler-1' });
+  assert.doesNotMatch(filler.output, /Sure/);
+  let after = await interview.store.readState('two-sum', id);
+  assert.equal(after.phase, phase); assert.deepEqual(after.hints, state.hints); assert.equal(after.turns, state.turns); assert.deepEqual(after.pendingEvents, state.pendingEvents);
+  assert.ok((await interview.store.readTurns('two-sum', id)).some(row => row.kind === 'suppressed_filler'));
+  interview.run = options => {
+    options.onToken('Sure'); options.onToken(' — what is the complexity?'); options.onDone('substantive-session'); return { kill() {} };
+  };
+  const substantive = await call('POST /api/interview/turn', { ...body, said: 'The map gives constant lookup.', requestId: 'substantive-1' });
+  assert.match(substantive.output, /what is the complexity/);
+});

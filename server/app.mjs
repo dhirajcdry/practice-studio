@@ -15,6 +15,7 @@ import { routes as designRoutes } from './design/routes.mjs';
 import { scheduleMirror } from './mirror/daily.mjs';
 import { SessionLog, onSessionEvent } from './coach/sessions.mjs';
 import { armAttemptWriter } from './attempts/watch.mjs';
+import { routes as ttsRoutes } from './tts/routes.mjs';
 
 // Modules are built independently and each exports a plain route table; the router is the
 // single place they meet. Keys are 'METHOD /path/with/:params'.
@@ -27,6 +28,7 @@ const MODULE_ROUTES = {
   ...judgeRoutes,
   ...designRoutes,
   ...interviewRoutes,
+  ...ttsRoutes,
 };
 
 const sessionLog = new SessionLog({ root: HOME_ROOT });

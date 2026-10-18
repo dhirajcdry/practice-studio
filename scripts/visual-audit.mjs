@@ -117,6 +117,7 @@ export async function runVisualAudit({ origin, target, output }) {
       }` },
     verdictAccepted: { url: '/?simsubmit=accepted&motion=0#/p/jump-game', setup: `need('.ws-bar .ws-submit').click();`, ready: '.sub-verdict.v-accepted' },
     cases: { url: '/#/p/cheapest-flights-within-k-stops', setup: `need('.tc-tab.is-mine').click();`, ready: '.tc-panel' },
+    settingsVoice: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings()); need('.set-voice').scrollIntoView({ block: 'center' });`, ready: '.set-voice', assert: `need('[aria-label="Speech output"]'); need('[aria-label="Natural voice"]'); need('[aria-label="Speech speed"]'); need('[aria-label="Preview voice"]');` },
     settings: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings());`, ready: '.settings', assert: `
       const background = getComputedStyle(need('.settings')).backgroundColor;
       if (background.startsWith('rgba(') && !background.endsWith(', 1)')) throw Error('Reading overlay is translucent: ' + background);` },

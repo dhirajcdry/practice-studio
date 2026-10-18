@@ -201,3 +201,13 @@ your local workspace. Codex defaults to Astra (`gpt-6-astra`) and uses `codex lo
 with ChatGPT; Claude uses its own CLI sign-in. Each provider's limits still apply.
 Codex preserves chat history and reads supplied notes; automatic note edits are
 currently available only through Claude. No API key is required for the Codex path.
+
+### Natural interviewer voice
+
+Run `npm run tts:setup` once to install local Kokoro speech (Python 3 required).
+The pinned package and SHA-256-verified models live under
+`~/Library/Application Support/PracticeStudio/tts/`, outside the repository.
+Settings → Voice chooses Natural (on-device) or System, an English voice, and speed.
+Natural defaults to Heart at 1.0×; unavailable or failed synthesis falls back to the
+browser voice. Sentence playback can be interrupted immediately. Kokoro synthesis
+works offline and sends no text or audio off the machine. Setup alone downloads files.

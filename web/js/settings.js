@@ -4,6 +4,8 @@
 // never costs a flash of the previous one.
 
 import { el, replace } from './dom.js';
+import { createSpeaker } from './speech.js';
+import { NATURAL_VOICES, voicePreferences, saveVoicePreferences } from './speech-preferences.js';
 import { CHORDS } from './shortcuts.js';
 import { createCoachModelPicker } from './coach-model.js';
 
@@ -146,6 +148,7 @@ function keyRow(keys, what) {
   ]);
 }
 
+let voicePreview = null;
 let coachPicker = null;
 let panel = null;
 let opener = null;
@@ -153,6 +156,7 @@ let scrim = null;
 let stopPanelUpdates = null;
 
 export function closeSettings() {
+  voicePreview?.dispose(); voicePreview = null;
   stopPanelUpdates?.(); stopPanelUpdates = null;
   coachPicker?.dispose(); coachPicker = null;
   if (panel) { panel.remove(); panel = null; }
@@ -210,6 +214,32 @@ export function openSettings() {
     }),
   ]);
 
+  const voicePrefs = voicePreferences();
+  const voiceEngine = el('select', { 'aria-label': 'Speech output', onchange: event => {
+    saveVoicePreferences({ engine: event.target.value }); voicePreview?.cancel();
+    voicePicker.disabled = event.target.value === 'system';
+  } }, [['natural', 'Natural (on-device)'], ['system', 'System']].map(([value, text]) =>
+    el('option', { value, text, selected: voicePrefs.engine === value })));
+  const voicePicker = el('select', { 'aria-label': 'Natural voice', disabled: voicePrefs.engine === 'system',
+    onchange: event => { saveVoicePreferences({ voice: event.target.value }); voicePreview?.cancel(); },
+  }, NATURAL_VOICES.map(([value, text]) => el('option', { value, text, selected: voicePrefs.voice === value })));
+  const speedValue = el('span', { class: 'mono dim set-value', text: `${voicePrefs.speed.toFixed(1)}×` });
+  const voiceSpeed = el('input', { type: 'range', min: '0.5', max: '2', step: '0.1', value: String(voicePrefs.speed),
+    class: 'set-range', 'aria-label': 'Speech speed', oninput: event => {
+      const speed = Number(event.target.value); saveVoicePreferences({ speed }); speedValue.textContent = `${speed.toFixed(1)}×`;
+    },
+  });
+  const preview = el('button', { class: 'ws-mini', type: 'button', text: '▶ Preview', 'aria-label': 'Preview voice', onclick: () => {
+    voicePreview ??= createSpeaker(); voicePreview.cancel();
+    voicePreview.say('Let’s walk through your approach. What would you try first?');
+  } });
+  const voiceSection = el('section', { class: 'set-voice', 'aria-label': 'Voice' }, [
+    el('div', { class: 'mono dim set-label', text: 'Voice' }),
+    el('label', { class: 'set-row' }, [el('span', { class: 'set-rowname', text: 'Speech output' }), voiceEngine]),
+    el('div', { class: 'set-row' }, [voicePicker, preview]),
+    el('label', { class: 'set-row' }, [el('span', { class: 'set-rowname', text: 'Speed' }), voiceSpeed, speedValue]),
+    el('p', { class: 'set-cardblurb', text: 'Natural voices run on this Mac. If unavailable, the system voice is used.' }),
+  ]);
   coachPicker = createCoachModelPicker();
   panel = el('aside', { class: 'settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings' }, [
     el('div', { class: 'set-head' }, [
@@ -223,6 +253,7 @@ export function openSettings() {
       el('p', { class: 'set-cardblurb', text: 'Applies to new coach and system-design replies. Each provider uses its own sign-in and limits. Automatic note updates are available with Claude.' }),
       el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
       el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
+      voiceSection,
       el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
       el('div', { class: 'mono dim set-label', text: 'Theme' }),
       themeCards,

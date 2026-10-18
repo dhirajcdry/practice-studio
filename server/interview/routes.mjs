@@ -12,6 +12,7 @@ import { systemPrompt, turnPrompt, rehydratePrompt, debriefPrompt } from './prom
 import { createTagStripper } from './narration.mjs';
 import { InterviewStore, validate } from './store.mjs';
 import { writeInterviewDoc } from './render.mjs';
+import { filterTranscript, isFillerReply } from '../../web/js/transcript-filter.js';
 
 export class InterviewService {
   constructor({ root = HOME_ROOT, binary = process.env.STUDIO_COACH_BINARY, run = runProviderTurn } = {}) {
@@ -83,8 +84,8 @@ async function generate(svc, state, id, body, kind, slot, stream) {
     });
     return recovering && kind !== 'opening' ? `${rehydratePrompt(state, turns)}\n\n${next}` : next;
   };
-  let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', child, finished = false, retried = false, sessionId = null;
-  const emit = text => { if (text) { asked += text; stream.token(text); } };
+  let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', buffered = '', child, finished = false, retried = false, sessionId = null;
+  const emit = text => { if (text) buffered += text; };
   const finish = async ({ failure = null, stopped = false } = {}) => {
     if (finished) return;
     finished = true;
@@ -92,6 +93,11 @@ async function generate(svc, state, id, body, kind, slot, stream) {
       if (!failure && !stopped) {
         emit(guard.push(tags.flush()).text); emit(guard.flush());
       }
+      if (!failure && !stopped && kind !== 'debrief') {
+        const clean = filterTranscript(buffered);
+        if (clean && !isFillerReply(clean)) { asked = buffered; stream.token(asked); }
+        else if (buffered.trim()) await record(svc, state, id, { kind: 'suppressed_filler', raw: buffered, requestId: body.requestId, provider: choice.provider, model: choice.model });
+      } else if (!failure && !stopped) { asked = buffered; if (asked) stream.token(asked); }
       if (asked) {
         if (tags.phase && kind !== 'debrief') advance(state, tags.phase);
         recordHints(state, tags.hints);
@@ -101,11 +107,11 @@ async function generate(svc, state, id, body, kind, slot, stream) {
       if (failure || stopped) {
         state.claudeSessionId = null; conversation?.close?.();
       } else {
-        state.turns++;
+        if (asked) state.turns++;
         if (choice.provider === 'claude') state.claudeSessionId = sessionId;
         if (typeof body.code === 'string') state.lastCode = body.code;
-        // Once a reply acknowledges the new events, later prompts need not repeat them.
-        state.pendingEvents = [];
+        // Once a substantive reply acknowledges the new events, later prompts need not repeat them.
+        if (asked) state.pendingEvents = [];
         if (kind === 'debrief') {
           state.debriefed = true; state.endedAt ??= Date.now();
           state.hireSignal = asked.match(/(?:Hire signal[^\n]*\n|Hire signal\s*[:—-])\s*(?:\*\*)?(Strong hire|Lean hire|Lean no|No hire|Hire)\b/i)?.[1] || null;
@@ -143,7 +149,7 @@ async function generate(svc, state, id, body, kind, slot, stream) {
         if (finished) return;
         // Only a lost native session gets one reconstruction attempt, never an
         // automatic retry after visible output or an ordinary provider failure.
-        if (choice.provider === 'claude' && continuation && !retried && !asked && /session.*(not found|missing|invalid|no longer|could not)|no conversation|could not resume|cannot resume|can.t resume/i.test(message)) {
+        if (choice.provider === 'claude' && continuation && !retried && !asked && !buffered && /session.*(not found|missing|invalid|no longer|could not)|no conversation|could not resume|cannot resume|can.t resume/i.test(message)) {
           retried = true; state.claudeSessionId = null; tags = createTagStripper(); guard = createNarrationFilter(); launch(true);
         } else void finish({ failure: String(message) });
       },
@@ -188,7 +194,7 @@ async function action(req, res, ctx, kind) {
     const state = await svc.store.readState(body.slug, id);
     if (!state) throw new HttpError(404, 'NOT_FOUND', 'Interview not found.');
     const existing = body.requestId && state.requests[body.requestId];
-    if (existing?.status === 'completed') return sendJson(res, 200, { duplicate: true, state: publicState(state) });
+    if (existing?.status === 'completed' || existing?.status === 'skipped') return sendJson(res, 200, { duplicate: true, skipped: existing.status === 'skipped', state: publicState(state) });
     if (state.debriefed) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
     if (state.pausedAt !== null && !['resume', 'debrief'].includes(kind)) throw new HttpError(409, 'PAUSED', 'Resume the interview first.');
     if (kind === 'pause' || kind === 'resume') {
@@ -223,16 +229,24 @@ async function action(req, res, ctx, kind) {
         if (event.requestId) state.requests[event.requestId] = { status: 'recorded' };
       }
     }
-    if (!existing && body.said?.trim()) {
+    const cleanSaid = body.said === undefined ? '' : filterTranscript(body.said);
+    if (kind === 'turn' && !cleanSaid) {
+      await record(svc, state, id, { kind: 'skipped_noise', raw: body.said, requestId: body.requestId });
+      if (body.requestId) state.requests[body.requestId] = { status: 'skipped', kind, raw: body.said };
+      await persist(svc, state, id);
+      return sendJson(res, 200, { skipped: true, state: publicState(state) });
+    }
+    body.said = cleanSaid;
+    if (!existing && cleanSaid) {
       state.lastSpeechAt = Date.now();
-      await record(svc, state, id, { kind: 'candidate', said: body.said, requestId: body.requestId });
+      await record(svc, state, id, { kind: 'candidate', said: cleanSaid, requestId: body.requestId });
     }
     if (typeof body.code === 'string') await record(svc, state, id, { kind: 'buffer', code: body.code });
     if (body.requestId) state.requests[body.requestId] = { status: 'accepted', kind, said: body.said || '' };
     if (kind === 'debrief') state.endedAt ??= Date.now();
     await svc.store.writeState(body.slug, id, state);
     stream = new SseStream(res);
-    stream.send('accepted', { requestId: body.requestId });
+    stream.send('accepted', { requestId: body.requestId, said: body.said || '' });
     await generate(svc, state, id, body, kind, slot, stream);
   } catch (error) { if (stream) stream.error(error.message); else throw error; }
   finally { slot.release(); }

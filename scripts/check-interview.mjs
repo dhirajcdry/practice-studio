@@ -41,7 +41,7 @@ try {
     exampleTestcases: '[2,7,11,15]\n9', codeSnippets: [{ langSlug: 'python3', code: 'class Solution:\n    def twoSum(self, nums, target):\n        pass\n' }],
   } }));
   server = spawn(process.execPath, ['--input-type=module', '--eval', "globalThis.fetch = async () => { throw Error('Network disabled in interview check'); }; (await import('./server/index.mjs')).start();"], {
-    cwd: root, env: { ...process.env, STUDIO_HOME: home, STUDIO_PORT: '4193', STUDIO_MIRROR_DIR: '', STUDIO_COACH_BINARY: path.join(root, 'server/interview/test/fake-interviewer.mjs'), STUDIO_CODEX_BINARY: path.join(root, 'server/coach/test/bin/fake-codex.mjs') }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: root, env: { ...process.env, STUDIO_TTS_PYTHON: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_SCRIPT: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_MODEL: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_VOICES: path.join(root, 'server/tts/test/fake-helper.mjs'), FAKE_INTERVIEW_PROMPT: path.join(home, 'provider-calls.jsonl'), STUDIO_HOME: home, STUDIO_PORT: '4193', STUDIO_MIRROR_DIR: '', STUDIO_COACH_BINARY: path.join(root, 'server/interview/test/fake-interviewer.mjs'), STUDIO_CODEX_BINARY: path.join(root, 'server/coach/test/bin/fake-codex.mjs') }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   for (const stream of [server.stdout, server.stderr]) stream.on('data', data => { logs = (logs + data).slice(-4000); });
   await until(async () => (await fetch(origin + '/api/health')).ok, 'server');
@@ -64,12 +64,43 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { throw new DOMException('No mic in check', 'NotAllowedError'); } });" });
   await send('Page.navigate', { url: origin + '/#/p/two-sum' });
   await until(() => evaluate("return !!document.querySelector('.rec-toggle') && !!document.querySelector('.ws-host');"), 'problem');
+  // Keep playback deterministic while exercising real fetches and the fake server helper.
+  await evaluate(`
+    window.ttsRequests = 0; window.systemUtterances = 0; window.audioPlays = 0;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (...args) => { if (args[0] === '/api/tts') window.ttsRequests++; return originalFetch(...args); };
+    window.Audio = class { play() { window.audioPlays++; setTimeout(() => this.onended?.(), 20); return Promise.resolve(); } pause() {} removeAttribute() {} };
+    window.speechSynthesis.speak = utterance => { window.systemUtterances++; setTimeout(() => utterance.onend?.(), 20); };
+    const { createSpeaker } = await import('/js/speech.js');
+    window.checkSpeaker = createSpeaker(); window.checkSpeaker.say('Natural speech check.');
+  `);
+  await until(() => evaluate('return window.audioPlays === 1 && !window.checkSpeaker.speaking;'), 'natural speech');
+  assert.equal(await evaluate('return window.ttsRequests;'), 1);
+  assert.equal(await evaluate('return window.systemUtterances;'), 0);
+  await evaluate(`
+    window.checkSpeaker.dispose();
+    const priorFetch = window.fetch;
+    window.fetch = (...args) => args[0] === '/api/tts/status'
+      ? Promise.resolve(new Response(JSON.stringify({ available: false, voices: [], reason: 'Not installed' }))) : priorFetch(...args);
+    window.checkSpeaker = (await import('/js/speech.js')).createSpeaker();
+    window.checkSpeaker.say('System speech check.');
+  `);
+  await until(() => evaluate('return window.systemUtterances === 1 && !window.checkSpeaker.speaking;'), 'system speech fallback');
+  assert.equal(await evaluate('return window.ttsRequests;'), 1);
+  await evaluate('window.checkSpeaker.dispose();');
   await evaluate("document.querySelector('.rec-toggle').click();");
   await until(() => evaluate("return !!document.querySelector('.ci-setup');"), 'start choices');
   await evaluate("document.querySelector('.ci-setup form').requestSubmit();");
   await until(() => evaluate("return document.querySelector('.ci-log')?.textContent.includes('Find two numbers') && !document.querySelector('.ci-typed button').disabled;"), 'opening');
   assert.equal(await evaluate("return !!document.querySelector('.coach-bar');"), false, 'coach controls hidden');
   const identity = await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1')); ");
+  const callsBeforeNoise = await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8');
+  await evaluate("const input = document.querySelector('.ci-input'); input.value = '[typing] (keyboard clacking) (clicking) [TAPPING]'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-typed button').click();");
+  await until(() => evaluate("return document.querySelector('.ci-input')?.value === '' && !document.querySelector('.ci-typed button').disabled;"), 'noise rejected');
+  assert.equal(await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8'), callsBeforeNoise, 'noise must not call provider');
+  assert.equal(await evaluate("return document.querySelectorAll('.ci-candidate').length;"), 0, 'noise must not appear in transcript');
+  const noiseRecord = await fs.readFile(path.join(home, 'problems/two-sum/interviews', identity.id, 'turns.jsonl'), 'utf8');
+  assert.ok(noiseRecord.includes('skipped_noise'), 'noise retained as a separate audit event');
   await evaluate("const input = document.querySelector('.ci-input'); input.value = 'I will use a map.'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-typed button').click();");
   await until(() => evaluate("return document.querySelector('.ci-log')?.textContent.includes('What will you keep');"), 'reply');
   await evaluate("const input = document.querySelector('.ci-input'); input.value = 'Draft survives reload'; input.dispatchEvent(new Event('input')); ");
