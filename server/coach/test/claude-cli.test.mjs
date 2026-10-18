@@ -335,3 +335,8 @@ test('answer tools are read-only; upkeep forks the full scoped permission set wi
   assert.ok(upkeep.includes('--no-session-persistence'));
   assert.equal(upkeep[upkeep.indexOf('--tools') + 1], 'Read,Glob,Write,Edit');
 });
+
+test('submission code and sidecars are denied to both Write and Edit', () => {
+  const { deny } = permissionArgs('/scratch');
+  for (const tool of ['Write', 'Edit']) assert.ok(deny.includes(`${tool}(//scratch/problems/*/submissions/**)`));
+});

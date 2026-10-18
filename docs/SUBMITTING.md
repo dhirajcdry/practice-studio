@@ -44,9 +44,10 @@ sequenceDiagram
   T->>T: ONE POST /problems/{slug}/submit/ → submission_id
   W->>T: inject pagePoll
   T->>T: GET /submissions/detail/{id}/check/ every 1 s until SUCCESS (max 55 s)
-  W-->>B: {ok, submissionId, check}
+  W->>T: ONE read-only submissionDetails GraphQL query (best-effort)
+  W-->>B: {ok, submissionId, check, details}
   B-->>P: postMessage result
-  P->>S: POST /api/submit/record {slug, code, submissionId, check}
+  P->>S: POST /api/submit/record {slug, code, submissionId, check, details}
   S-->>P: verdict (status_code 10 = Accepted) + what was recorded
 ```
 
@@ -91,6 +92,7 @@ All of it is written by the server into `STUDIO_HOME` (default `~/LeetCodeTutor`
 | Where | What |
 | --- | --- |
 | `problems/<slug>/submissions/<id>.py` | The exact code that was judged |
+| `problems/<slug>/submissions/<id>.json` | Atomic schemaVersion 1 sidecar: id, source, time, verdict summary, full failure fields, optional normalized details, and lead-up facts |
 | `problems/<slug>/meta.json` → `submissions[]` | Verdict, tests passed, runtime, memory, percentiles, link. Merged into the file, never overwritten; a submission id already there is not added twice |
 | `problems/<slug>/sessions/<id>.jsonl` | A `submitted` event and a `verdict` event, which the coach and stats read |
 
@@ -159,13 +161,37 @@ Failure codes: `SIGNED_OUT`, `SESSION_EXPIRED`, `RATE_LIMITED`, `JUDGE_UNREACHAB
 `CONNECTOR_ERROR`, `CONNECTOR_GONE`. The page maps them to panel states in `SUBMIT_KINDS`
 (`web/js/api.js`); a code it doesn't know still shows the Connector's message verbatim.
 
-`POST /api/submit/record` takes `{ slug, code, submissionId, check }` (`check` is `null` when
+`POST /api/submit/record` takes `{ slug, code, submissionId, check, details }` (`check` is `null` when
 no verdict came back). It answers `200` with the verdict payload described in
 [API-CONTRACT-P2.md](API-CONTRACT-P2.md#phase-4--the-judge), `400` for a malformed
 request or an unfinished `check`, `404` for a slug outside the catalog, and `409` if that
 submission was already recorded.
 
 ## Developing and testing
+
+Submission history is available from `GET /api/problems/:slug/submissions`, newest first,
+with guarded code, failure fields, normalized details, lead-up facts and an aggregate
+summary. `GET /api/problems/:slug/history` now returns only conversation threads.
+
+Connector 1.2.0 makes one read-only `submissionDetails` GraphQL request after a completed
+LeetCode verdict, in the same tab and with the same browser authentication. Failures,
+including unknown fields, return `details: null` and `detailsError`; the verdict stands.
+There is no retry. Runtime/memory distribution strings are parsed defensively. Their
+undocumented shape remains unverified; memory buckets are labelled only when raw memory
+and its display reconcile the unit, otherwise the unit stays unknown.
+
+The same `studio-submit` port accepts `{type: 'details', submissionId}`. This makes only
+one read per explicit Fetch details click, reusing/opening a LeetCode tab and closing a
+tab it created. The page posts `{details}` to
+`POST /api/problems/:slug/submissions/:id/details`. Only an existing numeric LeetCode id
+can be updated; existing failures, code and lead-up facts remain intact. Older records
+can gain a sidecar without inventing past session facts. NeetCode still uses its existing
+page scraping and makes no extra request.
+
+Sidecars are server-owned. Failure to save one is reported in `recorded.sidecar` and
+`recorded.note` without changing the judge verdict. Lead-up counts use only session log
+events known at submission time: minutes into the sitting/attempt, learner local runs
+since the previous submission, and coach questions in that interval.
 
 - `npm test` covers the record route (`server/judge/test/routes.test.mjs`), the verdict
   rules (`verdict.test.mjs`) and the NeetCode verdict and recording (`neetcode.test.mjs`).

@@ -116,7 +116,7 @@ test('Claude: studio tools reach Studio through the MCP bridge; the token dies w
   const lines = (await fsp.readFile(results, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
   const { token, url, configPath } = lines[0];
   assert.match(url, new RegExp(`^${f.base}/api/coach/tools/call$`));
-  assert.deepEqual(lines[2].tools.length, 10);
+  assert.ok(lines[2].tools.includes('get_submissions'));
   assert.equal(lines[4].result.isError, false);
   assert.deepEqual((await readCases({ root: f.root, slug: 'two-sum' })).map((c) => c.input), ['[5,5]\n10']);
 

@@ -36,8 +36,8 @@
 .roadmap-detail h2{font:600 26px/1.2 var(--ui);letter-spacing:-.04em;color:var(--ink);margin:12px 0}
 .detail-summary{font:12px/1.7 var(--ui);color:var(--ink-70);margin:0}
 .detail-close{position:absolute;right:12px;top:10px;width:28px;height:28px;font:22px var(--ui);color:var(--ink-50)}
-.detail-list{display:block;max-height:320px;overflow:auto;padding-right:14px}
-.detail-problem{width:100%;display:grid;grid-template-columns:18px minmax(0,1fr) 60px 12px;gap:9px;align-items:center;text-align:left;border-bottom:1px solid var(--hair-10);padding:12px 0}
+.detail-list{display:block;max-height:320px;overflow:auto;padding-inline:var(--hover-pad)}
+.detail-problem{width:calc(100% + 2 * var(--hover-pad));display:grid;grid-template-columns:18px minmax(0,1fr) 60px 12px;gap:9px;align-items:center;text-align:left;border-bottom:1px solid var(--hair-10);padding:12px 0}
 .detail-problem:hover .detail-title{color:var(--accent)}
 .detail-title{font:13px/1.5 var(--ui);color:var(--ink)}.detail-diff{font:10px var(--ui);text-align:right;color:var(--ink-50)}
 .status{font:14px var(--mono);color:var(--ink-35)}.status-accepted,.detail-diff.easy{color:var(--easy)}.status-local-pass{color:var(--accent)}.status-attempted,.detail-diff.medium{color:var(--med)}.detail-diff.hard{color:var(--hard)}.open-arrow{font:14px var(--ui);color:var(--ink-35)}

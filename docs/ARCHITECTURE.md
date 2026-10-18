@@ -155,6 +155,15 @@ verdict (acceptance is `status_code === 10`) and records the code, session event
 Polling reads the result of that submission; nothing creates a second one. Every failure
 says whether the code reached LeetCode. Full design: [Submitting to LeetCode](SUBMITTING.md).
 
+Submission history is read from `GET /api/problems/:slug/submissions`; code is returned
+only from the problem's own submissions directory. Optional judge details are attached
+once through `POST /api/problems/:slug/submissions/:id/details` and stored as an atomic
+JSON sidecar beside the submitted code. The Connector performs one optional details read after judging and never retries it.
+`GET /api/problems/:slug/history` returns threads only. Sidecars carry schemaVersion 1,
+submissionId, source, at, verdict, failure, details and leadUp. `get_submissions` is a
+read-only Studio tool for both coach providers; validated message attachments include
+the saved code and diffs as fenced data.
+
 ## Validation and further reading
 
 `npm test` runs Node unit/integration tests with local fixtures and fake CLI/judge responses.

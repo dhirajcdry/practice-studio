@@ -1,3 +1,5 @@
+import { submissionFixtures, detailsFixture } from './submission-fixtures.js';
+import { detailsViaConnector } from './leetcode-bridge.js';
 // HTTP client for the Studio API (docs/API-CONTRACT.md) with a bundled offline
 // fallback. Every call resolves to a tagged result object — never a rejected
 // promise, never an indefinite wait — so the UI can always render something true.
@@ -461,12 +463,11 @@ function simulatedRun(kind) {
 /** POST /api/run. `testcases` is omitted so the server uses exampleTestcases. */
 /** Everything this problem remembers: submissions with their code, and past chats. */
 export async function loadHistory(slug) {
-  if (api.mode !== 'live') return { ok: false, submissions: [], threads: [] };
+  if (api.mode !== 'live') return { ok: false, threads: [] };
   const result = await fetchJson(`/api/problems/${encodeURIComponent(slug)}/history`);
-  if (!result.ok) return { ok: false, submissions: [], threads: [] };
+  if (!result.ok) return { ok: false, threads: [] };
   return {
     ok: true,
-    submissions: Array.isArray(result.data?.submissions) ? result.data.submissions : [],
     threads: Array.isArray(result.data?.threads) ? result.data.threads : [],
   };
 }
@@ -659,7 +660,7 @@ export async function submitCode(slug, code, signal, { target = 'leetcode', neet
   if (api.demo && !simulateSubmit) return {ok:false,kind:'demo',code:'DEMO_ONLY',message:'Submissions are unavailable in the demo. Nothing was sent to LeetCode.'};
   if (simulateSubmit) {
     await new Promise(r => setTimeout(r, 1200));
-    return { ...simulatedSubmit(simulateSubmit), source: 'mock' };
+    return rememberSimulated(slug, code, { ...simulatedSubmit(simulateSubmit), source: 'mock' });
   }
   if (api.mode !== 'live') {
     return {
@@ -675,7 +676,7 @@ export async function submitCode(slug, code, signal, { target = 'leetcode', neet
   const sent = await submitViaConnector({ slug, code, signal });
   if (sent.ok || sent.submissionId) {
     const recorded = await sendJson('/api/submit/record', {
-      method: 'POST', body: { slug, code, submissionId: sent.submissionId, check: sent.ok ? sent.check : null },
+      method: 'POST', body: { slug, code, submissionId: sent.submissionId, check: sent.ok ? sent.check : null, details: sent.details ?? null, detailsError: sent.detailsError ?? null },
     });
     if (sent.ok) {
       return recorded.ok
@@ -764,7 +765,7 @@ async function submitToNeetCode(slug, code, signal, neetcodeSlug) {
   if (api.demo && !simulateSubmit) return { ...tag, ok: false, kind: 'demo', code: 'DEMO_ONLY', message: 'Submissions are unavailable in the demo. Nothing was sent to NeetCode.' };
   if (simulateSubmit) {
     await new Promise(r => setTimeout(r, 1200));
-    return { ...simulatedNeetCode(simulateSubmit), ...tag, source: 'mock' };
+    return rememberSimulated(slug, code, { ...simulatedNeetCode(simulateSubmit), ...tag, source: 'mock' });
   }
   if (api.mode !== 'live') {
     return { ...tag, ok: false, source: 'mock', kind: 'offline', code: 'NO_SERVER',
@@ -1024,7 +1025,7 @@ export async function attachCoachRun(runId, { signal = null, onToken = () => {},
 }
 
 export async function streamCoachMessage(slug, message, {
-  includeCode = true, signal = null, kind = null, attemptId = null, newThread = false, resumeSessionId = null,
+  includeCode = true, signal = null, kind = null, attemptId = null, newThread = false, resumeSessionId = null, attach = null,
   onToken = () => {}, onTool = () => {}, onRun = null, onAction = null,
 } = {}) {
   if (api.mode !== 'live') {
@@ -1055,7 +1056,7 @@ export async function streamCoachMessage(slug, message, {
       method: 'POST',
       signal: controller.signal,
       headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-      body: JSON.stringify({ slug, message, includeCode, kind, attemptId, newThread, resumeSessionId }),
+      body: JSON.stringify({ slug, message, includeCode, kind, attemptId, newThread, resumeSessionId, attach }),
     });
 
     if (!response.ok) {
@@ -1245,4 +1246,35 @@ export async function transcribeAudio(slug, blob, { filename = 'take.webm', mode
     clearTimeout(timer);
     if (signal) signal.removeEventListener('abort', relay);
   }
+}
+
+const demoSubmissions = new Map();
+function fixtureRows(slug) {
+  if (!demoSubmissions.has(slug)) demoSubmissions.set(slug, submissionFixtures());
+  return demoSubmissions.get(slug);
+}
+function rememberSimulated(slug, code, result) {
+  if (!result.ok) return result;
+  const submissionId = result.target === 'neetcode' ? `nc-${Date.now()}` : String(Date.now());
+  const details = result.accepted && result.target !== 'neetcode' ? structuredClone(detailsFixture) : null;
+  fixtureRows(slug).unshift({ submissionId, at: new Date().toISOString(), source: result.target === 'neetcode' ? 'neetcode' : 'studio', verdict: result.verdict, accepted: result.accepted, code, testsPassed: result.passed, testsTotal: result.total, runtimeMs: details?.runtime.ms ?? null, memoryMb: details?.memory.mb ?? null, beatsRuntimePct: details?.runtime.percentile ?? null, failure: result.failure, details, hasDetails: Boolean(details), leadUp: null });
+  return { ...result, submissionId, details };
+}
+export async function loadSubmissions(slug) {
+  if (api.demo || simulateSubmit) return { ok: true, submissions: fixtureRows(slug) };
+  const result = await fetchJson(`/api/problems/${encodeURIComponent(slug)}/submissions`);
+  return result.ok ? { ok: true, ...result.data } : { ok: false, submissions: [], summary: null };
+}
+
+export async function fetchSubmissionDetails(slug, submissionId) {
+  if (api.demo || simulateSubmit) {
+    const entry = fixtureRows(slug).find(s => String(s.submissionId) === String(submissionId));
+    if (!entry) return { ok: false, message: 'That simulated submission was not found.' };
+    entry.details = structuredClone(detailsFixture); entry.hasDetails = true;
+    return { ok: true, ...entry };
+  }
+  const read = await detailsViaConnector(slug, submissionId);
+  if (!read.ok) return read;
+  const result = await sendJson(`/api/problems/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(submissionId)}/details`, { method: 'POST', body: { details: read.details } });
+  return result.ok ? { ok: true, ...result.data } : { ok: false, message: 'Details were read but could not be saved.' };
 }

@@ -441,7 +441,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .dhead .dtitle{flex:1;min-width:0;font-size:14px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dclose{color:var(--ink-50);border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:5px 10px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dclose:hover{color:var(--ink);border-color:var(--ink)}
-.dbody{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:18px 20px 24px}
+.dbody{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;padding:18px 20px 24px}
 .dfoot{
   flex:0 0 auto;border-top:1px solid var(--hair-10);padding:9px 16px;background:rgba(var(--ink-rgb),.015);
   font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-35);line-height:1.6;
@@ -784,7 +784,7 @@ body.coach-open .coach-launch{display:none}
 .coach-hide{padding:5px 10px}
 
 .coach-log{
-  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;
+  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;
   padding:16px 18px 10px;
   /* BLOCK, not flex. A scrolling list of stacked messages has no business being a flex
      column: flex items shrink to fit their container before the container agrees to
@@ -838,7 +838,7 @@ body.coach-open .coach-launch{display:none}
 .coach-tab[aria-pressed="true"]{color:var(--ink);background:rgba(var(--ink-rgb),.05)}
 
 .coach-history{
-  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;
+  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;
   padding:14px 16px 16px;display:block;   /* block: it scrolls — see css-rules.test.mjs */
 }
 .hist-section{margin:16px 0 8px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -1494,3 +1494,52 @@ body.coach-open .coach-runs{bottom:20px}
 .cmsg-receipt.is-undone{color:var(--ink-35)}
 .cmsg-receipt.is-undone .cr-text{text-decoration:line-through;text-decoration-color:var(--ink-35)}
 .cmsg-receipt.is-undone .cr-glyph{color:var(--ink-35)}
+
+/* ---- hover surface ---- */
+:root{--hover-pad:8px;--control-h-sm:28px;--control-h:34px}
+body .hover-surface{position:relative;padding-inline:var(--hover-pad);margin-inline:calc(-1 * var(--hover-pad));border-radius:var(--r-sm);transition:background var(--dur-hover)}
+body .hover-surface:hover{background:var(--hair-06)}
+body .hover-surface:active{background:var(--hair-10)}
+body .hover-surface:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+body .hover-divided{border-bottom:0}
+.hover-divided:before{content:'';position:absolute;bottom:0;left:var(--hover-pad);right:var(--hover-pad);height:1px;background:var(--hair-10);pointer-events:none}
+.hover-divided:not(:has(~ .hover-divided)):before{content:none}
+.hover-divided:hover:before,.hover-divided:has(+ :hover):before{opacity:0}
+/* ---- control geometry ---- */
+/* Specificity protects geometry from theme typography; content rows remain content-sized. */
+body[class] :is(.ws-mini,.ws-run,.ws-submit,.chip,.btn,.act,.rec-toggle,.coach-hide,.coach-tab,.rr-tab,.set-seg button,.seg button,.rm-mode,.rm-graph-controls button,.dash-refresh,.coach-model-trigger){height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
+body[class] :is(.coach-actions,.case-actions,.submission-action-bar) :is(button,.rec-toggle){height:var(--control-h);min-height:var(--control-h);padding-block:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center}
+body[class] .icon-btn{width:var(--control-h-sm);height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:0;background:transparent;border-radius:var(--r-sm);color:var(--ink-50);box-shadow:none}
+body[class] .icon-btn:hover{background:var(--hair-06);color:var(--ink)}
+body[class] .icon-btn[aria-pressed=true]{background:var(--hair-10)}
+body[class] .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.icon-btn svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:1.6}
+body[class] .coach-bar{align-items:center;gap:8px}
+body[class] .coach-bar :is(.coach-tab,.coach-hide){margin-block:0;height:var(--control-h-sm);min-height:var(--control-h-sm);padding-block:0}
+.coach-tools-sep{width:1px;height:16px;background:var(--hair-20);flex-shrink:0}
+.control-tooltip{position:fixed;z-index:10000;pointer-events:none;padding:5px 8px;border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card);color:var(--ink);box-shadow:var(--shadow);font:11px var(--ui)}
+.chat-date{display:flex;align-items:center;gap:10px;margin:8px 0 18px;font:11px var(--mono);color:var(--ink-50)}
+.chat-date:before,.chat-date:after{content:'';height:1px;flex:1;background:var(--hair-10)}
+/* All compact toolbar families share geometry, including nested voice controls. */
+body[class] :is(.vc-talk,.coach-model-picker select,.catalog-modes button,.catalog .seg-opt,.catalog .linkbtn,.roadmap-mode,.graph-btn,.detail-close,.tc-tab,.tc-add,.set-open,.set-step button,.ptoggle){height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
+body[class] .coach-actions .vc-talk{height:var(--control-h);min-height:var(--control-h)}
+.rr-casehead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
+/* Rows choose one size for both primary and secondary actions. */
+body[class] .tc-foot :is(.ws-mini,.ws-run){height:var(--control-h-sm);min-height:var(--control-h-sm);padding-block:0}
+body[class] :is(.dz-done,.dz-send,.dzl-new,.dzl-go,.dz-pause,.dz-mode,.dz-phase){height:var(--control-h);min-height:var(--control-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
+body[class] :is(.dz-phase,.dz-mode):focus-visible{outline-offset:-2px}
+.dz-phase:disabled{opacity:.45;cursor:not-allowed}
+/* A 32px control plus padding and borders fits the existing 44px wide bar. */
+body.ws-wide .coach-bar{--control-h-sm:32px;flex-wrap:nowrap}
+/* The list mount owns the bleed space, so the scrolling log never gains overflow. */
+.recent-chats{padding-inline:var(--hover-pad);margin-inline:calc(-1 * var(--hover-pad))}
+/* Receipts are readable content, not native-tooltip previews. */
+.cr-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal}
+
+/* ---- monaco find widget ---- */
+/* Monaco pins the close button at top:5px, sized for its own 20px buttons. With Studio's
+   16px icon buttons that leaves the × 2.5px above the find row (centred at 15.5px: 3px
+   margin + half the 25px input) and 9px from its neighbour where the rest sit 2–3px apart.
+   Centre it on the row and pull it in to match the controls beside it. `body` outranks
+   Monaco's own rule, which loads after this sheet. */
+body .monaco-editor .find-widget>.button.codicon-widget-close{top:7.5px;right:8px}

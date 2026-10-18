@@ -46,7 +46,7 @@ function viewer() {
 // ------------------------------------------------------------------- validation
 
 test('every spec is a closed object schema with a description', () => {
-  assert.equal(TOOL_SPECS.length, 10);
+  assert.equal(TOOL_SPECS.length, 11);
   for (const spec of TOOL_SPECS) {
     assert.equal(spec.inputSchema.type, 'object');
     assert.equal(spec.inputSchema.additionalProperties, false);
@@ -420,29 +420,30 @@ test('Codex: dynamic tools on thread/start, item/tool/call answered through the 
   const threadFile = path.join(w.root, 'thread.json');
   const resultsFile = path.join(w.root, 'results.jsonl');
   const calls = [];
-  const toolSession = { call: async (tool, args) => { calls.push([tool, args]); return { ok: tool === 'get_state', text: `${tool} result` }; } };
+  const toolSession = { call: async (tool, args) => { calls.push([tool, args]); return { ok: ['get_state', 'get_submissions'].includes(tool), text: `${tool} result` }; } };
   const tools = [];
   let reply = '';
   const turn = runCoachTurn({
     prompt: 'q', binary: FAKE_CODEX, toolSession, toolSpecs: TOOL_SPECS,
     env: { ...process.env, FAKE_CODEX_THREAD_FILE: threadFile, FAKE_CODEX_TOOL_RESULTS_FILE: resultsFile,
-      FAKE_CODEX_TOOL_CALLS: JSON.stringify([{ tool: 'get_state', arguments: {} }, { tool: 'add_case', arguments: { input: [[1], 1], why: 'tiny' } }]) },
+      FAKE_CODEX_TOOL_CALLS: JSON.stringify([{ tool: 'get_state', arguments: {} }, { tool: 'get_submissions', arguments: { submission_id: '12' } }, { tool: 'add_case', arguments: { input: [[1], 1], why: 'tiny' } }]) },
     onToken: (text) => { reply += text; }, onTool: (name, summary) => tools.push([name, summary]),
   });
   await turn.exited;
   const thread = JSON.parse(await fsp.readFile(threadFile, 'utf8'));
   assert.deepEqual(thread.dynamicTools.map((d) => d.name), TOOL_NAMES);
   assert.equal(thread.dynamicTools[0].type, 'function');
-  assert.ok(thread.dynamicTools[1].inputSchema.properties.input);
+  assert.ok(thread.dynamicTools.find(t => t.name === 'add_case').inputSchema.properties.input);
   assert.match(thread.baseInstructions, /only tools you may use are the Studio tools/);
   assert.ok(thread.config.mcp_servers, 'the MCP lockdown is still applied');
 
   const responses = (await fsp.readFile(resultsFile, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(responses[0].result, { success: true, contentItems: [{ type: 'inputText', text: 'get_state result' }] });
-  assert.equal(responses[1].result.success, false);
-  assert.deepEqual(calls, [['get_state', {}], ['add_case', { input: [[1], 1], why: 'tiny' }]]);
-  assert.deepEqual(tools, [['get_state', ''], ['add_case', 'tiny']]);
-  assert.match(reply, /Tools said: get_state result \| add_case result/);
+  assert.equal(responses[1].result.success, true);
+  assert.equal(responses[2].result.success, false);
+  assert.deepEqual(calls, [['get_state', {}], ['get_submissions', { submission_id: '12' }], ['add_case', { input: [[1], 1], why: 'tiny' }]]);
+  assert.deepEqual(tools, [['get_state', ''], ['get_submissions', '12'], ['add_case', 'tiny']]);
+  assert.match(reply, /Tools said: get_state result \| get_submissions result \| add_case result/);
 });
 
 test('Codex without a tool session still rejects tool calls and sends no dynamic tools', async (t) => {

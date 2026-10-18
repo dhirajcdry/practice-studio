@@ -1,3 +1,4 @@
+import { tooltip } from './tooltip.js';
 // The coach panel — a streaming conversation beside the editor (ARCHITECTURE.md §5,
 // API-CONTRACT-P2.md Phase 3).
 //
@@ -24,7 +25,8 @@ import {
   studioToolName, actionStatus, receiptGlyph, receiptSummary, canUndo, undoAction,
 } from './coach-actions.js';
 import { readAttempt, resumeDecision } from './attempt-state.js';
-import { renderHistory } from './history.js';
+import { renderHistory, threadDate } from './history.js';
+import { createSubmissions } from './submissions.js';
 import { onChord, chordLabel } from './shortcuts.js';
 import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft } from './drafts.js';
 import {
@@ -34,6 +36,19 @@ import {
 const OPEN_KEY = 'studio.coach.open.v1';
 
 /* ============================== shaping (pure) ============================== */
+
+// Idle has no status ornament; only ongoing work belongs beside the tabs.
+export function setCoachState(label, separator, text) {
+  const active = ['Thinking', 'Asking', 'Listening', 'Transcribing', 'Attempt in progress', 'Stopping'].includes(text);
+  label.textContent = active ? text : '';
+  label.hidden = separator.hidden = !active;
+}
+
+export function setChatToolsVisible(history, newChat, popover, visible) {
+  history.hidden = newChat.hidden = !visible;
+  popover.hidden = true;
+  history.setAttribute('aria-pressed', 'false');
+}
 
 /**
  * Turn any outcome of `streamCoachMessage` into the notice the panel shows.
@@ -82,6 +97,7 @@ export function shapeCoachOutcome(result, hadText = false) {
 
 /** What a Studio tool line says when no receipt covers it. Its arguments are never shown. */
 const STUDIO_TOOL_LINES = {
+  get_submissions: 'Read your submissions',
   get_state: 'Looked at your cases and runs',
   add_case: 'Added a case', update_case: 'Changed a case', remove_case: 'Removed a case',
   run_code: 'Ran your code', mark_lines: 'Marked lines', clear_marks: 'Cleared its marks',
@@ -181,7 +197,7 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
   const why = status === 'failed' ? String(action.message || '').trim() : '';
   return el('div', { class: `cmsg-receipt is-${status}`, 'data-tool': tool }, [
     el('span', { class: 'cr-glyph', 'aria-hidden': 'true', text: receiptGlyph(tool) }),
-    el('span', { class: 'cr-text', text: summary, title: summary }),
+    el('span', { class: 'cr-text', text: summary }),
     status === 'pending' ? el('span', { class: 'cr-state', text: 'working…' }) : null,
     status === 'failed' ? el('span', { class: 'cr-state', text: 'not done' }) : null,
     status === 'undone' ? el('span', { class: 'cr-state', text: 'Undone' }) : null,
@@ -258,8 +274,11 @@ export function createCoachPanel(entry) {
   // turn, so continuing one is an explicit act rather than a lasting mode.
   let resumeSessionId = null;
 
-  const log = el('div', { class: 'coach-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Coach conversation' });
-  const stateLabel = el('span', { class: 'coach-state mono dim', text: thread.live ? 'Attempt in progress' : 'Ready' });
+  const log = el('div', { class: 'coach-log', tabindex: '0', role: 'log', 'aria-live': 'polite', 'aria-label': 'Coach conversation' });
+  const stateLabel = el('span', { class: 'coach-state mono dim' });
+  const stateSeparator = el('span', { class: 'coach-sep', 'aria-hidden': 'true' });
+  const setState = text => setCoachState(stateLabel, stateSeparator, text);
+  setState(thread.live ? 'Attempt in progress' : '');
 
   const input = el('textarea', {
     class: 'coach-input', rows: '2', spellcheck: 'true',
@@ -287,7 +306,7 @@ export function createCoachPanel(entry) {
 
   const stopButton = el('button', {
     class: 'ws-mini coach-stop', type: 'button', hidden: true, text: 'Stop',
-    onclick: () => stopRun(slug),
+    onclick: () => { setState('Stopping'); stopRun(slug); },
   });
 
   const voice = createVoiceControl({
@@ -325,9 +344,9 @@ export function createCoachPanel(entry) {
     },
     onState: (state) => {
       sendButton.disabled = state !== 'idle' || streaming || changingModel;
-      if (state === 'recording') stateLabel.textContent = 'Listening';
-      else if (state === 'working') stateLabel.textContent = 'Transcribing';
-      else if (!streaming) stateLabel.textContent = thread.live ? 'Attempt in progress' : 'Ready';
+      if (state === 'recording') setState('Listening');
+      else if (state === 'working') setState('Transcribing');
+      else if (!streaming) setState(thread.live ? 'Attempt in progress' : 'Ready');
     },
   });
 
@@ -349,35 +368,124 @@ export function createCoachPanel(entry) {
   }, ['Hide', el('kbd', { text: chordLabel('coach') })]);
   closeButton.addEventListener('click', () => setOpen(false));
 
-  // The record of the teaching lives with the teaching, not in a separate screen.
-  const history = el('div', { class: 'coach-history', hidden: true });
-
-  const tabChat = el('button', { class: 'coach-tab mono', type: 'button', 'aria-pressed': 'true', text: 'Chat' });
-  const tabHistory = el('button', { class: 'coach-tab mono', type: 'button', 'aria-pressed': 'false', text: 'History' });
-
-  function showTab(name) {
-    const onHistory = name === 'history';
-    history.hidden = !onHistory;
-    log.hidden = onHistory;
-    composer.hidden = onHistory;
-    tabChat.setAttribute('aria-pressed', String(!onHistory));
-    tabHistory.setAttribute('aria-pressed', String(onHistory));
-    if (onHistory) {
-      renderHistory(history, {
-        slug,
-        onResume: (past) => {
-          resumeSessionId = past.sessionId;
-          thread.pending = false;
-          showTab('chat');
-          replayThread(past);
-          input.focus();
-        },
+  let attachment = null;
+  const attachmentLabel = el('span');
+  function clearAttachment() {
+    attachment = null;
+    attachmentChip.hidden = true;
+  }
+  const attachmentChip = el('div', { class: 'submission-attachment', hidden: true }, [
+    attachmentLabel,
+    el('button', {
+      class: 'icon-btn', type: 'button', text: '×', 'aria-label': 'Remove attached submission', onclick: clearAttachment,
+    }),
+  ]);
+  composer.prepend(attachmentChip);
+  const tabChat = el('button', {
+    class: 'coach-tab mono', type: 'button', 'aria-pressed': 'true', text: 'Chat',
+  });
+  const submissionCount = el('span', { class: 'submission-count' });
+  const tabSubmissions = el('button', {
+    class: 'coach-tab mono', type: 'button', 'aria-pressed': 'false',
+  }, ['Submissions', submissionCount]);
+  const submissions = createSubmissions({
+    slug,
+    onCount: count => { submissionCount.textContent = count; },
+    onAsk: submission => {
+      attachment = { submissionId: String(submission.submissionId) };
+      const time = new Date(submission.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      attachmentLabel.textContent = `${submission.verdict} · ${time}`;
+      attachmentChip.className = `submission-attachment tone-${submission.accepted ? 'easy' : 'hard'}`;
+      attachmentChip.hidden = false;
+      showTab('chat');
+      input.focus();
+    },
+  });
+  const submissionsView = submissions.root;
+  submissionsView.hidden = true;
+  const pastChats = el('div', { class: 'chat-history-popover', hidden: true });
+  function chooseThread(past) {
+    if (streaming) return;
+    resumeSessionId = past.sessionId;
+    thread.pending = false;
+    pastChats.hidden = true;
+    historyButton.setAttribute('aria-pressed', 'false');
+    showTab('chat');
+    replayThread(past);
+  }
+  function iconButton(label, path, action) {
+    const node = el('button', { class: 'icon-btn chat-icon', type: 'button', 'aria-label': label, onclick: action });
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    const shape = document.createElementNS(icon.namespaceURI, 'path');
+    shape.setAttribute('d', path);
+    icon.append(shape);
+    node.append(icon);
+    tooltip(node, label);
+    return node;
+  }
+  const historyButton = iconButton('History', 'M3 10a9 9 0 1 1 1 8 M3 4v6h6 M12 7v6l4 2', () => {
+    pastChats.hidden = !pastChats.hidden;
+    historyButton.setAttribute('aria-pressed', String(!pastChats.hidden));
+    if (!pastChats.hidden) {
+      const bar = root.querySelector('.coach-bar');
+      pastChats.style.top = `${bar.offsetTop + bar.offsetHeight}px`;
+      renderHistory(pastChats, {
+        slug, onResume: chooseThread, current: resumeSessionId || shownRun?.result?.sessionId,
+        disabled: streaming, heading: 'Past chats',
       });
     }
+  });
+  const newChatButton = iconButton('New chat', 'M14 5l5 5 M4 20l5-1L21 7l-5-5L4 14z M14 20h8 M18 16v8', () => {
+    if (streaming) return;
+    resumeSessionId = null;
+    shownRun = null;
+    thread.pending = true;
+    turns = 0;
+    pastChats.hidden = true;
+    historyButton.setAttribute('aria-pressed', 'false');
+    showTab('chat');
+    showEmptyState();
+  });
+  function showTab(name) {
+    const onSubmissions = name === 'submissions';
+    const alreadyActive = tabSubmissions.getAttribute('aria-pressed') === 'true';
+    submissionsView.hidden = !onSubmissions;
+    log.hidden = onSubmissions;
+    composer.hidden = onSubmissions;
+    tabChat.setAttribute('aria-pressed', String(!onSubmissions));
+    tabSubmissions.setAttribute('aria-pressed', String(onSubmissions));
+    pastChats.hidden = true;
+    historyButton.setAttribute('aria-pressed', 'false');
+    setChatToolsVisible(historyButton, newChatButton, pastChats, !onSubmissions);
+    if (onSubmissions) {
+      if (alreadyActive) submissions.showList();
+      else submissions.refresh();
+    }
   }
-
   tabChat.addEventListener('click', () => showTab('chat'));
-  tabHistory.addEventListener('click', () => showTab('history'));
+  tabSubmissions.addEventListener('click', () => showTab('submissions'));
+  function submissionChanged(event) {
+    if (event.detail?.slug !== slug) return;
+    submissions.refresh(event.detail.submissionId);
+    if (event.type === 'studio-open-submission') {
+      setOpen(true);
+      showTab('submissions');
+      submissions.open(event.detail.submissionId);
+    }
+  }
+  window.addEventListener('studio-submission', submissionChanged);
+  window.addEventListener('studio-open-submission', submissionChanged);
+  function closeHistory() {
+    if (pastChats.hidden) return;
+    pastChats.hidden = true;
+    historyButton.setAttribute('aria-pressed', 'false');
+    historyButton.focus();
+  }
+  function outsideHistory(event) {
+    if (!pastChats.contains(event.target) && !historyButton.contains(event.target)) closeHistory();
+  }
+  document.addEventListener('pointerdown', outsideHistory);
 
   let changingModel = false;
   const modelPicker = createCoachModelPicker({ compact: true, onPending: pending => {
@@ -400,14 +508,18 @@ export function createCoachPanel(entry) {
       ]),
     ]),
     el('div', { class: 'ws-bar coach-bar' }, [
-      el('span', { class: 'coach-tabs' }, [tabChat, tabHistory]),
-      el('span', { class: 'coach-sep', 'aria-hidden': 'true' }),
+      el('span', { class: 'coach-tabs' }, [tabChat, tabSubmissions]),
+      stateSeparator,
       stateLabel,
       el('span', { class: 'spacer' }),
+      historyButton,
+      newChatButton,
+      el('span', { class: 'coach-tools-sep', 'aria-hidden': 'true' }),
       closeButton,
     ]),
     log,
-    history,
+    submissionsView,
+    pastChats,
     composer,
   ]);
 
@@ -433,46 +545,65 @@ export function createCoachPanel(entry) {
   });
 
   function atBottom() {
-    return log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+    return log.scrollHeight - log.scrollTop - log.clientHeight <= 1;
   }
 
-  // Follow the stream until the user scrolls away, then stop until they come back.
-  //
-  // `following` may only be changed by a scroll the USER caused. Deriving it from
-  // position after every scroll event looked simpler and was wrong: a streaming answer
-  // re-renders its whole body between frames, and for the instant the old body is gone
-  // the box has almost no content, so the browser clamps scrollTop and fires a scroll of
-  // its own. That synthetic scroll reads as "at the bottom", flips following back to
-  // true, and the very next frame yanks the view back down. Scrolling up during a stream
-  // was therefore undone within ~16ms, every time — the "I can't scroll, it's stuck" bug.
-  //
-  // So: a real input event arms the check, and only then does position decide. Wheel,
-  // touch, keyboard and scrollbar-drag are all of them, and scrolling back to the bottom
-  // by any of those resumes following.
-  // The window, rather than a single event, because one flick of a trackpad keeps
-  // scrolling long after the last wheel event — and a scrollbar drag scrolls between
-  // pointermoves. Both are the user; neither would survive a one-shot flag.
-  const INTENT_MS = 800;
+  // Input owns follow state. A timed "armed" window also admits our own scrolls
+  // during streaming rebuilds; a 120px bottom tolerance swallowed the first wheel
+  // tick. Upward intent now latches off before the browser performs its scroll.
   let following = true;
-  let armedUntil = 0;
-  const arm = () => { armedUntil = performance.now() + INTENT_MS; };
-  for (const type of ['touchmove', 'keydown', 'pointerdown']) {
-    log.addEventListener(type, arm, { passive: true });
-  }
-  // Upward wheel stops the follow on the spot, without waiting for the scroll event it
-  // causes. Scroll events are delivered a frame late, and a paint landing inside that
-  // frame would drag the view to the bottom first — at which point the position rule
-  // would agree we are following and the scroll up would be gone before it was seen.
-  log.addEventListener('wheel', (event) => {
-    arm();
-    if (event.deltaY < 0) following = false;
+  let mayResume = false;
+  let lastTop = log.scrollTop;
+  const intent = (direction) => {
+    if (!direction) return;
+    following = false;
+    mayResume = direction > 0;
+    lastTop = log.scrollTop;
+    // A downward gesture at the bottom is already a return to live content.
+    if (mayResume && atBottom()) following = true;
+  };
+  log.addEventListener('wheel', event => intent(event.deltaY), { passive: true });
+  log.addEventListener('keydown', event => {
+    if (event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+    if (['PageUp', 'ArrowUp', 'Home'].includes(event.key)) intent(-1);
+    if (['PageDown', 'ArrowDown', 'End'].includes(event.key)) intent(1);
+    if (event.key === ' ') intent(event.shiftKey ? -1 : 1);
+  });
+  let touchY = null;
+  log.addEventListener('touchstart', event => {
+    touchY = event.touches[0]?.clientY ?? null;
+    following = false;
+    mayResume = false;
   }, { passive: true });
-  // Only while a button is held: a bare mouse-over is not an intent to scroll, and
-  // arming on hover would hand the position rule straight back to the re-render.
-  log.addEventListener('pointermove', (event) => { if (event.buttons) arm(); }, { passive: true });
+  log.addEventListener('touchmove', event => {
+    const y = event.touches[0]?.clientY;
+    if (touchY !== null && y !== undefined) intent(touchY - y);
+    touchY = y ?? null;
+  }, { passive: true });
+  let pointerY = null;
+  log.addEventListener('pointerdown', event => {
+    pointerY = null;
+    // Native and overlay scrollbars: suspend before a thumb drag or track click.
+    const box = log.getBoundingClientRect();
+    if (event.clientX >= box.right - Math.max(16, log.offsetWidth - log.clientWidth)) {
+      pointerY = event.clientY;
+      following = false;
+      mayResume = true;
+      lastTop = log.scrollTop;
+    }
+  }, { passive: true });
+  log.addEventListener('pointermove', event => {
+    if (event.buttons && pointerY !== null) {
+      intent(event.clientY - pointerY);
+      pointerY = event.clientY;
+    }
+  }, { passive: true });
+  log.addEventListener('pointerup', () => { pointerY = null; });
+  log.addEventListener('pointercancel', () => { pointerY = null; });
   log.addEventListener('scroll', () => {
-    if (performance.now() > armedUntil) return; // our own re-render, not him
-    following = atBottom();
+    const top = log.scrollTop;
+    if (!following && mayResume && top > lastTop && atBottom()) following = true;
+    lastTop = top;
   }, { passive: true });
 
   function scrollDown(force = false) {
@@ -480,12 +611,21 @@ export function createCoachPanel(entry) {
   }
 
   function showEmptyState() {
+    historyButton.hidden = true;
+    newChatButton.hidden = true;
+    const recent = el('div', { class: 'recent-chats' });
     replace(log, el('div', { class: 'coach-empty' }, [
       el('div', { class: 'coach-starters' }, STARTERS.map(starter => el('button', {
         class: 'chip', type: 'button', text: starter.label,
-        onclick: () => { input.value = starter.text; saveDraft(slug, input.value); autosize(); input.focus(); },
-      }))),
+        onclick: () => {
+          input.value = starter.text;
+          saveDraft(slug, input.value);
+          autosize();
+          input.focus();
+        },
+      }))), recent,
     ]));
+    renderHistory(recent, { slug, onResume: chooseThread });
   }
 
   /**
@@ -493,10 +633,14 @@ export function createCoachPanel(entry) {
    * about to speak without anyone having typed, and pretending otherwise would put words
    * in his mouth in his own conversation.
    */
+  function noteNode(text) {
+    return el('div', { class: 'cmsg-note mono dim', text });
+  }
+
   function addNote(text) {
-    if (log.querySelector('.coach-empty')) clear(log);
-    const note = el('div', { class: 'cmsg-note mono dim', text });
-    log.append(note);
+    const note = noteNode(text);
+    if (log.querySelector('.coach-empty')) replace(log, note);
+    else log.append(note);
     scrollDown(true);
     return note;
   }
@@ -506,15 +650,22 @@ export function createCoachPanel(entry) {
   // therefore forced to exactly the height of the log and clipped there, with nothing left
   // for the log to scroll: the answer looked cut off mid-sentence and the wheel did
   // nothing. A message and the panel it sits in must not share a class name.
-  function addMessage(role, text = '') {
+  function messageNode(role, text = '') {
     const bodyEl = el('div', { class: 'cmsg-body rich' });
     const message = el('div', { class: 'cmsg ' + role }, [
       el('div', { class: 'mono dim cmsg-who', text: role === 'you' ? 'You' : 'Coach' }),
       bodyEl,
     ]);
-    if (log.querySelector('.coach-empty')) clear(log);
-    log.append(message);
     if (role === 'you') bodyEl.append(renderUserText(text));
+    return { message, bodyEl };
+  }
+
+  function addMessage(role, text = '') {
+    historyButton.hidden = false;
+    newChatButton.hidden = false;
+    const { message, bodyEl } = messageNode(role, text);
+    if (log.querySelector('.coach-empty')) replace(log, message);
+    else log.append(message);
     scrollDown(true);
     return { message, bodyEl };
   }
@@ -527,28 +678,31 @@ export function createCoachPanel(entry) {
    * have forgotten it, and clicking Resume twice simply stacked a second line. You
    * cannot continue a conversation you cannot read.
    *
-   * The log is CLEARED first. Appending would splice the old thread onto whatever was
+   * The log is assembled off-screen and swapped atomically. Appending would splice the old thread onto whatever was
    * on screen and imply the coach can see both, when the CLI is resuming exactly one.
    */
   function replayThread(thread) {
-    clear(log);
+    const nodes = [];
+    historyButton.hidden = false;
+    newChatButton.hidden = false;
     for (const turn of thread.turns || []) {
-      if (turn.ask && turn.ask.trim()) addMessage('you', turn.ask);
-      else if (turn.kind === 'attempt-review') addNote('Attempt review');
+      if (turn.ask && turn.ask.trim()) nodes.push(messageNode('you', turn.ask).message);
+      else if (turn.kind === 'attempt-review') nodes.push(noteNode('Attempt review'));
       const said = (turn.answer || '').trim() !== '';
       const worked = (Array.isArray(turn.tools) && turn.tools.length > 0)
         || (Array.isArray(turn.actions) && turn.actions.length > 0);
       if (!said && !worked) {
         // Killed before it got a word out. An empty card under a "Coach" heading reads
         // as an answer you failed to scroll to.
-        addNote(turn.stopped ? 'Stopped before the coach answered' : 'The coach said nothing');
+        nodes.push(noteNode(turn.stopped ? 'Stopped before the coach answered' : 'The coach said nothing'));
         continue;
       }
-      const { message: card, bodyEl } = addMessage('reply');
+      const { message: card, bodyEl } = messageNode('reply');
+      nodes.push(card);
       const acted = Array.isArray(turn.actions) ? turn.actions.filter(a => a && a.tool) : [];
       if (worked) {
         const tools = el('div', { class: 'cmsg-tools' });
-        for (const line of turn.tools) {
+        for (const line of turn.tools || []) {
           // Stored as "<name> <summary>". A Studio tool's line is said plainly, never its arguments.
           const name = studioToolName(String(line).split(' ')[0]);
           tools.append(el('div', {
@@ -565,8 +719,9 @@ export function createCoachPanel(entry) {
       // An answer that was cut short is shown as one rather than passed off as whole.
       if (turn.stopped) card.append(el('div', { class: 'cmsg-note mono dim', text: 'Stopped before it finished' }));
     }
-    const when = String(thread.startedAt || '').slice(0, 16).replace('T', ' ');
-    addNote(`Continuing this conversation${when ? ` from ${when}` : ''} — what you ask next goes into it.`);
+    const date = threadDate(thread.startedAt);
+    if (date) nodes.unshift(el('div', { class: 'chat-date', text: date }));
+    replace(log, nodes);
     following = true;
     scrollDown(true);
   }
@@ -575,12 +730,15 @@ export function createCoachPanel(entry) {
 
   function setBusy(on, label) {
     streaming = on;
+    newChatButton.disabled = on;
+    newChatButton.title = on ? 'Wait for the current answer to finish before starting a new chat.' : 'New chat';
+    if (!pastChats.hidden) renderHistory(pastChats, { slug, onResume: chooseThread, disabled: on });
     sendButton.disabled = on || voice.isBusy() || changingModel;
     modelPicker.setBusy(on);
     sendLabel.textContent = on ? 'Asking' : 'Ask';
     sendButton.classList.toggle('busy', on);
     stopButton.hidden = !on;
-    if (label) stateLabel.textContent = label;
+    if (label) setState(label);
   }
 
   /**
@@ -705,7 +863,7 @@ export function createCoachPanel(entry) {
 
     if (run.done) { finish(); return; }
 
-    setBusy(true, run.review ? 'Reviewing the attempt' : 'Thinking');
+    setBusy(true, 'Thinking');
     detachRun = watch(slug, (event) => {
       if (disposed) return;
       if (event === 'token') { thinking.remove(); paint(); return; }
@@ -739,7 +897,7 @@ export function createCoachPanel(entry) {
     // though they were never said. Bounded inside flushRecorder — this cannot hang.
     if (!review) {
       try {
-        stateLabel.textContent = 'Saving what you said';
+        setState('Transcribing');
         await flushRecorder();
       } catch { /* speech is a bonus input; never let it block a question */ }
     }
@@ -756,8 +914,10 @@ export function createCoachPanel(entry) {
       attemptId,
       newThread: newThread || thread.pending,
       resumeSessionId,
+      attach: attachment,
       lead,
     });
+    clearAttachment();
     thread.pending = false;
     attachRun(run, { printAsk: true });
   }
@@ -769,10 +929,17 @@ export function createCoachPanel(entry) {
   root.addEventListener('keydown', (event) => {
     event.stopPropagation();
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); submit(); return; }
+    if (event.key === 'Escape' && !pastChats.hidden) {
+      closeHistory();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === 'Escape' && document.activeElement === input) { event.preventDefault(); input.blur(); }
   });
 
   showEmptyState();
+  submissions.refresh();
   autosize();
 
   return {
@@ -793,12 +960,12 @@ export function createCoachPanel(entry) {
       resumeSessionId = null;
       showTab('chat');
       showEmptyState();
-      stateLabel.textContent = 'Attempt in progress';
+      setState('Attempt in progress');
     },
 
     endAttempt() {
       thread.live = false;
-      if (!streaming && !voice.isBusy()) stateLabel.textContent = 'Ready';
+      if (!streaming && !voice.isBusy()) setState('Ready');
     },
 
     /** The attempt ended. Ask for the end-to-end review, with no typed question. */
@@ -814,6 +981,9 @@ export function createCoachPanel(entry) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      window.removeEventListener('studio-submission', submissionChanged);
+      window.removeEventListener('studio-open-submission', submissionChanged);
+      document.removeEventListener('pointerdown', outsideHistory);
       if (detachRun) { detachRun(); detachRun = null; }
       // Voice may finish outstanding phrases asynchronously; the callback above
       // updates this same draft key as each phrase arrives.

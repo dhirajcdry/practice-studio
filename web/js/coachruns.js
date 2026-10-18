@@ -206,7 +206,7 @@ function consume(run, open) {
  */
 export function startRun({
   slug, title = '', message = '', kind = null, attemptId = null,
-  newThread = false, resumeSessionId = null, lead = null,
+  newThread = false, resumeSessionId = null, lead = null, attach = null,
 }) {
   const existing = runs.get(slug);
   if (existing && !existing.done) return existing;
@@ -216,7 +216,7 @@ export function startRun({
   announce();
 
   consume(run, (handlers) => streamCoachMessage(slug, message, {
-    ...handlers, kind, attemptId, newThread, resumeSessionId,
+    ...handlers, kind, attemptId, newThread, resumeSessionId, attach,
   }));
 
   return run;

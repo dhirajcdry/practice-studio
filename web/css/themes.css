@@ -1,5 +1,8 @@
 /* Each family keeps its shape and type when the light changes. */
 body.theme-studio{
+  --verdict-easy:#246044;
+  --verdict-hard:#B33A1A;
+  --verdict-med:#795400;
   --ink-rgb:17,17,17;
   --on-ink-rgb:243,244,246;
   --on-ink:#F3F4F6;
@@ -37,6 +40,9 @@ body.theme-studio{
 }
 
 body.theme-studio.is-dark{
+  --verdict-easy:#5FCF97;
+  --verdict-hard:#FF7A6B;
+  --verdict-med:#E3B457;
   --ink-rgb:232,232,232;
   --on-ink-rgb:18,18,18;
   --on-ink:#121212;
@@ -73,6 +79,9 @@ body.theme-studio.is-dark{
 }
 
 body.theme-desk{
+  --verdict-easy:#356747;
+  --verdict-hard:#B4432A;
+  --verdict-med:#805700;
   --ink-rgb:24,24,24;
   --on-ink-rgb:246,244,240;
   --on-ink:#F6F4F0;
@@ -85,13 +94,13 @@ body.theme-desk{
   --hair-20:rgba(var(--ink-rgb),.2);
   --hair-10:rgba(var(--ink-rgb),.11);
   --hair-06:rgba(var(--ink-rgb),.07);
-  --accent:#BD5F3C;
-  --accent-rgb:189,95,60;
+  --accent:#AC5636;
+  --accent-rgb:172,86,54;
   --accent-soft:rgba(var(--accent-rgb),.09);
-  --solid-bg:#BD5F3C;
+  --solid-bg:#AC5636;
   --solid-fg:#FFFFFF;
-  --solid-edge:#BD5F3C;
-  --solid-hover:#A9512F;
+  --solid-edge:#AC5636;
+  --solid-hover:#9A4A2C;
   --easy:#3F7A55;
   --easy-rgb:63,122,85;
   --easy-soft:rgba(var(--easy-rgb),.09);
@@ -110,6 +119,9 @@ body.theme-desk{
 }
 
 body.theme-desk.is-dark{
+  --verdict-easy:#7BC796;
+  --verdict-hard:#F08A72;
+  --verdict-med:#E0B060;
   --ink-rgb:238,232,224;
   --on-ink-rgb:23,21,19;
   --on-ink:#171513;
@@ -125,10 +137,10 @@ body.theme-desk.is-dark{
   --accent:#E2875F;
   --accent-rgb:226,135,95;
   --accent-soft:rgba(var(--accent-rgb),.14);
-  --solid-bg:#C8663F;
+  --solid-bg:#B35733;
   --solid-fg:#FFF8F2;
   --solid-edge:#D97650;
-  --solid-hover:#D57250;
+  --solid-hover:#A24E2E;
   --easy:#7BC796;
   --easy-rgb:123,199,150;
   --easy-soft:rgba(var(--easy-rgb),.13);
@@ -146,6 +158,9 @@ body.theme-desk.is-dark{
 }
 
 body.theme-editorial{
+  --verdict-easy:#2F6B4F;
+  --verdict-hard:#9B2C2C;
+  --verdict-med:#795400;
   --ink-rgb:26,22,20;
   --on-ink-rgb:244,239,230;
   --on-ink:#F4EFE6;
@@ -183,6 +198,9 @@ body.theme-editorial{
 }
 
 body.theme-editorial.is-dark{
+  --verdict-easy:#86C49C;
+  --verdict-hard:#E88576;
+  --verdict-med:#D9B061;
   --ink-rgb:236,227,212;
   --on-ink-rgb:22,18,15;
   --on-ink:#16120F;
@@ -219,6 +237,9 @@ body.theme-editorial.is-dark{
 }
 
 body.theme-ink{
+  --verdict-easy:#0A6B3D;
+  --verdict-hard:#B4160F;
+  --verdict-med:#7A5200;
   --rule-color:#0A0A0A;
   --bar-bg:#DCDCD7;
   --bar-rgb:10,10,10;
@@ -259,6 +280,9 @@ body.theme-ink{
 }
 
 body.theme-ink.is-dark{
+  --verdict-easy:#4ED68C;
+  --verdict-hard:#FF5A4E;
+  --verdict-med:#F0B429;
   --rule-color:rgba(244,244,240,.38);
   --bar-bg:#1E1E1E;
   --bar-rgb:244,244,240;
@@ -298,6 +322,9 @@ body.theme-ink.is-dark{
 }
 
 body.theme-terminal{
+  --verdict-easy:#176638;
+  --verdict-hard:#B3261E;
+  --verdict-med:#8A5A00;
   --line-bg:#E4E0D0;
   --line-rgb:23,48,31;
   --ink-rgb:23,48,31;
@@ -312,8 +339,8 @@ body.theme-terminal{
   --hair-20:rgba(var(--ink-rgb),.2);
   --hair-10:rgba(var(--ink-rgb),.11);
   --hair-06:rgba(var(--ink-rgb),.07);
-  --accent:#A35F00;
-  --accent-rgb:163,95,0;
+  --accent:#9E5C00;
+  --accent-rgb:158,92,0;
   --accent-soft:rgba(var(--accent-rgb),.09);
   --solid-bg:#17301F;
   --solid-fg:#F3F1E7;
@@ -337,6 +364,9 @@ body.theme-terminal{
 }
 
 body.theme-terminal.is-dark{
+  --verdict-easy:#5FD38D;
+  --verdict-hard:#F07167;
+  --verdict-med:#E8B455;
   --line-bg:#1C1C1C;
   --line-rgb:95,211,141;
   --ink-rgb:217,222,217;
@@ -405,7 +435,7 @@ body.theme-ink :is(.topbar,.editor-tabs,.coach-identity){
   --canvas:var(--bar-bg);--card:var(--bar-bg);
   background:var(--bar-bg);color:var(--ink);border-bottom:2px solid var(--rule-color)}
 body.theme-ink .editor-file{border-top-width:4px;border-right:0;font-weight:700}
-body.theme-ink :is(.card,.psec,.dash-card,.roadmap-node,button,.tag,input,textarea,select){border-width:2px}
+body.theme-ink :is(.card,.psec,.dash-card,.roadmap-node,button:not(.icon-btn),.tag,input,textarea,select){border-width:2px}
 body.theme-ink :is(h1,h2,h3){font-weight:800;letter-spacing:-.035em}
 body.theme-ink :is(.viewhead,.dash-head,.roadmap) h1{font-size:44px;letter-spacing:-.05em}
 body.theme-ink.ws-wide .phero h1{font-size:28px;letter-spacing:-.05em}
@@ -422,8 +452,10 @@ body.theme-ink .workspace-rail button[aria-pressed="true"]::before{background:cu
 body.theme-ink .settings,body.theme-ink .navmenu,body.theme-ink:not(.ws-wide) .card,body.theme-ink .catalog .psec{box-shadow:var(--shadow)}
 /* Pressed choices go solid. Not tabs and the rail, whose pressed state is an underline or an
    accent mark, and not the day/night switch, whose pressed state just means "dark". */
-body.theme-ink button[aria-pressed="true"]:not(.workspace-rail button,.rr-tab,.coach-tab,.set-daynight),body.theme-ink .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
+body.theme-ink button[aria-pressed="true"]:not(.workspace-rail button,.rr-tab,.coach-tab,.set-daynight,.icon-btn),body.theme-ink .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
 body.theme-ink .set-card[aria-pressed="true"] :is(.set-cardname,.set-cardblurb){color:var(--solid-fg)}
+/* Inside an inverted (pressed) button the accent count would be blue on black; follow the button. */
+body.theme-ink button[aria-pressed="true"] .tree-count{color:var(--solid-fg)}
 
 /* TERMINAL — a TUI in a tmux session. The panes are split windows with a gap between
    them, the action bar is a vim status line, controls are [ bracketed ] words rather than
@@ -445,9 +477,9 @@ body.theme-terminal.ws-wide .ws>.ws-bar{
   background:var(--line-bg);color:var(--ink);border-top:0}
 body.theme-terminal.ws-wide .ws>.ws-bar .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
 body.theme-terminal .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
-body.theme-terminal :is(.ws-bar button,.rr-tab,.coach-tab,.tc-tab){border-color:transparent;background:transparent;box-shadow:none}
-body.theme-terminal :is(.ws-bar button,.rr-tab,.coach-tab,.tc-tab)::before{content:"[";margin-right:3px;opacity:.6}
-body.theme-terminal :is(.ws-bar button,.rr-tab,.coach-tab,.tc-tab)::after{content:"]";margin-left:3px;opacity:.6}
+body.theme-terminal :is(.ws-bar button:not(.icon-btn),.rr-tab,.coach-tab,.tc-tab){border-color:transparent;background:transparent;box-shadow:none}
+body.theme-terminal :is(.ws-bar button:not(.icon-btn),.rr-tab,.coach-tab,.tc-tab)::before{content:"[";margin-right:3px;opacity:.6}
+body.theme-terminal :is(.ws-bar button:not(.icon-btn),.rr-tab,.coach-tab,.tc-tab)::after{content:"]";margin-left:3px;opacity:.6}
 body.theme-terminal :is(.rr-tab,.coach-tab)[aria-pressed="true"],body.theme-terminal .tc-tab.is-on,body.theme-terminal .ptoggle[aria-pressed="true"]{background:var(--line-bg);color:rgb(var(--line-rgb));border-color:var(--line-bg)}
 body.theme-terminal :is(h1,h2,h3){font-weight:600;letter-spacing:0}
 body.theme-terminal :is(.phero,.viewhead,.dash-head,.roadmap) h1::before{content:"$ ";color:var(--accent)}
@@ -460,9 +492,6 @@ body.theme-terminal .cmsg.reply .cmsg-body{font-size:12px;line-height:1.8}
 body.theme-terminal .coach-input{caret-color:var(--accent)}
 
 /* Each card previews both modes, independently of the active appearance. */
-.set-seg{display:flex;gap:3px;padding:3px;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--canvas)}
-.set-seg button{flex:1;padding:7px 10px;border-radius:var(--r-sm);font:500 12px var(--ui);color:var(--ink-70)}
-.set-seg button[aria-pressed="true"]{background:var(--solid-bg);color:var(--solid-fg)}
 .set-themes .set-cardname{font:600 13px var(--ui)}
 .set-themes .set-cardblurb{font-size:12px;color:var(--ink-70)}
 .theme-preview{display:grid;grid-template-columns:1fr 1fr;height:76px;border:1px solid var(--hair-20);border-radius:var(--preview-radius);overflow:hidden}
@@ -485,6 +514,9 @@ body.theme-terminal .coach-input{caret-color:var(--accent)}
 
 /* Painted worlds keep complete palettes so switching families leaves no inherited colours. */
 body.theme-nebula{
+  --verdict-easy:#176640;
+  --verdict-hard:#B83A4B;
+  --verdict-med:#795400;
   --ink-rgb:29,23,51;
   --on-ink-rgb:246,243,251;
   --on-ink:#F6F3FB;
@@ -530,6 +562,9 @@ body.theme-nebula{
 }
 
 body.theme-nebula.is-dark{
+  --verdict-easy:#6EE7B7;
+  --verdict-hard:#FF8A9A;
+  --verdict-med:#F5C46B;
   --ink-rgb:236,232,255;
   --on-ink-rgb:11,10,26;
   --on-ink:#0B0A1A;
@@ -545,10 +580,10 @@ body.theme-nebula.is-dark{
   --accent:#B69CFF;
   --accent-rgb:182,156,255;
   --accent-soft:rgba(var(--accent-rgb),.14);
-  --solid-bg:#7B5CFF;
+  --solid-bg:#7554FF;
   --solid-fg:#FFFFFF;
-  --solid-edge:#7B5CFF;
-  --solid-hover:#8C70FF;
+  --solid-edge:#7554FF;
+  --solid-hover:#6848F2;
   --easy:#6EE7B7;
   --easy-rgb:110,231,183;
   --easy-soft:rgba(var(--easy-rgb),.14);
@@ -575,6 +610,9 @@ body.theme-nebula.is-dark{
 }
 
 body.theme-horizon{
+  --verdict-easy:#246044;
+  --verdict-hard:#B33A1A;
+  --verdict-med:#795400;
   --ink-rgb:34,24,12;
   --on-ink-rgb:251,246,236;
   --on-ink:#FBF6EC;
@@ -620,6 +658,9 @@ body.theme-horizon{
 }
 
 body.theme-horizon.is-dark{
+  --verdict-easy:#7FD4A0;
+  --verdict-hard:#FF7F6B;
+  --verdict-med:#FFD27A;
   --ink-rgb:243,236,224;
   --on-ink-rgb:8,7,10;
   --on-ink:#08070A;
@@ -665,6 +706,9 @@ body.theme-horizon.is-dark{
 }
 
 body.theme-abyss{
+  --verdict-easy:#176640;
+  --verdict-hard:#B33A1A;
+  --verdict-med:#795400;
   --ink-rgb:11,42,51;
   --on-ink-rgb:238,248,248;
   --on-ink:#EEF8F8;
@@ -710,6 +754,9 @@ body.theme-abyss{
 }
 
 body.theme-abyss.is-dark{
+  --verdict-easy:#5EE6A0;
+  --verdict-hard:#FF8A80;
+  --verdict-med:#F2CB6C;
   --ink-rgb:221,246,247;
   --on-ink-rgb:4,16,26;
   --on-ink:#04101A;
@@ -755,6 +802,9 @@ body.theme-abyss.is-dark{
 }
 
 body.theme-dunes{
+  --verdict-easy:#246044;
+  --verdict-hard:#B33A1A;
+  --verdict-med:#795400;
   --ink-rgb:42,26,16;
   --on-ink-rgb:251,242,232;
   --on-ink:#FBF2E8;
@@ -800,6 +850,9 @@ body.theme-dunes{
 }
 
 body.theme-dunes.is-dark{
+  --verdict-easy:#7FD4A0;
+  --verdict-hard:#FF8A80;
+  --verdict-med:#F2CB6C;
   --ink-rgb:233,228,218;
   --on-ink-rgb:8,20,26;
   --on-ink:#08141A;
@@ -902,11 +955,12 @@ body.theme-art .monaco-editor :is(.parameter-hints-widget,.rename-box,.monaco-me
 
 /* Display type and restrained light connect the controls to their painted world. */
 body.theme-art .wordmark .solid{background:linear-gradient(100deg,var(--ink),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
-body.theme-art.is-dark :is(.ws-run,.coach-send,.set-seg button[aria-pressed="true"]){box-shadow:0 0 0 1px rgba(var(--accent-rgb),.35),0 6px 24px rgba(var(--accent-rgb),.35)}
+body.theme-art.is-dark :is(.ws-run,.coach-send){box-shadow:0 0 0 1px rgba(var(--accent-rgb),.35),0 6px 24px rgba(var(--accent-rgb),.35)}
 body.theme-art :is(h1,h2,h3),body.theme-art :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-family:var(--display)}
 body.theme-horizon :is(h1,h2,h3){font-weight:400;letter-spacing:.01em}
 body.theme-dunes :is(.phero,.viewhead,.dash-head,.roadmap) h1{text-transform:uppercase;letter-spacing:.08em;font-weight:500}
 body.theme-art :is(input,textarea){caret-color:var(--accent)}
+
 /* Focus rings belong to controls, never the code canvas or Monaco's hidden input. */
 body.theme-art :is(input,textarea,select):not(.monaco-editor *):not(.ws-fallback):focus,
 body.theme-art .searchbox:focus-within{
@@ -1084,7 +1138,7 @@ body.theme-art.theme-abyss{--pill:999px;--r-sm:12px;--r-md:18px;--r-pane:26px;--
 body.theme-art.theme-abyss :is(.card,.psec,.dash-card){border:0;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.18),0 14px 40px rgba(0,0,0,.18)}
 body.theme-art.theme-abyss :is(h1,h2,h3),body.theme-art.theme-abyss :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:600;letter-spacing:-.01em}
 body.theme-art.theme-abyss.is-dark :is(.phero,.viewhead,.dash-head) h1{text-shadow:0 0 22px rgba(var(--accent-rgb),.35)}
-body.theme-art.theme-abyss :is(.rr-tab,.coach-tab,.editor-file){border-radius:999px;margin:5px 2px;padding-inline:14px}
+body.theme-art.theme-abyss :is(.rr-tab,.coach-tab,.editor-file){border-radius:999px;margin:0 2px;padding-inline:14px}
 body.theme-art.theme-abyss :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){
   background:rgba(var(--accent-rgb),.16);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 18px rgba(var(--accent-rgb),.22)}
 body.theme-art.theme-abyss :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{content:none}
@@ -1151,3 +1205,14 @@ body.theme-art.theme-horizon:not(.is-dark) .wordmark .solid{background:none;colo
 /* "solution.py" already names the language; in Abyss the PY badge becomes the same lit dot the rail uses. */
 body.theme-art.theme-abyss .file-language{width:6px;height:6px;border-radius:50%;overflow:hidden;font-size:0;color:transparent;background:var(--accent);box-shadow:0 0 8px 1px rgba(var(--accent-rgb),.7)}
 body.theme-art.theme-abyss .editor-file{margin-left:12px}
+
+/* Reading overlays must hide text beneath them, even in the matte art themes. */
+body.theme-art :is(.settings,.drawer){background:var(--card)}
+/* Keep instrument/stencil capitals compact enough to share a tag row. */
+body.theme-art:is(.theme-dunes,.theme-horizon,.theme-nebula) .ptags .tag{font-size:10px;letter-spacing:.04em}
+/* Nebula's light display headings are intentionally thin; verdicts need emphasis. */
+body.theme-art.theme-nebula .submission-hero h3{font-weight:600}
+/* Quiet, content-width switches share the theme's surfaces and corner geometry. */
+body[class] :is(.set-seg,.submission-segments){display:inline-flex;align-self:flex-start;width:fit-content;max-width:100%;gap:2px;padding:2px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--hair-06)}
+body[class] :is(.set-seg,.submission-segments) > button{flex:0 0 auto;width:auto;height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;padding:0 8px;border:0;border-radius:var(--r-sm);box-shadow:none;background:transparent;color:var(--ink-70);font:500 11px var(--ui);display:inline-flex;align-items:center;justify-content:center}
+body[class] :is(.set-seg,.submission-segments) > button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px var(--hair-20)}

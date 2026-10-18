@@ -42,8 +42,12 @@ async function freshCtx() {
   return { homeRoot, sessionLog: new SessionLog({ root: homeRoot }), log: { warn() {} } };
 }
 
-test('the route table exposes exactly POST /api/submit/record', () => {
-  assert.deepEqual(Object.keys(routes), ['POST /api/submit/record']);
+test('the route table exposes submission record and history routes', () => {
+  assert.deepEqual(Object.keys(routes), [
+    'POST /api/submit/record',
+    'GET /api/problems/:slug/submissions',
+    'POST /api/problems/:slug/submissions/:id/details',
+  ]);
 });
 
 const readMeta = async (root) => JSON.parse(await fsp.readFile(path.join(root, 'problems', 'two-sum', 'meta.json'), 'utf8'));

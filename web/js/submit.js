@@ -634,6 +634,18 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
       ...(onUseFailingCase ? { onUseFailingCase } : {}),
     });
     onEvent({ type: 'result', shaped });
+    if (shaped.status === 'rejected') requestAnimationFrame(() => {
+      // Move only the results scroller: revealing a failure must not shift the editor.
+      const comparison = [...body.querySelectorAll('.sub-detail')].find(node => node.firstElementChild?.textContent === 'Expected output') || body.querySelector('.sub-details');
+      const pane = root.closest('.ws-results');
+      if (!comparison || !pane || last !== shaped) return;
+      const block = comparison.getBoundingClientRect();
+      const viewport = pane.getBoundingClientRect();
+      if (block.top < viewport.top || block.bottom > viewport.bottom) {
+        pane.scrollTo({ top: pane.scrollTop + block.top - viewport.top - 8,
+          behavior: document.body.classList.contains('motion-off') || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+      }
+    });
   }
 
   /** The only path that submits. Called from a click, never from anything else. */
@@ -662,6 +674,16 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     const raw = await submitCode(slug, getCode(), controller.signal, where);
     if (!busy) return;               // stopped watching while we waited
     finish(shapeSubmitResult(raw, slug, where));
+    if (raw.submissionId) {
+      const detail = { slug, submissionId: String(raw.submissionId) };
+      window.dispatchEvent(new CustomEvent('studio-submission', { detail }));
+      let footer = body.querySelector('.sub-foot');
+      if (!footer) {
+        footer = el('div', { class: 'sub-foot' }, el('span', { class: 'spacer' }));
+        body.append(footer);
+      }
+      footer.append(el('button', { class: 'ws-mini', type: 'button', text: 'Open in Submissions', onclick: () => window.dispatchEvent(new CustomEvent('studio-open-submission', { detail })) }));
+    }
   }
 
   /** Show why nothing can be submitted, without submitting: the caller has already

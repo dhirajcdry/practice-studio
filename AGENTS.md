@@ -82,7 +82,7 @@ violating one of these, stop and say so rather than finding a workaround.
   the learner's own text were written by someone else, so they are fenced as data, never
   instruction, and permission scoping is the actual enforcement of that, not a formality.
 - **The coach's Read/Write/Glob are scoped to `~/LeetCodeTutor/` only**, and even inside
-  that root it must never write `meta.json`, `index.json`, `solution.py`, `attempts/`,
+  that root it must never write `meta.json`, `index.json`, `solution.py`, `attempts/`, `problems/*/submissions/**`,
   `chats.jsonl`, `sessions/*.jsonl`, or — for the design-interview feature —
   `design/*/interview.json`, `design/*/turns.jsonl`, `design/*/scenes/**`,
   `design/*/interview.md`. Those are the server's raw record; the coach may only write

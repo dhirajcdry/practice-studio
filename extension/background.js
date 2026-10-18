@@ -19,6 +19,7 @@ const POLL_CEILING_MS = 55000;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const inFlight = new Set();
+const detailsInFlight = new Set();
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'studio-submit') return;
@@ -27,6 +28,11 @@ chrome.runtime.onConnect.addListener((port) => {
     return;
   }
   port.onMessage.addListener(async (message) => {
+    if (message?.type === 'details') {
+      const result = await fetchDetails(message);
+      try { port.postMessage(result); } catch {}
+      return;
+    }
     if (message?.type !== 'submit') return;
     // Only an explicit target sends anywhere but LeetCode; the LeetCode path is unchanged.
     const result = message.target === 'neetcode'
@@ -69,6 +75,11 @@ async function submit({ slug, code, lang }) {
     if (!sent.ok) return sent;
 
     const judged = await inTab(tab.id, pagePoll, [sent.submissionId, csrf.value, POLL_CEILING_MS]);
+    if (judged?.ok && judged.check?.state === 'SUCCESS') {
+      const read = await inTab(tab.id, pageDetails, [sent.submissionId, csrf.value]);
+      judged.details = read?.details ?? null;
+      if (!read?.ok) judged.detailsError = read?.detailsError || 'Submission details could not be read.';
+    }
     return judged ?? {
       ok: false, code: 'JUDGE_UNREACHABLE', submissionState: 'submitted', submissionId: sent.submissionId,
       message: 'The submission went through, but its verdict could not be read back. Open it on LeetCode. Do not submit again.',
@@ -570,4 +581,69 @@ function pageNeetCodeVerdict() {
     url: location.href,
     complete: Boolean(title),
   };
+}
+
+async function fetchDetails({ submissionId, slug }) {
+  if (!/^[1-9]\d*$/.test(String(submissionId))) {
+    return { ok: false, details: null, message: 'That submission id is invalid.' };
+  }
+  if (typeof slug !== 'string' || !SLUG.test(slug)) {
+    return { ok: false, details: null, message: 'That problem name is invalid.' };
+  }
+  const key = `${slug}:${submissionId}`;
+  if (detailsInFlight.has(key)) {
+    return {
+      ok: false, details: null, code: 'DETAILS_IN_FLIGHT',
+      message: 'Details for this submission are already being read. Wait for that read to finish.',
+    };
+  }
+  detailsInFlight.add(key);
+  let tab;
+  try {
+    const csrf = await chrome.cookies.get({ url: LEETCODE, name: 'csrftoken' });
+    if (!csrf?.value) return { ok: false, details: null, message: 'Sign in on LeetCode to read details.' };
+    tab = await leetcodeTab(slug);
+    const result = tab && await inTab(tab.id, pageDetails, [submissionId, csrf.value]);
+    return result || { ok: false, details: null, message: 'The details could not be read.' };
+  } catch {
+    return { ok: false, details: null, message: 'The details could not be read.' };
+  } finally {
+    detailsInFlight.delete(key);
+    if (tab?.created) chrome.tabs.remove(tab.id).catch(() => {});
+  }
+}
+
+async function pageDetails(submissionId, csrf) {
+  try {
+    const response = await fetch('/graphql/', {
+      method: 'POST', credentials: 'include', signal: AbortSignal.timeout(10000),
+      headers: { 'content-type': 'application/json', accept: 'application/json', 'x-csrftoken': csrf, 'x-requested-with': 'XMLHttpRequest' },
+      body: JSON.stringify({ operationName: 'submissionDetails', variables: { submissionId: Number(submissionId) },
+        query: `query submissionDetails($submissionId: Int!) {
+          submissionDetails(submissionId: $submissionId) {
+            runtime runtimeDisplay runtimePercentile runtimeDistribution
+            memory memoryDisplay memoryPercentile memoryDistribution
+            timestamp statusCode lang { name } totalCorrect totalTestcases
+            lastTestcase codeOutput expectedOutput stdOutput compileError runtimeError
+          }
+        }` }),
+    });
+    if (!response.ok) throw new Error('LeetCode could not return submission details.');
+    const body = await response.json();
+    if (body.errors?.length) throw new Error(body.errors.map(e => e.message).join('; ').slice(0, 2000));
+    const details = body.data?.submissionDetails;
+    if (!details || typeof details !== 'object') throw new Error('LeetCode returned no submission details.');
+    for (const key of ['runtimeDistribution', 'memoryDistribution']) {
+      if (typeof details[key] === 'string') {
+        try {
+          details[key] = JSON.parse(details[key]);
+        } catch {
+          details[key] = null;
+        }
+      }
+    }
+    return { ok: true, details };
+  } catch (error) {
+    return { ok: false, details: null, detailsError: error.message, message: 'Submission details could not be read.' };
+  }
 }

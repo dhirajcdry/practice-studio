@@ -1,16 +1,6 @@
-// What this problem remembers: every submission, and every conversation about it.
-//
-// Lives inside the coach panel rather than beside it, because the question it answers —
-// "what happened last time I was here?" — is the same question the coach exists for. A
-// separate tab would put the record of the teaching somewhere other than the teaching.
-//
-// Read-only by construction. Nothing here writes, deletes, or resubmits; the one action
-// is resuming a past conversation, which is just the next turn of a thread that already
-// exists. Everything rendered is escaped through the same markdown renderer the coach
-// uses, because a stored coach answer is still model output.
-
-import { el, clear, replace } from './dom.js';
-import { renderMarkdown } from './markdown.js';
+// Recent conversations for the composer and its history popover. Opening a thread
+// resumes the saved conversation without replacing the mounted composer.
+import { el, replace } from './dom.js';
 import { loadHistory } from './api.js';
 
 /** "3 minutes ago", "yesterday 14:20", "Jul 24 09:15" — precision that matches distance. */
@@ -50,127 +40,38 @@ export function verdictLine(s) {
   return '';
 }
 
-function codeBlock(code) {
-  return el('pre', { class: 'hist-code' }, el('code', { text: code }));
+export async function renderHistory(mount, { slug, onResume, current = null, disabled = false, limit = 5, now = new Date(), heading = 'Recent chats' }) {
+  const data = await loadHistory(slug);
+  if (!mount.isConnected) return;
+  if (!data.ok) {
+    replace(mount, el('p', { class: 'dim', text: 'Recent chats could not be loaded.' }));
+    return;
+  }
+  const threads = data.threads;
+  function paint(all = false) {
+    const rows = (all ? threads : threads.slice(0, limit)).map(thread => el('button', {
+      type: 'button', class: 'recent-chat hover-surface hover-divided', disabled,
+      onclick: () => onResume(thread),
+    }, [
+      el('span', { class: 'recent-title', text: thread.turns[0]?.ask || 'Attempt review' }),
+      el('span', { class: 'mono dim', text: `${when(thread.startedAt, now)} · ${thread.turns.length} turn${thread.turns.length === 1 ? '' : 's'}` }),
+      thread.turns.some(t => t.kind === 'attempt-review') ? el('span', { class: 'submission-tag', text: 'Review' }) : null,
+      thread.sessionId === current ? el('span', { class: 'submission-tag current', text: 'Current' }) : null,
+    ]));
+    replace(mount, threads.length ? [el('div', { class: 'chat-history-heading', text: heading === 'Past chats' ? `${heading} · ${threads.length}` : heading }), ...rows,
+      !all && threads.length > limit ? el('button', { class: 'ws-mini', text: `Show all (${threads.length})`, onclick: () => paint(true) }) : null] : []);
+  }
+  paint();
 }
 
-/**
- * A collapsed row that opens in place. Nothing is fetched again to open it.
- *
- * `extra` sits beside the head rather than inside it — an action buried one expand deep
- * is an action nobody knows exists, and a button cannot be nested in a button.
- */
-function disclosure(head, buildBody, { open = false, extra = null } = {}) {
-  const body = el('div', { class: 'hist-body', hidden: !open });
-  let built = open;
-  if (open) body.append(buildBody());
-
-  const button = el('button', {
-    class: 'hist-head', type: 'button', 'aria-expanded': String(open),
-    onclick: () => {
-      const show = body.hidden;
-      if (show && !built) { body.append(buildBody()); built = true; }
-      body.hidden = !show;
-      button.setAttribute('aria-expanded', String(show));
-    },
-  }, head);
-
-  return el('div', { class: 'hist-item' }, [
-    el('div', { class: 'hist-row' }, [button, extra].filter(Boolean)),
-    body,
-  ]);
-}
-
-function submissionRow(s, now) {
-  const head = [
-    el('span', { class: 'tag ' + (s.accepted ? 'easy' : 'hard'), text: s.accepted ? 'Accepted' : (s.verdict || 'Rejected') }),
-    el('span', { class: 'mono dim hist-when', text: when(s.at, now) }),
-    el('span', { class: 'mono dim hist-detail', text: verdictLine(s) }),
-  ];
-
-  return disclosure(head, () => {
-    const parts = [];
-    if (s.code) {
-      parts.push(codeBlock(s.code));
-    } else {
-      // Submissions made before the code was kept, and any whose copy failed to write.
-      // Saying so beats showing an empty box that looks like an empty solution.
-      parts.push(el('p', { class: 'hist-note', text: 'The code for this submission was not kept — it predates the history view.' }));
-    }
-    if (s.submissionUrl) {
-      parts.push(el('a', {
-        class: 'hist-link mono', href: s.submissionUrl, target: '_blank', rel: 'noreferrer noopener',
-        text: 'View on LeetCode ↗',
-      }));
-    }
-    return el('div', { class: 'hist-sub' }, parts);
-  });
-}
-
-function threadRow(thread, now, { onResume }) {
-  const first = thread.turns[0];
-  const isReview = thread.turns.some((t) => t.kind === 'attempt-review');
-  const label = isReview ? 'Attempt review' : (first?.ask || 'Conversation');
-
-  const head = [
-    el('span', { class: 'tag quiet', text: isReview ? 'Review' : 'Chat' }),
-    el('span', { class: 'mono dim hist-when', text: when(thread.startedAt, now) }),
-    el('span', { class: 'hist-title', text: label.length > 70 ? `${label.slice(0, 70)}…` : label }),
-    el('span', { class: 'mono dim hist-detail', text: `${thread.turns.length} turn${thread.turns.length === 1 ? '' : 's'}` }),
-  ];
-
-  return disclosure(head, () => {
-    const parts = [];
-    for (const turn of thread.turns) {
-      if (turn.ask && turn.ask.trim()) {
-        parts.push(el('div', { class: 'hist-ask' }, el('p', { text: turn.ask })));
-      } else if (turn.kind === 'attempt-review') {
-        parts.push(el('div', { class: 'mono dim hist-marker', text: 'Attempt ended — reviewed end to end' }));
-      }
-      const answer = el('div', { class: 'hist-answer rich' });
-      answer.append(renderMarkdown(turn.answer || ''));
-      parts.push(answer);
-    }
-    if (!thread.resumable) {
-      parts.push(el('p', { class: 'hist-note', text: 'This conversation cannot be continued — it has no session left to resume.' }));
-    }
-    return el('div', { class: 'hist-thread' }, parts);
-  }, {
-    extra: thread.resumable
-      ? el('button', {
-        class: 'ws-mini hist-resume', type: 'button', text: 'Continue',
-        title: 'Reopen this conversation and keep talking in it',
-        onclick: () => onResume(thread),
-      })
-      : null,
-  });
-}
-
-/**
- * Render the history for one problem into `mount`.
- * @param {{slug:string, onResume:(thread:object)=>void}} options
- */
-export function renderHistory(mount, { slug, onResume, now = new Date() }) {
-  replace(mount, el('div', { class: 'mono dim hist-loading', text: 'Loading…' }));
-
-  return loadHistory(slug).then((data) => {
-    clear(mount);
-    if (!data.ok) {
-      mount.append(el('p', { class: 'hist-note', text: 'The history could not be loaded — the studio server is not answering.' }));
-      return;
-    }
-    if (!data.submissions.length && !data.threads.length) {
-      mount.append(el('p', { class: 'hist-note', text: 'Nothing yet. Submissions and conversations for this problem will collect here.' }));
-      return;
-    }
-
-    if (data.submissions.length) {
-      mount.append(el('div', { class: 'mono dim hist-section', text: `Submissions · ${data.submissions.length}` }));
-      for (const s of data.submissions) mount.append(submissionRow(s, now));
-    }
-    if (data.threads.length) {
-      mount.append(el('div', { class: 'mono dim hist-section', text: `Conversations · ${data.threads.length}` }));
-      for (const t of data.threads) mount.append(threadRow(t, now, { onResume }));
-    }
-  });
+// Calendar separators orient a reopened thread without explaining the composer.
+export function threadDate(iso, now = new Date()) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return '';
+  const clock = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === now.toDateString()) return `Today ${clock}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${clock}`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

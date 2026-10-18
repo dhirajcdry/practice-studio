@@ -1,0 +1,133 @@
+/* Saved verdicts and conversations share the panel's theme, type and geometry. */
+/* ---- structure ---- */
+.submissions{padding:0 14px;overflow-x:hidden;overflow-y:auto;min-height:0;min-width:0;font:12px var(--ui);flex:1;position:relative}
+.submissions[hidden]{display:none}
+.submissions h4{font:600 11px var(--ui);margin:0;color:var(--ink-70)}
+.submissions p{line-height:1.5}
+.submissions button:focus-visible,.recent-chat:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.submission-card{padding:12px;margin:12px 0;border:1px solid var(--hair-10);border-radius:var(--r-md);min-width:0;background:var(--card)}
+.submission-label{font:600 10px var(--ui);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-50)}
+.tone-easy{--verdict-tone:var(--easy)}
+.tone-hard{--verdict-tone:var(--hard)}
+.tone-medium{--verdict-tone:var(--med)}
+/* ---- overview and rows ---- */
+.submission-overview{display:flex;padding:16px 0 12px;border-bottom:1px solid var(--hair-10)}
+.submission-stat{display:flex;flex:1;min-width:0;flex-direction:column;gap:7px;padding:10px}
+.submission-stat strong{font:500 19px var(--mono);color:var(--ink)}
+.submission-stat small{font:10px var(--mono);color:var(--ink-50)}
+.submission-overview .submission-stat{padding:0 10px}
+.submission-overview .submission-stat:first-child{padding-left:0}
+.submission-overview .submission-stat+.submission-stat{border-left:1px solid var(--hair-10)}
+.submission-overview .meter{display:none}
+.submission-trend{width:100%;height:28px;margin:8px 0}
+.submission-trend polyline{fill:none;stroke:var(--hair-20);stroke-width:1.5}
+.submission-trend circle{fill:var(--ink-35)}
+.submission-trend circle.best{fill:var(--accent)}
+.submission-row{position:relative;width:calc(100% + 2 * var(--hover-pad));display:flex;flex-direction:column;gap:8px;text-align:left;padding:12px 20px 12px 12px;border:0;border-left:3px solid var(--verdict-tone);background:transparent;color:var(--ink);cursor:pointer}
+.submission-row:hover,.recent-chat:hover{background:var(--hair-06)}
+.submission-row-top,.submission-row-bottom{display:flex;align-items:center;gap:7px;min-width:0;width:100%;flex-wrap:wrap}
+.submission-row-top strong{font:600 13px var(--ui);color:var(--verdict-tone)}
+.submission-row time{margin-left:auto;font:10px var(--mono);color:var(--ink-50)}
+.submission-row-bottom{font:11px var(--mono);color:var(--ink-70)}
+.submission-delta{padding:2px 4px;border-radius:var(--r-sm);font-size:10px}
+.diff-good{color:var(--easy);background:var(--easy-soft)}
+.diff-bad{color:var(--hard);background:var(--hard-soft)}
+.submission-best{color:var(--accent);font-size:10px}
+.submission-tag{padding:2px 5px;background:var(--hair-06);border-radius:var(--r-sm);font:10px var(--ui)}
+.submission-chevron{position:absolute;right:5px;top:50%;transform:translateY(-50%);color:var(--ink-35);font-size:20px}
+.submissions .meter{height:3px;flex:none;border-radius:var(--r-sm)}
+.submission-empty{text-align:center;padding:40px 22px;color:var(--ink-50)}
+.submission-empty h3{font:500 17px var(--display);color:var(--ink)}
+.empty-icon{font:30px var(--display);color:var(--ink-35)}
+/* ---- detail and charts ---- */
+.submission-navigation{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:5px;padding:8px 0;background:var(--card);border-bottom:1px solid var(--hair-10);font:10px var(--mono);color:var(--ink-50)}
+.submission-hero{margin:0 -14px;padding:20px 14px 16px}
+.submission-hero.accepted{background:linear-gradient(rgba(var(--easy-rgb),.07),transparent)}
+.submission-hero.rejected{background:linear-gradient(rgba(var(--hard-rgb),.07),transparent)}
+.submission-hero h3{font:500 26px/1.15 var(--display);color:var(--verdict-tone);margin:0 0 10px;letter-spacing:-.025em}
+.submission-date{font:10px/1.7 var(--mono);color:var(--ink-50)}
+.submission-date a{color:var(--ink-70);text-decoration:none}
+.submission-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.submission-metrics .submission-stat,.tests-stat{background:var(--hair-06);border-radius:var(--r-md);padding:12px}
+.submission-tests,.submission-lead{font:10px var(--mono);color:var(--ink-50)}
+.submission-card-head{display:flex;align-items:center;justify-content:flex-start}
+.submission-chart{width:100%;height:125px;display:block;margin:10px 0 0;overflow:visible}
+.submission-chart rect{fill:var(--hair-10);transform-origin:center 98px}
+.submission-chart rect.faster{fill:var(--hair-20)}
+.submission-chart rect.you,.submission-chart rect:focus,.submission-chart rect:hover{fill:var(--accent)}
+.submission-chart text{fill:var(--ink-70);font:9px var(--mono)}
+.chart-guide{stroke:var(--accent);stroke-width:.6;stroke-dasharray:2 2}
+.chart-caption{font:10px var(--mono);color:var(--ink-50);min-height:14px;overflow-wrap:anywhere}
+/* ---- failure and code ---- */
+.failure-label{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.failure-label button{opacity:0;padding:2px 5px}
+.failure-block:hover .failure-label button,.failure-label button:focus-visible{opacity:1}
+.failure-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.submissions pre{font:12px/1.65 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;max-width:100%;margin:7px 0;padding:9px;background:var(--hair-06);border-radius:var(--r-sm)}
+.submissions mark{background:var(--hard-soft);color:var(--hard);text-decoration:underline}
+.submission-code{max-height:360px;overflow:auto;margin-top:10px}
+.submission-code pre{padding:0;background:transparent;margin:0}
+.code-line,.submission-diff>div{display:flex;min-height:20px}
+.code-line>span:last-child,.submission-diff>div>span:last-child{min-width:0;flex:1}
+.code-gutter{display:inline-block;flex:0 0 32px;text-align:right;padding-right:9px;user-select:none;color:var(--ink-35)}
+.diff-added{background:var(--easy-soft)}
+.diff-removed{background:var(--hard-soft)}
+.diff-counts{font:10px var(--mono);color:var(--ink-50);margin-bottom:8px}
+.submission-diff summary{padding:6px;text-align:center;background:var(--hair-06);color:var(--ink-50);cursor:pointer}
+/* ---- actions ---- */
+.submission-action-bar{position:sticky;bottom:0;display:flex;gap:6px;padding:10px 0;background:var(--card);border-top:1px solid var(--hair-10);z-index:2}
+.submission-action-bar .ws-run{background:var(--accent);color:var(--card);border-color:var(--accent);flex:1}
+.submission-status:empty{display:none}
+.submission-toast{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);width:max-content;max-width:85%;padding:10px 14px;background:var(--card);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--r-md);box-shadow:var(--shadow-lift);z-index:10;font:11px/1.5 var(--ui)}
+.is-loading:before{content:'◌';display:inline-block;margin-right:6px}
+/* ---- chat history and attachment ---- */
+body.ws-wide .coach .coach-starters{display:flex;flex-wrap:wrap;gap:6px}
+body.ws-wide .coach .coach-starters .chip{min-height:0;width:auto;padding:6px 9px;font-size:11px}
+.recent-chats{margin-top:18px}
+.chat-history-heading{font:600 10px var(--ui);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-50);padding:4px 0 9px}
+.recent-chat{position:relative;display:flex;flex-wrap:wrap;gap:5px 8px;width:calc(100% + 2 * var(--hover-pad));min-width:0;text-align:left;background:transparent;border:0;padding-block:11px;color:var(--ink);cursor:pointer}
+.recent-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;flex-basis:100%;white-space:normal;overflow:hidden;font:13px var(--ui)}
+.recent-chat .mono{font:11px var(--mono);color:var(--ink-50)}
+.recent-chat:after{content:'›';position:absolute;right:2px;top:50%;transform:translateY(-50%);color:var(--ink-50);opacity:0}
+.recent-chat:hover:after{opacity:1}
+.recent-chat .current{color:var(--accent)}
+.recent-chat .current:before{content:'●';margin-right:4px;font-size:7px}
+.coach{position:relative}
+.chat-history-popover{position:absolute;left:10px;right:10px;max-height:60%;overflow:auto;padding:14px;background:var(--card);border:1px solid var(--hair-20);border-radius:var(--r-md);box-shadow:var(--shadow-lift);z-index:5;transform-origin:top right}
+.chat-history-popover:before{content:'';position:absolute;right:75px;top:0;width:9px;height:9px;background:var(--card);border-left:1px solid var(--hair-20);border-top:1px solid var(--hair-20);transform:rotate(45deg)}
+.chat-history-popover[hidden],.chat-icon[hidden],.submission-attachment[hidden]{display:none}
+.chat-icon:hover{color:var(--ink)}
+.submission-count{font:10px var(--mono);margin-left:5px;padding:1px 4px;background:var(--hair-06);border-radius:var(--r-sm)}
+.submission-attachment{display:flex;align-items:center;gap:8px;width:fit-content;max-width:100%;font:11px var(--ui);padding:5px 8px;margin-bottom:8px;border:1px solid var(--hair-20);border-radius:var(--r-sm);color:var(--verdict-tone);background:var(--hair-06)}
+.submission-attachment button{border:0;background:transparent;color:inherit;cursor:pointer;font-size:16px}
+/* ---- motion follows both accessibility and Studio settings ---- */
+@keyframes submission-enter{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes submission-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes chat-popover-enter{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion:no-preference){
+body:not(.motion-off) .submission-hero{animation:submission-enter var(--dur-fade) var(--ease-out)}
+body:not(.motion-off) .submission-chart rect{animation:submission-grow var(--dur-fade) var(--ease-out)}
+body:not(.motion-off) .chat-history-popover:not([hidden]){animation:chat-popover-enter 120ms var(--ease-out)}
+body:not(.motion-off) .is-loading:before{animation:submission-grow var(--dur-fade) var(--ease-out) infinite alternate}
+}
+
+/* Keep controls reachable when the panel is narrower than a long state label. */
+body.ws-wide .coach-bar{gap:8px}
+.coach-bar .coach-state{white-space:nowrap;flex:0 0 auto}
+.coach-bar .coach-tabs{flex-shrink:0}
+.coach-bar .coach-hide{flex-shrink:0}
+.coach-bar .coach-sep{display:block;width:3px;height:3px;border-radius:var(--r-sm);background:var(--ink-35)}
+body.theme-terminal .chat-icon:before,body.theme-terminal .chat-icon:after{display:none}
+/* Keyboard and touch get the same affordances as a hovering pointer. */
+.recent-chat:focus-visible:after{opacity:1}
+.submission-chevron{right:var(--hover-pad)}
+.chat-history-popover:before{display:none}
+@media(hover:none){.failure-label button{opacity:1}}
+
+body .submission-row,body .recent-chat{padding-right:calc(var(--hover-pad) + 20px)}
+.coach-bar .coach-state[hidden],.coach-bar .coach-sep[hidden]{display:none}
+.coach-bar .coach-sep{flex:0 1 3px;min-width:0;overflow:hidden}
+
+.submission-hero.tone-easy{--verdict-tone:var(--verdict-easy)}
+.submission-hero.tone-hard{--verdict-tone:var(--verdict-hard)}
+.submission-hero.tone-medium{--verdict-tone:var(--verdict-med)}

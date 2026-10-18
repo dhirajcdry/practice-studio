@@ -1,3 +1,7 @@
+import { submissionPresentation, firstDifference } from './submission-presentation.js';
+import { lineDiff } from './line-diff.js';
+import { createSubmissions } from './submissions.js';
+import { submissionFixtures } from './submission-fixtures.js';
 // Self-tests for the two pieces of code that handle untrusted input.
 // Open web/tests.html in a browser; the headline turns green when everything passes.
 // This lives in its own module file on purpose: the payloads below contain literal
@@ -11,7 +15,7 @@ import {
   splitDiagramBlocks, sanitizeSvg, isSafeSvgValue, parseMermaid, parseLink,
   layoutFlowchart, drawFlowchart, renderDiagram, findBackEdges,
 } from './illustrator.js';
-import { shapeCoachOutcome, toolLine, renderCoachText } from './coach.js';
+import { shapeCoachOutcome, toolLine, renderCoachText, setCoachState, setChatToolsVisible } from './coach.js';
 import {
   shapeSubmitResult, renderSubmitResult, submitLine, shapeFailure,
   formatPercentile, submissionUrlOf, submissionsUrlOf,
@@ -992,6 +996,105 @@ check('frames keep one drawing size, so stepping never reflows', (() => {
   const r = vz({ type: 'stack', items: [1], frames: [{ items: [1, 2, 3] }, { items: [] }] });
   const scenes = layoutFrames(r.spec.frames.map((_, i) => resolveFrame(r.spec, i)));
   return scenes[0].width === scenes[1].width && scenes[0].height === scenes[1].height;
+})());
+
+group('Submission history and line diffs');
+check('line diff preserves unchanged lines', JSON.stringify(lineDiff('a\nb','a\nb')) === JSON.stringify([{type:'same',text:'a'},{type:'same',text:'b'}]));
+check('line diff identifies insertion and deletion', lineDiff('a\nb','a\nc').map(l=>l.type).join(',') === 'same,removed,added');
+check('line diff handles empty input and trailing newline', lineDiff('', 'a\n').length === 2 && lineDiff('a','').at(0).type === 'removed');
+check('line diff handles repeated lines', lineDiff('a\na\nb','a\nb').filter(l=>l.type === 'removed').length === 1);
+const submissionPanel = createSubmissions({slug:'two-sum'});
+submissionPanel.render(submissionFixtures());
+check('submission list renders all fixture records and NeetCode source', submissionPanel.root.querySelectorAll('.submission-row').length === 4 && submissionPanel.root.textContent.includes('NeetCode'));
+submissionPanel.root.querySelector('.submission-row').click();
+check('accepted detail shows one segmented distribution chart', submissionPanel.root.querySelectorAll('.submission-chart').length === 1);
+submissionPanel.root.querySelector('button').click();
+submissionPanel.root.querySelectorAll('.submission-row')[1].click();
+check('TLE retains the failing input and honest progress', submissionPanel.root.textContent.includes('[1,2,3]') && submissionPanel.root.textContent.includes('79 / 178 tests passed') && !submissionPanel.root.querySelector('[data-metric=Runtime]'));
+submissionPanel.root.querySelector('button').click();
+submissionPanel.root.querySelectorAll('.submission-row')[2].click();
+check('old submission explicitly says the failing case was not kept', submissionPanel.root.textContent.includes("The failing case wasn't kept for this submission.") && submissionPanel.root.textContent.includes('Where it failed') && !submissionPanel.root.querySelector('.submission-segments') && submissionPanel.root.textContent.includes('Fetch details from LeetCode'));
+submissionPanel.root.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+check('Escape returns to submission list', submissionPanel.root.querySelectorAll('.submission-row').length === 4);
+
+check('rejected rows never render distributions even if saved', (() => {
+  const panel = createSubmissions({ slug: 'two-sum' });
+  panel.render([{ ...submissionFixtures()[0], accepted: false, verdict: 'Wrong Answer' }]);
+  panel.root.querySelector('.submission-row').click();
+  return !panel.root.querySelector('.submission-chart') && panel.root.textContent.includes('Where it failed');
+})());
+check('accepted missing details explain charts and offer LeetCode fetch', (() => {
+  const panel = createSubmissions({ slug: 'two-sum' });
+  panel.render([{ submissionId: '1', accepted: true }]);
+  panel.root.querySelector('.submission-row').click();
+  return panel.root.textContent.includes("Charts weren't kept for this submission.")
+    && panel.root.textContent.includes('Fetch details from LeetCode') && !panel.root.textContent.includes('Where it failed');
+})());
+check('chat tools hide and close their popover, then return on Chat', (() => {
+  const nodes = Array.from({ length: 3 }, () => document.createElement('button'));
+  setChatToolsVisible(...nodes, false);
+  const hidden = nodes.every(n => n.hidden) && nodes[0].getAttribute('aria-pressed') === 'false';
+  setChatToolsVisible(...nodes, true);
+  return hidden && !nodes[0].hidden && !nodes[1].hidden && nodes[2].hidden;
+})());
+check('idle state has neither text nor dot; meaningful states show both', (() => {
+  const label = document.createElement('span'), dot = document.createElement('span');
+  return ['', 'Ready', 'Not available', 'Thinking', 'Asking', 'Listening', 'Transcribing', 'Attempt in progress', 'Stopping'].every((text, index) => {
+    setCoachState(label, dot, text);
+    return index < 3 ? label.hidden && dot.hidden && !label.textContent
+      : !label.hidden && !dot.hidden && label.textContent === text;
+  });
+})());
+check('returning to the submission list restores its scroll position', (() => {
+  const panel = createSubmissions({ slug: 'two-sum' });
+  panel.root.style.cssText = 'height:100px;overflow:auto';
+  document.body.append(panel.root);
+  panel.render(Array.from({ length: 40 }, (_, i) => ({ submissionId: String(i + 1), verdict: 'Accepted', accepted: true })));
+  const style = document.createElement('style');
+  style.textContent = '.submission-row{display:block;height:30px}';
+  document.head.append(style);
+  panel.root.scrollTop = 120;
+  const before = panel.root.scrollTop;
+  panel.root.querySelector('.submission-row').click();
+  panel.showList();
+  const restored = panel.root.scrollTop === before && before > 0 && panel.root.querySelectorAll('.submission-row').length === 40;
+  panel.root.remove();
+  style.remove();
+  return restored;
+})());
+
+check('unknown overview measurements are omitted', (() => {
+  const panel = createSubmissions({ slug: 'two-sum' });
+  panel.render([{ submissionId: '1', accepted: true }]);
+  return panel.root.querySelectorAll('.submission-stat').length === 1;
+})());
+check('accepted best and improving delta are visible', (() => {
+  const panel = createSubmissions({ slug: 'two-sum' });
+  panel.render([
+    { submissionId: '2', accepted: true, runtimeMs: 23 },
+    { submissionId: '1', accepted: true, runtimeMs: 34 },
+  ]);
+  return panel.root.textContent.includes('−11 ms') && panel.root.textContent.includes('★ best');
+})());
+check('rejected metrics are inapplicable even if a stale metric is present',
+  submissionPresentation({ accepted: false, runtimeMs: 5, detailFile: 'submissions/1.json' }).metrics.length === 0);
+check('missing judge data differs from an older missing record',
+  submissionPresentation({ detailFile: 'submissions/1.json' }).missing === "LeetCode didn't return this."
+  && submissionPresentation({}).old);
+check('first difference isolates the changed range',
+  JSON.stringify(firstDifference('[1,2]', '[1,3]')) === JSON.stringify({ start: 3, endExpected: 4, endActual: 4 }));
+check('first difference handles insertion and equal strings',
+  firstDifference('ab', 'axb').endActual === 2 && firstDifference('ab', 'ab').start === 2);
+
+check('short expected and actual outputs highlight their differing characters', (() => {
+  const panel = createSubmissions({ slug: 'two-sum' });
+  panel.render([{
+    submissionId: '9', accepted: false, verdict: 'Wrong Answer',
+    failure: { expectedOutput: '[1,2]', output: '[1,3]' },
+  }]);
+  panel.root.querySelector('.submission-row').click();
+  return [...panel.root.querySelectorAll('.failure-comparison mark')]
+    .map(mark => mark.textContent).join(',') === '2,3';
 })());
 
 const headline = document.getElementById('headline');

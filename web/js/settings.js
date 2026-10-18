@@ -12,10 +12,10 @@ const STORE_KEY = 'studio.settings.v1';
 // A family keeps its character in either appearance.
 export const THEMES = [
   { id: 'studio', name: 'Studio', blurb: 'Clean and docked. Panes meet edge to edge.', light: { paper: '#F3F4F6', ink: '#111111', accent: '#355DCC' }, dark: { paper: '#121212', ink: '#E8E8E8', accent: '#91A7FF' } },
-  { id: 'desk', name: 'Desk', blurb: 'Soft and rounded. Panes float on warm paper.', light: { paper: '#F6F4F0', ink: '#181818', accent: '#BD5F3C' }, dark: { paper: '#171513', ink: '#EEE8E0', accent: '#E2875F' } },
+  { id: 'desk', name: 'Desk', blurb: 'Soft and rounded. Panes float on warm paper.', light: { paper: '#F6F4F0', ink: '#181818', accent: '#AC5636' }, dark: { paper: '#171513', ink: '#EEE8E0', accent: '#E2875F' } },
   { id: 'editorial', name: 'Editorial', blurb: 'Serif prose, double rules, a printed page.', light: { paper: '#F4EFE6', ink: '#1A1614', accent: '#9B2C2C' }, dark: { paper: '#16120F', ink: '#ECE3D4', accent: '#E07B6E' } },
   { id: 'ink', name: 'Ink', blurb: 'Banded headers, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
-  { id: 'terminal', name: 'Terminal', blurb: 'Split panes, a status line, [ bracketed ] controls.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#A35F00' }, dark: { paper: '#0D0D0D', ink: '#D9DED9', accent: '#5FD38D' } },
+  { id: 'terminal', name: 'Terminal', blurb: 'Split panes, a status line, [ bracketed ] controls.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#9E5C00' }, dark: { paper: '#0D0D0D', ink: '#D9DED9', accent: '#5FD38D' } },
   { id: 'nebula', name: 'Nebula', blurb: 'An observatory readout: bracketed frames, lit controls.', art: true, light: { paper: '#F6F3FB', ink: '#1D1733', accent: '#6B3FD4' }, dark: { paper: '#0B0A1A', ink: '#ECE8FF', accent: '#B69CFF' } },
   { id: 'horizon', name: 'Event Horizon', blurb: 'Art deco in gold: double rules, Didot, gilt buttons.', art: true, light: { paper: '#FBF6EC', ink: '#22180C', accent: '#B4600A' }, dark: { paper: '#08070A', ink: '#F3ECE0', accent: '#FFB25C' } },
   { id: 'abyss', name: 'Abyss', blurb: 'Rounded and soft-lit, like something glowing in the deep.', art: true, light: { paper: '#EEF8F8', ink: '#0B2A33', accent: '#00808A' }, dark: { paper: '#04101A', ink: '#DDF6F7', accent: '#3FF0D0' } },
@@ -148,6 +148,7 @@ function keyRow(keys, what) {
 
 let coachPicker = null;
 let panel = null;
+let opener = null;
 let scrim = null;
 let stopPanelUpdates = null;
 
@@ -157,11 +158,14 @@ export function closeSettings() {
   if (panel) { panel.remove(); panel = null; }
   if (scrim) { scrim.remove(); scrim = null; }
   document.body.classList.remove('settings-open');
+  if (opener?.isConnected) opener.focus();
+  opener = null;
 }
 
 export function openSettings() {
   if (panel) { closeSettings(); return; }
 
+  opener = document.activeElement;
   const themeCards = el('div', { class: 'set-cards set-themes' });
   const modeSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Appearance' });
   const pictureSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Coach pictures' });
@@ -207,7 +211,7 @@ export function openSettings() {
   ]);
 
   coachPicker = createCoachModelPicker();
-  panel = el('aside', { class: 'settings', role: 'dialog', 'aria-label': 'Settings' }, [
+  panel = el('aside', { class: 'settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings' }, [
     el('div', { class: 'set-head' }, [
       el('span', { class: 'mono dim', text: 'Settings' }),
       el('span', { class: 'spacer' }),
@@ -216,7 +220,7 @@ export function openSettings() {
     el('div', { class: 'set-body' }, [
       el('div', { class: 'mono dim set-label', text: 'Coach' }),
       coachPicker.root,
-      el('p', { class: 'set-cardblurb', text: 'Applies to new coach and system-design replies. Each CLI uses its own sign-in and limits. Codex saves chats through Studio; automatic note edits are Claude-only.' }),
+      el('p', { class: 'set-cardblurb', text: 'Applies to new coach and system-design replies. Each provider uses its own sign-in and limits. Automatic note updates are available with Claude.' }),
       el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
       el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
       el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
@@ -252,6 +256,7 @@ export function openSettings() {
   scrim = el('div', { class: 'set-scrim', onclick: closeSettings });
   document.body.append(scrim, panel);
   document.body.classList.add('settings-open');
+  panel.querySelector('button').focus();
 }
 
 /** Sun and moon, drawn rather than typed — an emoji is a different font on every OS. */
@@ -336,6 +341,16 @@ function paintDayNight(button) {
 }
 
 document.addEventListener('keydown', (event) => {
+  // Keep keyboard focus inside the modal while the background is covered.
+  if (event.key === 'Tab' && panel) {
+    const controls = [...panel.querySelectorAll('button,select,input,[tabindex="0"]')]
+      .filter(node => !node.disabled && node.getClientRects().length);
+    const edge = event.shiftKey ? controls[0] : controls.at(-1);
+    if (document.activeElement === edge) {
+      event.preventDefault();
+      (event.shiftKey ? controls.at(-1) : controls[0])?.focus();
+    }
+  }
   if (event.key === 'Escape' && panel) { event.preventDefault(); closeSettings(); }
 });
 

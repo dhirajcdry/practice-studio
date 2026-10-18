@@ -19,6 +19,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+import { readSubmissions, modelSubmission, compactSubmissions } from '../judge/submissions.mjs';
 import { unifiedDiff } from './diff.mjs';
 import { readProblemSessionEvents } from '../attempts/assemble.mjs';
 import { readCachedProblem, statementText, paramNames } from './problem-cache.mjs';
@@ -278,7 +279,7 @@ async function recentTranscripts(problemDir, sinceMs, limit = 6, named = null, a
   return kept;
 }
 
-export async function gatherContext({ root, slug, catalogEntry, sessionLog, attemptId = null, leetcode = null, now = Date.now() }) {
+export async function gatherContext({ root, slug, catalogEntry, sessionLog, attemptId = null, leetcode = null, attach = null, log = console, now = Date.now() }) {
   const problemDir = path.join(root, 'problems', slug);
 
   const [notesStat, buffer, bufferStat, snapshot, session, lastRun, lastVerdict, cachedProblem] = await Promise.all([
@@ -306,6 +307,26 @@ export async function gatherContext({ root, slug, catalogEntry, sessionLog, atte
       namedTranscripts(attemptWindow.events), attemptWindow.id)
     : [];
 
+  const submissions = await readSubmissions({ root, slug });
+  const attachedIndex = attach?.submissionId != null
+    ? submissions.findIndex(submission => String(submission.submissionId) === String(attach.submissionId))
+    : -1;
+  if (attach?.submissionId != null && attachedIndex < 0) {
+    log?.warn?.('[coach] Ignored an unknown submission attachment.');
+  }
+  const attached = attachedIndex >= 0 ? submissions[attachedIndex] : null;
+  const previousSubmission = attachedIndex >= 0 ? submissions[attachedIndex + 1] : null;
+  const attachedSubmission = attached ? modelSubmission(attached, { code: false, previous: previousSubmission }) : null;
+  if (attachedSubmission && typeof attached.code === 'string') {
+    const diff = buffer !== null ? unifiedDiff(attached.code, buffer) : null;
+    if (buffer !== null && diff === null) attachedSubmission.diffVsEditor = 'Unchanged';
+    else if (diff && !diff.truncated && diff.text.length <= attached.code.length) attachedSubmission.diffVsEditor = diff;
+    else attachedSubmission.code = attached.code;
+    if (typeof previousSubmission?.code === 'string') {
+      const previous = unifiedDiff(previousSubmission.code, attached.code);
+      if (previous && !previous.truncated && previous.text.split('\n').length < 60) attachedSubmission.diffVsPrevious = previous;
+    }
+  }
   return {
     slug,
     problemDir,
@@ -331,6 +352,8 @@ export async function gatherContext({ root, slug, catalogEntry, sessionLog, atte
     revealedArticle: events.some((e) => e.type === 'revealed_article'),
     lastRun: summariseRunResult(lastRun),
     lastVerdict: lastVerdict?.data?.verdict ?? null,
+    submissions: compactSubmissions(submissions),
+    attachedSubmission,
     events,
     firstAtMs: firstAt,
     transcripts,
@@ -514,7 +537,7 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
   lines.push('Memory (NOTES.md, journal, TUTOR.md, skills, and for attempt reviews the debrief) is updated in a separate step right after this reply, which sees this whole conversation.');
   lines.push('');
   lines.push(
-    'Files you must NEVER write, in this or any turn: `meta.json`, `index.json`,' +
+    'Files you must NEVER write, in this or any turn: `meta.json`, `index.json`, `problems/*/submissions/**`,' +
       ' `solution.py`, `attempts/`, and anything under `sessions/`. Those belong to the app.' +
       ' `solution.py` in particular is the user\'s own work — reading it is the point; writing' +
       ' it would be solving the problem for them. The permission system also refuses these,' +
@@ -553,7 +576,8 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
   if (c.coachRunCount) lines.push(`Your own run_code runs this sitting (not his): ${c.coachRunCount}`);
   if (c.revealedSolution) lines.push('The user has revealed the reference solution for this problem.');
   if (c.revealedArticle) lines.push('The user has revealed the written article for this problem.');
-  if (c.lastVerdict) lines.push(`Last submission verdict: ${c.lastVerdict}`);
+  if (c.submissions?.length) lines.push(fenced(fenceToken, 'UNTRUSTED DATA — submissions', c.submissions));
+  if (c.attachedSubmission) lines.push(fenced(fenceToken, 'UNTRUSTED DATA — attached submission, code and diffs', JSON.stringify(c.attachedSubmission)));
 
   if (c.buffer === null) {
     lines.push('Editor buffer: EMPTY — nothing saved to solution.py yet.');

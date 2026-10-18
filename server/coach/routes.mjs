@@ -193,6 +193,10 @@ export async function handleCoachMessage(req, res, ctx) {
       catalogEntry,
       sessionLog: svc.sessionLog,
       attemptId,
+      // Only a local record identity crosses this boundary; client details are never prompt data.
+      attach: typeof body.attach?.submissionId === 'string' && body.attach.submissionId.length <= 100
+        ? { submissionId: body.attach.submissionId } : null,
+      log: svc.log,
       leetcode: ctx?.leetcode ?? null,
     });
     // The tutor's Studio tools, for this turn only. The memory upkeep step and design
@@ -514,39 +518,8 @@ export async function handleHistory(req, res, ctx) {
   const svc = serviceFor(ctx);
   const slug = slugFrom(req, ctx);
 
-  const [threads, meta] = await Promise.all([
-    readThreads({ root: svc.root, slug }).catch(() => []),
-    readMeta(svc.root, slug),
-  ]);
-
-  const submissions = Array.isArray(meta?.submissions) ? [...meta.submissions].reverse() : [];
-  // The code goes with the verdict. A list of verdicts with nothing behind them cannot
-  // answer the only question worth asking of it: what changed between these two.
-  for (const entry of submissions) {
-    entry.code = entry.codeFile ? await readCode(svc.root, slug, entry.codeFile) : null;
-  }
-
-  return sendJson(res, 200, { slug, submissions, threads });
-}
-
-/** Read one stored submission, confined to this problem's submissions directory. */
-async function readCode(root, slug, codeFile) {
-  const dir = path.join(root, 'problems', slug, 'submissions');
-  const file = path.resolve(dir, path.basename(String(codeFile)));
-  if (!file.startsWith(dir + path.sep)) return null; // never read outside where we wrote
-  try {
-    return await fsp.readFile(file, 'utf8');
-  } catch {
-    return null;
-  }
-}
-
-async function readMeta(root, slug) {
-  try {
-    return JSON.parse(await fsp.readFile(path.join(root, 'problems', slug, 'meta.json'), 'utf8'));
-  } catch {
-    return null; // never submitted, or a meta.json we must not "repair"
-  }
+  const threads = await readThreads({ root: svc.root, slug }).catch(() => []);
+  return sendJson(res, 200, { slug, threads });
 }
 
 export const routes = {

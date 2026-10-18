@@ -657,7 +657,7 @@ export function mountWorkspace(entry, options = {}) {
     el('div', { class: 'ws-bar' }, [
       el('span', { class: 'mono dim ws-title', text: 'Python' }),
       // Keep the problem identifiable when its statement is hidden.
-      el('span', { class: 'ws-probtitle', text: entry.title || slug, title: entry.title || slug }),
+      el('span', { class: 'ws-probtitle', text: entry.title || slug }),
       statusEl,
       el('span', { class: 'spacer' }),
       revertButton,
@@ -1165,6 +1165,26 @@ export function mountWorkspace(entry, options = {}) {
     root,
     slug,
     focus: () => editor && editor.focus(),
+    getCode: () => editor?.getValue() ?? null,
+    async loadSubmission(code) {
+      if (!editor) return 'The editor is still opening.';
+      if (editor.getValue() === code) return 'The editor already contains this code.';
+      const before = editor.getValue();
+      writeDraft(slug, before);
+      const saved = await saveCode(slug, before);
+      if (!saved.ok || saved.source === 'mock') return 'The current buffer could not be saved. Nothing was replaced.';
+      if (editor.getValue() !== before) return 'The buffer changed while saving. Nothing was replaced.';
+      editor.raw.instance?.pushUndoStop();
+      editor.setValue(code);
+      editor.raw.instance?.pushUndoStop();
+      onEdit();
+      return null;
+    },
+    addFailingCase: detail => { panel.addFailingCase(detail); showResults('run'); },
+    jumpToLine: line => {
+      if (editor?.raw.instance) { editor.raw.instance.revealLineInCenter(line); editor.raw.instance.setPosition({ lineNumber: line, column: 1 }); editor.focus(); }
+      else if (editor?.raw.area) { const area = editor.raw.area; const at = area.value.split('\n').slice(0, line - 1).join('\n').length; area.focus(); area.setSelectionRange(at, at); }
+    },
     run: doRun,
     /** Save now if there is anything unsaved; resolves when the save has finished. */
     flushSave() {
@@ -1253,4 +1273,8 @@ export function init(mountEl, apiState) {
   enableWideLayout(true);
   replace(mountEl, mountWorkspace({ slug, title: slug }));
   return active;
+}
+
+export function submissionEditor(slug) {
+  return active?.slug === slug ? active : null;
 }

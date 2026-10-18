@@ -394,3 +394,17 @@ test('both normal and review turns teach the coach to draw, just before the inst
   assert.ok(at > 0 && at < review.lastIndexOf('\n## THIS ATTEMPT IS OVER'));
   assert.match(review, /attempt review: one small recap trace/);
 });
+
+test('submissions and a validated attachment are fenced with saved code and both diffs', async t => {
+  const {root,dir,log}=await workspace(); t.after(()=>fsp.rm(root,{recursive:true,force:true}));
+  await fsp.mkdir(path.join(dir,'submissions'));
+  await fsp.writeFile(path.join(dir,'meta.json'),JSON.stringify({submissions:[{submissionId:'1',at:'2026-10-17',codeFile:'submissions/1.py',verdict:'Wrong Answer'},{submissionId:'2',at:'2026-10-18',codeFile:'submissions/2.py',verdict:'Accepted'}]}));
+  await fsp.writeFile(path.join(dir,'submissions/1.py'),'return 1'); await fsp.writeFile(path.join(dir,'submissions/2.py'),'return 2'); await fsp.writeFile(path.join(dir,'solution.py'),'return 3');
+  const c=await gatherContext({root,slug:'two-sum',sessionLog:log,attach:{submissionId:'2'}});
+  assert.match(c.submissions,/Submissions: 2/); assert.equal(c.attachedSubmission.code,'return 2'); assert.match(c.attachedSubmission.diffVsPrevious.text,/return 1/);
+  const {prompt}=buildPrompt({context:c,message:'compare',fenceToken:'FIXED'});
+  assert.match(prompt,/<<<FIXED UNTRUSTED DATA — attached submission/); assert.match(prompt,/return 2/);
+  let warned=false;
+  const absent=await gatherContext({root,slug:'two-sum',sessionLog:log,attach:{submissionId:'999'},log:{warn(){warned=true;}}});
+  assert.equal(absent.attachedSubmission,null); assert.equal(warned,true);
+});

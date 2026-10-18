@@ -91,6 +91,8 @@ export function permissionArgs(root) {
     p('Edit', '/problems/*/solution.py'),
     p('Write', '/problems/*/sessions/**'),
     p('Edit', '/problems/*/sessions/**'),
+    p('Write', '/problems/*/submissions/**'),
+    p('Edit', '/problems/*/submissions/**'),
     p('Write', '/problems/*/attempts/**'),
     p('Edit', '/problems/*/attempts/**'),
     p('Write', '/problems/*/coach-session.json'),

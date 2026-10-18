@@ -26,7 +26,7 @@ import { reportCoachAction, undoCoachAction } from './api.js';
 
 /** The studio tools, by their bare names. MCP delivers them as `mcp__studio__<name>`. */
 export const STUDIO_TOOLS = Object.freeze([
-  'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
+  'get_submissions', 'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
   'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note',
 ]);
 
@@ -116,6 +116,7 @@ export function receiptSummary(action) {
     case 'edit_code': return args.why ? `Edited your code: ${args.why}` : 'Edited your code';
     case 'open_panel': return `Opened the ${args.panel === 'article' ? 'article' : 'solution'}`;
     case 'save_note': return 'Saved a note';
+    case 'get_submissions': return 'Read your submissions';
     case 'get_state': return 'Looked at your cases and runs';
     default: return String(action?.tool || 'Did something');
   }

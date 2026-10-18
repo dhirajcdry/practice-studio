@@ -215,7 +215,7 @@ export function createVoiceControl({
   }, [micGlyph(), talkLabel]);
 
   const status = el('div', { class: 'vc-status', hidden: true, role: 'status' });
-  const preview = el('div', { class: 'vc-preview', hidden: true, 'aria-label': 'Live transcript preview' });
+  const preview = el('div', { class: 'vc-preview', hidden: true, 'aria-label': 'Live transcript preview', 'aria-live': 'polite' });
 
   const root = el('div', { class: 'vc' }, [
     el('div', { class: 'vc-row' }, [talkButton, el('span', { class: 'spacer' }), indicator]),
@@ -246,6 +246,8 @@ export function createVoiceControl({
     indicator.hidden = next !== 'recording';
     talkButton.setAttribute('aria-pressed', String(next === 'recording'));
     talkButton.disabled = next === 'working';
+    talkButton.setAttribute('aria-label', next === 'recording' ? 'Stop recording'
+      : next === 'working' ? 'Transcribing' : 'Record a message for the coach');
     talkLabel.textContent = next === 'recording' ? 'Stop'
       : next === 'working' ? 'Transcribing…'
       : next === 'opening' ? 'Opening mic…'

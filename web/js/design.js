@@ -264,7 +264,7 @@ function mountLibrary(host, { onNew, onOpen }) {
           // The thread that asked these questions is gone; a new one reads the
           // transcript instead. True either way, so it is said either way.
           r.note.hidden = false;
-          r.note.textContent = 'Resume starts a fresh thread — its own thread was not saved, so it will read the transcript to carry on.';
+          r.note.textContent = 'Continues from the saved transcript.';
         }
       } else {
         // Only reachable if it was debriefed between the list call and this one — a
@@ -313,8 +313,8 @@ function mountReview(host, data, { onBack }) {
   if (!data.debriefed) {
     log.append(el('div', { class: 'dz-cut mono', text:
       'This interview was never debriefed, so there is no assessment of it. '
-      + (!data.resumable ? 'Its interviewer thread is gone, so it cannot be continued.'
-        : data.rebuilt ? 'It can still be resumed — the interviewer’s thread was not saved, so a fresh one will read the transcript to carry on.'
+      + (!data.resumable ? 'This interview cannot be continued.'
+        : data.rebuilt ? 'Continues from the saved transcript.'
           : 'It can still be resumed.') }));
   }
 
@@ -407,7 +407,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   const clock = el('span', { class: 'mono dz-clock', text: '00:00' });
   const pauseButton = el('button', { class: 'dz-pause', type: 'button', text: 'Pause',
     title: 'Pause the timer and microphone without ending your interview', disabled: true, onclick: () => togglePause() });
-  const phaseBar = el('div', { class: 'dz-phases' }, PHASES.map(([id, label]) =>
+  const phaseBar = el('div', { class: 'dz-phases', role: 'group', 'aria-label': 'Interview phase' }, PHASES.map(([id, label]) =>
     el('button', {
       class: 'dz-phase', type: 'button', dataset: { phase: id },
       'aria-pressed': String(id === phase),
@@ -695,6 +695,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
   function paintPaused() {
     paintDraft();
     pauseButton.textContent = paused ? 'Resume' : 'Pause';
+    pauseButton.setAttribute('aria-label', paused ? 'Resume interview' : 'Pause interview');
     pauseButton.setAttribute('aria-pressed', String(paused));
     clock.classList.toggle('paused', paused);
     clock.title = paused ? 'Interview paused — time away is not counted' : 'Active interview time';
@@ -707,7 +708,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     phaseBar.querySelectorAll('button').forEach(button => { button.disabled = paused; });
     if (voice) voice.root.hidden = paused;
     api?.updateScene({ appState: { viewModeEnabled: paused } });
-    say(paused ? 'Paused · Resume when you’re ready' : '');
+    say(paused ? 'Paused' : '');
     if (isVoice() && paused) paintVoice('Paused');
   }
 
@@ -878,6 +879,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
     button.title = !voice
       ? 'This browser cannot record audio, so voice mode is unavailable.'
       : 'This browser has no speech synthesis, so the interviewer cannot talk.';
+    const reason = el('p', { id: 'voice-unavailable', class: 'dim', text: button.title });
+    button.setAttribute('aria-describedby', reason.id);
+    modeSwitch.after(reason);
   }
 
   /* ---- boot ---- */
@@ -915,8 +919,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, resumed = null, onBa
         // Said plainly: the model that answers next did not ask these questions. It is
         // reading the transcript above, same as the candidate can, not remembering it.
         log.append(el('div', { class: 'dz-cut mono', text:
-          'The interviewer’s thread from earlier was not saved, so the next question '
-          + 'comes from a fresh read of the transcript above rather than its own memory.' }));
+          'Continues from the saved transcript.' }));
       }
       log.scrollTop = log.scrollHeight;
       tickClock();

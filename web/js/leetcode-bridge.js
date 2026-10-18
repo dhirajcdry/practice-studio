@@ -45,9 +45,29 @@ export function neetcodeConnectorProblem() {
  * instead and resolves to `{ ok:true, target:'neetcode', result }`, `result` being the
  * verdict it read off NeetCode's page. The request's `id` comes back as `requestId`.
  */
-export function submitViaConnector({ slug, code, lang = 'python3', signal = null, target = 'leetcode', neetcodeSlug = null }) {
+export function submitViaConnector({
+  slug, code, lang = 'python3', signal = null, target = 'leetcode', neetcodeSlug = null,
+}) {
+  const request = { type: 'submit', slug, code, lang };
+  if (target === 'neetcode') Object.assign(request, { target, neetcodeSlug });
+  return connectorRequest(request, signal);
+}
+
+/** Details have their own request shape and failure wording: this path cannot submit. */
+export function detailsViaConnector(slug, submissionId) {
+  if (!versionAtLeast(connectorVersion(), '1.2.0')) {
+    return Promise.resolve({
+      ok: false, message: 'Reload Studio Connector 1.2.0 in chrome://extensions to fetch details.',
+    });
+  }
+  return connectorRequest({ type: 'details', slug, submissionId });
+}
+
+// Correlation and listener cleanup are shared; operation semantics stay at the edges.
+function connectorRequest(request, signal = null) {
   const id = `studio-${Date.now()}-${nextId += 1}`;
-  return new Promise((resolve) => {
+  const reading = request.type === 'details';
+  return new Promise(resolve => {
     function done(result) {
       window.removeEventListener('message', onMessage);
       signal?.removeEventListener('abort', onAbort);
@@ -57,19 +77,29 @@ export function submitViaConnector({ slug, code, lang = 'python3', signal = null
       const data = event.data;
       if (event.source !== window || data?.source !== 'studio-connector' || data.id !== id) return;
       const result = data.result && typeof data.result === 'object' ? data.result : null;
-      done(result ? (target === 'neetcode' ? { ...result, requestId: id } : result) : {
+      if (result) {
+        done(request.target === 'neetcode' ? { ...result, requestId: id } : result);
+        return;
+      }
+      if (reading) {
+        done({ ok: false, code: 'CONNECTOR_ERROR', message: 'The details response could not be read.' });
+        return;
+      }
+      const source = request.target === 'neetcode' ? 'NeetCode' : 'LeetCode';
+      done({
         ok: false, code: 'CONNECTOR_ERROR', submissionState: 'unknown',
-        message: `The Studio Connector sent an unreadable answer. Check your submissions on ${target === 'neetcode' ? 'NeetCode' : 'LeetCode'} before sending another.`,
+        message: `The Connector sent an unreadable answer. Check your submissions on ${source} before sending another.`,
       });
     }
     function onAbort() {
-      done({ ok: false, code: 'CANCELLED', submissionState: 'unknown', message: 'Stopped waiting for the verdict.' });
+      if (reading) done({ ok: false, code: 'CANCELLED', message: 'Stopped waiting for details.' });
+      else done({
+        ok: false, code: 'CANCELLED', submissionState: 'unknown', message: 'Stopped waiting for the verdict.',
+      });
     }
     if (signal?.aborted) return onAbort();
     window.addEventListener('message', onMessage);
     signal?.addEventListener('abort', onAbort, { once: true });
-    const request = { source: 'studio-page', type: 'submit', id, slug, code, lang };
-    if (target === 'neetcode') Object.assign(request, { target, neetcodeSlug });
-    window.postMessage(request, location.origin);
+    window.postMessage({ ...request, source: 'studio-page', id }, location.origin);
   });
 }

@@ -1,0 +1,6 @@
+{
+  "accepted": {"runtime":23,"runtimeDisplay":"23 ms","runtimePercentile":44.51,"memory":20582,"memoryDisplay":"20.1 MB","memoryPercentile":55,"runtimeDistribution":"{\"lang\":\"python3\",\"distribution\":[[\"34\",35],[\"23\",45],[\"12\",20]]}","memoryDistribution":{"lang":"python3","distribution":[["20480",30],["20582",40],["21504",30]]},"lang":{"name":"Python3"}},
+  "tle": {"statusCode":14,"totalCorrect":79,"totalTestcases":178,"lastTestcase":"[1,2,3]\n6"},
+  "runtime": {"runtimeError":"IndexError","fullRuntimeError":"IndexError\nLine 5 in solve","lastTestcase":"[]"},
+  "compile": {"compileError":"SyntaxError","fullCompileError":"Line 2: SyntaxError"}
+}

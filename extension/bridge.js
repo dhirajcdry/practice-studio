@@ -12,7 +12,7 @@ const isStudio = () => document.querySelector('meta[name="practice-studio"]') !=
 
 window.addEventListener('message', (event) => {
   const data = event.data;
-  if (event.source !== window || !data || data.source !== 'studio-page' || data.type !== 'submit') return;
+  if (event.source !== window || !data || data.source !== 'studio-page' || !['submit', 'details'].includes(data.type)) return;
   if (!isStudio()) return;
 
   const reply = (result) => window.postMessage({ source: 'studio-connector', id: data.id, result }, location.origin);
@@ -36,5 +36,5 @@ window.addEventListener('message', (event) => {
       message: 'The Studio Connector stopped before it answered. Check your submissions on LeetCode before sending another.' });
   });
   // `target` is 'neetcode' for premium problems (with `neetcodeSlug`); absent means LeetCode.
-  port.postMessage({ type: 'submit', slug: data.slug, code: data.code, lang: data.lang, target: data.target, neetcodeSlug: data.neetcodeSlug });
+  port.postMessage({ type: data.type, submissionId: data.submissionId, slug: data.slug, code: data.code, lang: data.lang, target: data.target, neetcodeSlug: data.neetcodeSlug });
 });

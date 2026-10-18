@@ -236,7 +236,8 @@ function labelled(label, value, className = '') {
 
 function caseRow(shapedCase, index, forceOpen) {
   const open = forceOpen;
-  const body = el('div', { class: 'rr-casebody', hidden: !open });
+  const bodyId = `result-case-${index}`;
+  const body = el('div', { class: 'rr-casebody', id: bodyId, hidden: !open });
 
   if (shapedCase.kind === 'timeout' || shapedCase.kind === 'runtime') {
     body.append(el('p', { class: 'rr-msg', text: shapedCase.message }));
@@ -259,7 +260,7 @@ function caseRow(shapedCase, index, forceOpen) {
   }
 
   const head = el('button', {
-    class: 'rr-casehead', type: 'button', 'aria-expanded': String(open),
+    class: 'rr-casehead', type: 'button', 'aria-expanded': String(open), 'aria-controls': bodyId,
     onclick: (event) => {
       const next = body.hidden;
       body.hidden = !next;
@@ -438,6 +439,17 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
     last = shaped;
     renderRunResult(body, shaped, { onRerun: run });
     onEvent({ type: 'result', shaped });
+    requestAnimationFrame(() => {
+      const comparison = body.querySelector('.rr-case.k-fail .rr-grid');
+      const pane = root.closest('.ws-results');
+      if (!comparison || !pane || last !== shaped) return;
+      const block = comparison.getBoundingClientRect();
+      const viewport = pane.getBoundingClientRect();
+      if (block.top < viewport.top || block.bottom > viewport.bottom) {
+        pane.scrollTo({ top: pane.scrollTop + block.top - viewport.top - 8,
+          behavior: document.body.classList.contains('motion-off') || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+      }
+    });
   }
 
   async function run() {

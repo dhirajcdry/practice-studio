@@ -69,9 +69,9 @@ export function statusMeta(status) {
     case 'local-pass':
       return { label: 'Passed locally', cls: 'dash-local', evidence: 'example tests passed here; never submitted' };
     case 'attempted':
-      return { label: 'Attempted', cls: 'dash-attempted', evidence: 'code run or events logged, no solve recorded' };
+      return { label: 'Attempted', cls: 'dash-attempted', evidence: 'practice recorded, no solve yet' };
     case 'notes-only':
-      return { label: 'Notes only', cls: 'dash-notes', evidence: 'prose on disk, no events and no verdict' };
+      return { label: 'Notes only', cls: 'dash-notes', evidence: 'notes saved, no practice or verdict yet' };
     default:
       return { label: 'Empty', cls: 'dash-empty', evidence: 'a folder with nothing recorded in it' };
   }
@@ -107,7 +107,7 @@ export function eventLabel(type) {
     submitted: 'submitted',
     verdict: 'verdict',
   };
-  return map[type] ?? type;
+  return map[type] ?? String(type).replaceAll('_', ' ');
 }
 
 /**
@@ -117,11 +117,11 @@ export function eventLabel(type) {
  */
 export function evidenceSummary(stats) {
   const { workspace, totals } = stats;
-  if (!workspace.exists) return 'no workspace on disk yet';
+  if (!workspace.exists) return 'no practice saved yet';
   const bits = [];
-  bits.push(`${workspace.problemDirs} problem folder${workspace.problemDirs === 1 ? '' : 's'}`);
-  bits.push(`${workspace.eventsRead} logged event${workspace.eventsRead === 1 ? '' : 's'}`);
-  bits.push(`${totals.attemptFiles} code snapshot${totals.attemptFiles === 1 ? '' : 's'}`);
+  bits.push(`${workspace.problemDirs} problem${workspace.problemDirs === 1 ? '' : 's'}`);
+  bits.push(`${workspace.eventsRead} practice action${workspace.eventsRead === 1 ? '' : 's'}`);
+  bits.push(`${totals.attemptFiles} saved run${totals.attemptFiles === 1 ? '' : 's'}`);
   return bits.join(' · ');
 }
 
@@ -132,15 +132,11 @@ export function isThinEvidence(stats) {
 
 /* ============================================================ small builders */
 
-function srcChip(text) {
-  return el('span', { class: 'dash-src', title: `Source: ${text}`, text: 'src' });
-}
-
-function card(title, { note = null, source = null, body = null, headerExtra = null } = {}) {
+function card(title, { note = null, body = null, headerExtra = null } = {}) {
   const head = el('header', {}, [
     el('div', { class: 'hgroup' }, [
       el('h2', { text: title }),
-      source ? srcChip(source) : null,
+      
       note ? el('span', { class: 'note', text: note }) : null,
     ]),
     headerExtra,
@@ -160,13 +156,13 @@ function meter({ solved, attempted, total }) {
   ]);
 }
 
-function statCell({ value, suffix = null, label, source, dim = false }) {
+function statCell({ value, suffix = null, label, dim = false }) {
   return el('div', { class: 'dash-stat', role: 'listitem' }, [
     el('div', { class: dim ? 'v none' : 'v' }, [
       String(value),
       suffix ? el('small', { text: ` ${suffix}` }) : null,
     ]),
-    el('div', { class: 'mono l' }, [label, srcChip(source)]),
+    el('div', { class: 'mono l' }, [label]),
   ]);
 }
 
@@ -194,9 +190,7 @@ function headSection(stats, { onRefresh, busy }) {
     el('div', {}, [
       el('h1', { text: 'Progress' }),
       el('div', { class: 'sub' }, [
-        'Everything here is read from ',
-        el('b', { text: '~/LeetCodeTutor' }),
-        `. Nothing is estimated. Right now that is ${evidenceSummary(stats)}.`,
+        `Your saved practice: ${evidenceSummary(stats)}.`,
       ]),
     ]),
     el('button', {
@@ -211,7 +205,7 @@ function truthSection(stats) {
   const { workspace, totals, signals } = stats;
   const missing = [];
   if (signals.thinkingTime.samples === 0) {
-    missing.push('how long you think before typing — no first_keystroke events are recorded yet');
+    missing.push('how long you think before typing — no samples yet');
   }
   if (totals.revealedSolution === 0) {
     missing.push('how often you reveal a solution before solving — no reveals are recorded yet');
@@ -221,19 +215,19 @@ function truthSection(stats) {
   }
 
   return el('div', { class: 'dash-truth' }, [
-    el('h2', { text: 'What this screen can honestly tell you today' }),
+    el('h2', { text: 'What your data shows' }),
     el('p', {}, [
-      'The curriculum numbers below are exact: ',
+      'Curriculum: ',
       el('b', { text: `${stats.curriculum.problems} problems across ${stats.curriculum.patterns} patterns` }),
-      ' is real data, so every "n of N" denominator is real. What is thin is your side of it — ',
-      el('b', { text: `${workspace.eventsRead} event${workspace.eventsRead === 1 ? '' : 's'}` }),
-      ` recorded across ${workspace.problemDirs} problem folder${workspace.problemDirs === 1 ? '' : 's'}.`,
+      '. Your practice: ',
+      el('b', { text: `${workspace.eventsRead} practice action${workspace.eventsRead === 1 ? '' : 's'}` }),
+      ` recorded across ${workspace.problemDirs} problem${workspace.problemDirs === 1 ? '' : 's'}.`,
     ]),
     missing.length
       ? el('div', {}, [
-        el('p', { text: 'That is not enough for the weakness view yet. Specifically, these cannot be computed:' }),
+        el('p', { text: 'Not enough practice data yet for:' }),
         el('ul', {}, missing.map((text) => el('li', { text }))),
-        el('p', { text: 'They fill in on their own as you solve inside Studio — the session log is written as you work, not something you maintain.' }),
+        el('p', { text: 'These signals appear as you practice.' }),
       ])
       : null,
   ]);
@@ -247,31 +241,26 @@ function statsSection(stats) {
       suffix: `/ ${lists.neetcode250.total}`,
       label: 'Solved',
       dim: totals.accepted === 0,
-      source: 'an accepted verdict in a session log or meta.json',
     }),
     statCell({
       value: totals.attempted,
       label: 'Touched',
       dim: totals.attempted === 0,
-      source: 'problem folders with events or saved code',
     }),
     statCell({
       value: totals.attemptFiles,
-      label: totals.attemptFiles === 1 ? 'Code snapshot' : 'Code snapshots',
+      label: totals.attemptFiles === 1 ? 'Saved run' : 'Saved runs',
       dim: totals.attemptFiles === 0,
-      source: 'attempts/*.py — one file per run',
     }),
     statCell({
       value: activity.length,
       label: activity.length === 1 ? 'Day active' : 'Days active',
       dim: activity.length === 0,
-      source: 'distinct dates across events and snapshots',
     }),
     statCell({
       value: workspace.eventsRead,
-      label: workspace.eventsRead === 1 ? 'Event logged' : 'Events logged',
+      label: workspace.eventsRead === 1 ? 'Practice action' : 'Practice actions',
       dim: workspace.eventsRead === 0,
-      source: 'sessions/*.jsonl lines that parsed',
     }),
   ]);
 }
@@ -306,7 +295,6 @@ function listsSection(stats) {
   }));
 
   return card('List progress', {
-    source: 'data/catalog.json for the totals, your workspace for the solves',
     body: el('div', {}, [
       body,
       el('div', { class: 'dash-listrow', style: 'border-top:1px solid var(--hair-10)' },
@@ -342,7 +330,6 @@ function patternsSection(stats) {
 
   return card('Coverage by pattern', {
     note: `${withWork} of ${stats.patterns.length} started`,
-    source: 'NeetCode 250 pattern assignments + your workspace',
     body: el('div', {}, [
       el('div', { class: 'dash-quiet', style: 'font-style:normal;padding-bottom:10px' },
         'The 18 patterns are the curriculum spine. A pattern at 0 is a pattern you have not started — that is a real fact about coverage, not missing data.'),
@@ -357,9 +344,8 @@ function signalsSection(stats) {
   const thinking = el('div', { class: 'dash-signal' }, [
     el('div', { class: 'shead' }, [
       el('span', { class: 'sname', text: signals.thinkingTime.label }),
-      srcChip('problem_opened → first_keystroke in sessions/*.jsonl'),
     ]),
-    el('div', { class: 'swhat', text: signals.thinkingTime.what }),
+    el('div', { class: 'swhat', text: 'How long you read a problem before you start typing.' }),
     signals.thinkingTime.meaningful
       ? el('div', {}, [
         el('div', { class: 'sval', text: `median ${fmtDurationMs(signals.thinkingTime.medianMs)}` }),
@@ -379,18 +365,17 @@ function signalsSection(stats) {
         have: signals.thinkingTime.samples,
         need: signals.thinkingTime.minSamples,
         what: signals.thinkingTime.samples === 0
-          ? 'No first_keystroke event has been written yet, so there is nothing to measure. This is the signal that will eventually answer questions like "do graph problems take me longer to start than array problems" — with a number rather than a hunch.'
+          ? 'No samples yet.'
           : `${signals.thinkingTime.samples} measurement so far. One reading is not a habit, so no median is shown.`,
-        how: 'A sample is recorded each time you open a problem in Studio and type your first character.',
+        how: 'Starts filling in once you type on a problem.',
       }),
   ]);
 
   const revealed = el('div', { class: 'dash-signal' }, [
     el('div', { class: 'shead' }, [
       el('span', { class: 'sname', text: signals.reveals.label }),
-      srcChip('revealed_solution events'),
     ]),
-    el('div', { class: 'swhat', text: signals.reveals.what }),
+    el('div', { class: 'swhat', text: 'Problems where you opened the solution before solving.' }),
     signals.reveals.meaningful
       ? el('div', { class: 'sval' }, `${signals.reveals.revealedBeforeSolve} of ${signals.reveals.samples} problems`)
       : needMore({
@@ -406,9 +391,8 @@ function signalsSection(stats) {
   const attempts = el('div', { class: 'dash-signal' }, [
     el('div', { class: 'shead' }, [
       el('span', { class: 'sname', text: signals.attemptsPerSolved.label }),
-      srcChip('attempts/*.py counted against solved problems'),
     ]),
-    el('div', { class: 'swhat', text: signals.attemptsPerSolved.what }),
+    el('div', { class: 'swhat', text: 'Saved runs per problem with an accepted verdict.' }),
     signals.attemptsPerSolved.meaningful
       ? el('div', { class: 'sval', text: `${signals.attemptsPerSolved.median} median · ${signals.attemptsPerSolved.mean.toFixed(1)} mean` })
       : needMore({
@@ -417,14 +401,14 @@ function signalsSection(stats) {
         // Stated from the two counts on disk, so this sentence is true of whatever
         // workspace is being read rather than of the one it was written against.
         what: signals.attemptsPerSolved.samples === 0
-          ? `No problem has both a recorded solve and saved code: ${stats.totals.accepted} problem${stats.totals.accepted === 1 ? '' : 's'} with an accepted verdict, ${stats.workspace.withAttempts} with attempt snapshots, and no overlap between them.`
+          ? `No problem has both a recorded solve and saved code: ${stats.totals.accepted} problem${stats.totals.accepted === 1 ? '' : 's'} with an accepted verdict, ${stats.workspace.withAttempts} with saved attempts, and no overlap between them.`
           : `${signals.attemptsPerSolved.samples} solved problem with saved attempts. An average of one number is that number.`,
-        how: 'Every run writes a snapshot to attempts/, so this fills in as you solve problems inside Studio.',
+        how: 'Fills in as you run code and solve problems.',
       }),
   ]);
 
   return card('Weakness view', {
-    note: 'the reason this screen exists',
+    note: 'Time to start, solution reveals, and attempts per solve',
     body: el('div', {}, [thinking, revealed, attempts]),
   });
 }
@@ -452,12 +436,11 @@ function activitySection(stats) {
 
   return card('Last 14 recorded days', {
     note: `${stats.activity.length} active day${stats.activity.length === 1 ? '' : 's'} total`,
-    source: 'event and snapshot timestamps',
     body: el('div', { class: 'dash-strip' }, [
       el('div', { class: 'dash-days' }, days.map((day) => el('div', {
         class: 'dash-day',
         title: day.hit
-          ? `${day.key} · ${day.hit.events} event${day.hit.events === 1 ? '' : 's'}, ${day.hit.attempts} snapshot${day.hit.attempts === 1 ? '' : 's'}, ${day.hit.problems} problem${day.hit.problems === 1 ? '' : 's'}`
+          ? `${day.key} · ${day.hit.events} practice action${day.hit.events === 1 ? '' : 's'}, ${day.hit.attempts} saved run${day.hit.attempts === 1 ? '' : 's'}, ${day.hit.problems} problem${day.hit.problems === 1 ? '' : 's'}`
           : `${day.key} · nothing recorded`,
       }, [
         el('div', { class: `box${day.total >= 3 ? ' f2' : day.total >= 1 ? ' f1' : ''}` }),
@@ -477,14 +460,13 @@ function recentSection(stats, now) {
     return card('Recent activity', {
       body: el('div', { class: 'dash-quiet' },
         stats.workspace.eventsRead === 0
-          ? 'No session events have been logged yet. Opening a problem, typing, running the tests and asking the coach each write one line here.'
-          : 'The logged events carry no readable timestamps, so none of them can be placed on a timeline.'),
+          ? 'No activity yet. Open a problem, type, run tests, or ask the coach to get started.'
+          : 'The practice actions carry no readable timestamps, so none of them can be placed on a timeline.'),
     });
   }
 
   return card('Recent activity', {
     note: `${stats.recent.length} shown`,
-    source: 'sessions/*.jsonl, newest first',
     body: el('ul', { class: 'dash-recent' }, stats.recent.map((event) => el('li', {}, [
       el('span', { class: 'when', text: `${fmtDay(event.at, now) ?? ''} ${String(event.at).slice(11, 16)}`.trim() }),
       el('span', { class: 'what' }, [
@@ -499,8 +481,8 @@ function recentSection(stats, now) {
 
 function problemsSection(stats, now) {
   if (!stats.problems.length) {
-    return card('Problems on disk', {
-      body: el('div', { class: 'dash-quiet' }, 'There are no problem folders in ~/LeetCodeTutor/problems yet.'),
+    return card('Saved problems', {
+      body: el('div', { class: 'dash-quiet' }, 'No problems saved yet.'),
     });
   }
 
@@ -520,13 +502,12 @@ function problemsSection(stats, now) {
     ]);
   });
 
-  return card('Problems on disk', {
-    note: `${stats.problems.length} folder${stats.problems.length === 1 ? '' : 's'}`,
-    source: '~/LeetCodeTutor/problems/',
+  return card('Saved problems', {
+    note: `${stats.problems.length} problem${stats.problems.length === 1 ? '' : 's'}`,
     body: el('div', { class: 'dash-tablewrap' }, el('table', { class: 'dash-table' }, [
       el('thead', {}, el('tr', {}, [
         el('th', { text: 'Problem' }), el('th', { text: 'Pattern' }), el('th', { text: 'Status' }),
-        el('th', { text: 'Snapshots' }), el('th', { text: 'Events' }), el('th', { text: 'Last' }),
+        el('th', { text: 'Saved runs' }), el('th', { text: 'Activity' }), el('th', { text: 'Last' }),
         el('th', { text: 'What backs it' }),
       ])),
       el('tbody', {}, rows),
@@ -538,7 +519,9 @@ function warningsSection(stats) {
   if (!stats.warnings.length) return null;
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-warn' }, [
     el('b', { text: 'Read with caveats' }),
-    el('ul', {}, stats.warnings.map((warning) => el('li', { text: warning }))),
+    el('ul', {}, stats.warnings.map((warning) => el('li', { text: warning.includes('NeetCode 250')
+      ? warning.replace(/problem folder/g, 'saved problem').replace(/ on disk/g, '')
+      : 'Some saved practice could not be read and is excluded from these figures.' }))),
   ]));
 }
 
@@ -547,37 +530,32 @@ function warningsSection(stats) {
 function noWorkspaceState() {
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-empty' }, [
     el('h3', { text: 'Nothing is recorded yet.' }),
-    el('p', { text: 'This page fills in once you open a problem: coverage by pattern and list, time to first keystroke, solution reveals, and attempts per solve. Every number traces back to a file in ~/LeetCodeTutor.' }),
+    el('p', { text: 'This page fills in as you practice: coverage by pattern and list, time to start typing, solution reveals, and attempts per solve.' }),
   ]));
 }
 
 function nothingRecordedState(stats) {
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-empty' }, [
-    el('h3', { text: 'The workspace exists, but nothing is recorded in it yet' }),
-    el('p', {}, [
-      el('b', { text: '~/LeetCodeTutor' }),
-      ` is there and holds ${stats.workspace.problemDirs} problem folder${stats.workspace.problemDirs === 1 ? '' : 's'}, `,
-      'but no session events, no saved attempts and no accepted verdicts. So: nothing solved that we can see, and ',
-      'nothing to be wrong about.',
-    ]),
+    el('h3', { text: 'No practice recorded yet' }),
+    el('p', { text: `${stats.workspace.problemDirs} problems saved, with no practice actions, saved runs, or accepted verdicts yet.` }),
     el('p', { text: 'The coverage figures below are still exact — they come from the catalog, not from your practice.' }),
   ]));
 }
 
 function serverState({ kind, message, onRefresh }) {
   const heading = kind === 'unavailable'
-    ? 'This server build has no progress endpoint'
+    ? 'Progress is unavailable'
     : kind === 'mock'
-      ? 'Running on bundled sample data'
-      : 'The workspace could not be read';
+      ? 'Preview mode'
+      : 'Saved progress could not be loaded';
   const body = kind === 'mock'
-    ? 'Your statistics come only from your own files on disk, and this page is currently served without the studio server. Rather than show made-up numbers, it shows nothing. Start the server and reload.'
+    ? 'Your progress is unavailable in this preview. Open Studio to see your saved practice.'
     : message;
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-empty' }, [
     el('h3', { text: heading }),
     el('p', { text: body }),
     el('p', { class: 'dash-quiet', style: 'padding:0;font-style:italic' },
-      'No figures are shown rather than approximate ones — an approximate progress number is worse than none.'),
+      'Your progress will appear once it can be loaded.'),
     el('div', { style: 'margin-top:13px' },
       el('button', { class: 'dash-refresh', type: 'button', text: 'Try again', onclick: onRefresh })),
   ]));
@@ -674,13 +652,8 @@ function renderInto(mountEl, stats, { onRefresh, busy, now }) {
     warningsSection(stats),
 
     el('div', { class: 'dash-foot' }, [
-      `Read from ${stats.workspace.root} · `,
-      `${stats.workspace.sessionsRead} session file${stats.workspace.sessionsRead === 1 ? '' : 's'}, `,
-      `${stats.workspace.eventsRead} event${stats.workspace.eventsRead === 1 ? '' : 's'}`,
-      stats.workspace.skippedLines
-        ? `, ${stats.workspace.skippedLines} unreadable line${stats.workspace.skippedLines === 1 ? '' : 's'} skipped`
-        : '',
-      ' · no value on this page is estimated',
+      `${stats.workspace.eventsRead} practice actions recorded`,
+      stats.workspace.skippedLines ? ' · Some saved activity could not be read' : '',
     ]),
   ]);
 
@@ -691,7 +664,7 @@ function renderLoading(mountEl) {
   replace(mountEl, el('div', { class: 'dash view' }, [
     el('div', { class: 'dash-head' }, el('div', {}, [
       el('h1', { text: 'Progress' }),
-      el('div', { class: 'sub', text: 'Reading ~/LeetCodeTutor…' }),
+      el('div', { class: 'sub', text: 'Loading your progress…' }),
     ])),
     el('section', { class: 'dash-card' }, el('div', { class: 'dash-pad' },
       el('div', { class: 'skel' }, [el('i'), el('i', { style: 'width:70%' }), el('i', { style: 'width:45%' })]))),
@@ -826,16 +799,16 @@ export function runSelfTests() {
     eq(fmtDay(null, today), null);
   });
 
-  check('eventLabel falls back to the raw type rather than hiding it', () => {
+  check('eventLabel keeps unknown activity readable', () => {
     eq(eventLabel('revealed_solution'), 'revealed the solution');
-    eq(eventLabel('something_new'), 'something_new');
+    eq(eventLabel('something_new'), 'something new');
   });
 
   check('evidenceSummary reports absence as absence', () => {
-    eq(evidenceSummary({ workspace: { exists: false }, totals: {} }), 'no workspace on disk yet');
+    eq(evidenceSummary({ workspace: { exists: false }, totals: {} }), 'no practice saved yet');
     eq(
       evidenceSummary({ workspace: { exists: true, problemDirs: 1, eventsRead: 1 }, totals: { attemptFiles: 9 } }),
-      '1 problem folder · 1 logged event · 9 code snapshots',
+      '1 problem · 1 practice action · 9 saved runs',
     );
   });
 

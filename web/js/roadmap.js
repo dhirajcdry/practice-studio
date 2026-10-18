@@ -48,10 +48,10 @@ export function renderRoadmap(data,state,handlers) {
  ]);root.append(chips);
  if(state.query)root.append(el('p',{class:'roadmap-query'},[`Matching “${state.query}”`,el('button',{type:'button',text:'Clear filters',onclick:handlers.onClear})]));
  const graph=el('section',{class:'roadmap-graph-col','aria-label':'Study roadmap graph'});
- const percentage=el('button',{class:'graph-btn graph-pct',type:'button',title:'Reset to 100%'});
- const minus=el('button',{class:'graph-btn',type:'button','aria-label':'Zoom out',text:'−'});
- const plus=el('button',{class:'graph-btn',type:'button','aria-label':'Zoom in',text:'+'});
- const fitButton=el('button',{class:'graph-btn fit',type:'button',text:'Fit'});
+ const percentage=el('button',{class:'graph-btn graph-pct',type:'button','aria-label':'Reset zoom to 100%'});
+ const minus=el('button',{class:'graph-btn icon-btn',type:'button','aria-label':'Zoom out',text:'−'});
+ const plus=el('button',{class:'graph-btn icon-btn',type:'button','aria-label':'Zoom in',text:'+'});
+ const fitButton=el('button',{class:'graph-btn fit',type:'button','aria-label':'Fit roadmap',text:'Fit'});
  graph.append(el('div',{class:'roadmap-toolbar'},[el('span',{class:'graph-caption',text:`${data.patterns.length} patterns`}),el('div',{class:'graph-actions'},[minus,percentage,plus,fitButton])]));
  const viewport=el('div',{class:'roadmap-viewport',tabindex:'0','aria-label':'Pan the roadmap; use zoom controls to change its size'});
  const canvas=el('div',{class:'roadmap-canvas'});
@@ -79,8 +79,8 @@ export function renderRoadmap(data,state,handlers) {
   lines.querySelectorAll('path').forEach(path=>{const direct=path.dataset.from===pattern||path.dataset.to===pattern;path.classList.toggle('connected',direct||ancestors.has(`${path.dataset.from}|${path.dataset.to}`));});
   panel.hidden=!pattern;if(!pattern)return;
   const items=problemsFor(data,pattern,state);const summary=summarizeProgress(items,state.progress);
-  replace(panel,[el('div',{class:'detail-heading'},[el('span',{class:'detail-kicker',text:'Your next session'}),el('h2',{text:pattern}),el('p',{class:'detail-summary',text:state.progress?`${items.length} problems · ${summary.accepted} accepted · ${summary.localPass} passed locally`:`${items.length} problems · Saved progress ${state.progressState==='loading'?'loading…':'unavailable'}`}),el('button',{type:'button',class:'detail-close','aria-label':'Close pattern inspector',text:'×',onclick:()=>select(null)})]),
-   el('div',{class:'detail-list'},items.length?items.map(p=>{const record=progressFor(p.slug,state.progress);return el('button',{class:'detail-problem',type:'button',onclick:()=>handlers.onOpen(p.slug)},[el('span',{class:'status status-'+record.status,title:record.label,'aria-label':record.label,text:statusIcon(record.status)}),el('span',{class:'detail-title',text:p.title}),el('span',{class:'detail-diff '+p.difficulty.toLowerCase(),text:p.difficulty}),el('span',{class:'open-arrow',text:'↗'})]);}):el('p',{text:'No problems match the current filters.'})),
+  replace(panel,[el('div',{class:'detail-heading'},[el('span',{class:'detail-kicker',text:'Your next session'}),el('h2',{text:pattern}),el('p',{class:'detail-summary',text:state.progress?`${items.length} problems · ${summary.accepted} accepted · ${summary.localPass} passed locally`:`${items.length} problems · Saved progress ${state.progressState==='loading'?'loading…':'unavailable'}`}),el('button',{type:'button',class:'detail-close icon-btn','aria-label':'Close pattern inspector',text:'×',onclick:()=>select(null)})]),
+   el('div',{class:'detail-list'},items.length?items.map(p=>{const record=progressFor(p.slug,state.progress);return el('button',{class:'detail-problem hover-surface hover-divided',type:'button',onclick:()=>handlers.onOpen(p.slug)},[el('span',{class:'status status-'+record.status,title:record.label,'aria-label':record.label,text:statusIcon(record.status)}),el('span',{class:'detail-title',text:p.title}),el('span',{class:'detail-diff '+p.difficulty.toLowerCase(),text:p.difficulty}),el('span',{class:'open-arrow',text:'↗'})]);}):el('p',{text:'No matching problems.'})),
   ]);
   if(reveal){announcement.textContent=`${pattern}: ${items.length} problems. Problem inspector opened below the map.`;requestAnimationFrame(()=>panel.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches||document.body.classList.contains('motion-off')?'auto':'smooth'}));}
  }
@@ -88,6 +88,19 @@ export function renderRoadmap(data,state,handlers) {
  function fit(){const r=viewport.getBoundingClientRect();scale=Math.min(r.width/1100,r.height/650);tx=(r.width-1100*scale)/2;ty=(r.height-650*scale)/2;apply();}
  function zoom(newScale){const r=viewport.getBoundingClientRect();const x=(r.width/2-tx)/scale,y=(r.height/2-ty)/scale;scale=Math.max(.2,Math.min(1.8,newScale));tx=r.width/2-x*scale;ty=r.height/2-y*scale;apply();}
  minus.onclick=()=>zoom(scale-.1);plus.onclick=()=>zoom(scale+.1);fitButton.onclick=fit;percentage.onclick=()=>zoom(1);
+ // Pan only when the canvas itself is focused; node buttons retain their own keys.
+ viewport.addEventListener('keydown', event => {
+  if (event.target !== viewport) return;
+  const shifts = { ArrowLeft: [40, 0], ArrowRight: [-40, 0], ArrowUp: [0, 40], ArrowDown: [0, -40] };
+  if (shifts[event.key]) {
+   event.preventDefault();
+   tx += shifts[event.key][0]; ty += shifts[event.key][1]; apply();
+  } else if (['+', '-', 'Home'].includes(event.key)) {
+   event.preventDefault();
+   if (event.key === 'Home') fit();
+   else zoom(scale + (event.key === '+' ? .1 : -.1));
+  }
+ });
  const savedSize=state.roadmapViewport;const observer=new ResizeObserver(()=>{if(!root.isConnected){observer.disconnect();return;}const r=viewport.getBoundingClientRect();if(savedSize?.width===r.width&&savedSize?.height===r.height){apply();return;}scale=Math.max(.9,Math.min(1,(r.width-24)/1100));tx=Math.max(12,(r.width-1100*scale)/2);ty=0;state.roadmapViewport={width:r.width,height:r.height};apply();});observer.observe(viewport);
  let drag=null;viewport.addEventListener('pointerdown',event=>{if(event.target.closest('.roadmap-node'))return;drag={x:event.clientX,y:event.clientY,tx,ty};viewport.setPointerCapture(event.pointerId);});viewport.addEventListener('pointermove',event=>{if(!drag)return;tx=drag.tx+event.clientX-drag.x;ty=drag.ty+event.clientY-drag.y;apply();});viewport.addEventListener('pointerup',()=>{drag=null;});viewport.addEventListener('pointercancel',()=>{drag=null;});
  return root;

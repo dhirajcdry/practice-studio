@@ -15,6 +15,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { isoWithOffset } from '../coach/sessions.mjs';
 import { parseRuntimeMs, parseMemoryMb } from './verdict.mjs';
+import { normaliseLeetCodeDetails, DETAILS_MAX } from './details.mjs';
+
+// Kept as compatibility exports for callers that recorded submissions before the
+// read/merge code moved to its own module.
+export { readSubmissions, submissionSummary } from './submissions.mjs';
 
 function metaFile(root, slug) {
   return path.join(root, 'problems', slug, 'meta.json');
@@ -53,9 +58,79 @@ export async function saveSubmittedCode({ root, slug, submissionId, code }) {
   }
 }
 
+const safeId = (id) => /^(?:[1-9][0-9]*|nc-[0-9]+)$/.test(String(id));
+export async function saveSubmissionDetails({ root, slug, submissionId, record }) {
+  if (!root || !slug || !safeId(submissionId)) return null;
+  const file = path.join(root, 'problems', slug, 'submissions', `${submissionId}.json`);
+  try {
+    await writeAtomic(file, `${JSON.stringify(record, null, 2)}\n`);
+    return `submissions/${submissionId}.json`;
+  } catch {
+    return null;
+  }
+}
+export async function readSubmissionDetails({ root, slug, submissionId }) {
+  if (!safeId(submissionId)) return null;
+  try {
+    const record = JSON.parse(await fsp.readFile(path.join(root, 'problems', slug, 'submissions', `${submissionId}.json`), 'utf8'));
+    return record?.schemaVersion === 1 ? record : null;
+  } catch {
+    return null;
+  }
+}
+export function deriveLeadUp(events, at) {
+  const end = Date.parse(at);
+  const known = (events || []).filter(e => Number.isFinite(Date.parse(e.at)) && Date.parse(e.at) <= end);
+  // A session can predate the explicit problem_opened/attempt_started markers. In that
+  // case its first recorded event is the only honest start time. An attempt marker wins
+  // when present, and the newest one is the active attempt.
+  const starts = known.reduce((indexes, event, index) => {
+    if (event.type === 'attempt_started') indexes.push(index);
+    return indexes;
+  }, []);
+  const start = starts.length ? starts.at(-1) : 0;
+  if (!known.length || start < 0) return null;
+  const sitting = known.slice(start);
+  const previous = sitting.findLastIndex((event) => event.type === 'submitted');
+  const between = sitting.slice(previous + 1);
+  return {
+    minutes: Math.max(0, Math.round((end - Date.parse(sitting[0].at)) / 60000)),
+    localRuns: between.filter((event) => event.type === 'ran_locally').length,
+    coachAsks: between.filter((event) => event.type === 'asked_coach').length,
+  };
+}
+export async function submissionLeadUp(sessionLog, slug, at) {
+  try {
+    return deriveLeadUp((await sessionLog.currentSessionEvents(slug)).events, at);
+  } catch {
+    return null;
+  }
+}
+// Sidecars carry UI diagnostics, never arbitrary response fields or another code copy.
+function savedFailure(failure) {
+  if (!failure) return null;
+  const result = {};
+  for (const key of ['kind', 'statusMsg', 'message', 'lastTestcase', 'input', 'output',
+    'expectedOutput', 'stdout', 'compileError', 'runtimeError', 'fullRuntimeError', 'error']) {
+    if (typeof failure[key] === 'string') result[key] = failure[key].slice(0, DETAILS_MAX);
+  }
+  return result;
+}
+export function sidecarRecord(verdict, at, details, leadUp) {
+  return {
+    schemaVersion: 1,
+    submissionId: String(verdict.submissionId),
+    source: verdict.source === 'neetcode' ? 'neetcode' : 'studio',
+    at,
+    verdict: submissionEntry(verdict, { at }),
+    failure: savedFailure(verdict.failure),
+    details: normaliseLeetCodeDetails(details),
+    leadUp,
+  };
+}
 /** The `submissions[]` entry, in the shape server/stats/aggregate.mjs already reads
  *  (`at` + `verdict`), plus the fields the judge actually returned. */
-export function submissionEntry(verdict, { at = isoWithOffset(), codeFile = null } = {}) {
+export function submissionEntry(verdict, { at = isoWithOffset(), codeFile = null, detailFile = null } = {}) {
   return {
     at,
     codeFile,
@@ -73,6 +148,8 @@ export function submissionEntry(verdict, { at = isoWithOffset(), codeFile = null
     // 'studio' is a LeetCode verdict Studio recorded; 'neetcode' is a premium problem
     // judged on neetcode.io (verdict.mjs, buildNeetCodeVerdict).
     source: verdict.source === 'neetcode' ? 'neetcode' : 'studio',
+    failureKind: verdict.failure?.kind ?? null,
+    detailFile,
   };
 }
 
@@ -81,7 +158,7 @@ export function submissionEntry(verdict, { at = isoWithOffset(), codeFile = null
  * @returns {Promise<{ written: boolean, reason?: string }>} never throws — failing to
  * record a verdict must not turn a successful submission into an error at the user.
  */
-export async function recordVerdict({ root, slug, verdict, at = isoWithOffset(), codeFile = null }) {
+export async function recordVerdict({ root, slug, verdict, at = isoWithOffset(), codeFile = null, detailFile = null }) {
   const file = metaFile(root, slug);
 
   let existing = null;
@@ -106,7 +183,7 @@ export async function recordVerdict({ root, slug, verdict, at = isoWithOffset(),
   if (verdict.submissionId != null && submissions.some((s) => String(s?.submissionId) === String(verdict.submissionId))) {
     return { written: true, duplicate: true };
   }
-  submissions.push(submissionEntry(verdict, { at, codeFile }));
+  submissions.push(submissionEntry(verdict, { at, codeFile, detailFile }));
 
   const merged = { ...base, slug: base.slug ?? slug, submissions, lastSeen: dayOf(at) ?? base.lastSeen };
 
