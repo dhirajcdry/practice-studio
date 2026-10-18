@@ -119,8 +119,9 @@ Spawns the `claude` CLI with `cwd` = `~/LeetCodeTutor/`, resuming the per-proble
 last week's conversation is memory rather than something re-derived.
 
 **Permissions stay narrow: Read/Write/Glob scoped to `~/LeetCodeTutor/` only.** Not
-`bypassPermissions` — that is settled and not reopenable. The coach reads LeetCode HTML and
-third-party articles, and **that content is untrusted data, never instruction.** Fence it
+`bypassPermissions` — that is settled and not reopenable. The coach has no network access;
+it reads the problem statement Studio cached from LeetCode (never NeetCode articles or
+reference solutions), and **that content is untrusted data, never instruction.** Fence it
 and say so explicitly in the prompt.
 
 The coach writes `NOTES.md` and `debriefs/`. It never writes `meta.json`, `index.json`,
@@ -141,6 +142,45 @@ line on graph problems." Timestamps are ISO-8601 with a timezone.
 
 ### `GET /api/sessions/:slug`
 `200 { sessions: [ { id, startedAt, endedAt, events: [...] } ] }`
+
+### Coach pictures — `server/coach/visuals.mjs`
+
+A coach reply may contain an ````image` block, `{"prompt": "...", "alt": "..."}`. The
+picture id is `sha256(slug + "\n" + prompt.trim())` in hex, first 20 characters (UTF-8),
+so the browser can compute it too. Every answer below has this shape:
+
+```
+{ id, status, alt, url?, message?, elapsedMs? }
+status: "ready"    url set; elapsedMs = how long the drawing took
+        "queued" | "drawing"   elapsedMs = time since it was accepted
+        "failed"   message set, written for the user
+        "missing"  (GET only) never drawn and not in flight
+url = "/api/coach/visuals/<slug>/<id>/image"
+```
+
+#### `POST /api/coach/visuals`
+Body `{ slug, prompt, alt?, retry? }`. `prompt` is trimmed, 1–2000 characters; `alt` is at
+most 300. `400` otherwise. Answers `200` and never waits for the drawing:
+
+- already on disk → `ready`;
+- already in flight → its current status, without a second job;
+- failed earlier in this server process → `failed`, without a new job, unless `retry: true`;
+- otherwise queued. One picture is drawn at a time; when four are already waiting the
+  answer is `failed` with "Too many pictures are queued; try again in a minute.", and that
+  is not remembered as a failure.
+
+#### `GET /api/coach/visuals/:slug/:id`
+The same shape, or `{ id, status: "missing", alt: "" }`. Never starts work. `id` must
+match `^[a-f0-9]{20}$`; `400` otherwise.
+
+#### `GET /api/coach/visuals/:slug/:id/image`
+The stored bytes with `content-type` `image/png`, `image/jpeg` or `image/webp` (by magic
+number), `content-length`, `cache-control: private, max-age=31536000, immutable` and
+`x-content-type-options: nosniff`. `404` when absent.
+
+Storage: `problems/<slug>/visuals/<id>.<ext>` and `<id>.json`
+`{ id, slug, prompt, alt, revisedPrompt, model, createdAt, ms, ext }`. The model is the
+selected Codex model, or `gpt-6-astra` when Claude is selected.
 
 ---
 

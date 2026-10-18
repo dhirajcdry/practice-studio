@@ -19,9 +19,11 @@
 
 import { el, clear, replace } from './dom.js';
 import { getSettings, isDark, onSettingsChange } from './settings.js';
-import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, api } from './api.js';
+import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, logSessionEvent, api } from './api.js';
+import { registerActionHandlers, createMonacoTutor, createTextareaTutor } from './coach-actions.js';
 import { createRunPanel, summaryLine } from './run.js';
 import { createSubmitPanel, submitLine } from './submit.js';
+import { neetcodeMismatch } from './neetcode-shape.js';
 import { celebrate } from './celebrate.js';
 import { onChord, chordLabel } from './shortcuts.js';
 import { attachTypingFx } from './typing-fx.js';
@@ -378,6 +380,7 @@ function textareaEditor(host, initial) {
   });
   return {
     kind: 'textarea',
+    raw: { area },
     getValue: () => area.value,
     setValue: (value) => { area.value = value; },
     focus: () => area.focus(),
@@ -414,6 +417,8 @@ function monacoEditor(monaco, host, initial, { onRun, onSubmit, onSave, onEscape
 
   return {
     kind: 'monaco',
+    // The tutor's marks and edits (coach-actions.js) work on the instance itself.
+    raw: { instance, monaco },
     getValue: () => instance.getValue(),
     setValue: (value) => {
       // pushEditOperations keeps the undo stack, so a restore is reversible.
@@ -475,6 +480,7 @@ export function mountWorkspace(entry, options = {}) {
 
   const slug = entry.slug;
   let premium = false;
+  let neetcodeShape = null;
   let contentReady = !options.contentPromise;
   let editor = null;
   let loaded = null;            // last value known to match the server; null = none does
@@ -489,6 +495,7 @@ export function mountWorkspace(entry, options = {}) {
   let disposed = false;
   let lane = 'run';             // which results lane is open; the other is a stub
   let stopCursor = null;
+  let tutor = null;             // the tutor's marks and edits, once the editor exists
   const releaseChords = [];
 
   /* ---- chrome ---- */
@@ -558,6 +565,10 @@ export function mountWorkspace(entry, options = {}) {
     if (disposed) return;
     contentReady = result.ok === true;
     premium = result.content?.isPaidOnly === true;
+    neetcodeShape = premium ? result.content?.neetcodeShape : null;
+    const starter = result.content?.codeSnippets?.find(s => s.langSlug === 'python3')?.code;
+    if (starter) stubCode = starter;
+    paintNeetCodeNotice();
     submitButton.disabled = !contentReady;
     if (premium) {
       submitLabel.textContent = 'Submit on NeetCode';
@@ -566,6 +577,7 @@ export function mountWorkspace(entry, options = {}) {
   }).catch(() => {});
 
   const noticeEl = el('div', { class: 'ws-notice', hidden: true });
+  const shapeNotice = el('div', { class: 'ws-notice warn', hidden: true, role: 'status' });
   const host = el('div', { class: 'ws-host' });
 
   const panel = createRunPanel({ slug, getCode: () => (editor ? editor.getValue() : ''), onEvent: onRunEvent });
@@ -574,6 +586,7 @@ export function mountWorkspace(entry, options = {}) {
     getCode: () => (editor ? editor.getValue() : ''),
     // Premium problems are judged on neetcode.io (docs/SUBMITTING.md).
     getTarget: () => (premium ? 'neetcode' : 'leetcode'),
+    getMismatch: currentMismatch,
     neetcodeSlug: entry.neetcodeSlug || entry.slug,
     onEvent: (event) => {
       onSubmitEvent(event);
@@ -616,9 +629,22 @@ export function mountWorkspace(entry, options = {}) {
   // The cursor position rides in the file tab row. A status bar under the results said
   // "Python 3 · UTF-8 · 4 spaces", which never change, and cost a row of editor height.
   const cursorEl = el('span', { class: 'editor-cursor', text: 'Ln 1, Col 1' });
+  // Only there while the tutor has lines marked: what they are, and one click to clear them.
+  const marksCount = el('span', { class: 'tutor-chip-n' });
+  const marksChip = el('button', {
+    class: 'tutor-chip', type: 'button', hidden: true,
+    title: 'Clear the lines your tutor marked',
+    onclick: () => { tutor?.clearMarks(); },
+  }, [el('span', { class: 'tutor-chip-flag', 'aria-hidden': 'true', text: '⚑' }), marksCount, el('span', { class: 'tutor-chip-x', 'aria-hidden': 'true', text: '×' })]);
+  function paintMarks(count) {
+    marksChip.hidden = count === 0;
+    marksCount.textContent = `${count} tutor mark${count === 1 ? '' : 's'}`;
+    marksChip.setAttribute('aria-label', `Clear ${count} tutor mark${count === 1 ? '' : 's'}`);
+  }
   const editorTabs = el('div', { class: 'editor-tabs' }, [
     el('span', { class: 'editor-file' }, [el('span', { class: 'file-language', text: 'PY' }), el('span', { text: 'solution.py' })]),
     el('span', { class: 'editor-meta' }, [
+      marksChip,
       el('span', { class: 'editor-path mono', text: `problems/${slug}/solution.py` }),
       cursorEl,
     ]),
@@ -626,6 +652,7 @@ export function mountWorkspace(entry, options = {}) {
   const root = el('section', { class: 'card ws' }, [
     editorTabs,
     noticeEl,
+    shapeNotice,
     host,
     el('div', { class: 'ws-bar' }, [
       el('span', { class: 'mono dim ws-title', text: 'Python' }),
@@ -696,6 +723,7 @@ export function mountWorkspace(entry, options = {}) {
   function onEdit() {
     if (!editor) return;
     touched = true;
+    paintNeetCodeNotice();
     if (saveState !== 'failed' && saveState !== 'local') setSave('dirty');
     else paintStatus();
 
@@ -711,6 +739,40 @@ export function mountWorkspace(entry, options = {}) {
     if (editor && touched) writeDraft(slug, editor.getValue());
     clearTimeout(saveTimer);
     flush();
+  }
+
+  function currentMismatch() {
+    if (!premium || !editor) return null;
+    const mismatch = neetcodeMismatch(editor.getValue(), neetcodeShape);
+    if (!mismatch) return null;
+    return { ...mismatch, fix: mismatch.rename && editor.kind === 'monaco' ? renameNeetCodeMethod : null };
+  }
+
+  function renameNeetCodeMethod() {
+    const mismatch = currentMismatch();
+    if (!mismatch?.rename || editor.kind !== 'monaco') return;
+    const { instance } = editor.raw;
+    const model = instance.getModel();
+    const start = model.getPositionAt(mismatch.rename.start);
+    const end = model.getPositionAt(mismatch.rename.end);
+    instance.pushUndoStop();
+    instance.executeEdits('neetcode-method-name', [{
+      range: { startLineNumber: start.lineNumber, startColumn: start.column,
+        endLineNumber: end.lineNumber, endColumn: end.column },
+      text: mismatch.rename.to,
+    }]);
+    instance.pushUndoStop();
+    editor.focus();
+  }
+
+  function paintNeetCodeNotice() {
+    const mismatch = currentMismatch();
+    shapeNotice.hidden = !mismatch;
+    replace(shapeNotice, mismatch ? [
+      el('span', { class: 'ws-noticebody', text: mismatch.message }),
+      ...(mismatch.fix ? [el('button', { class: 'ws-mini', type: 'button',
+        text: "Use NeetCode's name", onclick: mismatch.fix })] : []),
+    ] : []);
   }
 
   /* ---- notices ---- */
@@ -765,6 +827,11 @@ export function mountWorkspace(entry, options = {}) {
     // would send it to LeetCode instead) does it fall back to copy-and-open, and the
     // panel says why. That check happens here, inside the gesture, because a popup
     // opened after an await gets blocked.
+    if (currentMismatch()) {
+      showResults('judge');
+      judge.submit(); // The panel guard also covers its own resubmit button.
+      return;
+    }
     const blocker = premium ? judge.blocker() : '';
     if (blocker) {
       const code = editor.getValue();
@@ -990,6 +1057,10 @@ export function mountWorkspace(entry, options = {}) {
       editor = textareaEditor(host, text);
     }
     editor.onChange(onEdit);
+    paintNeetCodeNotice();
+    tutor = editor.kind === 'monaco'
+      ? createMonacoTutor(editor.raw.instance, editor.raw.monaco, { onMarksChange: paintMarks })
+      : createTextareaTutor(editor.raw.area, { onEdit });
     if (editor.kind === 'textarea') {
       cursorEl.hidden = true;
     } else {
@@ -1035,10 +1106,73 @@ export function mountWorkspace(entry, options = {}) {
 
   boot();
 
+  /* ---- the tutor's hands (coach-actions.js) ---- */
+
+  const notReady = () => ({ ok: false, message: 'The editor is still opening; try again in a moment.' });
+  const unregisterActions = registerActionHandlers(slug, {
+    markLines: (args) => (tutor ? tutor.markLines(args) : notReady()),
+    clearMarks: () => (tutor ? tutor.clearMarks() : { ok: true, message: 'There were no marks to clear.' }),
+    editCode(args, action) {
+      if (!tutor || !editor) return notReady();
+      const isStub = stubCode !== null && editor.getValue() === stubCode;
+      const result = tutor.editCode(args, { isStub, actionId: action?.id ?? null });
+      if (!result.ok) return result;
+      // The next run_code reads solution.py from disk, so this cannot wait for the
+      // debounce. Same path as ⌘S: browser mirror first, then the real save.
+      flushNow();
+      logSessionEvent(slug, 'coach_edited_code', {
+        why: String(args?.why ?? '').slice(0, 4000), added: result.added, removed: result.removed,
+      }).catch(() => {});
+      return { ok: true, message: result.message };
+    },
+    undoEdit(actionId) {
+      if (!tutor) return notReady();
+      const result = tutor.undoEdit(actionId);
+      if (result.ok) flushNow();
+      return result;
+    },
+    async openPanel(which) {
+      const kind = which === 'solution' || which === 'article' ? which : null;
+      if (!kind) return { ok: false, message: 'panel must be "solution" or "article".' };
+      if (kind === 'solution' && entry.hasPythonSolution === false) {
+        return { ok: false, message: 'Studio has no reference solution for this problem.' };
+      }
+      if (kind === 'article' && entry.hasArticle === false) {
+        return { ok: false, message: 'Studio has no article for this problem.' };
+      }
+      // Loaded when needed: problem.js imports this file.
+      const problem = await import('./problem.js');
+      if (problem.isDrawerOpen() && problem.drawerKind() === kind) {
+        return { ok: true, message: `The ${kind} is already open.` };
+      }
+      // Not awaited: it logs revealed_* itself once the panel has actually loaded.
+      problem.openPanel(entry, kind);
+      return { ok: true, message: `Opened the ${kind} panel.` };
+    },
+    refreshCases(select) {
+      if (disposed) return;
+      showResults('run');
+      panel.reloadCases({ select });
+    },
+    showTutorRun(raw) {
+      if (disposed || panel.isRunning()) return;
+      showResults('run');
+      panel.showTutorRun(raw);
+    },
+  });
+
   active = {
     root,
+    slug,
     focus: () => editor && editor.focus(),
     run: doRun,
+    /** Save now if there is anything unsaved; resolves when the save has finished. */
+    flushSave() {
+      clearTimeout(draftTimer);
+      if (editor && touched) writeDraft(slug, editor.getValue());
+      clearTimeout(saveTimer);
+      return flush();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -1057,6 +1191,8 @@ export function mountWorkspace(entry, options = {}) {
       stopCursor?.dispose?.();
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flushNow);
+      unregisterActions();
+      tutor?.dispose();
       panel.dispose();
       judge.dispose();
       if (editor) editor.dispose();
@@ -1064,6 +1200,29 @@ export function mountWorkspace(entry, options = {}) {
     },
   };
   return root;
+}
+
+/**
+ * Get the buffer for `slug` onto disk before something reads it there (the coach reads
+ * the SAVED solution.py; the editor saves on a 900 ms debounce).
+ *
+ * Bounded and quiet: resolves true when a save finished (or nothing needed saving), false
+ * when this problem is not open, the save failed, or it took longer than `capMs`. Never
+ * throws, never hangs the caller.
+ */
+export async function flushEditorSave(slug, capMs = 2000) {
+  if (!active || active.slug !== slug || typeof active.flushSave !== 'function') return false;
+  let timer = null;
+  try {
+    return await Promise.race([
+      Promise.resolve(active.flushSave()).then(() => true, () => false),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(false), capMs); }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Wide page only makes sense while the workspace is up. */

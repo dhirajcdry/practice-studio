@@ -151,6 +151,13 @@ export function paramSignature(meta) {
  *            answer:string|null, expected:string|null, order:string, why:string}|null}
  */
 export function adapterFor(slug, meta) {
+  if (slug === 'encode-and-decode-strings' && meta?.neetcodeRoundTrip === true
+      && meta.name === 'encode' && paramSignature(meta) === 'strs:string[]'
+      && meta.return?.type === 'string[]') {
+    return { driver: 'neetcode-codec-strings', target: 'Solution', methods: ['encode', 'decode'],
+      answer: null, expected: null, order: 'strict',
+      why: 'NeetCode calls decode(encode(strs)) on one Solution instance' };
+  }
   const entry = BY_SLUG.get(slug);
   if (!entry) return null;
   // The fingerprint is the whole safety of this file. A problem whose metaData has moved

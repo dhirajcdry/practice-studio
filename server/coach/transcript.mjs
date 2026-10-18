@@ -44,6 +44,13 @@ export async function appendTurn({ root, slug, turn, log = console }) {
     ask: String(turn.ask ?? '').slice(0, MAX_STORED_CHARS),
     answer: answer.slice(0, MAX_STORED_CHARS),
     tools: Array.isArray(turn.tools) ? turn.tools.slice(0, 60) : [],
+    // What the tutor did in Studio this turn, as receipts: replayed threads show them
+    // (without Undo — the case list has moved on since).
+    ...(Array.isArray(turn.actions) && turn.actions.length
+      ? { actions: turn.actions.slice(0, 60).map((a) => ({
+        id: String(a.id ?? ''), tool: String(a.tool ?? ''), summary: String(a.summary ?? '').slice(0, 300), ok: a.ok === true,
+      })) }
+      : {}),
     // The answer was cut short — kept anyway, but never passed off as a whole one.
     ...(turn.stopped ? { stopped: true } : {}),
   };

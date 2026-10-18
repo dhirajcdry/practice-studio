@@ -18,20 +18,23 @@ import {
 import { loadSolutionStore } from './solutions.mjs';
 import { loadCatalog, validateCatalog } from './catalog.mjs';
 import { LeetCodeContentCache } from './leetcode.mjs';
+import { NeetCodeContentCache } from './neetcode.mjs';
 import { StaticSite } from './static.mjs';
 import { createApp } from './app.mjs';
 
 export function boot({ quiet = false } = {}) {
   const solutions = loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT);
   const catalog = loadCatalog(CATALOG_FILE, solutions);
+  const neetcode = new NeetCodeContentCache({ cacheDir: path.join(LEETCODE_CACHE_DIR, '..', 'neetcode') });
   const leetcode = new LeetCodeContentCache({
     cacheDir: LEETCODE_CACHE_DIR,
     premiumCache: new PremiumStatementCache({ cacheDir: path.join(LEETCODE_CACHE_DIR, '..', 'premium-statements') }),
     entryFor: (slug) => catalog.get(slug),
+    neetcode,
   });
   const site = new StaticSite(WEB_DIR);
   const app = createApp({ catalog, solutions, leetcode, site });
-  return { solutions, catalog, leetcode, site, app };
+  return { solutions, catalog, leetcode, neetcode, site, app };
 }
 
 function report(catalog, solutions, site) {

@@ -14,6 +14,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { neetcodeDefinition } from './neetcode.mjs';
 
 const GRAPHQL_URL = 'https://leetcode.com/graphql/';
 
@@ -143,6 +144,7 @@ function parseMetaDataSafely(raw) {
 export function toContent(question, { fetchedAt, stale = false }) {
   const tags = Array.isArray(question?.topicTags) ? question.topicTags : [];
   return {
+    ...(question?.neetcodeDefinition ?? {}),
     title: question?.title ?? null,
     difficulty: question?.difficulty ?? null,
     descriptionHtml: question?.content ?? null,
@@ -160,12 +162,13 @@ export function toContent(question, { fetchedAt, stale = false }) {
 }
 
 export class LeetCodeContentCache {
-  constructor({ cacheDir, fetchImpl = fetch, fetchQuestionImpl = fetchQuestion, premiumCache = null, entryFor = () => null } = {}) {
+  constructor({ cacheDir, fetchImpl = fetch, fetchQuestionImpl = fetchQuestion, premiumCache = null, entryFor = () => null, neetcode = null } = {}) {
     this.cacheDir = cacheDir;
     this.premiumCache = premiumCache;
     this.entryFor = entryFor;
     this.fetchImpl = fetchImpl;
     this.fetchQuestionImpl = fetchQuestionImpl;
+    this.neetcode = neetcode;
     this.inFlight = new Map();
   }
 
@@ -183,6 +186,12 @@ export class LeetCodeContentCache {
     try {
       const parsed = JSON.parse(text);
       if (!parsed || typeof parsed !== 'object' || !parsed.question) return null;
+      // Cache-only enrichment also feeds the coach, which must never fetch a page.
+      const ncSlug = this.entryFor(slug)?.neetcodeSlug;
+      if (parsed.question.isPaidOnly && ncSlug && this.neetcode) {
+        const definition = neetcodeDefinition(await this.neetcode.read(ncSlug));
+        if (definition) parsed.question = withNeetCode(parsed.question, definition);
+      }
       return parsed;
     } catch {
       // A truncated or hand-mangled cache file is treated as a miss, never a crash.
@@ -216,6 +225,14 @@ export class LeetCodeContentCache {
 
     const work = this._getContent(slug).then(async (result) => {
       const content = result.content;
+      const ncSlug = this.entryFor(slug)?.neetcodeSlug;
+      if (content.isPaidOnly && ncSlug && this.neetcode) {
+        const definition = neetcodeDefinition(await this.neetcode.get(ncSlug).catch(() => null));
+        if (definition) {
+          const question = withNeetCode(result.question, definition);
+          return { ...result, question, content: { ...content, ...definition } };
+        }
+      }
       if (!content.isPaidOnly || content.descriptionHtml != null || !this.premiumCache) return result;
       // The catalog spells the number `number` and title-cases the title; LeetCode's own
       // title matches the mirror's folder names, so it wins when present.
@@ -281,4 +298,11 @@ export class LeetCodeContentCache {
       fromCache: false,
     };
   }
+}
+
+// A derived in-memory question; the raw LeetCode cache stays an unchanged source.
+function withNeetCode(question, definition) {
+  return { ...question, title: definition.title, content: definition.descriptionHtml,
+    metaData: definition.metaData, exampleTestcases: definition.exampleTestcases,
+    codeSnippets: definition.codeSnippets, neetcodeDefinition: definition };
 }

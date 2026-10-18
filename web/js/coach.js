@@ -8,9 +8,9 @@
 // reference panels.
 //
 // Everything the coach writes is untrusted model output. Prose goes through the same
-// escape-by-default markdown renderer the NeetCode articles use; ```mermaid and ```svg
-// blocks go through illustrator.js, which sanitises before drawing. No innerHTML is
-// assigned anywhere in this file.
+// escape-by-default markdown renderer the NeetCode articles use; ```mermaid, ```svg,
+// ```viz and ```image blocks go through illustrator.js, which validates or sanitises
+// before drawing. No innerHTML is assigned anywhere in this file.
 
 import { el, clear, replace } from './dom.js';
 import { renderMarkdown, renderUserText, looksLikeCode } from './markdown.js';
@@ -19,6 +19,10 @@ import { streamCoachMessage, api } from './api.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { flushRecorder } from './recorder.js';
+import { flushEditorSave } from './editor.js';
+import {
+  studioToolName, actionStatus, receiptGlyph, receiptSummary, canUndo, undoAction,
+} from './coach-actions.js';
 import { readAttempt, resumeDecision } from './attempt-state.js';
 import { renderHistory } from './history.js';
 import { onChord, chordLabel } from './shortcuts.js';
@@ -76,8 +80,18 @@ export function shapeCoachOutcome(result, hadText = false) {
   return { tone: preset.tone, head: preset.head, body: message + tail, retry: preset.retry };
 }
 
+/** What a Studio tool line says when no receipt covers it. Its arguments are never shown. */
+const STUDIO_TOOL_LINES = {
+  get_state: 'Looked at your cases and runs',
+  add_case: 'Added a case', update_case: 'Changed a case', remove_case: 'Removed a case',
+  run_code: 'Ran your code', mark_lines: 'Marked lines', clear_marks: 'Cleared its marks',
+  edit_code: 'Edited your code', open_panel: 'Opened a reference panel', save_note: 'Saved a note',
+};
+
 /** "Read" + "problems/two-sum/NOTES.md" → one quiet line, never a wall of JSON. */
 export function toolLine(name, summary) {
+  const studio = studioToolName(name);
+  if (studio) return STUDIO_TOOL_LINES[studio];
   const verb = {
     Read: 'Read', Write: 'Wrote', Edit: 'Edited', Glob: 'Looked for',
     Grep: 'Searched', LS: 'Listed', TodoWrite: 'Planned',
@@ -97,8 +111,11 @@ export function toolLine(name, summary) {
  * it, a drawing near the top of a long answer flickers for as long as the coach
  * keeps typing. The cache belongs to one message; a second copy of the same
  * diagram in the same message is drawn fresh rather than stolen from the first.
+ *
+ * `live` marks a reply that is arriving now. Only a live reply may start painting a
+ * Codex picture by itself; a replayed one looks its pictures up and offers a button.
  */
-export function renderCoachText(target, text, cache = null) {
+export function renderCoachText(target, text, cache = null, { slug = null, live = false } = {}) {
   clear(target);
   const segments = splitDiagramBlocks(text);
   if (!segments.length) return target;
@@ -111,11 +128,73 @@ export function renderCoachText(target, text, cache = null) {
       target.append(cache.get(key));
       continue;
     }
-    const node = renderDiagram(segment.lang, segment.code, { complete: segment.complete });
+    const node = renderDiagram(segment.lang, segment.code, { complete: segment.complete, slug, live });
     if (cache && key && !usedThisPass.has(key)) { cache.set(key, node); usedThisPass.add(key); }
     target.append(node);
   }
   return target;
+}
+
+/**
+ * How many tool lines each receipt hides, by bare tool name. A Studio tool call arrives
+ * twice — as an ordinary tool line and as an action — and the receipt is the one worth
+ * reading.
+ */
+export function coveredTools(actions) {
+  const counts = new Map();
+  for (const a of actions || []) {
+    const name = studioToolName(a?.tool);
+    if (name) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return counts;
+}
+
+/** Hide the tool lines in `toolsEl` that a receipt already says. */
+function coverToolLines(toolsEl, actions) {
+  const left = coveredTools(actions);
+  for (const line of toolsEl.querySelectorAll('.cmsg-tool[data-tool]')) {
+    const name = line.dataset.tool;
+    const n = left.get(name) || 0;
+    line.hidden = n > 0;
+    if (n > 0) left.set(name, n - 1);
+  }
+}
+
+/**
+ * One thing the tutor did in Studio, as a line in its reply.
+ *
+ * `ui` is the panel's own state for it (an undo in flight, its error, or that it was
+ * undone); `onUndo` only on a live reply — a replayed thread shows what happened, and
+ * offers nothing to press.
+ */
+function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
+  let status = ui.undone ? 'undone' : actionStatus(action);
+  // The turn is over and nobody ever answered for this one: it was not done, and saying
+  // "working…" forever would claim otherwise.
+  if (settled && status === 'pending') {
+    status = 'failed';
+    action = { ...action, message: action.message || 'Studio did not apply this one (the problem was not open in this tab when it arrived).' };
+  }
+  const tool = studioToolName(action.tool) || '';
+  const summary = receiptSummary(action);
+  const undoable = !!onUndo && !ui.undone && canUndo(action);
+  const why = status === 'failed' ? String(action.message || '').trim() : '';
+  return el('div', { class: `cmsg-receipt is-${status}`, 'data-tool': tool }, [
+    el('span', { class: 'cr-glyph', 'aria-hidden': 'true', text: receiptGlyph(tool) }),
+    el('span', { class: 'cr-text', text: summary, title: summary }),
+    status === 'pending' ? el('span', { class: 'cr-state', text: 'working…' }) : null,
+    status === 'failed' ? el('span', { class: 'cr-state', text: 'not done' }) : null,
+    status === 'undone' ? el('span', { class: 'cr-state', text: 'Undone' }) : null,
+    undoable
+      ? el('button', {
+        class: 'cr-undo', type: 'button', disabled: !!ui.busy,
+        title: tool === 'edit_code' ? 'Put your code back as it was before this edit' : 'Put your test cases back as they were',
+        text: ui.busy ? 'Undoing…' : 'Undo', onclick: onUndo,
+      })
+      : null,
+    why ? el('div', { class: 'cr-why', text: why }) : null,
+    ui.error ? el('div', { class: 'cr-why', text: ui.error }) : null,
+  ]);
 }
 
 function noticeBlock({ tone = '', head, body, actions = [] }) {
@@ -132,7 +211,8 @@ const STARTERS = [
   { label: 'Where do I start?', text: 'I have read the problem and I am not sure where to start. Ask me one question that would unblock me — do not give me the approach.' },
   { label: 'Check my approach', text: 'Here is the approach I am about to write. Tell me where it breaks before I spend twenty minutes on it.' },
   { label: 'Why is this wrong?', text: 'My code fails one of the example cases. Point me at the reasoning error rather than the fix.' },
-  { label: 'Draw it', text: 'Draw what my algorithm is doing on the first example as a plain mermaid flowchart (one node per step, no subgraphs or styling), then say in one sentence what I am missing.' },
+  { label: 'Trace my code', text: 'Trace what my current code does on Example 1 as a step-by-step ```viz illustration with frames, using the real values. If it goes wrong, stop on the step where it diverges. Then say in one sentence what I am missing — do not write the fix.' },
+  { label: 'Picture it', text: 'Give me one ```image that will make this problem\'s core idea stick in an interview: a concrete metaphor, not a diagram of the solution. Then tie it back to the algorithm in two sentences, without revealing more than I have already worked out.' },
 ];
 
 /* ============================== the panel ============================== */
@@ -456,7 +536,8 @@ export function createCoachPanel(entry) {
       if (turn.ask && turn.ask.trim()) addMessage('you', turn.ask);
       else if (turn.kind === 'attempt-review') addNote('Attempt review');
       const said = (turn.answer || '').trim() !== '';
-      const worked = Array.isArray(turn.tools) && turn.tools.length > 0;
+      const worked = (Array.isArray(turn.tools) && turn.tools.length > 0)
+        || (Array.isArray(turn.actions) && turn.actions.length > 0);
       if (!said && !worked) {
         // Killed before it got a word out. An empty card under a "Coach" heading reads
         // as an answer you failed to scroll to.
@@ -464,12 +545,23 @@ export function createCoachPanel(entry) {
         continue;
       }
       const { message: card, bodyEl } = addMessage('reply');
+      const acted = Array.isArray(turn.actions) ? turn.actions.filter(a => a && a.tool) : [];
       if (worked) {
         const tools = el('div', { class: 'cmsg-tools' });
-        for (const line of turn.tools) tools.append(el('div', { class: 'cmsg-tool mono dim', text: line }));
+        for (const line of turn.tools) {
+          // Stored as "<name> <summary>". A Studio tool's line is said plainly, never its arguments.
+          const name = studioToolName(String(line).split(' ')[0]);
+          tools.append(el('div', {
+            class: 'cmsg-tool mono dim', 'data-tool': name, text: name ? toolLine(name) : line,
+          }));
+        }
+        coverToolLines(tools, acted);
         card.insertBefore(tools, bodyEl);
       }
-      renderCoachText(bodyEl, turn.answer || '', new Map());
+      if (acted.length) {
+        card.insertBefore(el('div', { class: 'cmsg-receipts' }, acted.map(a => receiptRow(a, { settled: true }))), bodyEl);
+      }
+      renderCoachText(bodyEl, turn.answer || '', new Map(), { slug, live: false });
       // An answer that was cut short is shown as one rather than passed off as whole.
       if (turn.stopped) card.append(el('div', { class: 'cmsg-note mono dim', text: 'Stopped before it finished' }));
     }
@@ -514,6 +606,9 @@ export function createCoachPanel(entry) {
     const { message: card, bodyEl } = addMessage('reply');
     const toolsEl = el('div', { class: 'cmsg-tools' });
     card.insertBefore(toolsEl, bodyEl);
+    const receiptsEl = el('div', { class: 'cmsg-receipts' });
+    card.insertBefore(receiptsEl, bodyEl);
+    const receiptUi = new Map();     // action id → { busy, error, undone }
     const thinking = el('div', { class: 'coach-thinking mono dim' }, [el('i'), el('span', { text: 'Thinking' })]);
 
     let painted = 0;                 // how many tool lines are already on screen
@@ -528,15 +623,39 @@ export function createCoachPanel(entry) {
     const paintTools = () => {
       for (; painted < run.tools.length; painted++) {
         const t = run.tools[painted];
-        toolsEl.append(el('div', { class: 'cmsg-tool mono dim', text: toolLine(t.name, t.summary) }));
+        toolsEl.append(el('div', {
+          class: 'cmsg-tool mono dim', 'data-tool': studioToolName(t.name), text: toolLine(t.name, t.summary),
+        }));
       }
+      coverToolLines(toolsEl, [...(run.actions?.values() ?? [])]);
+    };
+
+    const undo = async (action) => {
+      const id = String(action.id);
+      if (receiptUi.get(id)?.busy) return;
+      receiptUi.set(id, { busy: true });
+      paintReceipts();
+      const result = await undoAction(action);
+      receiptUi.set(id, result.ok ? { undone: true } : { error: result.message });
+      paintReceipts();
+    };
+
+    // Rebuilt whole on every change: a handful of lines, and replace() swaps them in one go.
+    const paintReceipts = () => {
+      const list = [...(run.actions?.values() ?? [])];
+      replace(receiptsEl, list.map(a => receiptRow(a, {
+        ui: receiptUi.get(String(a.id)) || {},
+        onUndo: () => undo(a),
+        settled: run.done,
+      })));
+      coverToolLines(toolsEl, list);
     };
 
     const render = () => {
       // Reading three paragraphs back: hold that exact offset across the rebuild, or the
       // sentence being read moves under the eye every time a token lands.
       const keep = following ? -1 : log.scrollTop;
-      renderCoachText(bodyEl, run.text, diagrams);
+      renderCoachText(bodyEl, run.text, diagrams, { slug, live: true });
       if (following) log.scrollTop = log.scrollHeight;
       else if (keep >= 0) log.scrollTop = keep;
       paintedAt = performance.now();
@@ -556,7 +675,8 @@ export function createCoachPanel(entry) {
     const finish = () => {
       thinking.remove();
       paintTools();
-      renderCoachText(bodyEl, run.text, diagrams);
+      paintReceipts();
+      renderCoachText(bodyEl, run.text, diagrams, { slug, live: true });
       if (run.text.trim() === '') bodyEl.remove();
 
       const outcome = shapeCoachOutcome(run.result, run.text.trim() !== '');
@@ -580,6 +700,7 @@ export function createCoachPanel(entry) {
 
     // Whatever has already arrived, before subscribing to the rest.
     paintTools();
+    paintReceipts();
     if (run.text) render(); else card.append(thinking);
 
     if (run.done) { finish(); return; }
@@ -589,6 +710,7 @@ export function createCoachPanel(entry) {
       if (disposed) return;
       if (event === 'token') { thinking.remove(); paint(); return; }
       if (event === 'tool') { paintTools(); scrollDown(); return; }
+      if (event === 'action') { paintReceipts(); scrollDown(); return; }
       if (event === 'done') finish();
     });
   }
@@ -621,6 +743,10 @@ export function createCoachPanel(entry) {
         await flushRecorder();
       } catch { /* speech is a bonus input; never let it block a question */ }
     }
+    // The coach reads solution.py from disk, and the editor saves on a debounce: typing
+    // and asking straight away would otherwise send the code from a second ago. Bounded
+    // (2 s) and quiet inside flushEditorSave — a slow save cannot hold the question.
+    await flushEditorSave(slug).catch(() => false);
 
     const run = startRun({
       slug,
@@ -850,10 +976,13 @@ export function coachReviewAttempt(detail) {
   if (!detail.attemptId || !detail.spokenMs) return;
   if (active?.slug === detail.slug) return active.reviewAttempt(detail);
   ensureRunsChip();
-  const run = startRun({ slug: detail.slug, title: detail.title || detail.slug,
-    ...reviewOptions(detail), newThread: thread.pending });
-  thread.pending = false;
-  return run;
+  // The review reads the saved code too; same bounded flush as a typed question.
+  return flushEditorSave(detail.slug).catch(() => false).then(() => {
+    const run = startRun({ slug: detail.slug, title: detail.title || detail.slug,
+      ...reviewOptions(detail), newThread: thread.pending });
+    thread.pending = false;
+    return run;
+  });
 }
 
 export function teardownCoach() {

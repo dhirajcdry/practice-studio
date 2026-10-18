@@ -39,7 +39,9 @@ function systemPrefersDark() {
   try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; }
 }
 
-const DEFAULTS = { theme: 'studio', mode: 'system', codeSize: 14, motion: true, typingFx: true, typingSparks: false, celebrations: true };
+const DEFAULTS = { theme: 'studio', mode: 'system', codeSize: 14, motion: true, typingFx: true, typingSparks: false, celebrations: true, coachPictures: 'auto' };
+// Codex pictures spend the user's image quota, so how eagerly the coach may make one is his call.
+export const PICTURE_MODES = ['auto', 'ask', 'off'];
 const LEGACY = { paper: ['studio', 'light'], slate: ['studio', 'dark'], editorial: ['editorial', 'light'], ink: ['ink', 'light'], blueprint: ['studio', 'dark'], phosphor: ['terminal', 'dark'] };
 
 function read() {
@@ -57,6 +59,7 @@ function read() {
       // The reveal is the typing effect; sparks are an extra he opts into.
       typingSparks: raw.typingSparks === true,
       celebrations: raw.celebrations !== false,
+      coachPictures: PICTURE_MODES.includes(raw.coachPictures) ? raw.coachPictures : DEFAULTS.coachPictures,
     };
   } catch {
     return { ...DEFAULTS }; // private browsing: it works, it just forgets
@@ -79,12 +82,13 @@ export function onSettingsChange(fn) { listeners.add(fn); return () => listeners
 
 export function setSetting(key, value) {
   if (current[key] === value) return;
-  if (!['theme', 'mode', 'codeSize', 'motion', 'typingFx', 'typingSparks', 'celebrations'].includes(key)) return;
+  if (!['theme', 'mode', 'codeSize', 'motion', 'typingFx', 'typingSparks', 'celebrations', 'coachPictures'].includes(key)) return;
+  if (key === 'coachPictures' && !PICTURE_MODES.includes(value)) return;
   if (key === 'theme' && !THEMES.some(t => t.id === value)) return;
   if (key === 'mode' && !['system', 'light', 'dark'].includes(value)) return;
   current = { ...current, [key]: value };
-  const { theme, mode, codeSize, motion, typingFx, typingSparks, celebrations } = current;
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ theme, mode, codeSize, motion, typingFx, typingSparks, celebrations })); } catch { /* forgets */ }
+  const { theme, mode, codeSize, motion, typingFx, typingSparks, celebrations, coachPictures } = current;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ theme, mode, codeSize, motion, typingFx, typingSparks, celebrations, coachPictures })); } catch { /* forgets */ }
   const commit = () => { apply(); for (const fn of listeners) fn(getSettings()); };
   // A new theme or appearance crossfades instead of repainting in one jarring frame, which
   // also hides the frame where the page has switched and Monaco has not yet. Only these two
@@ -160,7 +164,13 @@ export function openSettings() {
 
   const themeCards = el('div', { class: 'set-cards set-themes' });
   const modeSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Appearance' });
+  const pictureSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Coach pictures' });
+  const PICTURE_LABELS = { auto: 'Auto', ask: 'Ask first', off: 'Off' };
   const rerender = () => {
+    replace(pictureSeg, PICTURE_MODES.map((mode) => el('button', {
+      type: 'button', text: PICTURE_LABELS[mode],
+      'aria-pressed': String(current.coachPictures === mode), onclick: () => setSetting('coachPictures', mode),
+    })));
     replace(modeSeg, ['system', 'light', 'dark'].map((mode) => el('button', {
       type: 'button', text: mode[0].toUpperCase() + mode.slice(1),
       'aria-pressed': String(current.mode === mode), onclick: () => setSetting('mode', mode),
@@ -207,6 +217,8 @@ export function openSettings() {
       el('div', { class: 'mono dim set-label', text: 'Coach' }),
       coachPicker.root,
       el('p', { class: 'set-cardblurb', text: 'Applies to new coach and system-design replies. Each CLI uses its own sign-in and limits. Codex saves chats through Studio; automatic note edits are Claude-only.' }),
+      el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
+      el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
       el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
       el('div', { class: 'mono dim set-label', text: 'Theme' }),
       themeCards,

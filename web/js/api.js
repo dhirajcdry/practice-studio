@@ -943,7 +943,7 @@ function parseSseBlock(block) {
  * Shared by the POST that starts a turn and the GET that re-attaches to one already
  * running, so a reloaded page reads exactly the same events in exactly the same way.
  */
-async function consumeCoachStream(response, { onToken, onTool, onRun }, bump = () => {}) {
+async function consumeCoachStream(response, { onToken, onTool, onRun, onAction }, bump = () => {}) {
   const reader = response.body.getReader();
   const utf8 = new TextDecoder();
   const decoder = new SseDecoder();
@@ -957,6 +957,9 @@ async function consumeCoachStream(response, { onToken, onTool, onRun }, bump = (
     else if (event === 'tool') onTool(String(payload?.name || 'Tool'), String(payload?.summary || ''));
     // The server's id for this turn, sent first. It is what lets a reload find it again.
     else if (event === 'run' && payload?.id) onRun?.(payload);
+    // Something the tutor did in Studio (server/coach/tools.mjs). coachruns.js keeps it and
+    // coach-actions.js applies the ones the page owes an answer.
+    else if (event === 'action' && payload && typeof payload === 'object' && payload.id) onAction?.(payload);
     else if (event === 'done') done = { sessionId: payload?.sessionId ?? null, stoppedReason: payload?.stoppedReason ?? null };
     else if (event === 'error') failure = String(payload?.message || 'The coach stopped with an error it did not explain.');
   };
@@ -997,7 +1000,7 @@ export async function stopCoachRun({ slug = null, runId = null } = {}) {
  * The server replays what has arrived before streaming the rest, so this is also how a
  * dropped connection recovers: re-attaching gives back the whole answer, not the tail.
  */
-export async function attachCoachRun(runId, { signal = null, onToken = () => {}, onTool = () => {}, onRun = null } = {}) {
+export async function attachCoachRun(runId, { signal = null, onToken = () => {}, onTool = () => {}, onRun = null, onAction = null } = {}) {
   if (api.mode !== 'live') {
     return { ok: false, kind: 'offline', code: 'NO_SERVER', message: 'The studio server is not answering.' };
   }
@@ -1011,7 +1014,7 @@ export async function attachCoachRun(runId, { signal = null, onToken = () => {},
     if (!response.ok || !response.body) {
       return { ok: false, kind: 'server', code: `HTTP_${response.status}`, message: 'The coach turn could not be re-opened.' };
     }
-    return await consumeCoachStream(response, { onToken, onTool, onRun });
+    return await consumeCoachStream(response, { onToken, onTool, onRun, onAction });
   } catch (error) {
     if (error && error.name === 'AbortError') {
       return { ok: false, kind: 'cancelled', code: 'CANCELLED', message: 'You stopped watching the coach.' };
@@ -1022,7 +1025,7 @@ export async function attachCoachRun(runId, { signal = null, onToken = () => {},
 
 export async function streamCoachMessage(slug, message, {
   includeCode = true, signal = null, kind = null, attemptId = null, newThread = false, resumeSessionId = null,
-  onToken = () => {}, onTool = () => {}, onRun = null,
+  onToken = () => {}, onTool = () => {}, onRun = null, onAction = null,
 } = {}) {
   if (api.mode !== 'live') {
     return {
@@ -1073,7 +1076,7 @@ export async function streamCoachMessage(slug, message, {
       return { ok: false, kind: 'server', code: 'NO_STREAM', message: 'The coach answered without a stream to read.' };
     }
 
-    return await consumeCoachStream(response, { onToken, onTool, onRun }, bump);
+    return await consumeCoachStream(response, { onToken, onTool, onRun, onAction }, bump);
   } catch (error) {
     const aborted = error && error.name === 'AbortError';
     if (aborted && !timedOut) {
@@ -1087,6 +1090,50 @@ export async function streamCoachMessage(slug, message, {
     clearTimeout(idle);
     if (signal) signal.removeEventListener('abort', relay);
   }
+}
+
+/* ------------------------- tutor actions ------------------------- */
+
+/** POST /api/coach/actions/:id/result — the page's answer for an action it applied. */
+export async function reportCoachAction(actionId, { ok, message }) {
+  if (api.mode !== 'live') return { ok: false, kind: 'offline', message: 'The studio server is not answering.' };
+  return sendJson(`/api/coach/actions/${encodeURIComponent(actionId)}/result`, {
+    method: 'POST', body: { ok: ok === true, message: String(message ?? '') }, timeoutMs: EVENT_TIMEOUT_MS,
+  });
+}
+
+/**
+ * POST /api/coach/actions/:id/undo — case actions only. A 409 (the cases changed since)
+ * comes back as { ok:false, message } with the server's own plain sentence.
+ */
+export async function undoCoachAction(actionId) {
+  if (api.mode !== 'live') return { ok: false, kind: 'offline', message: 'The studio server is not answering.' };
+  const result = await sendJson(`/api/coach/actions/${encodeURIComponent(actionId)}/undo`, { method: 'POST', body: {} });
+  if (result.ok) return { ok: result.data?.ok !== false, refresh: result.data?.refresh ?? null, message: result.data?.message || '' };
+  return { ok: false, message: result.message || 'That could not be undone.' };
+}
+
+/* ------------------------- coach pictures ------------------------- */
+
+/**
+ * Ask for the picture a ```image block describes. The server is content-addressed and
+ * deduplicates, so asking twice for the same block never paints twice; a failure it
+ * remembers is only retried when `retry` says so — a re-render must never spend quota.
+ */
+export async function requestVisual(slug, prompt, { alt = '', retry = false } = {}) {
+  return sendJson('/api/coach/visuals', { method: 'POST', body: { slug, prompt, alt, ...(retry ? { retry: true } : {}) } });
+}
+
+/** Where a picture has got to. Never starts any work. */
+export async function visualStatus(slug, id) {
+  return sendJson(`/api/coach/visuals/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`);
+}
+
+/** The id the server will give this block: sha256(slug + "\n" + prompt), first 20 hex. */
+export async function visualId(slug, prompt) {
+  const bytes = new TextEncoder().encode(`${slug}\n${prompt}`);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return [...digest].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 20);
 }
 
 /**

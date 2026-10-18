@@ -1,0 +1,51 @@
+/* Coach pictures (coach-image.js): one Codex-painted image inside a coach reply.
+   The card is themed like every other figure; the picture itself is shown as painted. */
+
+/* The larger view dims whatever theme is behind it the same way: it is a photo viewer. */
+:root{--pic-backdrop:rgba(0,0,0,.78);--pic-backdrop-ink:#EEEEEE;--pic-shadow:rgba(0,0,0,.45)}
+
+.pic .pic-head{display:flex;align-items:baseline;gap:8px;padding:7px 11px 0;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.pic .pic-status{margin-left:auto}
+.pic-stage{margin:8px 11px 11px}
+
+/* Waiting: a calm shimmer the size of the picture to come, so nothing jumps when it lands. */
+.pic-wait{
+  position:relative;display:grid;place-items:center;aspect-ratio:4 / 3;max-height:300px;width:100%;
+  border-radius:var(--r-md);background:var(--hair-10);overflow:hidden;
+  font:500 11.5px/1.4 var(--ui);color:var(--ink-50);
+}
+.pic-wait > span{position:relative;z-index:1}
+.pic-shimmer{
+  position:absolute;inset:0;
+  background:linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--accent) 14%, transparent) 50%, transparent 80%);
+  background-size:220% 100%;animation:pic-sheen 1.8s ease-in-out infinite;
+}
+@keyframes pic-sheen{from{background-position:120% 0}to{background-position:-120% 0}}
+body.motion-off .pic-shimmer{animation:none;opacity:.5}
+@media (prefers-reduced-motion:reduce){.pic-shimmer{animation:none;opacity:.5}}
+
+.pic-open{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in;border-radius:var(--r-md);overflow:hidden}
+.pic-open:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pic-img{display:block;width:100%;height:auto;max-height:420px;object-fit:contain;background:var(--diagram-paper);border-radius:var(--r-md)}
+
+.pic-offer{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:14px;
+  border:1px dashed var(--hair-20);border-radius:var(--r-md);
+}
+.pic-offer p{margin:0;flex:1 1 100%;font-size:13px;line-height:1.5}
+.pic-offer .pic-cost{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.pic-failed{margin:0}
+
+.pic-alt{padding-top:0}
+.pic-asked{margin:0 11px 10px}
+.pic-asked summary{cursor:pointer;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;list-style-position:inside}
+.pic-asked p{margin:6px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink-70);white-space:pre-wrap}
+
+/* Larger view. Click anywhere or Esc to close. */
+.pic-lightbox{
+  position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  padding:32px;background:var(--pic-backdrop);cursor:zoom-out;
+}
+.pic-lightbox img{max-width:min(1100px, 100%);max-height:calc(100vh - 140px);object-fit:contain;border-radius:var(--r-md);box-shadow:0 20px 60px var(--pic-shadow)}
+.pic-lightbox p{margin:0;max-width:70ch;color:var(--pic-backdrop-ink);font-size:13.5px;line-height:1.5;text-align:center}
+.pic-lightbox .pic-close{position:absolute;top:16px;right:16px}

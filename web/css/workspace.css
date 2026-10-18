@@ -192,3 +192,54 @@ body.ws-wide .coach-hide{min-height:32px;padding:6px 10px}
 body.ws-wide .tag.pattern{color:var(--accent);background:var(--accent-soft)}
 body.ws-wide .ptags .tag.quiet{color:var(--ink-70)}
 body.ws-wide .ws>.ws-bar .recmount .rec-toggle{height:28px;padding:0 10px;font:500 11px var(--ui);letter-spacing:0;text-transform:none}
+
+/* ---- the tutor's hands: marks, notes and edits in the editor (coach-actions.js) ----
+   Tones: hint = accent, bug = --hard, good = --easy. A tint across the line and a bar in
+   the gutter, so a mark reads at a glance without hiding the code under it. */
+.monaco-editor .tutor-line.tone-hint{background:rgba(var(--accent-rgb),.11)}
+.monaco-editor .tutor-line.tone-bug{background:rgba(var(--hard-rgb),.12)}
+.monaco-editor .tutor-line.tone-good{background:rgba(var(--easy-rgb),.13)}
+.monaco-editor .tutor-bar{margin-left:3px;width:3px !important;border-radius:2px}
+.monaco-editor .tutor-bar.tone-hint{background:var(--accent)}
+.monaco-editor .tutor-bar.tone-bug{background:var(--hard)}
+.monaco-editor .tutor-bar.tone-good{background:var(--easy)}
+/* The note sits under the lines it is about, like a review comment. Plain text only. */
+.tutor-note{box-sizing:border-box;padding:3px 14px 5px 0;pointer-events:none}
+.tutor-note-body{
+  display:flex;gap:8px;align-items:baseline;max-width:72ch;
+  padding:5px 10px;border-left:3px solid var(--accent);border-radius:0 var(--r-sm) var(--r-sm) 0;
+  background:rgba(var(--accent-rgb),.07);color:var(--ink);
+  font:12px/1.5 var(--ui);white-space:normal;overflow-wrap:anywhere;
+}
+.tutor-note.tone-bug .tutor-note-body{border-left-color:var(--hard);background:rgba(var(--hard-rgb),.07)}
+.tutor-note.tone-good .tutor-note-body{border-left-color:var(--easy);background:rgba(var(--easy-rgb),.07)}
+.tutor-note-who{flex:none;font:600 10px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+.tutor-note.tone-bug .tutor-note-who{color:var(--hard)}
+.tutor-note.tone-good .tutor-note-who{color:var(--easy)}
+/* An edit the tutor just made, lit briefly so the eye finds it. Still under reduced motion. */
+.monaco-editor .tutor-flash{background:rgba(var(--accent-rgb),.28);animation:tutor-flash 1.5s var(--ease-out) forwards}
+.monaco-editor .tutor-flash.is-still{animation:none;background:rgba(var(--accent-rgb),.16)}
+body.motion-off .monaco-editor .tutor-flash{animation:none;background:rgba(var(--accent-rgb),.16)}
+@media (prefers-reduced-motion:reduce){.monaco-editor .tutor-flash{animation:none;background:rgba(var(--accent-rgb),.16)}}
+@keyframes tutor-flash{0%{background:rgba(var(--accent-rgb),.32)}100%{background:rgba(var(--accent-rgb),0)}}
+/* In the file tab row only while there are marks: how many, and one click to clear them. */
+.tutor-chip{
+  flex:none;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;
+  border:1px solid rgba(var(--accent-rgb),.35);border-radius:var(--r-sm);background:var(--accent-soft);
+  color:var(--accent);font:500 11px/1 var(--ui);white-space:nowrap;
+}
+.tutor-chip[hidden]{display:none}
+.tutor-chip:hover{border-color:var(--accent)}
+.tutor-chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tutor-chip-x{font-size:13px;line-height:1;opacity:.7}
+.tutor-chip:hover .tutor-chip-x{opacity:1}
+
+/* A case the tutor added: its own tab glyph, and its reason under the fields. */
+.tc-mark-coach{font-weight:400;font-size:10px}
+.tc-why{display:flex;gap:8px;align-items:baseline;margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0;font:12px/1.5 var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
+.tc-why-who{flex:none;font:600 10px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+
+/* A run the tutor asked for, never to be read as his own. */
+.rr-tutor{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:7px 10px;border:1px solid rgba(var(--accent-rgb),.3);border-radius:var(--r-sm);background:var(--accent-soft)}
+.rr-tutor-mark{font:600 11px/1.4 var(--ui);color:var(--accent)}
+.rr-tutor-what{font:11px/1.4 var(--ui);color:var(--ink-50)}

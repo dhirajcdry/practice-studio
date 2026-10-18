@@ -570,7 +570,7 @@ export const WATCH_CAP_MS = 90000;
  * (as `neetcodeSlug`), anything else to LeetCode. It is a function because whether a
  * problem is premium is only known once its content has loaded.
  */
-export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFailingCase = null, getTarget = () => 'leetcode', neetcodeSlug = null }) {
+export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFailingCase = null, getTarget = () => 'leetcode', neetcodeSlug = null, getMismatch = () => null }) {
   const body = el('div', { class: 'sub-body' });
   const scope = el('span', { class: 'mono sub-scope', text: 'leetcode.com' });
   let where = { target: 'leetcode', neetcodeSlug: neetcodeSlug || slug };
@@ -639,6 +639,20 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
   /** The only path that submits. Called from a click, never from anything else. */
   async function submit() {
     if (busy) return;
+    const mismatch = targetOf(getTarget()) === 'neetcode' ? getMismatch() : null;
+    if (mismatch) {
+      root.hidden = false;
+      aim();
+      replace(body, [
+        el('p', { text: mismatch.message }),
+        ...(mismatch.fix ? [el('button', { class: 'act', type: 'button',
+          text: "Use NeetCode's name", onclick: () => {
+            mismatch.fix();
+            replace(body, el('p', { text: 'Check your code, then submit when ready.' }));
+          } })] : []),
+      ]);
+      return;
+    }
     busy = true;
     root.hidden = false;
     controller = new AbortController();

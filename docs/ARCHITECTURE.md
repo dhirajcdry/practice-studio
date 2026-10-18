@@ -68,10 +68,12 @@ dependencies" doesn't mean the entire system is dependency-free.
 | `problems/<slug>/NOTES.md`, `debriefs/` | Coach memory and feedback |
 | `problems/<slug>/attempts/<id>/attempt.md` | Derived readable attempt document |
 | `cache/leetcode/<slug>.json` | Cached problem content, metadata, and starter code |
+| `cache/neetcode/<ncSlug>.json` | Whitelisted NeetCode problem definition for premium problems, fetched lazily on open |
 | `design/<id>/interview.json` | Mutable interview state: phase, timing, session identity |
 | `design/<id>/turns.jsonl`, `scenes/*.json` | Recorded answers/questions and board snapshots |
 | `design/<id>/interview.md` | Derived readable interview document |
 | `design/<id>/NOTES.md`, `DESIGN.md` | Design-interview coaching memory |
+| `problems/<slug>/visuals/<id>.png`, `<id>.json` | Coach pictures and what they were drawn from |
 
 Raw activity/turn logs and code/scene snapshots preserve the evidence. Readers tolerate
 an invalid final JSONL line from an interrupted write. Rendered documents are rebuilt
@@ -185,6 +187,29 @@ Regression checks: `server/asr/voice-control.test.mjs` covers previews, finaliza
 late results, missing metering and notices; `server/asr/worker.test.mjs` covers worker
 reuse, ordering, crashes, timeouts and cleanup.
 
+## Coach visuals
+
+The coach can answer with fenced blocks the browser draws. ````viz` is a JSON spec of an
+exact illustration (graph, array, grid, tree, list, stack, queue, panels, with optional
+step frames), drawn instantly by `web/js/viz.js`. ````mermaid` is a plain flowchart.
+The prompt section that teaches the coach these lives in `server/coach/context.mjs` and
+goes into normal and review turns alike.
+
+````image` carries `{prompt, alt}` for a picture made by Codex's image model.
+`server/coach/visuals.mjs` draws it in its own Codex app-server with the same lockdown as
+the chat coach: ephemeral read-only thread, approvals never, temporary working
+directory, no `OPENAI_API_KEY`, every MCP server disabled by name, every server-to-client
+request refused. Only `image_generation` is enabled, and only there. The description is
+fenced as data, and the bytes are accepted only as PNG, JPEG or WebP by magic number, up
+to 15 MB.
+
+A picture's id is the first 20 hex characters of `sha256(slug + "\n" + trimmed prompt)`,
+so a replayed reply finds the picture it already has. It is stored as
+`problems/<slug>/visuals/<id>.<ext>` plus a `<id>.json` meta, written atomically, meta
+last. One picture is drawn at a time across the server; up to four wait, and more are
+turned away without being remembered as failures. Failures are held in memory only, and
+are not retried until the browser asks with `retry: true`. A GET never starts work.
+
 ## Coach providers and model selection
 
 The coach header and Settings share a model picker backed by `GET /api/coach/models`
@@ -198,8 +223,17 @@ or entitlement, so inference errors remain visible.
 `server/coach/provider.mjs` dispatches a snapshotted provider/model choice. Claude retains
 its existing scoped tool permissions. Codex uses the installed CLI's ChatGPT sign-in via
 app-server stdio, with a temporary working directory, an ephemeral read-only thread,
-web/shell/apps/plugins disabled, and every interactive tool request rejected. The child
-environment excludes `OPENAI_API_KEY`. No credentials are returned to the browser.
+web/shell/apps/plugins/image generation disabled, and every interactive tool request
+rejected. The child environment excludes `OPENAI_API_KEY`. No credentials are returned to
+the browser.
+
+MCP servers from the user's own `~/.codex/config.toml` are turned off by name on every
+thread. `mcp_servers: {}` on `thread/start`, and `-c mcp_servers={}` on the command line,
+are merged into that config rather than replacing it, so a browser server with unsafe code
+execution auto-approved still started inside Studio's threads. Studio now lists the
+configured servers with `mcpServerStatus/list` (which does not start them) and passes
+`{ <name>: { enabled: false } }` for each. If the list cannot be read, or a server reports
+starting anyway, the turn fails closed and the process is stopped.
 The protocol follows the [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
 
 Codex receives bounded conversation history and server-read TUTOR/NOTES excerpts, with

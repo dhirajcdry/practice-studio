@@ -20,11 +20,19 @@ export const RETAIN_MS = 10 * 60 * 1000;
 /** A ceiling on what one run holds for replay. The transcript keeps the real record. */
 export const MAX_TEXT = 1_000_000;
 export const MAX_TOOLS = 500;
+/** One per tool call, and a turn is capped well below this (tools.mjs MAX_CALLS). */
+export const MAX_ACTIONS = 60;
 
 /** A cap on the whole registry, so a pathological session cannot grow without bound. */
 export const MAX_RUNS = 24;
 
 let counter = 0;
+
+/** What goes over the wire for an action: a snapshot, so a later status change is sent
+ *  as its own event rather than mutating one already written. */
+function publicAction(payload) {
+  return { ...payload };
+}
 
 function nextId(now) {
   counter += 1;
@@ -62,6 +70,10 @@ export class CoachRuns {
       startedAt: new Date(startedAt).toISOString(),
       text: '',
       tools: [],
+      // The tutor's Studio actions, as live objects: their `status` moves from pending to
+      // done/failed after they are sent, and a viewer attaching later must see where each
+      // one ended up — a receipt, not an instruction to do it again.
+      actions: [],
       truncated: false,
       status: 'running',
       sessionId: null,
@@ -86,6 +98,12 @@ export class CoachRuns {
   tool(run, name, summary) {
     if (run.tools.length < MAX_TOOLS) run.tools.push({ name, summary: summary ?? null });
     for (const stream of run.subscribers) stream.tool(name, summary);
+  }
+
+  /** Send a tutor action (or a later status change of one) to every viewer. */
+  action(run, payload) {
+    if (!run.actions.includes(payload) && run.actions.length < MAX_ACTIONS) run.actions.push(payload);
+    for (const stream of run.subscribers) stream.action?.(publicAction(payload));
   }
 
   finish(run, { status, sessionId = null, stoppedReason = null, message = null }) {
@@ -122,6 +140,7 @@ export class CoachRuns {
     });
     if (run.text) stream.token(run.text);
     for (const t of run.tools) stream.tool(t.name, t.summary);
+    for (const a of run.actions) stream.action?.(publicAction(a));
     if (run.truncated) {
       stream.tool('note', 'This answer was too long to hold for replay in full; the transcript has all of it.');
     }

@@ -460,6 +460,42 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
     stop: () => stop('cancelled'),
     isRunning: () => running,
     lastResult: () => last,
+    showTab,
+    /** The cases changed on the server (the tutor, or an undo). Reload and show them. */
+    async reloadCases({ select = null } = {}) {
+      showTab('cases');
+      await editor.reload({ select });
+    },
+    /**
+     * A run the tutor asked for, shown in the Result tab under its own label.
+     *
+     * It never becomes `last`: the toolbar line and the collapsed lane describe HIS last
+     * run, and a tutor run passing must not read as his code having been checked by him.
+     * While his own run is in flight it is not shown at all — his result is the one he is
+     * waiting for — and the receipt in the chat still says what the tutor's run found.
+     */
+    showTutorRun(raw) {
+      if (running) return false;
+      const shaped = shapeRunResult(raw);
+      const out = el('div', { class: 'rr-tutorbody' });
+      renderRunResult(out, shaped);
+      replace(body, [
+        el('div', { class: 'rr-tutor' }, [
+          el('span', { class: 'rr-tutor-mark', text: 'Run by your tutor' }),
+          el('span', { class: 'rr-tutor-what', text: 'your saved solution.py · not counted as your run' }),
+          el('span', { class: 'spacer' }),
+          last
+            ? el('button', {
+              class: 'ws-mini', type: 'button', text: 'Show your last run',
+              onclick: () => renderRunResult(body, last, { onRerun: run }),
+            })
+            : null,
+        ]),
+        out,
+      ]);
+      showTab('result');
+      return true;
+    },
     /** A submission came back wrong: keep the input it died on, ready to run. */
     addFailingCase(detail) {
       editor.addFailingCase(detail);

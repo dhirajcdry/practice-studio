@@ -12,11 +12,21 @@
 //                 deliberately narrow and everything outside it falls back to a
 //                 labelled code block rather than to a wrong picture.
 //
+//   ```viz      → a JSON illustration (graph, array, grid, tree, list, stack, queue,
+//                 panels, optionally step-by-step), validated and drawn by viz.js.
+//   ```image    → a request for a Codex-painted picture, handled by coach-image.js.
+//
 // The fallback is the rule, not the exception: a diagram that cannot be drawn
 // honestly is shown as its source. Never a blank pane, never a silent failure.
 
 import { el } from './dom.js';
 import { codeBlock } from './markdown.js';
+import { parseViz, drawViz } from './viz.js';
+import { renderImageCard } from './coach-image.js';
+
+/** Fence languages drawn here rather than printed as code. */
+const DIAGRAM_LANGS = new Set(['mermaid', 'svg', 'viz', 'image']);
+const CAPTIONS = { svg: 'SVG', mermaid: 'Mermaid', viz: 'Illustration', image: 'Picture' };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -31,7 +41,7 @@ const FENCE_OPEN = /^(\s*)(`{3,}|~{3,})\s*([A-Za-z0-9+#_-]*)\s*$/;
  * interleaved in the order the coach wrote them.
  *
  *   { type:'markdown', text }
- *   { type:'diagram', lang:'mermaid'|'svg', code, complete }
+ *   { type:'diagram', lang:'mermaid'|'svg'|'viz'|'image', code, complete }
  *
  * `complete:false` means the closing fence has not streamed in yet — the caller
  * shows it as a pending block rather than trying to draw half a diagram.
@@ -62,7 +72,7 @@ export function splitDiagramBlocks(source) {
     const marker = open[2][0];
     const closeRe = new RegExp(`^\\s*${marker === '`' ? '`{3,}' : '~{3,}'}\\s*$`);
     const lang = open[3].toLowerCase();
-    const isDiagram = lang === 'mermaid' || lang === 'svg';
+    const isDiagram = DIAGRAM_LANGS.has(lang);
 
     const body = [];
     let j = i + 1;
@@ -693,10 +703,10 @@ function figure(children, { caption = '', note = '' } = {}) {
 
 /** The honest fallback: the source, labelled, with the reason it was not drawn. */
 export function diagramFallback(lang, code, reason) {
-  const pre = codeBlock(code, lang === 'svg' ? 'svg' : 'mermaid');
+  const pre = codeBlock(code, lang === 'viz' || lang === 'image' ? 'json' : lang === 'svg' ? 'svg' : 'mermaid');
   pre.classList.add('ill-source');
   return figure(pre, {
-    caption: lang === 'svg' ? 'SVG — shown as source' : 'Mermaid — shown as source',
+    caption: `${CAPTIONS[lang] || 'Mermaid'} — shown as source`,
     note: reason,
   });
 }
@@ -711,9 +721,24 @@ export function diagramFallback(lang, code, reason) {
  */
 export function renderDiagram(lang, code, options = {}) {
   if (options.complete === false) {
-    return figure(el('div', { class: 'ill-pending mono dim', text: 'Drawing…' }), {
-      caption: lang === 'svg' ? 'SVG' : 'Mermaid',
+    return figure(el('div', { class: 'ill-pending mono dim', text: lang === 'image' ? 'Describing a picture…' : 'Drawing…' }), {
+      caption: CAPTIONS[lang] || 'Mermaid',
     });
+  }
+
+  if (lang === 'image') {
+    return renderImageCard(code, { slug: options.slug ?? null, live: options.live === true })
+      || diagramFallback('image', code, 'The picture request could not be read, so here is what the coach wrote.');
+  }
+
+  if (lang === 'viz') {
+    const model = parseViz(code);
+    if (!model.ok) return diagramFallback('viz', code, model.reason);
+    try {
+      return figure(drawViz(model.spec, { idPrefix: `viz${++diagramSeq}` }), { caption: model.spec.title || 'Illustration' });
+    } catch {
+      return diagramFallback('viz', code, 'The illustration could not be laid out, so here is what the coach wrote.');
+    }
   }
 
   if (lang === 'svg') {

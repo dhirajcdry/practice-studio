@@ -33,7 +33,7 @@ export function parseMetaData(raw) {
  * `random` pointer — and metaData does not say which. Guessing would mean building the
  * wrong object and reporting a verdict we cannot justify.
  */
-const SUPPORTED_NODES = new Set(['listnode', 'treenode']);
+const SUPPORTED_NODES = new Set(['listnode', 'treenode', 'interval']);
 
 const SUPPORTED_SCALARS = new Set([
   'integer',

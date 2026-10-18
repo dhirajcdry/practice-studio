@@ -13,6 +13,7 @@ import path from 'node:path';
 import { adaptedExpected, normaliseQuadTree } from './adapters.mjs';
 import { classifyProblem, isNodeType, parseMetaData } from './meta.mjs';
 import { buildCases } from './testcases.mjs';
+import { neetcodeExpectedHtml } from '../neetcode.mjs';
 import { compareValues, formatValue } from './compare.mjs';
 import { rewriteTraceback, summarize } from './traceback.mjs';
 import {
@@ -90,7 +91,7 @@ export async function runCode({
   const built = buildCases({
     perCase,
     testcases: typeof testcases === 'string' && testcases.trim() !== '' ? testcases : exampleTestcases,
-    descriptionHtml,
+    descriptionHtml: parseMetaData(metaData)?.neetcode ? neetcodeExpectedHtml(parseMetaData(metaData)) : descriptionHtml,
     expectedOverrides,
     prefixExpected: shape.answerFrom?.sizeFromReturn === true,
   });
@@ -348,7 +349,7 @@ export async function runCode({
           actual,
           callMs,
           passed: null,
-          note: 'LeetCode does not publish an expected answer for this case — compare it yourself.',
+          note: `${parseMetaData(metaData)?.neetcode ? 'NeetCode' : 'LeetCode'} does not publish an expected answer for this case — compare it yourself.`,
         });
         continue;
       }

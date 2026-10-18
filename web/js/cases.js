@@ -7,6 +7,8 @@
 //              printed above the editor would be lying about what it checked.
 //   Yours    — anything you added: a case you invented, or the exact input a
 //              submission failed on. Editable, deletable, and saved per problem.
+//              Cases the tutor added (source 'coach') belong here too: they are marked
+//              as the tutor's and carry its reason, and are yours to edit or delete.
 //
 // Copying an example gives you an editable version of it, which is the honest way to
 // get "let me tweak case 2" without pretending the example changed.
@@ -30,6 +32,13 @@ export function splitInput(input, perCase) {
 /** The blob the runner takes: every case in tab order, one line per parameter. */
 export function joinCases(cases) {
   return cases.map((c) => String(c.input ?? '').trim()).join('\n');
+}
+
+/** Who a case of your own came from, said once for the tab title and the foot. */
+export function caseOrigin(source) {
+  if (source === 'leetcode') return 'From a failed submission';
+  if (source === 'coach') return 'Added by your tutor';
+  return 'Yours';
 }
 
 /** A short label for a tab — the first value, which is almost always the interesting one. */
@@ -137,13 +146,12 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
           class: 'tc-tab' + (i === selected ? ' is-on' : '') + (mineHere ? ' is-mine' : ''),
           type: 'button',
           'aria-pressed': String(i === selected),
-          title: mineHere
-            ? (c.source === 'leetcode' ? 'From a failed submission' : 'Yours')
-            : "LeetCode's example",
+          title: mineHere ? caseOrigin(c.source) : "Published example",
           onclick: () => select(i),
         }, [
           el('span', { text: tabLabel(i) }),
           c.source === 'leetcode' ? el('span', { class: 'tc-mark', title: 'From a failed submission', text: '!' }) : null,
+          c.source === 'coach' ? el('span', { class: 'tc-mark tc-mark-coach', title: 'Added by your tutor', 'aria-label': 'Added by your tutor', text: '✦' }) : null,
         ]);
       }),
       runnable
@@ -221,20 +229,25 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
 
     const foot = el('div', { class: 'tc-foot' }, [
       isMine
-        ? el('span', { class: 'mono dim tc-origin', text: c.source === 'leetcode' ? 'From a failed submission' : 'Yours' })
-        : el('span', { class: 'mono dim tc-origin', text: "LeetCode's example — read only" }),
+        ? el('span', { class: 'mono dim tc-origin', text: caseOrigin(c.source) })
+        : el('span', { class: 'mono dim tc-origin', text: "Published example — read only" }),
       el('span', { class: 'spacer' }),
       isMine
         ? el('button', { class: 'ws-mini', type: 'button', text: 'Delete', onclick: () => removeCase(index) })
         : el('button', {
           class: 'ws-mini', type: 'button', text: 'Copy to a new case',
-          title: 'An editable copy, so the example itself stays what LeetCode published',
+          title: 'An editable copy, so the example itself stays what the problem published',
           onclick: () => addCase({ input: c.input, expected: c.expected }),
         }),
       onRun ? el('button', { class: 'ws-run tc-run', type: 'button', text: 'Run', onclick: onRun }) : null,
     ]);
 
-    replace(panelEl, [el('div', { class: 'tc-fields' }, [...fields, expected]), foot]);
+    // The tutor's reason for the case, as plain text under the fields it explains.
+    const why = isMine && c.source === 'coach' && String(c.note ?? '').trim()
+      ? el('p', { class: 'tc-why' }, [el('span', { class: 'tc-why-who', text: 'Why' }), el('span', { text: String(c.note).trim() })])
+      : null;
+
+    replace(panelEl, [el('div', { class: 'tc-fields' }, [...fields, expected]), why, foot]);
   }
 
   function paint() {
@@ -278,6 +291,21 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
     payload() {
       const list = all();
       return { testcases: joinCases(list), expected: list.map((c) => c.expected ?? null), count: list.length };
+    },
+    /**
+     * The server changed the cases (the tutor added, changed or removed one, or an undo
+     * put them back). Read them again and, given a case number as he sees it (1-based),
+     * put that case on screen.
+     *
+     * A save still waiting on its debounce is dropped rather than sent: sending it would
+     * write the list from before the tutor's change back over the tutor's change.
+     */
+    async reload({ select: number = null } = {}) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      await load();
+      if (Number.isInteger(number) && number >= 1) select(number - 1);
+      else select(selected);
     },
     /** The input a submission failed on, as a case you can now run against. */
     addFailingCase({ input, expected = null }) {

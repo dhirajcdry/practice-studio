@@ -260,7 +260,27 @@ Connector codes on this path: `NOT_PYTHON`, `STALE_CODE`, `EDITOR_HIDDEN`, `SIGN
 `JUDGE_TIMEOUT`, `JUDGE_UNREACHABLE`, `SUBMIT_IN_FLIGHT`, `BAD_REQUEST`, `CONNECTOR_ERROR`
 (mapped in `NEETCODE_KINDS`, `web/js/api.js`). **Run** still uses the local runner.
 
-Missing premium statements and Python signatures are fetched lazily from
+For NeetCode-judged problems, Studio uses NeetCode's own statement, Python starter,
+method names, parameter types and example inputs. Opening a premium problem lazily
+fetches its NeetCode question page once and caches only the problem definition in
+`STUDIO_HOME/cache/neetcode/`. Expected values are the `Output:` lines NeetCode prints
+in each example, used only when every example has one that reads as JSON and the
+statement does not accept several answers (Foreign Dictionary does, so its runs show
+output without a verdict). The statement's TeX becomes plain text and its hint and
+company-tag blocks are dropped. Meeting problems receive `Interval`
+objects with `.start` and `.end`; string encode/decode runs `decode(encode(strs))` on one
+`Solution` instance.
+
+Existing saved solutions are never rewritten. The workspace and submit panel flag a
+missing NeetCode method before any submission is sent. For a single renamed method,
+**Use NeetCode's name** changes only the definition's name in one undoable editor edit;
+parameter names and the body stay intact. Class-shape differences and detected list-based
+Interval code require manual edits and have no rename button. This textual guard catches
+signature mismatches and common old Interval code; it does not prove arbitrary Python
+implementations compatible with the judge.
+
+If NeetCode is Pro-only or its definition cannot be fetched, Studio keeps the existing
+LeetCode/doocs behavior. Missing premium statements and Python signatures are fetched lazily from
 [doocs/leetcode](https://github.com/doocs/leetcode) (CC BY-SA 4.0), with linked attribution
 under the statement. Successful fetches are cached permanently in
 `STUDIO_HOME/cache/premium-statements/`; a failed fetch leaves the premium notice.

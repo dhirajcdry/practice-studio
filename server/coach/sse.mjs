@@ -69,6 +69,11 @@ export class SseStream {
     return this.send('tool', { name, summary });
   }
 
+  /** Something the tutor did in Studio. See tools.mjs for the payload. */
+  action(payload) {
+    return this.send('action', payload);
+  }
+
   done(sessionId, stoppedReason) {
     return this.send('done', { sessionId, stoppedReason });
   }

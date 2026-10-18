@@ -13,11 +13,14 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-const MAX_CASES = 25;               // beyond this a local "quick run" is not quick
-const MAX_INPUT_CHARS = 8000;
-const MAX_EXPECTED_CHARS = 4000;
+export const MAX_CASES = 25;        // beyond this a local "quick run" is not quick
+export const MAX_INPUT_CHARS = 8000;
+export const MAX_EXPECTED_CHARS = 4000;
 
-export const SOURCES = new Set(['custom', 'leetcode']);
+// custom: typed by the learner. leetcode: the input a submission failed on. coach: added by
+// the tutor's add_case tool, with its reason in `note`.
+export const SOURCES = new Set(['custom', 'leetcode', 'coach']);
+export const MAX_NOTE_CHARS = 200;
 
 export function casesFile(root, slug) {
   return path.join(root, 'problems', slug, 'cases.json');
@@ -37,7 +40,7 @@ function clean(raw) {
     expected,
     source: SOURCES.has(raw.source) ? raw.source : 'custom',
     at: typeof raw.at === 'string' ? raw.at : null,
-    note: typeof raw.note === 'string' ? raw.note.slice(0, 200) : null,
+    note: typeof raw.note === 'string' ? raw.note.slice(0, MAX_NOTE_CHARS) : null,
   };
 }
 

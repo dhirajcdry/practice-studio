@@ -218,7 +218,17 @@ def build_tree(values, cls):
     return root
 
 
+class Interval:
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+
+
 def build_arg(value, type_str, classes):
+    if isinstance(type_str, str) and type_str.lower() == "interval[]":
+        if not isinstance(value, list) or any(not isinstance(pair, list) or len(pair) != 2 for pair in value):
+            raise BadNode("Intervals must be [start, end] pairs.")
+        return [Interval(pair[0], pair[1]) for pair in value]
     kind = node_kind(type_str)
     if kind is None:
         return value
@@ -647,6 +657,10 @@ def run_adapter(driver, cfg, user_module, target, values, classes, notes=None):
         encoded = target().serialize(root)
         return tree_to_array(target().deserialize(encoded))
 
+    if driver == "neetcode-codec-strings":
+        instance = target()
+        return encode(instance.decode(instance.encode(values[0])))
+
     if driver == "codec-strings":
         encoded = target().encode(values[0])
         return encode(target().decode(encoded))
@@ -697,7 +711,7 @@ def install_leetcode_namespace(adapter_driver=None):
     import builtins
     import collections
 
-    names = {}
+    names = {"Interval": Interval}
 
     import typing
     for name in (

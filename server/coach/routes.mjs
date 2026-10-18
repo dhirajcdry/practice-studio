@@ -1,9 +1,13 @@
 // Phase 3 route table. Wired into the router by the main agent — this module never
 // touches app.mjs or index.mjs, per the contract's integration rule.
 //
-//   POST /api/coach/message   → SSE: token / tool / done / error
+//   POST /api/coach/message   → SSE: token / tool / action / done / error
+//   POST /api/coach/actions/:id/result  → the page's answer to a browser-applied action
+//   POST /api/coach/actions/:id/undo    → undo a tutor test-case change
+//   POST /api/coach/tools/call          → Claude's MCP bridge (studio-mcp.mjs), per-turn token
 //   POST /api/sessions/event  → append one line to the session log
 //   GET  /api/sessions/:slug  → every session for a problem
+//   /api/coach/visuals/…      → pictures for ```image blocks (visuals.mjs)
 //
 // Handlers take (req, res, ctx). From ctx we use, all optionally:
 //   ctx.catalog        Phase 1 catalog, for the problem title/difficulty/track
@@ -14,9 +18,12 @@
 
 import path from 'node:path';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import { HttpError, sendJson, isSafeSlug } from '../http-util.mjs';
-import { HOME_ROOT } from '../paths.mjs';
+import { HOME_ROOT, PORT } from '../paths.mjs';
 import { readJsonBody, requireString } from './http.mjs';
 import { SseStream } from './sse.mjs';
 import { SessionLog, CoachSessionStore, EVENT_TYPES, isKnownEventType } from './sessions.mjs';
@@ -26,6 +33,10 @@ import { readCoachChoice, runProviderTurn, providerRoutes } from './provider.mjs
 import { readCoachMemory, withConversation, conversationTurns, prepareClaudeMemory, withClaudeMemory } from './provider-context.mjs';
 import { upkeepQueue } from './upkeep.mjs';
 import { CoachRuns } from './runs.mjs';
+import { visualRoutes } from './visuals.mjs';
+import { ActionStore, TOOL_SPECS, TOOL_NAMES, createToolSession } from './tools.mjs';
+
+const STUDIO_MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'studio-mcp.mjs');
 
 /** Everything Phase 3 needs, in one object so tests can point it at a temp workspace. */
 export class CoachService {
@@ -36,6 +47,8 @@ export class CoachService {
     // use, which is the real `claude`.
     binary = process.env.STUDIO_COACH_BINARY || null,
     spawnFn, env, timeoutMs, log = console,
+    // Studio tools for coach turns (tools.mjs). Off only for a test that wants the old shape.
+    tools = true, runner,
   } = {}) {
     this.root = root;
     this.binary = binary;
@@ -47,6 +60,12 @@ export class CoachService {
     this.coachSessions = new CoachSessionStore({ root });
     // Turns live here, not in the request that started them. See runs.mjs.
     this.runs = new CoachRuns();
+    this.tools = tools;
+    this.runner = runner;
+    // Tutor actions outlive their turn: an Undo or a late answer can arrive after it.
+    this.actions = new ActionStore();
+    // token → tool session, for exactly the life of one Claude turn.
+    this.toolTokens = new Map();
   }
 }
 
@@ -148,6 +167,9 @@ export async function handleCoachMessage(req, res, ctx) {
   const detach = svc.runs.attach(run, stream);
 
   let child = null;
+  let toolSession = null;
+  let toolToken = null;
+  let mcpConfig = null;
   // A disconnect is one viewer leaving, not a decision. Reloading the page, closing the
   // tab, losing the network — none of those mean "stop thinking". Only the Stop button,
   // the CLI finishing, and the timeout end a turn.
@@ -164,14 +186,23 @@ export async function handleCoachMessage(req, res, ctx) {
       await svc.sessionLog.appendEvent(slug, 'asked_coach', { message }).catch(() => {});
     }
 
+    const catalogEntry = catalogEntryFor(ctx, slug);
     const context = await gatherContext({
       root: svc.root,
       slug,
-      catalogEntry: catalogEntryFor(ctx, slug),
+      catalogEntry,
       sessionLog: svc.sessionLog,
       attemptId,
+      leetcode: ctx?.leetcode ?? null,
     });
-    let { prompt } = buildPrompt({ context, message, includeCode, review });
+    // The tutor's Studio tools, for this turn only. The memory upkeep step and design
+    // interviews never get one: they run elsewhere and are not given a session.
+    toolSession = svc.tools ? createToolSession({
+      root: svc.root, slug, catalogEntry, leetcode: ctx?.leetcode ?? null, store: svc.actions,
+      runs: svc.runs, run, sessionLog: svc.sessionLog, log: svc.log,
+      ...(svc.runner ? { runner: svc.runner } : {}),
+    }) : null;
+    let { prompt } = buildPrompt({ context, message, includeCode, review, tools: Boolean(toolSession) });
 
     if (newThread) await svc.coachSessions.forget(slug).catch(() => {});
     const stored = newThread ? null : await svc.coachSessions.read(slug);
@@ -183,8 +214,23 @@ export async function handleCoachMessage(req, res, ctx) {
     const resumeSessionId = choice.provider === 'codex' || previousProvider === 'claude' ? logicalSessionId : null;
     if (choice.provider === 'codex' || previousProvider !== choice.provider) {
       const memory = choice.provider === 'codex' ? await readCoachMemory(svc.root, slug) : [];
-      prompt = withConversation(prompt, turns, memory, { readOnly: choice.provider === 'codex' });
+      prompt = withConversation(prompt, turns, memory, { readOnly: choice.provider === 'codex', studioTools: Boolean(toolSession) });
     }
+
+    // Claude reaches the same tools through a stdio MCP server it starts from a per-turn
+    // config file; the token in it is valid only until this turn ends.
+    if (toolSession && choice.provider === 'claude') {
+      toolToken = crypto.randomBytes(32).toString('hex');
+      svc.toolTokens.set(toolToken, toolSession);
+      const port = req.socket?.localPort || PORT;
+      mcpConfig = await writeMcpConfig(`http://127.0.0.1:${port}/api/coach/tools/call`, toolToken);
+    }
+    // The config file holds the turn's token, so it goes before the turn reports done.
+    const endTools = async () => {
+      toolSession?.dispose();
+      if (toolToken) svc.toolTokens.delete(toolToken);
+      await mcpConfig?.dispose().catch(() => {});
+    };
 
     const memory = choice.provider === 'claude' ? await prepareClaudeMemory(svc.root, slug, resumeSessionId) : null;
     if (memory) prompt = withClaudeMemory(prompt, memory.memory);
@@ -226,6 +272,7 @@ export async function handleCoachMessage(req, res, ctx) {
           ask: message,
           answer,
           tools: toolLines,
+          ...(toolSession?.actions.length ? { actions: toolSession.actions } : {}),
           ...(stopped ? { stopped: true } : {}),
         },
       });
@@ -244,6 +291,10 @@ export async function handleCoachMessage(req, res, ctx) {
         prompt,
         tools: 'Read,Glob',
         resumeSessionId,
+        ...(toolSession ? {
+          toolSession, toolSpecs: TOOL_SPECS,
+          ...(mcpConfig ? { mcpConfigPath: mcpConfig.file, studioTools: TOOL_NAMES } : {}),
+        } : {}),
         binary: svc.binary,
         env: svc.env,
         spawnFn: svc.spawnFn,
@@ -252,6 +303,8 @@ export async function handleCoachMessage(req, res, ctx) {
           finalSessionId = id;
         },
         onToken: (text) => { first ??= Date.now() - started; answer += text; svc.runs.token(run, text); },
+        // Codex reports Studio tool calls here too (codex-cli.mjs), so both providers'
+        // calls show as tool lines.
         onTool: (name, summary) => {
           toolLines.push(`${name} ${summary ?? ''}`.trim());
           svc.runs.tool(run, name, summary);
@@ -259,6 +312,7 @@ export async function handleCoachMessage(req, res, ctx) {
         onDone: (sessionId, stoppedReason) => {
           timing();
           finishing = (async () => {
+            await endTools();
             const id = sessionId ?? finalSessionId;
             if (id) await svc.coachSessions.remember(slug, id, choice).catch(() => {});
             await fileTurn(id, false);
@@ -274,6 +328,7 @@ export async function handleCoachMessage(req, res, ctx) {
         onError: (message) => {
           timing();
           finishing = (async () => {
+            await endTools();
             // A session id that no longer resumes must not poison every future turn.
             if (/resume the earlier conversation/i.test(message)) {
               await svc.coachSessions.forget(slug).catch(() => {});
@@ -291,6 +346,7 @@ export async function handleCoachMessage(req, res, ctx) {
       child.exited?.then(async () => { timing(); if (finishing) await finishing.catch(() => {}); resolve(); }, resolve);
     });
     // Stopped: onDone never ran, so this is the only chance to keep what arrived.
+    await endTools();
     await fileTurn(finalSessionId, true);
     svc.runs.finish(run, { status: 'stopped', sessionId: finalSessionId, stoppedReason: 'stopped' });
   } catch (err) {
@@ -300,9 +356,28 @@ export async function handleCoachMessage(req, res, ctx) {
       message: 'The coach could not be started because of an internal error. Everything else in Studio still works.',
     });
   } finally {
+    // Every exit path: no tool session or token outlives its turn, and no config file
+    // naming a token is left on disk.
+    toolSession?.dispose();
+    if (toolToken) svc.toolTokens.delete(toolToken);
+    await mcpConfig?.dispose().catch(() => {});
     res.off?.('close', onClose);
     stream.end();
   }
+}
+
+/** The per-turn MCP config for Claude Code: one stdio server, "studio". Private dir, 0600. */
+async function writeMcpConfig(url, token) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-mcp-'));
+  const file = path.join(dir, 'mcp.json');
+  const config = { mcpServers: { studio: {
+    type: 'stdio',
+    command: process.execPath,
+    args: [STUDIO_MCP],
+    env: { STUDIO_TOOLS_URL: url, STUDIO_TOOLS_TOKEN: token },
+  } } };
+  await fsp.writeFile(file, JSON.stringify(config), { mode: 0o600 });
+  return { file, dispose: () => fsp.rm(dir, { recursive: true, force: true }) };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -339,6 +414,54 @@ export async function handleCoachStop(req, res, ctx) {
     throw new HttpError(400, 'BAD_REQUEST', 'Stopping a turn needs either "runId" or "slug".');
   }
   return sendJson(res, 200, { stopped: svc.runs.stop({ id, slug }) });
+}
+
+// ---------------------------------------------------------------------------------------
+// POST /api/coach/actions/:id/result — the page did (or could not do) a browser action
+// POST /api/coach/actions/:id/undo   — put a tutor case change back
+// POST /api/coach/tools/call         — Claude's MCP bridge, authenticated by turn token
+// ---------------------------------------------------------------------------------------
+
+export async function handleActionResult(req, res, ctx) {
+  const svc = serviceFor(ctx);
+  const body = await readJsonBody(req);
+  if (typeof body.ok !== 'boolean') {
+    throw new HttpError(400, 'BAD_REQUEST', '"ok" is required and must be true or false.');
+  }
+  const outcome = svc.actions.answer(String(ctx?.params?.id ?? ''), {
+    ok: body.ok,
+    message: typeof body.message === 'string' ? body.message : '',
+  });
+  if (outcome === 'unknown') throw new HttpError(404, 'ACTION_NOT_FOUND', 'That tutor action is no longer held by Studio.');
+  if (outcome === 'settled') throw new HttpError(409, 'ACTION_SETTLED', 'That tutor action was already answered, or its time to answer ran out.');
+  return sendJson(res, 200, { ok: true });
+}
+
+export async function handleActionUndo(req, res, ctx) {
+  const svc = serviceFor(ctx);
+  const { status, body } = await svc.actions.undo(String(ctx?.params?.id ?? ''));
+  if (status !== 200) {
+    const code = status === 404 ? 'ACTION_NOT_FOUND' : status === 409 ? 'UNDO_CONFLICT' : 'NOT_UNDOABLE';
+    throw new HttpError(status, code, body.message);
+  }
+  return sendJson(res, 200, body);
+}
+
+export async function handleToolCall(req, res, ctx) {
+  const svc = serviceFor(ctx);
+  const body = await readJsonBody(req);
+  // Loopback-only is the router's (checkLoopback); the token is what ties a call to the
+  // one live turn that may make it.
+  const session = typeof body.token === 'string' && body.token ? svc.toolTokens.get(body.token) : null;
+  if (!session) {
+    throw new HttpError(403, 'TOOLS_TOKEN_INVALID', 'That Studio tools token is not valid; the turn it belonged to has ended.');
+  }
+  if (typeof body.tool !== 'string' || !body.tool) {
+    throw new HttpError(400, 'BAD_REQUEST', '"tool" is required.');
+  }
+  const args = body.arguments && typeof body.arguments === 'object' && !Array.isArray(body.arguments) ? body.arguments : {};
+  const result = await session.call(body.tool, args);
+  return sendJson(res, 200, { ok: result.ok === true, text: String(result.text ?? '') });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -428,10 +551,14 @@ async function readMeta(root, slug) {
 
 export const routes = {
   ...providerRoutes,
+  ...visualRoutes,
   'POST /api/coach/message': handleCoachMessage,
   'GET /api/coach/runs': handleCoachRuns,
   'GET /api/coach/runs/:id': handleCoachRunStream,
   'POST /api/coach/stop': handleCoachStop,
+  'POST /api/coach/actions/:id/result': handleActionResult,
+  'POST /api/coach/actions/:id/undo': handleActionUndo,
+  'POST /api/coach/tools/call': handleToolCall,
   'GET /api/problems/:slug/history': handleHistory,
   'POST /api/sessions/event': handleSessionEvent,
   'GET /api/sessions/:slug': handleGetSessions,

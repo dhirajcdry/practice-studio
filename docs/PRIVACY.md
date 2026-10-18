@@ -9,6 +9,7 @@ contact LeetCode. The local server is bound to `127.0.0.1`.
 | Feature | Local work | Network use |
 | --- | --- | --- |
 | Catalog, editor, themes, whiteboard | Committed catalog and vendored browser assets | No CDN needed |
+| NeetCode problem definitions | Only slug, name, description, Python starter, example inputs, test case type, Pro-only flag and message in `STUDIO_HOME/cache/neetcode/` | Opening an uncached premium problem fetches its NeetCode question page once. Solutions, article bodies and videos are discarded at parse time and never cached, logged, shown or sent to the coach |
 | Problem statements and starters | Cached in `STUDIO_HOME/cache/leetcode/` | First open of an uncached problem calls LeetCode |
 | Python run | Temporary driver and code; case comparison | Runner sandbox denies network when enabled on macOS |
 | AI coaching | Local CLI process, context assembly, session files | CLI sends the prompt/context to its configured service |
@@ -110,3 +111,14 @@ Codex receives the current turn, bounded prior chat history, and relevant local 
 excerpts. Its ephemeral thread has no enabled coaching tools or memory-file writes.
 Studio saves the resulting chat locally. Claude keeps its existing scoped memory tools.
 Model selection contains no credentials and lives in `STUDIO_HOME/coach-settings.json`.
+MCP servers from your own Codex config are turned off by name for Studio's threads.
+
+### Coach pictures
+
+When the coach writes an ````image` block, the browser may ask for it to be drawn,
+depending on the coach-pictures setting. The picture description, which the coach wrote
+from your conversation, is sent to OpenAI through your Codex sign-in and spends your
+Codex image quota. No code, notes or history go with it. The picture is stored locally
+as `STUDIO_HOME/problems/<slug>/visuals/<id>.<ext>`, beside a `.json` file holding the
+description it was drawn from. Codex also keeps its own copy under
+`~/.codex/generated_images`; Studio doesn't manage or delete that folder.

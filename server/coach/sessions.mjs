@@ -28,6 +28,10 @@ export const EVENT_TYPES = Object.freeze([
   'attempt_started',
   'attempt_resumed',
   'attempt_ended',
+  // The tutor acting through its Studio tools (server/coach/tools.mjs). Kept apart from
+  // ran_locally/run_result so a tutor run is never counted as one of the learner's.
+  'coach_ran_code',
+  'coach_edited_code',
 ]);
 
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);

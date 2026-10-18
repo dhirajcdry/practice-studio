@@ -15,3 +15,6 @@ node_modules/
 session.json
 
 .DS_Store
+
+# Playwright MCP page dumps left by Codex runs
+.playwright-mcp/

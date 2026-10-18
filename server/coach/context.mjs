@@ -9,8 +9,9 @@
 // Two rules govern everything below:
 //
 //  1. Anything the user or a third party wrote is fenced and labelled UNTRUSTED DATA. The
-//     coach reads LeetCode HTML and NeetCode markdown; that text can contain something
-//     shaped like an instruction, and it must be treated as material to reason about.
+//     coach gets the problem statement Studio cached from LeetCode (never a live page, never
+//     a NeetCode article); that text, like the learner's own, can contain something shaped
+//     like an instruction, and it must be treated as material to reason about.
 //  2. The fence marker is a fresh random token per turn, so nothing inside a fenced block
 //     can close its own fence and start issuing instructions.
 
@@ -20,6 +21,7 @@ import crypto from 'node:crypto';
 
 import { unifiedDiff } from './diff.mjs';
 import { readProblemSessionEvents } from '../attempts/assemble.mjs';
+import { readCachedProblem, statementText, paramNames } from './problem-cache.mjs';
 
 const MAX_BUFFER_CHARS = 60_000;
 const MAX_DIFF_CHARS = 20_000;
@@ -276,10 +278,10 @@ async function recentTranscripts(problemDir, sinceMs, limit = 6, named = null, a
   return kept;
 }
 
-export async function gatherContext({ root, slug, catalogEntry, sessionLog, attemptId = null, now = Date.now() }) {
+export async function gatherContext({ root, slug, catalogEntry, sessionLog, attemptId = null, leetcode = null, now = Date.now() }) {
   const problemDir = path.join(root, 'problems', slug);
 
-  const [notesStat, buffer, bufferStat, snapshot, session, lastRun, lastVerdict] = await Promise.all([
+  const [notesStat, buffer, bufferStat, snapshot, session, lastRun, lastVerdict, cachedProblem] = await Promise.all([
     statOrNull(path.join(problemDir, 'NOTES.md')),
     readFileOrNull(path.join(problemDir, 'solution.py')),
     statOrNull(path.join(problemDir, 'solution.py')),
@@ -287,6 +289,8 @@ export async function gatherContext({ root, slug, catalogEntry, sessionLog, atte
     sessionLog.currentSessionEvents(slug).catch(() => ({ id: null, events: [] })),
     sessionLog.latestEventOfType(slug, 'run_result').catch(() => null),
     sessionLog.latestEventOfType(slug, 'verdict').catch(() => null),
+    // The statement, from the content cache only. A coach turn never fetches.
+    readCachedProblem({ leetcode, root, slug, catalogEntry }),
   ]);
 
   const events = session.events ?? [];
@@ -318,6 +322,11 @@ export async function gatherContext({ root, slug, catalogEntry, sessionLog, atte
     timeToFirstKeystrokeMs:
       firstAt !== null && firstKeystroke ? Date.parse(firstKeystroke.at) - firstAt : null,
     runCount: events.filter((e) => e.type === 'ran_locally').length,
+    // The tutor's own run_code calls. Counted apart: they are not the learner's runs.
+    coachRunCount: events.filter((e) => e.type === 'coach_ran_code').length,
+    problem: cachedProblem
+      ? { cached: true, params: paramNames(cachedProblem.metaData), statement: statementText(cachedProblem.statementHtml) }
+      : { cached: false, params: [], statement: '' },
     revealedSolution: events.some((e) => e.type === 'revealed_solution'),
     revealedArticle: events.some((e) => e.type === 'revealed_article'),
     lastRun: summariseRunResult(lastRun),
@@ -352,6 +361,12 @@ function eventLine(event) {
     case 'revealed_solution': return 'opened the reference solution';
     case 'revealed_article': return 'opened the article';
     case 'asked_coach': return 'asked you a question';
+    case 'coach_ran_code': {
+      if (d.errorKind) return `you (the tutor) ran his saved code — it did not run (${d.errorKind})`;
+      if (Number.isFinite(d.passed) && Number.isFinite(d.total)) return `you (the tutor) ran his saved code — ${d.passed} of ${d.total} passed`;
+      return 'you (the tutor) ran his saved code';
+    }
+    case 'coach_edited_code': return `you (the tutor) edited his code${d.why ? `: ${d.why}` : ''}`;
     default: return null; // ran_locally is implied by its run_result; do not double it
   }
 }
@@ -402,6 +417,59 @@ function buildTimeline(c) {
   return lines.join('\n');
 }
 
+/**
+ * What the coach can draw, and when a drawing earns its place. Studio renders ```viz and
+ * ```mermaid itself and asks Codex for ```image pictures (see visuals.mjs); this section is
+ * the coach's whole knowledge of that, so it goes into every turn, review or not.
+ */
+export const VISUALS_GUIDE = `## VISUALS — you can show, not just tell
+Studio draws fenced blocks in your reply. Use one when a picture makes the next step obvious faster than a paragraph would. Most replies need none; never more than two visuals in one reply, and at most one \`\`\`image.
+A picture obeys the same no-spoilers rule as your words: it must not reveal more of the approach than you would say at this point.
+
+1. \`\`\`viz — an exact illustration that Studio draws instantly from JSON. Use it for anything with real values: the example input, what the user's own code does, a step-by-step trace. Values must be the real ones from the problem or the user's code — never invented.
+   Types and their fields:
+   graph  {"nodes":[ids], "edges":[[from,to,weight?]], "directed":true, "path":[ids]}
+   array  {"values":[...]} or {"rows":[{"name":"dp","values":[...]}]}, "pointers":{"l":0,"r":3}, "window":[lo,hi]
+   grid   {"cells":[[...]], "rowLabels":[...], "colLabels":[...], "arrows":[[[r1,c1],[r2,c2]]], "path":[[r,c]]}
+   tree   {"level":[3,9,20,null,null,15,7]}  (LeetCode level order)
+   list   {"values":[...], "pointers":{"curr":1}, "cycleTo":1}
+   stack  {"items":[...bottom→top], "label":"stack"}      queue {"items":[...front→back], "label":"min-heap (cost,node)"}
+   panels {"panels":[spec, spec]} — e.g. the graph beside its queue or heap
+   Any type also takes "title" and highlights: "active", "done", "bad", "dim" (node ids; indices; [r,c] pairs; tree node values) and "labels" {key:"short note"}.
+   Add "frames" for a step-through: each frame overrides top-level fields for that step and has a "note" saying what changed (for panels, "panels":[partial, partial] merges by position). Frames do not accumulate; restate every highlight a step needs. Keep it small: ≤ 12 nodes, ≤ 16 cells per row, ≤ 15 frames.
+   Example:
+   \`\`\`viz
+   {"type":"graph","title":"Example 1, k = 1","nodes":["0","1","2","3"],"edges":[["0","1",100],["1","2",100],["2","0",100],["1","3",600],["2","3",200]],
+    "frames":[{"active":["0"],"labels":{"0":"0"},"note":"Start at src with cost 0, 0 stops used."},
+              {"active":["1"],"done":["0"],"path":["0","1"],"labels":{"0":"0","1":"100"},"note":"One flight reaches 1 for 100."}]}
+   \`\`\`
+2. \`\`\`mermaid — a plain flowchart (flowchart TD, one node per step, no subgraphs or styling) for control flow and decisions.
+3. \`\`\`image — a picture generated by Codex's image model: {"prompt":"...","alt":"..."}. It takes 30–60 seconds and spends the user's image quota, so use it rarely and only for intuition and memory: a metaphor that makes the pattern stick, an analogy scene, a recap the user will remember in an interview. Never for exact state, numbers or code (generated images garble text; use viz). Write the prompt as a concrete scene in a clean, flat, editorial style with at most four words of in-image text.
+
+When a visual tends to earn its place:
+- Stuck before starting: draw Example 1 as its structure (graph, grid, array, tree) with nothing solved, then ask what they notice.
+- A wrong answer: trace the user's code, not the correct one, on the failing input with frames, and stop on the step where it diverges.
+- An invariant: an array with pointers or a window, or a DP grid with arrows to the cells a cell depends on.
+- Graph search (BFS, Dijkstra, Bellman-Ford): panels with the graph and the queue or heap, one frame per pop or round.
+- Recursion on trees: the tree with the current call active and what each call returns as labels.
+- After it is solved, or in an attempt review: one small recap trace of the key step, and optionally one \`\`\`image memory hook for the pattern.
+- The user says draw, show, visualise or trace: answer with a viz (or mermaid). The user asks for a picture, an image, or something to help them remember: answer with an \`\`\`image.`;
+
+/**
+ * What the coach can do in Studio through its tools (tools.mjs). Only in a turn that has
+ * them: telling a model about abilities it was not given invites it to claim actions.
+ */
+export const ABILITIES_GUIDE = `## YOUR ABILITIES IN STUDIO
+You are the learner's guide, and you can act in Studio through your studio tools, not just talk. Each action appears in the chat as a receipt they can undo.
+- get_state: the live picture (cases, last run, marks). Use it before acting if anything may have changed.
+- add_case / update_case / remove_case: manage their test cases. Add the edge case you want them to think about instead of describing it (empty input, k = 0, duplicates, cycles, limits), each with a one-line why. Mark expected values you are not certain of in the why.
+- run_code: run their saved code on their cases and read the real output. Verify before you claim: run it rather than guess what their code does, and quote what actually came back.
+- mark_lines: point at the line that matters (tone bug for the faulty line, hint for where to look, good for what is right). Prefer pointing to rewriting.
+- edit_code: change their code only when they ask you to (write the boilerplate, fix this, refactor) or clearly hand you control. Make the smallest edit that does what they asked, and say what you changed.
+- open_panel: open the reference solution or article only when they ask for it.
+- save_note: remember something durable about how they approach this problem.
+Keep coaching honest: an action is not an explanation. After acting, say in a sentence what you did and what to look at.`;
+
 /** A fence marker no fenced content can plausibly contain or reproduce. */
 export function newFenceToken() {
   return `STUDIO-DATA-${crypto.randomBytes(9).toString('hex').toUpperCase()}`;
@@ -415,7 +483,7 @@ function fenced(token, label, body) {
  * Build the full prompt for one turn.
  * @returns {{ prompt: string, fenceToken: string }}
  */
-export function buildPrompt({ context, message, includeCode = true, review = false, fenceToken = newFenceToken() }) {
+export function buildPrompt({ context, message, includeCode = true, review = false, tools = false, fenceToken = newFenceToken() }) {
   const c = context;
   const entry = c.catalogEntry ?? {};
   const lines = [];
@@ -450,7 +518,8 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
       ' `solution.py`, `attempts/`, and anything under `sessions/`. Those belong to the app.' +
       ' `solution.py` in particular is the user\'s own work — reading it is the point; writing' +
       ' it would be solving the problem for them. The permission system also refuses these,' +
-      ' so an attempt costs the user a denial they have to look at.',
+      ' so an attempt costs the user a denial they have to look at.' +
+      (tools ? ' Your edit_code tool is the one sanctioned way to change their code, and only when they ask.' : ''),
   );
   lines.push('');
 
@@ -481,6 +550,7 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
   const ttfk = describeElapsed(c.timeToFirstKeystrokeMs);
   if (ttfk) lines.push(`Time before the first keystroke: ${ttfk}`);
   lines.push(`Local runs this sitting: ${c.runCount}`);
+  if (c.coachRunCount) lines.push(`Your own run_code runs this sitting (not his): ${c.coachRunCount}`);
   if (c.revealedSolution) lines.push('The user has revealed the reference solution for this problem.');
   if (c.revealedArticle) lines.push('The user has revealed the written article for this problem.');
   if (c.lastVerdict) lines.push(`Last submission verdict: ${c.lastVerdict}`);
@@ -514,6 +584,24 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
   lines.push('');
 
   // ---- Fenced data ------------------------------------------------------------------
+  // The statement first: without it the coach works from memory of a title, which is
+  // how a variant problem gets coached as the famous one.
+  const problem = c.problem ?? { cached: false };
+  if (problem.cached && problem.statement) {
+    lines.push(
+      fenced(
+        fenceToken,
+        'UNTRUSTED DATA — the problem statement Studio cached from LeetCode',
+        [problem.params?.length ? `Parameters, in order: ${problem.params.join(', ')}` : null, problem.statement]
+          .filter(Boolean).join('\n\n'),
+      ),
+    );
+    lines.push('');
+  } else {
+    lines.push('Problem statement: Studio has no cached copy of it, so work from the title and the code.');
+    lines.push('');
+  }
+
   // Speech first: it is the closest thing to knowing what he was thinking, and it frames
   // everything below it.
   // A review is scoped to its own attempt; a normal turn sees the whole sitting.
@@ -570,8 +658,10 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
 
   // ---- The actual instruction --------------------------------------------------------
   if (review) {
-    lines.push(...reviewInstruction(c, fenceToken));
+    lines.push(...reviewInstruction(c, fenceToken, tools));
   } else {
+    if (tools) lines.push(ABILITIES_GUIDE, '');
+    lines.push(VISUALS_GUIDE, '');
     lines.push('## THE USER SAYS');
     lines.push(message);
   }
@@ -592,7 +682,7 @@ export function buildPrompt({ context, message, includeCode = true, review = fal
  * it after changing approach" are different findings and only the continuous read
  * separates them.
  */
-function reviewInstruction(c, fenceToken) {
+function reviewInstruction(c, fenceToken, tools = false) {
   const lines = [];
   const a = c.attempt;
   const spokeFor = a?.narration?.seconds
@@ -613,6 +703,8 @@ function reviewInstruction(c, fenceToken) {
     lines.push('');
   }
 
+  if (tools) lines.push(ABILITIES_GUIDE, '');
+  lines.push(VISUALS_GUIDE, '');
   lines.push('## THIS ATTEMPT IS OVER — REVIEW IT');
   lines.push('');
   lines.push(

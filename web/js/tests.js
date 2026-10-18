@@ -16,6 +16,7 @@ import {
   shapeSubmitResult, renderSubmitResult, submitLine, shapeFailure,
   formatPercentile, submissionUrlOf, submissionsUrlOf,
 } from './submit.js';
+import { parseViz, drawViz, resolveFrame, buildTree, layoutFrames } from './viz.js';
 import { shapeTranscription, describeMicError, formatTake, phraseDecision, SILENCE_MS, MIN_PHRASE_MS, MAX_PHRASE_MS } from './voice.js';
 
 const out = document.getElementById('out');
@@ -838,6 +839,160 @@ check('the shared states name NeetCode on the NeetCode path',
 check('every NeetCode state carries a real message',
   ['nc_no_connector', 'nc_old_connector', 'nc_signed_out', 'nc_not_python', 'nc_stale_code', 'nc_timeout', 'nc_unreachable']
     .every(kind => shapeSubmitResult({ ok: false, kind }, 'graph-valid-tree', NC).message.length > 40));
+
+group('Coach illustrations (viz)');
+
+const vz = spec => parseViz(typeof spec === 'string' ? spec : JSON.stringify(spec));
+check('bad JSON is refused with a plain reason',
+  !vz('{"type": "graph",').ok && /not valid JSON/.test(vz('{"type": "graph",').reason), vz('{').reason);
+check('an unknown type is refused and named',
+  !vz({ type: 'pie' }).ok && /"pie"/.test(vz({ type: 'pie' }).reason), vz({ type: 'pie' }).reason);
+check('a missing type is refused', !vz({ nodes: ['A'] }).ok && /type/.test(vz({ nodes: ['A'] }).reason));
+check('52 nodes are refused with the count and the limit', (() => {
+  const r = vz({ type: 'graph', nodes: Array.from({ length: 52 }, (_, i) => `n${i}`) });
+  return !r.ok && r.reason.includes('52 nodes') && r.reason.includes('limit is 40');
+})(), vz({ type: 'graph', nodes: Array.from({ length: 52 }, (_, i) => `n${i}`) }).reason);
+check('other limits hold: rows, grid size, tree, frames, panels, bytes', [
+  { type: 'array', rows: Array.from({ length: 7 }, () => ({ values: [1] })) },
+  { type: 'array', values: Array(41).fill(0) },
+  { type: 'grid', cells: Array.from({ length: 21 }, () => [0]) },
+  { type: 'tree', level: Array(64).fill(1) },
+  { type: 'stack', items: [1], frames: Array(41).fill({}) },
+  { type: 'panels', panels: Array(4).fill({ type: 'stack', items: [] }) },
+  { type: 'array', values: [1], frames: [{ values: Array(41).fill(0) }] },
+  { type: 'array', values: ['x'.repeat(41 * 1024)] },
+].every(spec => !vz(spec).ok));
+check('a frame over the limit is named by its step', /Step 2/.test(vz({ type: 'array', values: [1], frames: [{}, { values: Array(41).fill(0) }] }).reason || ''));
+check('nested panels are refused', !vz({ type: 'panels', panels: [{ type: 'panels', panels: [] }] }).ok);
+check('a malformed edge is refused rather than silently dropped', !vz({ type: 'graph', nodes: ['A'], edges: [['A']] }).ok);
+
+check('string node shorthand becomes {id, label}; numbers too', (() => {
+  const r = vz({ type: 'graph', nodes: ['A', 7, { id: 'B', label: 'B (src)' }] });
+  return r.ok && JSON.stringify(r.spec.nodes) === JSON.stringify([
+    { id: 'A', label: 'A' }, { id: '7', label: '7' }, { id: 'B', label: 'B (src)' }]);
+})());
+check('edge arrays become objects, the third item the label', (() => {
+  const r = vz({ type: 'graph', edges: [['A', 'B', 5], ['B', 'C'], { from: 'A', to: 'C', weight: 2 }] });
+  return r.ok && r.spec.edges[0].label === '5' && r.spec.edges[1].label === '' && r.spec.edges[2].label === '2';
+})());
+check('long strings are cut to 40 characters', (() => {
+  const r = vz({ type: 'stack', items: ['x'.repeat(100)] });
+  return r.ok && r.spec.items[0].length === 40 && r.spec.items[0].endsWith('…');
+})());
+check('unknown keys are ignored, not errors', (() => {
+  const r = vz({ type: 'queue', items: [1], colour: 'red', onclick: 'x' });
+  return r.ok && !('colour' in r.spec) && !('onclick' in r.spec);
+})());
+
+const framed = vz({
+  type: 'array', values: [1, 2, 3], active: [0], pointers: { i: 0 },
+  frames: [{ active: [1], note: 'one' }, { values: [9, 9], note: 'two' }, {}],
+}).spec;
+check('resolveFrame: a frame key replaces the base key (shallow)', (() => {
+  const f0 = resolveFrame(framed, 0);
+  return JSON.stringify(f0.active) === '["1"]' && f0.values.join() === '1,2,3' && f0.note === 'one' && !('frames' in f0);
+})());
+check('resolveFrame: frames are not cumulative', (() => {
+  const f1 = resolveFrame(framed, 1);
+  const f2 = resolveFrame(framed, 2);
+  return JSON.stringify(f1.active) === '["0"]' && f1.values.join() === '9,9'
+    && f2.values.join() === '1,2,3' && JSON.stringify(f2.active) === '["0"]' && !f2.note;
+})());
+check('resolveFrame: panels merge by index, null keeps the panel', (() => {
+  const spec = vz({
+    type: 'panels',
+    panels: [{ type: 'array', values: [1, 2], active: [0] }, { type: 'stack', items: ['a'] }],
+    frames: [{ panels: [null, { items: ['a', 'b'] }] }, { panels: [{ active: [1] }] }],
+  }).spec;
+  const f0 = resolveFrame(spec, 0);
+  const f1 = resolveFrame(spec, 1);
+  return f0.panels[0].values.join() === '1,2' && JSON.stringify(f0.panels[0].active) === '["0"]'
+    && f0.panels[1].items.join() === 'a,b' && f0.panels[1].type === 'stack'
+    && JSON.stringify(f1.panels[0].active) === '["1"]' && f1.panels[0].values.join() === '1,2'
+    && f1.panels[1].items.join() === 'a';
+})());
+check('resolveFrame: a frame cannot change the type', resolveFrame(vz({ type: 'stack', items: [], frames: [{ type: 'graph' }] }).spec, 0).type === 'stack');
+
+check('buildTree follows LeetCode level order (children of null not listed)', (() => {
+  const t = buildTree(['1', null, '2', '3']);
+  return t.val === '1' && t.left === null && t.right.val === '2' && t.right.left.val === '3';
+})());
+
+const everyType = {
+  graph: { type: 'graph', nodes: ['A', 'B'], edges: [['A', 'B', 3]] },
+  array: { type: 'array', values: [1, 2, 3], pointers: { l: 0, r: 2 }, window: [0, 1] },
+  grid: { type: 'grid', cells: [[1, null], [2, 3]], arrows: [[[0, 0], [1, 1]]], path: [[0, 0], [1, 0]] },
+  tree: { type: 'tree', level: [3, 9, 20, null, null, 15, 7] },
+  list: { type: 'list', values: [1, 2, 3], cycleTo: 0 },
+  stack: { type: 'stack', items: [1, 2] },
+  queue: { type: 'queue', items: [] },
+  panels: { type: 'panels', panels: [{ type: 'array', values: [1] }, { type: 'queue', items: [2] }] },
+};
+for (const [name, spec] of Object.entries(everyType)) {
+  check(`drawViz draws a ${name} as one sized svg`, (() => {
+    const node = drawViz(vz(spec).spec, { idPrefix: `t-${name}` });
+    const svgs = node.querySelectorAll('.ill-canvas svg');
+    const s = svgs[0];
+    return node.classList.contains('viz') && svgs.length === 1 && s.getAttribute('viewBox')
+      && Number(s.getAttribute('width')) > 0 && s.querySelector('title') && s.childElementCount > 1;
+  })());
+}
+check('directed edges get arrowhead markers with ids from idPrefix', (() => {
+  const node = drawViz(vz(everyType.graph).spec, { idPrefix: 'mk7' });
+  const marker = node.querySelector('marker');
+  const pathEl = node.querySelector('path[marker-end]');
+  return marker && marker.id.startsWith('mk7-') && pathEl.getAttribute('marker-end') === `url(#${marker.id})`;
+})());
+
+const SCRIPT_LABEL = scripted('alert(1)');
+check('"<script>" in a label is text content only, never an element', (() => {
+  const node = drawViz(vz({ type: 'graph', title: SCRIPT_LABEL, nodes: [SCRIPT_LABEL, '<img src=x onerror=alert(1)>'],
+    frames: [{ note: SCRIPT_LABEL }] }).spec);
+  return !node.querySelector('script, img, foreignObject')
+    && node.textContent.includes(SCRIPT_LABEL) && node.querySelector('.viz-note').textContent === SCRIPT_LABEL
+    && [...node.querySelectorAll('*')].every(e => [...e.attributes].every(a => !a.name.startsWith('on')));
+})());
+
+check('no stepper without frames', !drawViz(vz(everyType.array).spec).querySelector('.viz-stepper'));
+check('with frames: a stepper starts at step 1, and next/prev move the counter and redraw', (() => {
+  const node = drawViz(vz({ type: 'array', values: [1, 2], frames: [{ active: [0], note: 'a' }, { active: [1], note: 'b' }, { note: 'c' }] }).spec);
+  const count = node.querySelector('.viz-count');
+  const before = node.querySelector('svg');
+  const first = count.textContent === 'Step 1 of 3' && node.querySelector('.viz-prev').disabled;
+  node.querySelector('.viz-next').click();
+  const second = count.textContent === 'Step 2 of 3' && node.querySelector('.viz-note').textContent === 'b'
+    && node.querySelector('svg') !== before && node.querySelectorAll('svg').length === 1;
+  node.querySelector('.viz-prev').click();
+  return first && second && count.textContent === 'Step 1 of 3' && count.getAttribute('aria-live') === 'polite';
+})());
+check('arrow keys on the stepper step and do not reach the page', (() => {
+  const node = drawViz(vz({ type: 'stack', items: [], frames: [{}, {}] }).spec);
+  const bar = node.querySelector('.viz-stepper');
+  let leaked = false;
+  const spy = () => { leaked = true; };
+  node.addEventListener('keydown', spy);
+  bar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  node.removeEventListener('keydown', spy);
+  return bar.getAttribute('tabindex') === '0' && node.querySelector('.viz-count').textContent === 'Step 2 of 2' && !leaked;
+})());
+
+check('highlights and labels pointing at nothing are ignored silently', (() => {
+  const plain = vz({ type: 'graph', nodes: ['A', 'B'], edges: [['A', 'B']] });
+  const ghost = vz({ type: 'graph', nodes: ['A', 'B'], edges: [['A', 'B']], active: ['Z'], bad: ['Q'], labels: { Z: 'nope' }, path: ['Z', 'Y'] });
+  const a = drawViz(plain.spec, { idPrefix: 'g1' }).querySelector('svg');
+  const b = drawViz(ghost.spec, { idPrefix: 'g1' }).querySelector('svg');
+  return ghost.ok && a.outerHTML === b.outerHTML && !b.textContent.includes('nope');
+})());
+check('index highlights out of range are ignored on arrays', (() => {
+  const r = vz({ type: 'array', values: [1, 2], active: [5, 'x', -1], labels: { 9: 'far' }, pointers: { p: 9 } });
+  const s = drawViz(r.spec).querySelector('svg');
+  return r.ok && !s.textContent.includes('far') && !s.textContent.includes('p');
+})());
+check('frames keep one drawing size, so stepping never reflows', (() => {
+  const r = vz({ type: 'stack', items: [1], frames: [{ items: [1, 2, 3] }, { items: [] }] });
+  const scenes = layoutFrames(r.spec.frames.map((_, i) => resolveFrame(r.spec, i)));
+  return scenes[0].width === scenes[1].width && scenes[0].height === scenes[1].height;
+})());
 
 const headline = document.getElementById('headline');
 headline.textContent = fail === 0 ? `All ${pass} tests pass` : `${fail} of ${pass + fail} tests FAILED`;

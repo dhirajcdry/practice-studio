@@ -12,10 +12,10 @@ import { premiumCaseDescription } from '../premium-cases.mjs';
 // `metaData` / `descriptionHtml` in the request body (that is how the tests drive it).
 
 import { HttpError, sendJson } from '../http-util.mjs';
-import { parseMetaData, classifyProblem } from './meta.mjs';
+import { parseMetaData } from './meta.mjs';
 import { createRunControl, runCode, DEFAULT_TIMEOUT_MS } from './run.mjs';
-import { buildCases } from './testcases.mjs';
-import { readCases, writeCases, linesPerCase, whyNotRunnable } from './cases.mjs';
+import { readCases, writeCases } from './cases.mjs';
+import { problemCases, whyCasesRejected } from './case-list.mjs';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -52,7 +52,7 @@ export async function readJsonBody(req) {
 }
 
 /** metaData + description, cache-first. Returns null when we truly cannot get them. */
-async function loadProblemContext(ctx, slug, body) {
+export async function loadProblemContext(ctx, slug, body) {
   const fromBody = parseMetaData(body.metaData);
   if (fromBody) {
     return {
@@ -183,45 +183,23 @@ export async function handleTestcases(req, res, ctx) {
     });
   }
 
-  const shape = classifyProblem(problem.metaData, { pythonStub: problem.pythonStub, slug });
-  if (shape.kind === 'unsupported') {
+  const list = problemCases(problem, slug);
+  if (!list.runnable) {
     // `runnable: false` so the editor states the reason and stops there. Offering to add a
     // case for a problem the runner cannot drive is an invitation to type one out and then
     // be told, on Run, that it was never going to work.
-    return sendJson(res, 200, { cases: [], extra: [], runnable: false, reason: shape.message });
+    return sendJson(res, 200, { cases: [], extra: [], runnable: false, reason: list.reason });
   }
-
-  const perCase = linesPerCase(shape);
-  const built = buildCases({
-    perCase,
-    testcases: problem.exampleTestcases,
-    descriptionHtml: problem.descriptionHtml,
-    // So the Expected box shows the same value the run will compare against, rather than
-    // LeetCode's prose form of it.
-    prefixExpected: shape.answerFrom?.sizeFromReturn === true,
-  });
-  const examples = built.ok
-    ? built.cases.map((c, index) => ({
-      index,
-      input: c.input ?? null,
-      // Absent rather than guessed: LeetCode publishes expected outputs only inside the
-      // description prose, and some problems simply do not have one to scrape.
-      expected: c.expected ?? null,
-      source: 'example',
-    }))
-    : [];
 
   const mine = ctx?.homeRoot ? await readCases({ root: ctx.homeRoot, slug }) : [];
 
   return sendJson(res, 200, {
-    cases: examples,
+    cases: list.examples,
     extra: mine,
     runnable: true,
-    // The parameter names, so the editor can label the boxes the way the signature does
-    // instead of calling them "line 1" and "line 2".
-    params: shape.kind === 'design' ? ['calls', 'arguments'] : shape.params.map((p) => p.name ?? p),
-    perCase,
-    ...(built.ok ? {} : { reason: built.message }),
+    params: list.params,
+    perCase: list.perCase,
+    ...(list.reason ? { reason: list.reason } : {}),
   });
 }
 
@@ -242,16 +220,8 @@ export async function handleSaveTestcases(req, res, ctx) {
   // Refused where it was typed, with the reason, rather than accepted here and failed
   // later as a confusing grouping error across the whole run.
   const problem = await loadProblemContext(ctx, slug, body);
-  if (problem) {
-    const shape = classifyProblem(problem.metaData, { pythonStub: problem.pythonStub, slug });
-    if (shape.kind !== 'unsupported') {
-      const perCase = linesPerCase(shape);
-      for (const [i, c] of wanted.entries()) {
-        const why = whyNotRunnable(c?.input ?? '', perCase);
-        if (why) throw new HttpError(400, 'BAD_TESTCASE', `Case ${i + 1}: ${why}`);
-      }
-    }
-  }
+  const why = whyCasesRejected(problem, slug, wanted);
+  if (why) throw new HttpError(400, 'BAD_TESTCASE', why);
 
   const saved = await writeCases({ root, slug, cases: wanted });
   return sendJson(res, 200, { cases: saved });

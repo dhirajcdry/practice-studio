@@ -378,3 +378,19 @@ test('attempt review spans sittings and includes both tagged takes', async () =>
     assert.equal(assembled.speech.length, 2);
   } finally { await fsp.rm(root, { recursive: true, force: true }); }
 });
+
+test('both normal and review turns teach the coach to draw, just before the instruction', async () => {
+  const { root, log } = await workspace();
+  const context = await gatherContext({ root, slug: 'two-sum', sessionLog: log });
+  const { prompt } = buildPrompt({ context, message: 'show me' });
+  const visuals = prompt.indexOf('## VISUALS');
+  assert.ok(visuals > prompt.indexOf('## CURRENT CONTEXT'));
+  assert.ok(visuals < prompt.lastIndexOf('\n## THE USER SAYS'));
+  assert.ok(prompt.includes('```viz') && prompt.includes('```image') && prompt.includes('```mermaid'));
+  assert.match(prompt, /no-spoilers rule/);
+
+  const review = buildPrompt({ context, message: '', review: true }).prompt;
+  const at = review.indexOf('## VISUALS');
+  assert.ok(at > 0 && at < review.lastIndexOf('\n## THIS ATTEMPT IS OVER'));
+  assert.match(review, /attempt review: one small recap trace/);
+});

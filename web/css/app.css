@@ -1467,3 +1467,30 @@ body.coach-open .coach-runs{bottom:20px}
 .sub-verdict{transition:opacity var(--dur-fade) var(--ease-out),transform var(--dur-fade) var(--ease-out)}
 .sub-verdict + .sub-msg{transition:opacity var(--dur-fade) var(--ease-out) 40ms}
 @starting-style{.sub-verdict{opacity:0;transform:translateY(6px)}.sub-verdict + .sub-msg{opacity:0}}
+
+/* ---- receipts: what the tutor did in Studio, one compact line each ----
+   One quiet list per reply, hairlines between rows: a log of actions, not a stack of cards. */
+.cmsg-receipts:empty{display:none}
+.cmsg-receipts{display:block;margin-bottom:6px;border:1px solid var(--hair-10);border-radius:var(--r-sm);background:var(--card)}
+.cmsg-receipt + .cmsg-receipt{border-top:1px solid var(--hair-06)}
+.cmsg-receipt{
+  display:flex;align-items:center;flex-wrap:wrap;gap:1px 8px;min-width:0;min-height:30px;
+  padding:4px 6px 4px 9px;font:500 12px/1.45 var(--ui);color:var(--ink-70);
+}
+.cr-glyph{flex:none;width:14px;text-align:center;color:var(--accent)}
+.cr-text{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cr-state{flex:none;padding-right:3px;font:500 10.5px/1.4 var(--ui);color:var(--ink-50)}
+.cr-undo{
+  flex:none;padding:1px 8px;border:1px solid var(--hair-20);border-radius:var(--r-sm);
+  font:500 11px/1.5 var(--ui);color:var(--ink-70);background:transparent;
+}
+.cr-undo:hover{color:var(--ink);border-color:var(--ink-35)}
+.cr-undo:disabled{opacity:.6;cursor:default}
+.cr-undo:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.cr-why{flex:0 0 100%;padding:0 4px 2px 22px;font:400 11.5px/1.45 var(--ui);color:var(--ink-50);overflow-wrap:anywhere}
+.cmsg-receipt.is-pending{color:var(--ink-50)}
+.cmsg-receipt.is-pending .cr-glyph{color:var(--ink-35)}
+.cmsg-receipt.is-failed .cr-glyph,.cmsg-receipt.is-failed .cr-state{color:var(--hard)}
+.cmsg-receipt.is-undone{color:var(--ink-35)}
+.cmsg-receipt.is-undone .cr-text{text-decoration:line-through;text-decoration-color:var(--ink-35)}
+.cmsg-receipt.is-undone .cr-glyph{color:var(--ink-35)}

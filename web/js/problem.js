@@ -347,7 +347,7 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
 
   // Only LeetCode marks premium; a mirrored statement still renders normally.
   // catalog.isPro is NeetCode-pro, a different thing entirely, and is never used here.
-  if (content?.isPaidOnly === true && !content.descriptionHtml) {
+  if (content?.isPaidOnly === true && !content.descriptionHtml && !content.descriptionMarkdown) {
     target.append(stateBlock({
       tone: 'warn',
       head: 'This one is LeetCode premium',
@@ -366,7 +366,7 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
     return;
   }
 
-  if (!content || content.descriptionHtml === null || content.descriptionHtml === undefined) {
+  if (!content || (!content.descriptionMarkdown && content.descriptionHtml == null)) {
     target.append(stateBlock({
       tone: 'err',
       head: 'No description came back',
@@ -376,7 +376,7 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
     return;
   }
 
-  if (isBlankHtml(content.descriptionHtml)) {
+  if (!content.descriptionMarkdown && isBlankHtml(content.descriptionHtml)) {
     target.append(stateBlock({
       tone: 'warn', head: 'The description had nothing readable in it',
       body: ['Every element in the statement was stripped as unsafe or empty. Read it on LeetCode instead.'],
@@ -398,13 +398,13 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
   }
 
   const rich = el('div', { class: 'rich' });
-  rich.append(sanitizeHtml(content.descriptionHtml));
+  rich.append(content.descriptionMarkdown ? renderMarkdown(content.descriptionMarkdown) : sanitizeHtml(content.descriptionHtml));
   dropSpacerParagraphs(rich);
   target.append(rich);
   if (content.statementSource) {
     target.append(el('p', { class: 'dim', style: 'font-size:11px' }, el('a', {
       href: content.statementSource.url, target: '_blank', rel: 'noopener noreferrer',
-      text: 'Statement via doocs/leetcode (CC BY-SA 4.0)',
+      text: content.descriptionMarkdown ? 'Statement via NeetCode' : 'Statement via doocs/leetcode (CC BY-SA 4.0)',
     })));
   }
 }

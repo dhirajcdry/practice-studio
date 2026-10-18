@@ -17,12 +17,16 @@
 //   --include-partial-messages  the incremental text deltas; without it, text arrives in
 //                               one lump at the end of each block and "streaming" is a lie
 //   --verbose                   required for stream-json under -p
-//   --strict-mcp-config         no --mcp-config given, so this disables every MCP server.
-//                               The coach has no business talking to Gmail or Notion.
+//   --strict-mcp-config         only servers named by our own --mcp-config load; without
+//                               one, every MCP server is off. The coach has no business
+//                               talking to Gmail or Notion.
+//   --mcp-config <file>         (coach turns only) the per-turn "studio" server
+//                               (studio-mcp.mjs): Studio's own tools, allowed by name as
+//                               mcp__studio__<tool>. See tools.mjs.
 //   --permission-mode manual    the default. Explicit because the alternative that would
 //                               "just make it work" is bypassPermissions, and that is
-//                               settled: never. The coach reads LeetCode HTML and
-//                               third-party markdown; those are untrusted inputs, and an
+//                               settled: never. The coach can Read the statement Studio
+//                               cached from LeetCode; that is an untrusted input, and an
 //                               untrusted input plus unchecked tool use is the whole risk.
 //   --tools                     the built-in tool set, restricted at the source. Bash,
 //                               WebFetch, WebSearch and Task are simply absent.
@@ -120,14 +124,19 @@ export function permissionArgs(root) {
  * @param {string|null} o.resumeSessionId session to resume, or null to start a new one
  * @param {string} [o.newSessionId] uuid to use when starting fresh
  */
-export function buildArgs({ root, resumeSessionId, newSessionId, model, tools = 'Read,Glob,Write,Edit', forkSession = false, noSessionPersistence = false }) {
+/** Claude Code's name for one of Studio's tools served by the "studio" MCP server. */
+export const studioToolName = (name) => `mcp__studio__${name}`;
+
+export function buildArgs({ root, resumeSessionId, newSessionId, model, tools = 'Read,Glob,Write,Edit', forkSession = false, noSessionPersistence = false, mcpConfigPath = null, studioTools = [] }) {
   const { allow, deny } = permissionArgs(root);
+  const studio = mcpConfigPath ? studioTools.map(studioToolName) : [];
   const args = [
     '-p',
     '--output-format',
     'stream-json',
     '--include-partial-messages',
     '--verbose',
+    ...(mcpConfigPath ? ['--mcp-config', mcpConfigPath] : []),
     '--strict-mcp-config',
     '--permission-mode',
     'manual',
@@ -135,6 +144,7 @@ export function buildArgs({ root, resumeSessionId, newSessionId, model, tools = 
     tools,
     '--allowedTools',
     ...allow.filter(rule => tools.split(',').includes(rule.split('(')[0])),
+    ...studio,
     '--disallowedTools',
     ...deny,
   ];
@@ -177,7 +187,9 @@ export function interpretLine(obj, state) {
   if (obj.type === 'assistant') {
     for (const block of obj.message?.content ?? []) {
       if (block?.type === 'tool_use') {
-        out.push({ kind: 'tool', name: block.name, summary: summariseToolUse(block, state.root) });
+        // Studio's own tools show under their plain names, as they do for Codex.
+        const name = String(block.name ?? '').replace(/^mcp__studio__/, '');
+        out.push({ kind: 'tool', name, summary: summariseToolUse(block, state.root) });
       }
     }
     return out;
@@ -286,6 +298,7 @@ export function runCoachTurn({
   binary = 'claude',
   model = null,
   tools, forkSession = false, noSessionPersistence = false,
+  mcpConfigPath = null, studioTools = [],
   env = process.env,
   spawnFn = spawn,
   timeoutMs = TURN_TIMEOUT_MS,
@@ -311,7 +324,7 @@ export function runCoachTurn({
     onDone(sessionId, stoppedReason);
   };
 
-  const args = buildArgs({ root, resumeSessionId, model, tools, forkSession, noSessionPersistence });
+  const args = buildArgs({ root, resumeSessionId, model, tools, forkSession, noSessionPersistence, mcpConfigPath, studioTools });
 
   try {
     child = spawnFn(binary, args, {

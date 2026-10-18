@@ -21,6 +21,7 @@
 import { streamCoachMessage, attachCoachRun, listCoachRuns, stopCoachRun } from './api.js';
 
 import { createSeenRuns } from './seen-runs.js';
+import { applyAction, mergeAction } from './coach-actions.js';
 let storage;
 try { storage = localStorage; } catch { /* private browsing */ }
 const seenRuns = createSeenRuns(storage);
@@ -78,7 +79,7 @@ export function onRunsChange(fn) {
 }
 
 /**
- * Watch one problem's run. The callback fires for 'token', 'tool' and 'done'.
+ * Watch one problem's run. The callback fires for 'token', 'tool', 'action' and 'done'.
  * @returns {() => void} detach — this does NOT stop the run
  */
 export function watch(slug, fn) {
@@ -126,6 +127,9 @@ function newRun({ slug, title, message, kind, lead, startedAt = new Date().toISO
     startedAt,
     text: '',
     tools: [],
+    // What the tutor did in Studio, by action id, in arrival order. Latest status wins.
+    // Kept across a re-attach: the replay merges into it rather than starting over.
+    actions: new Map(),
     done: false,
     seen: false,
     dismissed: false,   // the note was waved away; the turn itself is untouched
@@ -148,6 +152,20 @@ function consume(run, open) {
     },
     onToken: (chunk) => { run.text += chunk; emit(run, 'token'); },
     onTool: (name, summary) => { run.tools.push({ name, summary }); emit(run, 'tool'); },
+    onAction: (action) => {
+      const id = String(action.id);
+      run.actions.set(id, mergeAction(run.actions.get(id), action));
+      emit(run, 'action');
+      // Applied here, not in the panel, so it happens whether or not the coach panel is
+      // open — and once, however many views are watching.
+      applyAction(action).then((outcome) => {
+        if (!outcome) return;
+        run.actions.set(id, mergeAction(run.actions.get(id), {
+          id, status: outcome.ok ? 'done' : 'failed', ok: outcome.ok, message: outcome.message,
+        }));
+        emit(run, 'action');
+      }).catch(() => {});
+    },
   };
 
   open(handlers).then((result) => {

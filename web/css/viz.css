@@ -1,0 +1,42 @@
+/* Coach illustrations (web/js/viz.js).
+
+   The drawing itself sits on the illustrator's paper surface (.ill-canvas, ink on
+   paper in every theme). The stepper under it is part of the card, so it is themed
+   like every other small control: the same hairline, radius and type as .ptoggle. */
+
+.viz{display:flex;flex-direction:column;min-width:0}
+.viz:has(.viz-stepper) .viz-canvas{margin-bottom:8px}
+
+.viz-stepper{
+  display:flex;flex-direction:column;gap:6px;min-width:0;
+  margin:0 11px 11px;padding:2px;border-radius:var(--r-md);
+}
+.viz-stepper:focus{outline:none}
+.viz-stepper:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.viz-controls{display:flex;align-items:center;gap:6px;min-width:0}
+
+.viz-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:28px;min-width:28px;padding:0 9px;flex:none;
+  border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card);color:var(--ink-70);
+  font:500 11px/1 var(--ui);letter-spacing:0;text-transform:none;white-space:nowrap;
+  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease;
+}
+.viz-prev,.viz-next{padding:0;width:28px;font-size:17px;line-height:1}
+.viz-btn:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
+.viz-btn:disabled{opacity:.38;cursor:default}
+.viz-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Wide enough for "❚❚ Pause" so the row does not shift when playback toggles. */
+.viz-play{min-width:72px}
+.viz-play[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
+
+.viz-count{
+  margin-left:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font:500 11px/1.4 var(--ui);color:var(--ink-50);font-variant-numeric:tabular-nums;
+}
+.viz-note{font-size:12.5px;line-height:1.5;color:var(--ink-70);overflow-wrap:anywhere;padding:0 1px}
+
+/* The drawing never animates between steps; with reduced motion the buttons do not ease either. */
+@media (prefers-reduced-motion:reduce){.viz-btn{transition:none}}
+body.motion-off .viz-btn{transition:none}
