@@ -17,8 +17,9 @@ const selected = {
   curveball: 'Two customers reserve the last place at the same time.',
   rationale: 'Practise state ownership and validation at the requested target level; use recorded evidence where available.',
 };
-const asked = selection ? JSON.stringify(selected) : review ? 'Try these cases:\n\n- `[3,3], 6` → `[0,1]`: a repeated value.\n- `[-1,-2], -3` → `[0,1]`: negatives.\n\nAt 5:40 the failing run was the moment to ask.'
+const asked = selection ? JSON.stringify(selected)
   : debrief ? (process.env.FAKE_INTERVIEW_LEGACY_DEBRIEF ? '## Hire signal\nLean hire — The approach was clear.' : fixtureReport())
+  : review ? 'Try these cases:\n\n- `[3,3], 6` → `[0,1]`: a repeated value.\n- `[-1,-2], -3` → `[0,1]`: negatives.\n\nAt 5:40 the failing run was the moment to ask.'
   : prompt.includes('The problem for this interview is:') ? (prompt.match(/The problem for this interview is: ([^\n]+)/)?.[1] || 'Design a museum ticket reservation system.')
   : prompt.includes('State the problem in one or two sentences') ? 'Find two numbers that sum to the target. Read the problem and talk me through your approach. [[phase: approach]]'
     : prompt.includes('A safe interjection is due') ? 'It passed. What is the time complexity? [[phase: followup]]'

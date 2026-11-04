@@ -1,6 +1,6 @@
-import { createWorkspaceTools, readAgentMemory, INTERVIEW_POLICY } from '../coach/workspace-tools.mjs';
+import { createWorkspaceTools, readAgentMemory, INTERVIEW_POLICY, LIVE_MOCK_POLICY } from '../coach/workspace-tools.mjs';
 import { createSessionContext } from '../coach/session-context.mjs';
-import { contextPacket } from '../coach/context-packet.mjs';
+import { buildConversation } from '../coach/native-sessions.mjs';
 import { readLearningContext, refreshLearning } from '../learning/index.mjs';
 import { readLearnerProfile, learnerContext } from '../learning/profile.mjs';
 import { handoffRecords, contextReader, excerpt, evidenceRecords } from '../coach/context-policy.mjs';
@@ -8,7 +8,7 @@ import { readProblem } from '../learning/selection.mjs';
 import { DESIGN_TOPICS, topicFor } from './topics.mjs';
 import { buildDesignReport } from './report.mjs';
 import { askRecordedInterview } from '../interview/routes.mjs';
-import { pairFollowups } from '../interview/review.mjs';
+import { pairFollowups, reviewSystemPrompt, reviewConversationKey, reviewTarget, reviewContextSections, reviewWorkspace } from '../interview/review.mjs';
 import { data, debriefPrompt as structuredDebrief } from '../interview/prompt.mjs';
 import { newState as codingState } from '../interview/state.mjs';
 // The system design interview, over HTTP.
@@ -30,7 +30,7 @@ import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { readJsonBody } from '../coach/http.mjs';
 import { SseStream } from '../coach/sse.mjs';
-import { readCoachChoice, runProviderTurn } from '../coach/provider.mjs';
+import { readCoachChoice, runProviderTurn, stoppedProviderExit } from '../coach/provider.mjs';
 import { readCoachMemory } from '../coach/provider-context.mjs';
 import { upkeepQueue } from '../coach/upkeep.mjs';
 import { sceneToGraph } from './graph.mjs';
@@ -107,35 +107,35 @@ function idFrom(body, ctx) {
  */
 async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId = null, system = null, resume = null, stream, onFinished, kind = 'turn' }) {
   const reservation = svc.live.get(id);
-  const priorState = await svc.store.readState(id);
   const savedState = await svc.store.readState(id);
-  const notes = !savedState?.topicSlug ? excerpt((await readCoachMemory(svc.root,null,{files:[`design/${id}/NOTES.md`],cap:8000}))[0]?.text,4000) : '';
-  const learner = await readLearnerProfile(svc.root, { excludeInterviewId: id,discipline:'design' });
-  prompt = 'Use past assessments to choose useful probes, not to assume today’s performance or volunteer answers. Grade this mock on its own evidence.\n' + data('Cross-problem learner history', learnerContext(learner,{discipline:'design',slug:savedState?.topicSlug})) + '\n' + prompt;
-  if (savedState?.problem) prompt = data('Private scenario facts and potential curveball; answer only what is asked and keep the curveball until due', savedState.problem) + '\n' + prompt;
-  if (notes) prompt = data('Saved learning notes; private context, do not volunteer answers in a mock', notes) + '\n' + prompt;
+  const debriefing = kind === 'debrief';
+  const notes = debriefing && !savedState?.topicSlug ? excerpt((await readCoachMemory(svc.root,null,{files:[`design/${id}/NOTES.md`],cap:8000}))[0]?.text,4000) : '';
   const topic = savedState?.topicSlug || topicFor(savedState?.prompt || '').slug;
-  prompt = data('Recorded agent assistance; never attribute it to the candidate', (await svc.store.readTurns(id)).filter(t => t.kind === 'tool_action' && t.action.status === 'done').map(t => ({ at: t.at, tool: t.action.tool, summary: t.action.summary }))) + '\n' + prompt;
-  const sessionRecords=()=>svc.store.readTurns(id);
-  const query=(await sessionRecords()).findLast(t=>t.said)?.said || '';
-  const sessionContext=createSessionContext({root:svc.root,target:`design:${id}`,records:sessionRecords});
-  prompt = contextPacket({instructions:INTERVIEW_POLICY,reference:[['Problem',savedState?.prompt]],sections:[
-    ['Agent memory',await readAgentMemory(svc.root,topic,{query})],['Session decisions and unresolved questions',await sessionContext.read(query)],
-  ]})+'\n\n'+prompt;
-  const currentContext = [
-    ['Problem',savedState?.prompt],['Private scenario',savedState?.problem],
-    ['Learner history',learnerContext(learner,{discipline:'design',slug:topic})],
-    ['Agent memory',await readAgentMemory(svc.root,topic,{query})],['Saved notes',notes],
-    ['Session decisions and unresolved questions',await sessionContext.read(query)],
-    ['Current whiteboard',savedState?.graph || sceneToGraph((await svc.store.readLatestScene(id))?.elements || [])],
-    ['Interview metadata',{mode:savedState?.mode,phase:savedState?.phase,minutes:savedState?.minutes,gaps:savedState?.gaps,curveballDone:savedState?.curveballDone}],
-  ];
-  prompt += '\n\n' + data('Full saved interview record',handoffRecords(evidenceRecords(await sessionRecords()),{query}));
-  const agentTools = await createWorkspaceTools({ root: svc.root, slug: topic, target: `design:${id}`, req: stream.res.req, stream, kind: kind === 'debrief' ? 'review' : 'board',
-    getState: async () => ({ elements: (await svc.store.readLatestScene(id))?.elements || [] }),
-    readContext:contextReader({session:()=>svc.store.readTurns(id),scenes:()=>svc.store.readScenes(id)}),
-    sessionContext, sessionRecords,
-    onAction: action => svc.store.appendTurn(id, { kind: 'tool_action', at: new Date().toISOString(), action: structuredClone(action), elapsedMs: Math.max(0, Date.now() - savedState.startedAt) }),
+  const sessionRecords = () => svc.store.readTurns(id);
+  const records = await sessionRecords();
+  const query = records.findLast(t => t.said)?.said || '';
+  const sessionContext = createSessionContext({root:svc.root,target:`design:${id}`,records:sessionRecords});
+  const latestScene = await svc.store.readLatestScene(id);
+  const graph = latestScene ? sceneToGraph(latestScene.elements || []) : savedState.graph || sceneToGraph([]);
+  const reviewState = {...savedState,graph,statement:savedState.prompt,discipline:'design'};
+  const agentMemory = debriefing ? await readAgentMemory(svc.root,topic,{query}) : null;
+  const learner = debriefing ? learnerContext(await readLearnerProfile(svc.root,{excludeInterviewId:id,discipline:'design'}),{discipline:'design',slug:topic,query}) : null;
+  const currentContext = debriefing
+    ? reviewContextSections({state:reviewState,turns:records,agentMemory,learnerHistory:learner,notes})
+    : [['Problem',savedState.prompt],['Private scenario facts',savedState.problem],
+      ['Session decisions and unresolved questions',await sessionContext.delivery(query)],
+      ['Current whiteboard',graph],
+      ['Interview metadata',{mode:savedState.mode,phase:savedState.phase,minutes:savedState.minutes,gaps:savedState.gaps,curveballDone:savedState.curveballDone}],
+      ['Recorded agent assistance',records.filter(t => t.kind === 'tool_action' && t.action.status === 'done').map(t => ({at:t.at,tool:t.action.tool,summary:t.action.summary}))]];
+  const conversation = buildConversation({key:debriefing ? reviewConversationKey('design',id) : `design:${id}`,requestId,message,context:currentContext,
+    bootstrap:{instructions:debriefing ? '' : LIVE_MOCK_POLICY,sessionTools:!debriefing,
+      sections:debriefing ? [] : [['Full saved interview record',handoffRecords(evidenceRecords(records.filter(t => !requestId || t.requestId !== requestId)),{query})]]}});
+  prompt = conversation.bootstrapPrompt;
+  const agentTools = await createWorkspaceTools({root:svc.root,slug:topic,target:debriefing ? reviewTarget('design',id) : `design:${id}`,req:stream.res.req,stream,kind:debriefing ? 'review' : 'board',liveMock:!debriefing,
+    getState:debriefing ? async () => reviewWorkspace(reviewState) : async () => ({elements:(await svc.store.readLatestScene(id))?.elements || []}),
+    readContext:contextReader(debriefing ? {session:sessionRecords,followups:()=>svc.store.readFollowups(id)} : {session:sessionRecords,scenes:()=>svc.store.readScenes(id)}),
+    ...(!debriefing ? {sessionContext} : {}),sessionRecords,
+    onAction:action => svc.store.appendTurn(id,{kind:'tool_action',...(debriefing ? {reviewActivity:true} : {}),at:new Date().toISOString(),action:structuredClone(action),elapsedMs:Math.max(0,Date.now()-savedState.startedAt)}),
   });
   const started = Date.now();
   let first = null;
@@ -203,8 +203,8 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
     root: svc.root,
     discipline:'design', coachingMode: kind === 'debrief' ? 'review' : 'mock',
     binary: svc.binary,
-    systemPrompt:system || systemPrompt({level:savedState.level,minutes:savedState.minutes}), prompt,
-    conversation:{key:`design:${id}`,requestId,bootstrapPrompt:prompt,message,context:currentContext},
+    systemPrompt:debriefing ? reviewSystemPrompt() : system || systemPrompt({level:savedState.level,minutes:savedState.minutes}), prompt,
+    conversation,
     resumeSessionId: resume,
     tools: '', ...agentTools.options,
     onToken: (text) => {
@@ -375,9 +375,9 @@ async function handleTurn(req, res, ctx) {
       await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'candidate', requestId, said, phase: state.phase, elapsedMs: Math.max(0, now - state.startedAt) });
     }
     await svc.store.writeState(id, state);
-    const turn = buildTurn(state, { said, graph, previousGraph: svc.lastGraph.get(id) ?? null, now });
+    const turn = buildTurn(state, { said, graph, previousGraph: svc.lastGraph.get(id) ?? null, now, includeWorkspace:false });
     const resume = null;
-    const prompt = resume ? turn.text : `${rehydratePrompt(state, history)}\n\n---\n\n${turn.text}`;
+    const prompt = turn.text;
     const stream = new SseStream(res);
     if (requestId) stream.send('accepted', { requestId, said });
     await streamTurn(svc, {
@@ -447,7 +447,7 @@ async function handleDone(req, res, ctx) {
   if (savedScenes.length) state.graph = sceneToGraph(savedScenes.at(-1).elements);
   const evidence = await svc.store.readTurns(id);
   const reportState = { ...codingState({ slug: 'system-design', startedAt: state.startedAt }), statement: state.prompt, discipline: 'design', targetLevel: state.level, minutes: state.minutes, endedAt: Date.now() };
-  const turn = structuredDebrief(reportState, evidence, Date.now()) + '\n' + data('Final whiteboard graph', state.graph || 'The board was empty.');
+  const turn = structuredDebrief(reportState, evidence, Date.now(), {includeEvidence:false});
   const prompt = turn; // The structured debrief already includes the timestamped record.
   const stream = new SseStream(res);
   if (requestId) stream.send('accepted', { requestId, said });
@@ -457,7 +457,7 @@ async function handleDone(req, res, ctx) {
     prompt,
     system: resume ? null : systemPrompt({ level: state.level, minutes: state.minutes }),
     kind: 'debrief',
-    message: structuredDebrief(reportState, [], Date.now()), requestId,
+    message: turn, requestId,
     resume,
     stream,
     onFinished: async (asked, { broke }) => {
@@ -492,6 +492,7 @@ async function handleStop(req, res, ctx) {
   const child = svc.live.get(id);
   if (child) { child.kill(); child.detachWaiters?.(); }
   svc.live.delete(id);
+  await stoppedProviderExit(child);
   return sendJson(res, 200, { stopped: Boolean(child) });
 }
 
@@ -629,7 +630,12 @@ async function handleAsk(req, res, ctx) {
     root: svc.root, binary: svc.binary, run: runProviderTurn, live: svc.reviewLive,
     buildReport: buildDesignReport,
     store: {
-      readState: async (_, id) => { const state = await svc.store.readState(id); return state && { ...state, statement: state.prompt }; },
+      readState: async (_, id) => {
+        const state = await svc.store.readState(id);
+        if (!state) return null;
+        const learningNotes = !state.topicSlug ? excerpt((await readCoachMemory(svc.root,null,{files:[`design/${id}/NOTES.md`],cap:8000}))[0]?.text,4000) : '';
+        return {...state,statement:state.prompt,discipline:'design',topicSlug:state.topicSlug || topicFor(state.prompt).slug,learningNotes};
+      },
       readTurns: (_, id) => svc.store.readTurns(id),
       readFollowups: (_, id) => svc.store.readFollowups(id),
       appendFollowup: (_, id, entry) => svc.store.appendFollowup(id, entry),

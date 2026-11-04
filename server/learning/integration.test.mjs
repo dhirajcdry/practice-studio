@@ -111,18 +111,18 @@ test('mode persists during pause without changing identity, clock or prior trans
   await assert.rejects(f.call(interviewRoutes, 'POST', '/api/interview/mode', { ...x.body, mode: 'typed' }), error => ['ENDED','FINISHED'].includes(error.code));
 });
 
-test('live interviewer receives another topic assessment and notes with provenance but excludes current session history', async t => {
+test('live interviewer receives no past assessment or notes; the debrief does', async t => {
   const f = await fixture(t), other = await seedOtherTopic(f), x = await f.start();
   await f.call(interviewRoutes, 'POST', '/api/interview/turn', { ...x.body, said: 'I will track remaining capacity', code: 'capacity = {}', requestId: 'live-answer' });
-  const prompt = f.calls.at(-1).prompt, history = historicalProfile(prompt);
+  const live = f.calls.at(-1).prompt;
+  assert.doesNotMatch(live, /OTHER_TOPIC_ASSESSMENT|OTHER_TOPIC_NOTE|NOTES\.md|CURRENT_SESSION_ASSESSMENT/);
+  assert.equal(f.calls.at(-1).tools, '');
+  await f.call(interviewRoutes, 'POST', '/api/interview/done', { ...x.body, code: 'capacity = {}', requestId: 'live-debrief' });
+  const debrief = f.calls.at(-1).prompt, history = historicalProfile(debrief);
   const prior = history.assessments.find(a => a.summary === 'OTHER_TOPIC_ASSESSMENT');
   assert.ok(prior); assert.equal(prior.source, `tracks/lld/${other.source}`);
   assert.equal(prior.dimensions.find(d => d.name === 'Correctness').evidence[0].quote, historicalQuote);
-  assert.equal(prior.dimensions.find(d => d.name === 'Correctness').evidence[0].provenance, 'quote');
-  assert.ok(prompt.includes('OTHER_TOPIC_ASSESSMENT'));
-  assert.doesNotMatch(prompt, /OTHER_TOPIC_NOTE|NOTES\.md/);
   assert.ok(!history.assessments.some(a => a.slug === x.slug && a.summary === 'CURRENT_SESSION_ASSESSMENT'));
-  assert.equal(f.calls.at(-1).tools, '');
 });
 
 test('post-interview review has cross-topic evidence but keeps the current report out of historical judgements', async t => {

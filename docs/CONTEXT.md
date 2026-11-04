@@ -20,7 +20,8 @@ add `--apply` to perform it after stopping Studio. Keep a backup before applying
 Interactive turns use persistent native conversations managed by
 `server/coach/native-sessions.mjs`; see [NATIVE-CONVERSATIONS.md](NATIVE-CONVERSATIONS.md)
 for the complete identity, delivery, compaction, expiry and recovery contract. First turns
-and provider switches bootstrap from Studio evidence. Same-provider turns append the
+and provider switches bootstrap from Studio evidence using the shared `buildConversation`
+helper, which renders the acknowledged context once. Same-provider turns append the
 current message and changed workspace/context sections; they do not resend the transcript.
 Typed/voice switching keeps the same conversation. Logical Studio IDs and actual native
 IDs remain separate. Three-day idle expiry archives resumability, never learner evidence.
@@ -43,7 +44,7 @@ are not automatically included; assessments retain provenance and notes remain
 retrievable through `read_context` (for example `problem:<slug>`).
 
 Memory writes happen through Studio tools during the same turn. There is no automatic
-follow-up upkeep call. Fresh debrief context includes original requirements, the full
+memory-upkeep model turn or follow-up upkeep call. Fresh debrief context includes original requirements, the full
 final code, and selected chronological code deltas and assistance with a larger budget.
 All archives and raw records remain evidence; derived reports are regenerable.
 
@@ -168,6 +169,13 @@ the live header. Its generated problem slug remains stable, keeping notes and me
 with the same workspace. Topic updates never replace code, board or exchanges. Preset
 and mock-derived sessions cannot have their source problem overwritten by this tool.
 Opening another custom practice creates a separate identity.
+
+## Past performance in mocks
+
+A live mock receives no past performance: no learner history, agent memory or saved notes, and its tools cannot
+reach them: `liveMock` removes the memory, note, submission and search tools and limits
+`read_context` to this interview's own record. Debriefs and report follow-ups keep all of
+it. Choosing which problem to practise may still use history, before the interview starts.
 
 ## Editable coaching instructions
 

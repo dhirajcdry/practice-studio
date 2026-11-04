@@ -38,14 +38,14 @@ Studio tools can read the latest work, make requested edits, and maintain eviden
 export function rehydratePrompt(state, turns) {
   return `${CONTEXT_GUIDE}\nContinue this existing interview from its saved record. Do not greet, restart, or claim to remember unsaved thoughts.\n${data('Problem statement', state.statement)}\n${data('Saved conversation and events', selectRecords(evidenceRecords(turns),{budget:32000}))}`;
 }
-export function turnPrompt(state, { kind = 'turn', said = '', code, now = Date.now(), full = false, events = state.pendingEvents, includeWorkspace = true } = {}) {
+export function turnPrompt(state, { kind = 'turn', said = '', code, now = Date.now(), full = false, events = state.pendingEvents, includeWorkspace = true, includeScenario = true } = {}) {
   const lld = state.discipline === 'lld';
   const lines = [factBlock(state, now), ...(includeWorkspace ? [data('Complete latest candidate document', lld ? (code ?? state.lastCode ?? '') : codeContext(state.lastCode, code, state.turns, full))] : []), data('New results and events', events)];
   if (kind === 'opening') lines.push(data('Cached statement', state.statement), lld ? 'Output only the one-line problem statement, without a follow-up question or volunteered requirements.' : 'State the problem in one or two sentences. Ask the candidate to read it and talk through their approach, then wait.');
   else lines.push(said ? data('Candidate said', said) : 'The candidate has said nothing substantive. Stay silent about filler or acknowledgements (for example, “Mm-hm”, “Sure”, or “Take your time”); ask a question only when the record contains a substantive answer or a safe interjection is due.');
   if (lld) {
     const spec = state.scenario || scenario(state.slug);
-    lines.push(data('Private scenario facts: answer only what is asked', spec?.facts || ''));
+    if (includeScenario) lines.push(data('Private scenario facts: answer only what is asked', spec?.facts || ''));
     lines.push(`Probe counts: ${JSON.stringify(state.gaps || {})}. Do not probe any gap with count 2 or greater again.`);
     const due = !state.curveballDone && ['code', 'test', 'followup'].includes(state.phase);
     lines.push(due ? `One curveball is due now. Tag delivery. Ask only about this change.\n${data('Curveball requirement', spec?.curveball || 'Ask about one changed requirement.')}` : state.curveballDone ? 'Curveball already delivered; never introduce another.' : 'Curveball not due yet.');
@@ -54,12 +54,12 @@ export function turnPrompt(state, { kind = 'turn', said = '', code, now = Date.n
   if (!state.warningGiven && state.minutes * 60000 - (now - state.startedAt - state.pausedMs) <= 120000) lines.push('There are at most two minutes remaining. Mention this once, briefly.');
   return lines.join('\n\n');
 }
-export function debriefPrompt(state, turns, now) {
+export function debriefPrompt(state, turns, now, { includeEvidence = true } = {}) {
   const rubric = state.discipline === 'lld' ? `LLD rubric replaces the four coding dimensions: ${LLD_DIMENSIONS.join(", ")}. Assess against ${state.targetLevel || 'L4'}. Add arrays of strings technicalErrors (mechanical errors with method/line and evidence; highest priority), missingConsiderations (what a strong candidate would have addressed), discoveries (which bugs candidate caught unaided versus interviewer surfaced, with recorded evidence). No evidence means null rating. Do not demand unnecessary design patterns or penalize syntax-only doc slips as design failures. No best-known single solution: omit optimal. ` : state.discipline === 'design' ? `System design rubric replaces coding dimensions: ${DESIGN_DIMENSIONS.join(', ')}. Add technicalErrors, missingConsiderations, discoveries arrays with specific grounded observations. Assess against ${state.targetLevel || 'L4'}. Omit code. State where diagram interpretation is limited. Missing evidence means null rating.` : '';
   const requirements = [data('Original supplied problem statement',state.statement || 'No original statement recorded.')];
   if(state.discipline==='lld') requirements.push(data('Scenario facts available to the interviewer', (state.scenario || scenario(state.slug))?.facts || 'No scenario facts recorded.'));
   requirements.push('These define the problem, not what the candidate said. Use the recorded conversation to determine which requirements were requested, supplied, or changed; do not claim an undisclosed private constraint was agreed.');
-  return `${CONTEXT_GUIDE}\n${requirements.join('\n')}\n${rubric}\n${state.discipline === 'design' ? `System-design interview. Target ${state.targetLevel || 'L4'}. Planned ${state.minutes} minutes. Phase durations and hint counts were not measured; do not infer them.` : factBlock(state, now)}\n${data('Final candidate code',state.lastCode||'No code was recorded.')}\n${data('Timestamped evidence; code changes replace repeated snapshots', selectRecords(evidenceRecords(turns,{codeChanges:true}).map(t => ({ ...t, time: Number.isFinite(t.elapsedMs) ? clock(t.elapsedMs) : 'Timing not recorded' })),{budget:120000,head:8,tail:20}))}
+  return `${includeEvidence ? `${CONTEXT_GUIDE}\n${requirements.join('\n')}\n${data('Final candidate code',state.lastCode||'No code was recorded.')}\n${data('Timestamped evidence; code changes replace repeated snapshots', selectRecords(evidenceRecords(turns,{codeChanges:true}).map(t => ({ ...t, time: Number.isFinite(t.elapsedMs) ? clock(t.elapsedMs) : 'Timing not recorded' })),{budget:120000,head:8,tail:20}))}` : 'Use the supplied completed interview evidence and final workspace. Private scenario facts are not requirements agreed by the candidate unless the conversation establishes that.'}\n${rubric}\n${state.discipline === 'design' ? `System-design interview. Target ${state.targetLevel || 'L4'}. Planned ${state.minutes} minutes. Phase durations and hint counts were not measured; do not infer them.` : factBlock(state, now)}
 The interview is over. Write the candidate's report as ONE JSON object and nothing else (no prose before or after, no Markdown):
 {
   "signal": "Strong hire" | "Hire" | "Lean hire" | "Lean no" | "No hire",

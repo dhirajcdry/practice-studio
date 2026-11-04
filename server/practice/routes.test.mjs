@@ -7,6 +7,7 @@ import { Readable } from 'node:stream';
 import { routes } from './routes.mjs';
 import { readLearnerProfile } from '../learning/profile.mjs';
 import { problemDir } from '../storage-layout.mjs';
+import { beginConversation } from '../coach/native-sessions.mjs';
 import { sceneHash } from './board-history.mjs';
 
 function response() { let value = ''; return { writeHead() {}, write(x) { value += x; }, end(x = '') { value += x; }, json() { return JSON.parse(value); }, text: () => value }; }
@@ -388,7 +389,11 @@ test('native conversation descriptor preserves full history and typed/voice iden
   assert.match(next.conversation.bootstrapPrompt,/EARLY-REQUIREMENT/);
   assert.ok(next.conversation.bootstrapPrompt.includes('saved answer '.repeat(1600)));
   assert.equal(next.conversation.message,'Continue.');
-  assert.ok(!JSON.stringify(next.conversation.context).includes('saved answer '.repeat(100)));
+  const initial = await beginConversation({root:f.root,choice:{provider:'claude',model:'opus'},systemPrompt:first.systemPrompt,conversation:first.conversation});
+  await initial.nativeId('practice-native'); await initial.complete();
+  const continued = await beginConversation({root:f.root,choice:{provider:'claude',model:'opus'},systemPrompt:next.systemPrompt,conversation:next.conversation});
+  assert.doesNotMatch(continued.prompt,/saved answer/);
+  await continued.complete();
 });
 
 test('stream checkpoints survive refresh, restart recovery, and final failure', async t => {

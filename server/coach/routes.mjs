@@ -2,7 +2,6 @@ import { problemDir } from '../storage-layout.mjs';
 import { readAgentMemory } from './memory.mjs';
 import { createSessionContext } from './session-context.mjs';
 import { handoffRecords, contextReader, evidenceRecords } from './context-policy.mjs';
-import { data as promptData } from '../interview/prompt.mjs';
 // Phase 3 route table. Wired into the router by the main agent — this module never
 // touches app.mjs or index.mjs, per the contract's integration rule.
 //
@@ -36,7 +35,8 @@ import { gatherContext, buildPrompt } from './context.mjs';
 import { readRecallState } from '../recall/sync.mjs';
 import { appendTurn, readThreads, readTurns } from './transcript.mjs';
 import { readCoachChoice, runProviderTurn, providerRoutes } from './provider.mjs';
-import { readCoachMemory, withConversation, conversationTurns, prepareClaudeMemory, withClaudeMemory } from './provider-context.mjs';
+import { conversationTurns } from './provider-context.mjs';
+import { buildConversation } from './native-sessions.mjs';
 import { upkeepQueue } from './upkeep.mjs';
 import { CoachRuns } from './runs.mjs';
 import { visualRoutes } from './visuals.mjs';
@@ -217,26 +217,24 @@ export async function handleCoachMessage(req, res, ctx) {
       capabilities: { sessionContext, sessionRecords, readContext: contextReader({session:sessionRecords}) },
       ...(svc.runner ? { runner: svc.runner } : {}),
     }) : null;
-    let { prompt, instructions } = buildPrompt({ context, message, includeCode, review, tools: Boolean(toolSession) });
+    const { instructions, request } = buildPrompt({ context, message, includeCode, review, tools: Boolean(toolSession), structured:true });
     const resumeSessionId = logicalSessionId; // Studio identity; native IDs are stored separately.
     const memory = await readAgentMemory(svc.root,slug,{query:message});
-    const decisions = await sessionContext.read(message);
-    prompt = withConversation(prompt, [], memory, {
-      readOnly:true, studioTools:Boolean(toolSession), instructions, query:message,
-      session:decisions,
-    });
+    const decisions = await sessionContext.delivery(message);
 
-    const conversation = {
+    const conversation = buildConversation({
       key: `coding:${slug}:${logicalSessionId}`, requestId:run.id,
-      bootstrapPrompt: prompt + (includeCode ? '\n\n' + promptData('Complete current code',context.buffer) : '') + '\n\n' + promptData('Full saved conversation', handoffRecords(evidenceRecords(turns),{query:message})),
-      message: review ? `Review the completed attempt using the supplied evidence. ${message}` : message,
-      context:[['Problem',{slug,title:context.catalogEntry?.title,...context.problem}],
+      message: request,
+      context:[['Problem',{slug,title:context.catalogEntry?.title,difficulty:context.catalogEntry?.difficulty,pattern:context.catalogEntry?.pattern ?? context.catalogEntry?.patternName,...context.problem}],
         ['Agent memory',memory],['Learner history',context.learner],['Session decisions and unresolved questions',decisions],
         ...(includeCode ? [['Current workspace',{code:context.buffer}]] : []),
         ['Last run',context.lastRun],['Submissions',context.submissions],['Attached submission',context.attachedSubmission],
         ['Session activity',context.events],['Candidate speech',context.transcripts],
-        ['Attempt',context.attempt],['Session metadata',{review,includeCode,elapsedMs:context.elapsedMs,runCount:context.runCount,coachRunCount:context.coachRunCount,lastVerdict:context.lastVerdict,revealedSolution:context.revealedSolution,revealedArticle:context.revealedArticle}]],
-    };
+        ['Attempt',context.attempt],['Session metadata',{review,includeCode,elapsedMs:context.elapsedMs,timeToFirstKeystrokeMs:context.timeToFirstKeystrokeMs,eventCount:context.eventCount,lastRunCodeMatchesCurrent:context.snapshot ? !context.diff : null,runCount:context.runCount,coachRunCount:context.coachRunCount,lastVerdict:context.lastVerdict,revealedSolution:context.revealedSolution,revealedArticle:context.revealedArticle}]],
+      bootstrap:{instructions,sessionTools:Boolean(toolSession),sections:[
+        ['Full saved conversation',handoffRecords(evidenceRecords(turns),{query:message})],
+      ]},
+    });
 
     // Claude reaches the same tools through a stdio MCP server it starts from a per-turn
     // config file; the token in it is valid only until this turn ends.

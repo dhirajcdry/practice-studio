@@ -1,5 +1,39 @@
 # Decision log
 
+## 2026-11-04 — Semantic context deltas and one report/review conversation
+
+Dhiraj authorized fixing repeated interview context after the Gift Card Ledger usage audit.
+Native resume was already working; duplicated scenario facts and query-selected session
+projections were still appended repeatedly. All interactive routes now use a shared
+bootstrap builder tied to the acknowledged baseline. Verified decisions update by key;
+source-count/query changes do not replay old anchors. Failed delivery does not acknowledge
+state. Compaction restores current work, decisions and exact evidence selections.
+
+A completed mock starts a separate review conversation with chronological evidence,
+final work and report instructions. Follow-ups resume that review with the same tools and
+role. Parsed reports, evidence, work and memory have separate baselines; raw debriefs do
+not duplicate parsed reports. No extra memory-upkeep turn or provider/model change.
+
+Validation: fake-provider lifecycle/regression tests, full Node suite, affected browser
+checks and read-only offline replay of 35 Gift Card Ledger application prompts. The replay
+retained 34 spoken turns and 30 code updates; payload characters fell from 304,089 to
+99,732. This is not a token/quota/dollar estimate or a live model quality evaluation.
+Full source evidence remained unchanged. New instruction signatures can require one
+explicit handoff for an existing native segment after deployment.
+
+The replay was a one-time local audit of private prompt logs, not a committed fixture.
+It parsed each recorded application message, moved identical scenario facts into one
+stable section, reconstructed workspace changes against their original content hashes,
+and passed the resulting turns through the new `buildConversation`/`beginConversation`
+serializer. Counts are the actual serialized application characters for that replay,
+not total native history or model usage. Private inputs and transcripts are not published.
+Reproducible synthetic protection lives in `server/coach/test/context-delivery.test.mjs`;
+the full owning-test map is in `docs/NATIVE-CONVERSATIONS.md#guardrails-and-owning-tests`.
+
+Delegation: bounded native workers handled the shared-context draft, coding route
+migration and documentation; parent reviewed, corrected and integrated the implementation.
+Fresh concise handoffs, shared checkout, no real tutor or TTS model calls.
+
 ## 2026-11-01 — Persistent native conversations
 
 **Authorization:** Dhiraj requested one Claude Code/Codex conversation per Studio session,

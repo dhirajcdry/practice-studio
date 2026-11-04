@@ -80,7 +80,7 @@ test('failed and stopped coach turns never enqueue upkeep', async t => {
   assert.equal(jobs.length, 0);
 });
 
-test('design opening preloads memory and completed debrief does not queue upkeep', async t => {
+test('design memory reaches the debrief, not the live mock, and queues no upkeep', async t => {
   const root = await workspace(t), jobs = [];
   await fs.writeFile(path.join(root, 'DESIGN.md'), 'Design observation');
   const promptFile = path.join(root, 'design-prompt.txt');
@@ -99,13 +99,15 @@ test('design opening preloads memory and completed debrief does not queue upkeep
   };
   const opening = await call('POST /api/design/start', {});
   const id = JSON.parse(opening.match(/event: interview\ndata: (.*)/)[1]).id;
-  assert.match(await fs.readFile(promptFile, 'utf8'), /Design observation/);
+  assert.doesNotMatch(await fs.readFile(promptFile, 'utf8'), /Design observation/, 'a live mock has no past record');
   assert.equal(jobs.length, 0);
   await call('POST /api/design/turn', { interviewId: id, said: 'I would use a cache' });
-  assert.doesNotMatch(await fs.readFile(promptFile, 'utf8'), /Design observation/, 'unchanged memory is retained in native history');
+  assert.doesNotMatch(await fs.readFile(promptFile, 'utf8'), /Design observation/, 'a live mock has no past record');
   assert.equal(jobs.length, 0);
   await fs.writeFile(path.join(root, 'design', id, 'NOTES.md'), 'Changed design notes');
   await call('POST /api/design/done', { interviewId: id });
-  assert.match(await fs.readFile(promptFile, 'utf8'), /Changed design notes/);
+  const debrief = await fs.readFile(promptFile, 'utf8');
+  assert.match(debrief, /Changed design notes/);
+  assert.match(debrief, /Design observation/, 'the debrief keeps the past record');
   assert.equal(jobs.length, 0);
 });

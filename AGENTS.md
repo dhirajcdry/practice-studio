@@ -164,6 +164,17 @@ before signaling completion. Provider switches, failed/interrupted turns, incomp
 schemas/role instructions, and three-day idle expiry make an explicit new segment.
 Voice/typed changes do not. No automatic retry after uncertain tool mutations.
 
+Context-cost regressions are correctness bugs. All interactive routes must use
+`buildConversation` so bootstrap and the acknowledged baseline describe the same data.
+On native resume, send only the new message, changed workspace/context and verified
+session-key updates; query selection or source-count changes must not replay old anchors.
+Generate each completed mock's report in its separate review conversation, then resume
+that same review key, role and tool target for follow-ups. Keep report, evidence, final
+work and memory as separate sections; never include both a parsed report and its raw
+debrief in the automatic packet. Preserve raw evidence, retrieval, permissions and
+compaction recovery. See [guardrails and owning tests](docs/NATIVE-CONVERSATIONS.md#guardrails-and-owning-tests)
+before changing this contract; document a replacement rationale and regression coverage.
+
 Every Codex thread (coach chat, design interviewer, picture job) must disable each MCP
 server from the user's `~/.codex/config.toml` by name (`mcpServerStatus/list`, then
 `mcp_servers.<name>.enabled = false` on both `thread/start` and `thread/resume`). `mcp_servers = {}` merges rather
@@ -186,7 +197,8 @@ Both paths were verified live on 2026-10-17.
   edit the learner watches, logged as `coach_edited_code`, only when they ask for it.
   `open_panel` likewise only on request. File tools still may not write `solution.py`.
 - Coding mocks, LLD mocks/practice, system-design mocks/practice and report follow-ups
-  use `server/coach/workspace-tools.mjs` to expose the relevant shared abilities.
+  use `server/coach/workspace-tools.mjs` to expose the relevant shared abilities. A live
+  mock's interviewer gets no past performance (`liveMock`); debriefs do. See `docs/CONTEXT.md`.
   Target actions by session identity, not only the problem slug. A mock remains hands-off
   by default; a request for editing/help permits assistance, which must remain identifiable
   in raw `tool_action` / `coach_run` records and the debrief.

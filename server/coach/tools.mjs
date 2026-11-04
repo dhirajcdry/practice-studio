@@ -635,6 +635,7 @@ export function createToolSession({
       return result;
     },
     async read_context(args) {
+      if(capabilities.liveMock && !['session','runs','scenes','native_progress'].includes(args.resource) && !args.resource.startsWith('result:')) return {ok:false,text:'Only this interview\'s own record is available during a mock.'};
       if(args.resource==='native_progress') return nativeConversationKey
         ? contextReader({native_progress:()=>readInterruptedProgress(root,nativeConversationKey)})(args)
         : {ok:false,text:'No native conversation is bound to this workspace.'};

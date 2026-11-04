@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { routes, DesignService } from './routes.mjs';
 import { DesignStore } from './store.mjs';
+import { conversationDir } from '../coach/native-sessions.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'test', 'fake-claude.mjs');
@@ -174,6 +175,21 @@ test('the debrief closes the interview and writes the derived document', async (
     assert.match(doc, /## The debrief/);
     assert.match(doc, /Verdict: hire/);
     assert.match(doc, /I would use a hash/, 'what the candidate said is not in the record');
+    const nativeFile = path.join(conversationDir(root,`review:design:${id}:followups`),'state.json');
+    const before = JSON.parse(await fsp.readFile(nativeFile,'utf8'));
+    assert.equal(before.revision,1);
+    const promptFile = path.join(root,'review-prompt.txt');
+    process.env.STUDIO_FAKE_PROMPT_FILE = promptFile;
+    try {
+      const followup = await readStream(await post(origin,'/api/design/ask',{interviewId:id,question:'Why should I bound it?',requestId:'review-q1'}));
+      assert.ok(followup.events.some(e => e.name === 'done'), 'legacy design follow-up completes');
+      const after = JSON.parse(await fsp.readFile(nativeFile,'utf8'));
+      assert.equal(after.segments.length,1,'report and follow-up use compatible review roles/tools');
+      assert.equal(after.segments[0].nativeId,before.segments[0].nativeId);
+      assert.equal(after.revision,2);
+      assert.doesNotMatch(await fsp.readFile(promptFile,'utf8'),/## Completed interview evidence|## Final whiteboard graph/);
+    } finally { delete process.env.STUDIO_FAKE_PROMPT_FILE; }
+
   } finally { await close(); }
 });
 

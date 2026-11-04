@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { InterviewService, interviewRoutes } from './routes.mjs';
 import { newState } from './state.mjs';
 import { renderInterview } from './render.mjs';
+import { beginConversation } from '../coach/native-sessions.mjs';
 import { permissionArgs } from '../coach/claude-cli.mjs';
 const binary = new URL('./test/fake-interviewer.mjs', import.meta.url).pathname;
 async function fixture(t) {
@@ -391,7 +392,7 @@ test('follow-up questions about a finished interview stream, persist beside the 
   const prompt = (await fs.readFile(promptLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1).prompt;
   assert.match((await fs.readFile(promptLog,'utf8')).trim().split('\n').map(JSON.parse).at(-1).args.join(' '), /going over it with the candidate/);
   assert.match(prompt, /What test cases could I have tried\?/);
-  assert.match(prompt, /I will use a map\./, 'the record is in the prompt');
+  assert.doesNotMatch(prompt, /## Completed interview evidence/, 'the report conversation already has the evidence');
   assert.match(prompt, /"signal":"Lean hire"/, 'the report is in the prompt');
   assert.doesNotMatch(prompt, /Earlier questions/);
 
@@ -401,7 +402,14 @@ test('follow-up questions about a finished interview stream, persist beside the 
   const second = (await fs.readFile(promptLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1).prompt;
   assert.doesNotMatch(second, /Earlier questions and your answers/);
   assert.match(second, /And for negatives/);
-  assert.equal((await fs.readFile(promptLog, 'utf8')).trim().split('\n').filter(line => line.includes('going over it')).length, 2, 'a duplicate never reaches the provider');
+  assert.equal((await fs.readFile(promptLog, 'utf8')).trim().split('\n').filter(line => line.includes('going over it')).length, 3, 'one report and two follow-ups; a duplicate never reaches the provider');
+  const logged = (await fs.readFile(promptLog,'utf8')).trim().split('\n').map(JSON.parse);
+  const reviews = logged.filter(row => row.args.join(' ').includes('going over it'));
+  const nativeId = reviews[0].args[reviews[0].args.indexOf('--session-id')+1];
+  assert.ok(nativeId && !reviews[0].args.includes('--resume'), 'report starts its own review segment');
+  for (const row of reviews.slice(1)) assert.equal(row.args[row.args.indexOf('--resume')+1],nativeId,'follow-up resumes report native identity');
+  assert.doesNotMatch(second,/## Report|## Completed interview evidence|## Final candidate code/);
+
 
   const detail = JSON.parse((await call('GET /api/interview/:slug/:id', {}, { slug: 'two-sum', id })).output);
   assert.deepEqual(detail.followups.map(f => [f.requestId, f.question, Boolean(f.answer), f.failed]),
@@ -428,7 +436,7 @@ test('an older interview with a prose debrief can still be asked about, with tha
 });
 
 test('mock native descriptor keeps full speech on bootstrap and no transcript in updates', async t => {
-  const {interview,call}=await fixture(t);
+  const {root,interview,call}=await fixture(t);
   const calls=[];
   interview.run=options=>{
     calls.push(options);
@@ -444,5 +452,29 @@ test('mock native descriptor keeps full speech on bootstrap and no transcript in
   assert.equal(next.systemPrompt,calls[0].systemPrompt);
   assert.ok(next.conversation.bootstrapPrompt.includes('old exact speech '.repeat(2000)));
   assert.ok(!next.conversation.message.includes('old exact speech'));
-  assert.ok(!JSON.stringify(next.conversation.context).includes('old exact speech '.repeat(100)));
+  const firstNative = await beginConversation({root,choice:{provider:'claude',model:'opus'},systemPrompt:calls[0].systemPrompt,conversation:calls[0].conversation});
+  await firstNative.nativeId('mock-native'); await firstNative.complete();
+  const continued = await beginConversation({root,choice:{provider:'claude',model:'opus'},systemPrompt:next.systemPrompt,conversation:next.conversation});
+  assert.doesNotMatch(continued.prompt,/old exact speech/);
+  await continued.complete();
+});
+
+test('a live mock gets no past performance or memory tools, and its debrief keeps them', async t => {
+  const { root, interview, call } = await fixture(t);
+  await fs.writeFile(path.join(root,'TUTOR.md'),'Recorded learning preference for review only.');
+  const seen = [];
+  const run = interview.run;
+  interview.run = options => { seen.push({ names: options.studioTools, context: options.conversation.context.map(([name]) => name) }); return run(options); };
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  await call('POST /api/interview/turn', { slug: 'two-sum', interviewId: id, said: 'Use a map.', requestId: 'live-history-1' });
+  assert.equal(seen.length, 2);
+  for (const live of seen) {
+    for (const name of ['read_memory', 'update_memory', 'save_note', 'search_context', 'get_submissions']) assert.ok(!live.names.includes(name), name);
+    for (const name of ['Agent memory', 'Cross-problem learner history']) assert.ok(!live.context.includes(name), name);
+  }
+  seen.length = 0;
+  await call('POST /api/interview/done', { slug: 'two-sum', interviewId: id, requestId: 'live-history-2' });
+  assert.ok(seen[0].names.includes('read_memory'));
+  assert.ok(seen[0].context.includes('Agent memory') && seen[0].context.includes('Cross-problem learner history'));
 });

@@ -19,6 +19,7 @@ import { handoffRecords, contextReader, selectRecords, excerpt, CONTEXT_GUIDE } 
 import { sceneToGraph } from '../design/graph.mjs';
 import { createSessionContext, sessionEvidence } from '../coach/session-context.mjs';
 import { contextPacket } from '../coach/context-packet.mjs';
+import { buildConversation } from '../coach/native-sessions.mjs';
 import { setTimerRunning } from './timer.mjs';
 import { preserveBeforeBoardWrite } from './board-history.mjs';
 
@@ -194,14 +195,15 @@ async function ask(req, res, ctx) {
       ['Learner history',learnerContext(await readLearnerProfile(root,{discipline:x.session.discipline}),{discipline:x.session.discipline,slug:b.slug,query:b.question})],
       ['Agent memory',await readAgentMemory(root,b.slug,{query:b.question})],
       ['Source mock snapshot (feedback is a previous model assessment)',sourceCoachContext(await json(path.join(d,'source.json')),{query:b.question})],
-      ['Session decisions and unresolved questions',await sessionContext.read(b.question)],
+      ['Session decisions and unresolved questions',await sessionContext.delivery(b.question)],
       ['Actions already attempted for this request; do not repeat completed changes',(pending.actions||[]).map(({tool,status,summary})=>({tool,status,summary}))],
       ['Current candidate workspace',x.session.discipline==='design'?{graph:sceneToGraph(snapshot.elements||[])}:{code:snapshot.code}],
       ['Recent recorded Python runs',runs],['Delivery mode',pending.mode],
     ];
     const voice = pending.mode === 'voice' ? 'VOICE DELIVERY: This reply will be spoken. Use natural prose and avoid reading code or URLs aloud.' : '';
     context.push(['Delivery instructions',voice]);
-    const prompt = contextPacket({sections:[...context,['Earlier practice conversation',history],['The learner asks',pending.question]]});
+    const conversation = buildConversation({key:`practice:${b.slug}:${b.id}`,requestId:b.requestId,message:pending.question,context,bootstrap:{sections:[['Earlier practice conversation',history]]}});
+    const prompt = conversation.bootstrapPrompt;
     stream = new SseStream(res); stream.send('accepted', { requestId: b.requestId });
     agentTools = await createWorkspaceTools({ root, slug: b.slug, target: `practice:${b.slug}:${b.id}`, req, stream, kind: x.session.discipline === 'design' ? 'board' : 'code',
       getState: () => workspace(d),
@@ -241,7 +243,7 @@ async function ask(req, res, ctx) {
       try {
         providerChild = (ctx.practiceRun || runProviderTurn)({ choice, root, discipline:x.session.discipline, binary: process.env.STUDIO_COACH_BINARY, tools: '', ...agentTools.options,
           systemPrompt, prompt,
-          conversation: { key: `practice:${b.slug}:${b.id}`, requestId:b.requestId, bootstrapPrompt:prompt, message:pending.question, context },
+          conversation,
           onToken: token => { if (!finished && token) { pending.answer += token; pending.liveRevision = (pending.liveRevision || 0) + 1; stream.token(token);
             if (!checkpointTimer) checkpointTimer = setTimeout(() => {
               checkpointTimer = null;

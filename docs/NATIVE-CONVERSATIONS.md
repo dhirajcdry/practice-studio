@@ -7,8 +7,11 @@ No extra API billing, provider fallback, model downgrade or automatic upkeep cal
 
 ## Identities and lifecycle
 
-Every interactive caller supplies `conversation: {key, requestId, bootstrapPrompt,
-message, context}`. Keys identify the whole workspace: `coding:<slug>:<chat-id>`,
+Every interactive caller supplies a conversation built by
+`buildConversation({key, requestId, message, context, bootstrap, recoverySections})`.
+The helper renders the bootstrap from the same context acknowledged as the baseline;
+callers must not concatenate a second full prompt. Keys identify the whole workspace:
+`coding:<slug>:<chat-id>`,
 `practice:<slug>:<practice-id>`, `interview:<slug>:<mock-id>`, `design:<mock-id>`, or a
 completed mock's follow-up identity. Practice copies and originals are separate.
 
@@ -21,7 +24,7 @@ Same provider, compatible instructions/tools and successful prior turn resume th
 native conversation. Voice/typed changes are context, not a new session. Model/reasoning
 choice is applied to the next turn without switching providers. A provider switch,
 including A → B → A, starts a new segment with a handoff. Changed tool schemas or role
-instructions also start a new segment; Codex 0.165 cannot replace dynamic schemas on resume.
+instructions, including bootstrap role guidance, also start a new segment; Codex 0.165 cannot replace dynamic schemas on resume.
 
 The CLI process closes after a turn; the native conversation remains persisted and
 resumable. Three days without use archives Studio's segment metadata. Startup and hourly
@@ -31,7 +34,7 @@ code, boards and provider-owned files are not deleted.
 ## Context and caching
 
 Bootstrap includes the saved conversation, current work, problem, selected learner
-history, memory and source-linked session decisions. Ordinary-sized conversations are
+history, memory and source-linked session decisions exactly once. Ordinary-sized conversations are
 included completely. Exceptionally large handoffs select within 100,000 characters,
 explicitly advertise coverage/omissions and retain full paged retrieval. Debriefs retain
 their separate evidence budget including chronological code changes. A 400,000-character
@@ -42,6 +45,13 @@ sections are listed by name. Code uses a smaller diff against the last acknowled
 snapshot when useful, with old/new content hashes; otherwise it sends the full code.
 Append-only activity lists send only appended records. `get_state` always reads current
 saved work and must precede editing; the existing revision/replacement checks still apply.
+
+Session decisions use `sessionContext.delivery(query)`. Verified canonical entries are
+keyed: continuations send only changed keys, including explicit status changes, and
+notices when a previously delivered entry loses source verification. An omitted query
+result is never a retraction. Query/source-count and anchor-selection churn does not
+resend the record. A compaction resync restores verified decisions, selected correction
+anchors and recent exact evidence; omitted originals remain available through paged retrieval.
 
 After a successful native turn, the route first saves Studio evidence, then calls the
 third `onDone` argument (`commit`, required for persistent routes), then notifies the browser. Only that commit
@@ -59,6 +69,53 @@ prefixes, provider behavior and retention. Stable role/tool definitions and smal
 messages improve reuse. Usage reports provider counts, never invented savings or quota
 percentages. Codex resumed-turn counts subtract historical usage rather than charging the
 whole thread again in Studio telemetry.
+
+The CLI process still starts for one turn and closes afterward; the provider-native
+conversation is what persists. Delivery and reuse figures are measured characters and
+provider telemetry, not subscription-quota percentages or guaranteed savings.
+
+Completed-mock reports and follow-ups use a separate review identity
+`review:<slug>:<id>:followups` (legacy design routes use `design` for the slug). The
+report and follow-ups share the review system prompt, tool schema, and tool-result target.
+The report starts with chronological interview evidence and final work. Its JSON rubric
+is a one-response task in the current message, not a permanent role instruction. The first follow-up adds the
+authoritative parsed `Report` section once, without duplicating the raw debrief. Later
+follow-ups keep independent sections for evidence, final workspace, memory and report.
+
+## Guardrails and owning tests
+
+The November 4 audit found a working native resume path and substantial cache reads.
+The waste came from repeatedly appending unchanged private scenario facts and whole
+query-selected session projections, plus starting report follow-ups separately with
+duplicated evidence. A cache hit still processes historical input; caching does not make
+repeated application payloads free. Do not fix this by lowering the model/effort,
+dropping evidence, disabling tools, or replacing the conversation with a short summary.
+
+- Bootstrap is rendered from the exact context snapshot later acknowledged. Never build
+  a separate larger prompt and mark an unrelated smaller baseline as delivered.
+- Semantic deltas compare verified canonical entries by key. Changing a query, selected
+  anchors, or source count does not establish a new requirement or retract an old one.
+- Live conversations retain native dialogue. Recoveries restore current state and exact
+  selected evidence; paged originals remain available. Model compaction is not archival deletion.
+- Report generation and follow-ups share the review identity, system/tool signature and
+  tool-result target. JSON instructions apply only to generating the report. Memory edits
+  cannot trigger resending the unchanged report, final work or completed interview.
+- Neither a failed turn nor a failed evidence write can acknowledge delivery. No automatic
+  inference/upkeep call is added. Provider switches or incompatible instructions create
+  explicit new segments; voice/typed switching does not.
+
+| Contract | Owning regression tests |
+| --- | --- |
+| Bootstrap/baseline identity; key updates; query churn; correction recovery; independent report/memory sections | [`context-delivery.test.mjs`](../server/coach/test/context-delivery.test.mjs) |
+| Native identity; code diffs; provider switches; leases; compaction; failed commits; expiry; interrupted progress | [`native-sessions.test.mjs`](../server/coach/test/native-sessions.test.mjs) |
+| Evidence selection and coverage; code-change records; omitted evidence retrieval | [`context-policy.test.mjs`](../server/coach/test/context-policy.test.mjs) |
+| Codex resume, permissions, stale callbacks and current-turn usage | [`codex-cli.test.mjs`](../server/coach/test/codex-cli.test.mjs) |
+| Real route report-to-follow-up continuity, raw-record immutability and practice bootstrap | [`interview/routes.test.mjs`](../server/interview/routes.test.mjs), [`design/routes.test.mjs`](../server/design/routes.test.mjs), [`practice/routes.test.mjs`](../server/practice/routes.test.mjs) |
+
+Run `npm test` and the affected browser checks below against scratch homes/fake providers.
+These enforce delivery correctness; they do not establish identical real-model answers.
+Any intentional replacement must update this contract, the decision log and the owning
+regressions, with evidence that continuity, assistance attribution and recovery survive.
 
 ## Streaming, tools and recovery
 

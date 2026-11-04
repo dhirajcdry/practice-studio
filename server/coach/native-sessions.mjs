@@ -3,15 +3,31 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { contextData } from './context-packet.mjs';
+import { contextData, contextPacket } from './context-packet.mjs';
 import { unifiedDiff } from './diff.mjs';
-import { handoffRecords } from './context-policy.mjs';
+import { handoffRecords, selectRecords } from './context-policy.mjs';
 
 export const SESSION_POLICY = 'native-conversations-v1';
 export const IDLE_SESSION_MS = 3 * 24 * 60 * 60 * 1000;
 const leases = new Set();
 const digest = value => crypto.createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const conversationDir = (root, key) => path.join(root, 'context', 'conversations', digest(key));
+// Initial and recovery payloads use the same context that is acknowledged.
+// Internal delivery catalogs never appear in the provider payload.
+const visible = entries => entries.filter(([,v]) => v !== undefined && v !== null && v !== '');
+const publicValue = (value, { recovery = false } = {}) => value?.kind !== 'session-delivery' ? value : {
+  notice:'Source-backed decisions are interpretations. Verify consequential claims against the original session.',
+  entries:{records:value.canonicalEntries,coverage:'complete verified decision record'},
+  anchors:value.projection.anchors,
+  ...(recovery ? {recentEvidence:selectRecords(value.recentSources || [],{budget:12000,head:0,tail:8})} : {}),
+};
+export function buildConversation({ key, requestId, message, context = [], bootstrap = {}, recoverySections = [] } = {}) {
+  context = visible(context);
+  const sections = [...context.map(([label,value]) => [label,publicValue(value)]),
+    ...(bootstrap.sections || []), ['Current learner message or session action',message]];
+  const bootstrapPrompt = contextPacket({instructions:bootstrap.instructions || '',sessionTools:bootstrap.sessionTools !== false,sections});
+  return {key,requestId,message,context,bootstrap,recoverySections,bootstrapPrompt};
+}
 async function read(file, fallback = null) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return fallback; throw error; }
@@ -23,7 +39,14 @@ async function atomic(file, value) {
   finally { await fs.rm(tmp, { force: true }); }
 }
 const codeIn = value => typeof value?.code === 'string' ? value.code : null;
-const baselineOf = entries => entries.map(([label, value]) => ({ label, hash: digest(value), ...(codeIn(value) !== null ? { code: value.code } : {}), ...(Array.isArray(value) ? { items:value.map(digest) } : {}) }));
+const keyedHashes = records => Object.fromEntries((records || []).filter(r => r?.key != null).map(r => [String(r.key),digest(r)]));
+const projectionCursor = value => value?.kind === 'session-delivery' ? {
+  entries:keyedHashes(value.canonicalEntries),
+} : null;
+const baselineOf = entries => entries.map(([label,value]) => ({label,hash:digest(value),
+  ...(codeIn(value) !== null ? {code:value.code} : {}),
+  ...(Array.isArray(value) ? {items:value.map(digest)} : {}),
+  ...(projectionCursor(value) ? {projection:projectionCursor(value)} : {})}));
 
 export async function readInterruptedProgress(root, key, { includeStranded = false } = {}) {
   const dir = conversationDir(root, key), state = await read(path.join(dir,'state.json'));
@@ -38,13 +61,20 @@ export async function readInterruptedProgress(root, key, { includeStranded = fal
   return records.sort((a,b)=>a.startedAt-b.startedAt);
 }
 
-export function incrementalPrompt({ message, context = [] }, baseline = [], { resync = false, revision = 1 } = {}) {
+export function incrementalPrompt({ message, context = [], recoverySections = [] }, baseline = [], { resync = false, revision = 1 } = {}) {
   const previous = new Map(baseline.map(x => [x.label, x]));
   const changes = [], unchanged = [];
   for (const [label, value] of context) {
     const hash = digest(value), prior = previous.get(label);
     if (!resync && prior?.hash === hash) { unchanged.push(label); continue; }
-    let content = value;
+    let content = publicValue(value,{recovery:resync});
+    if (!resync && value?.kind === 'session-delivery' && prior?.projection) {
+      const upsert = value.canonicalEntries.filter(entry => prior.projection.entries?.[entry.key] !== digest(entry));
+      const unverified = Object.keys(prior.projection.entries || {}).filter(key => !value.canonicalEntries.some(entry => entry.key === key));
+      if (!upsert.length && !unverified.length) { unchanged.push(label); continue; }
+      content = {upsert,unverified,
+        notice:'Apply updates by key; status changes supersede earlier interpretations under the same key. Unverified entries have lost source verification, not necessarily been retracted. Unmentioned decisions remain unchanged.'};
+    }
     if (!resync && Array.isArray(value) && prior?.items?.length && value.length >= prior.items.length && prior.items.every((hash,index)=>hash===digest(value[index]))) {
       content = { appendedRecords:value.slice(prior.items.length), afterRecord:prior.items.length-1, totalRecords:value.length, notice:'Append to the previous acknowledged records for this section.' };
     }
@@ -64,6 +94,7 @@ export function incrementalPrompt({ message, context = [] }, baseline = [], { re
     contextData('Current learner message or session action', message),
     contextData('Context delivery', { revision, resync, unchanged, removed, notice: resync ? 'Full current state after native compaction. Original evidence remains available through read_context.' : 'Only changed sections follow; unchanged sections retain their last acknowledged values. Current workspace supersedes earlier snapshots.' }),
     ...changes,
+    ...(resync ? recoverySections.map(([label,value]) => contextData(label,publicValue(value))) : []),
   ].join('\n\n');
 }
 
@@ -99,9 +130,9 @@ export async function beginConversation({ root, conversation, choice, systemProm
     const file = path.join(dir, 'state.json');
     const state = await read(file, { version: 1, policy: SESSION_POLICY, key: conversation.key, segments: [], revision: 0 });
     state.logicalId ||= crypto.randomUUID();
-    const context = (conversation.context || []).filter(([, value]) => value !== undefined);
+    const context = structuredClone((conversation.context || []).filter(([, value]) => value !== undefined));
     if (new Set(context.map(([label]) => label)).size !== context.length) throw new Error('Conversation context labels must be unique.');
-    const signature = digest({ systemPrompt, toolSpecs });
+    const signature = digest({ systemPrompt, toolSpecs, bootstrapInstructions:conversation.bootstrap?.instructions || '' });
     let segment = state.segments.at(-1), reason = null;
     if (!segment) reason = 'first-native-session';
     else if (segment.provider !== choice.provider) reason = 'provider-changed';
@@ -119,7 +150,8 @@ export async function beginConversation({ root, conversation, choice, systemProm
     const attemptId = crypto.randomUUID();
     const progressFile = path.join(dir, 'turns', `${attemptId}.json`);
     const progress = { requestId, attemptId, segmentId: segment.id, message: conversation.message, startedAt: now, status: 'running', sequence: 0, answer: '' };
-    let prompt = resumed ? incrementalPrompt({ ...conversation, context }, state.baseline, { resync, revision: state.revision + 1 }) : conversation.bootstrapPrompt;
+    const bootstrapPrompt = conversation.bootstrap ? buildConversation({...conversation,context}).bootstrapPrompt : conversation.bootstrapPrompt;
+    let prompt = resumed ? incrementalPrompt({ ...conversation, context }, state.baseline, { resync, revision: state.revision + 1 }) : bootstrapPrompt;
     if (typeof prompt !== 'string') throw new Error('A new native session requires its saved-history bootstrap.');
     // The previous in-flight lease belongs to a dead process. Read before publishing
     // the new currentTurn; matching request IDs let the reader avoid double counting.

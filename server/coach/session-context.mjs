@@ -48,6 +48,19 @@ export function sessionProjection(records, saved = [], {query = '', budget = 700
     sourceCount:sources.length,unavailableEntries:saved.length-entries.length};
 }
 
+// Delivery separates the authoritative saved-entry set from the query-selected
+// view.  Native continuation cursors can therefore upsert changed keys without
+// mistaking selection changes for deletions.
+export function sessionDelivery(records, saved = [], {query = '', budget = 7000} = {}) {
+  const sources = sessionEvidence(records), byId = new Map(sources.map(s => [s.sourceId, s]));
+  const verified = saved.filter(entry => entry?.evidence?.every(e => byId.get(e.sourceId)?.text.includes(e.quote)));
+  const projection = sessionProjection(records, saved, { query, budget });
+  return { kind: 'session-delivery', projection,
+    canonicalEntries: verified,
+    recentSources: sources.slice(-8),
+  };
+}
+
 export function createSessionContext({root,target,records}) {
   const file = workspacePath(root,path.join(root,'context','sessions',`${hash(target)}.json`));
   async function load() {
@@ -57,6 +70,7 @@ export function createSessionContext({root,target,records}) {
   return {
     target,
     async read(query='') { return sessionProjection(await records(),await load(),{query}); },
+    async delivery(query='') { return sessionDelivery(await records(),await load(),{query}); },
     async sources() { return sessionEvidence(await records()); },
     async record({key,kind,summary,status='active',evidence}) {
       return withMemoryLock(file,async()=>{

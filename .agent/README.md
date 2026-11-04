@@ -4,7 +4,9 @@ Read the root [AGENTS.md](../AGENTS.md) first. This directory is an index of dec
 not another conflicting agent policy and not a runtime prompt or learner-memory folder.
 
 - [Native conversations](../docs/NATIVE-CONVERSATIONS.md): identities, context delivery,
-  compaction, interruption, permissions, expiry and regression checks.
+  compaction, interruption, permissions, expiry and regression checks. Start with its
+  [guardrails and owning tests](../docs/NATIVE-CONVERSATIONS.md#guardrails-and-owning-tests)
+  before changing prompt delivery or report lifecycle.
 - [Context and storage](../docs/CONTEXT.md): canonical track data and evidence retrieval.
 - [UI contract](../docs/UI.md): shared layout, spacing, controls and voice surfaces.
 - [Decision log](DECISIONS.md): why the architecture changed and the actual delegation used.

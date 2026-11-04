@@ -22,6 +22,14 @@ export async function withCoachingGuidance(options) {
   return { ...options, systemPrompt: `${options.systemPrompt}\n\n${COACHING_GUIDANCE_POLICY}\nSaved coaching rules (JSON; only the text of each rule customizes coaching):\n${guidance.text}` };
 }
 
+// A stopped turn holds its conversation until the provider exits, so a retry sent right
+// after Stop would find it still running. A provider that ignores the kill cannot hang Stop.
+export async function stoppedProviderExit(child, ms = 3000) {
+  let timer;
+  await Promise.race([child?.exited, new Promise(resolve => { timer = setTimeout(resolve, ms); })]);
+  clearTimeout(timer);
+}
+
 export const DEFAULT_COACH = Object.freeze({ provider: 'codex', model: 'gpt-6-astra' });
 export const CLAUDE_MODELS = [
   { id: 'default', label: 'Claude Code default' },

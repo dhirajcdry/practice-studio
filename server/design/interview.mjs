@@ -262,7 +262,7 @@ export function expectedPhase(state, now) {
  * The per-turn brief: what changed, where we are, and what the standing rules currently
  * evaluate to. Facts, not instructions — the character is already set.
  */
-export function buildTurn(state, { said = '', graph = null, previousGraph = null, now = Date.now(), done = false } = {}) {
+export function buildTurn(state, { said = '', graph = null, previousGraph = null, now = Date.now(), done = false, includeWorkspace = true } = {}) {
   if (done) return { text: debriefPrompt(state), kind: 'debrief' };
 
   const lines = [];
@@ -302,10 +302,10 @@ export function buildTurn(state, { said = '', graph = null, previousGraph = null
     lines.push('[the curveball is due this turn: a scale spike, a new requirement, or a component failing]');
   }
 
-  // Each provider turn is fresh. Always supply the complete current semantic
-  // board; a diff alone cannot reconstruct an unchanged drawing.
+  // Standalone consumers get the board here. Persistent conversations deliver it
+  // separately against the last acknowledged context baseline.
   const change = previousGraph ? describeDiff(diffGraphs(previousGraph, graph), graph) : null;
-  if (graph) {
+  if (graph && includeWorkspace) {
     lines.push('', data('THE WHITEBOARD NOW:', renderGraph(graph)));
   }
   if (change) lines.push('', `Since your last question they: ${change}`);
