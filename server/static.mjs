@@ -1,8 +1,8 @@
-// Serves the client from studio/web/. That directory belongs to another agent; this
-// module only reads it, and copes with it not existing yet.
+// Serve the client captured at server startup. Reading edited files on each request
+// paired new UI code with an older in-memory API and broke otherwise valid actions.
+// One process owns one client snapshot; restarting publishes both sides together.
 
 import fs from 'node:fs';
-import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 const MIME = new Map(
@@ -58,10 +58,28 @@ const PLACEHOLDER = `<!doctype html>
 export class StaticSite {
   constructor(webDir) {
     this.webDir = webDir;
+    this.files = new Map();
     try {
       this.rootReal = fs.realpathSync(webDir);
     } catch {
       this.rootReal = null;
+    }
+    if (this.rootReal) {
+      const inside = real => real === this.rootReal || real.startsWith(this.rootReal + path.sep);
+      const capture = (directory, ancestors = new Set()) => {
+        const realDirectory = fs.realpathSync(directory);
+        if (!inside(realDirectory) || ancestors.has(realDirectory)) return;
+        const visited = new Set([...ancestors, realDirectory]);
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+          const file = path.join(directory, entry.name);
+          let real, stat;
+          try { real = fs.realpathSync(file); if (!inside(real)) continue; stat = fs.statSync(real); }
+          catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+          if (stat.isDirectory()) capture(file, visited);
+          else if (stat.isFile()) this.files.set(file, fs.readFileSync(real));
+        }
+      };
+      capture(this.rootReal);
     }
   }
 
@@ -69,7 +87,7 @@ export class StaticSite {
     return this.rootReal !== null;
   }
 
-  /** Resolve a URL path to a real file inside webDir, or null. Same containment rule as vendor. */
+  /** Resolve only files in the contained startup snapshot, including directory indexes. */
   async resolve(urlPath) {
     if (this.rootReal === null) return null;
     let decoded;
@@ -83,24 +101,9 @@ export class StaticSite {
     const rel = decoded.replace(/^\/+/, '');
     const candidate = path.resolve(this.rootReal, rel === '' ? 'index.html' : rel);
 
-    let real;
-    try {
-      real = await fsp.realpath(candidate);
-    } catch {
-      return null;
-    }
-    const rootWithSep = this.rootReal.endsWith(path.sep) ? this.rootReal : this.rootReal + path.sep;
-    if (real !== this.rootReal && !real.startsWith(rootWithSep)) return null;
-
-    let stat;
-    try {
-      stat = await fsp.stat(real);
-    } catch {
-      return null;
-    }
-    if (stat.isDirectory()) return this.resolve(path.posix.join(decoded, 'index.html'));
-    if (!stat.isFile()) return null;
-    return real;
+    if (this.files.has(candidate)) return candidate;
+    const index = path.join(candidate, 'index.html');
+    return this.files.has(index) ? index : null;
   }
 
   async serve(req, res, urlPath) {
@@ -131,15 +134,7 @@ export class StaticSite {
       return;
     }
 
-    let data;
-    try {
-      data = await fsp.readFile(file);
-    } catch {
-      const body = Buffer.from('Not found\n', 'utf8');
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'content-length': body.length });
-      res.end(body);
-      return;
-    }
+    const data = this.files.get(file);
 
     res.writeHead(200, {
       'content-type': MIME.get(path.extname(file).toLowerCase()) ?? 'application/octet-stream',

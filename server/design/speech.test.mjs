@@ -96,10 +96,10 @@ test('markdown is not read out as punctuation', () => {
   assert.equal(stripForSpeech('## Scale\n- one\n- two'), 'Scale one two');
 });
 
-test('a code block is named, not spelled out', () => {
+test('code blocks are skipped while surrounding explanation stays audible', () => {
   assert.equal(
     stripForSpeech('Consider this:\n```python\nfor x in y: pass\n```\nWhat breaks?'),
-    'Consider this: code block What breaks?',
+    'Consider this: What breaks?',
   );
 });
 

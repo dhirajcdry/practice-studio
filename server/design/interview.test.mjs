@@ -172,7 +172,7 @@ test('the diagram is sent on the first turn that has one', () => {
 test('an unchanged diagram is not re-sent — it would cost every turn and say nothing', () => {
   const g = graphOf(['Client', 'API'], [['Client', 'API']]);
   const text = buildTurn(fresh(), { now: at(6), graph: g, previousGraph: g }).text;
-  assert.doesNotMatch(text, /THE WHITEBOARD NOW:/);
+  assert.match(text, /THE WHITEBOARD NOW:/);
 });
 
 test('a changed diagram is re-sent, with what changed said in one line', () => {
@@ -253,8 +253,8 @@ test('the interviewer is told its own history is on disk, and how to use it', ()
 });
 
 test('memory is written at the debrief, not during the interview', () => {
-  assert.match(flat(debriefPrompt(newInterview({ startedAt: T0 }))), /separate step after this reply sees the whole conversation and updates DESIGN\.md/);
-  assert.match(flat(systemPrompt()), /After the debrief, a separate memory step/);
+  assert.match(flat(debriefPrompt(newInterview({ startedAt: T0 }))), /Use Studio memory tools for durable lessons/);
+  assert.doesNotMatch(flat(systemPrompt()), /After the debrief, a separate memory step/);
 });
 
 test('the spoken medium is stated, because a paragraph read aloud is a monologue', () => {

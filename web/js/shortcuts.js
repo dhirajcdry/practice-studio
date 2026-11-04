@@ -47,6 +47,9 @@ export function chordLabel(id) {
 // document — correctly, so that the list shortcuts on the browse screen cannot fire while
 // you type. Capture runs before either of them, which is what makes these work everywhere.
 document.addEventListener('keydown', (event) => {
+  // These pane chords belong only to the coding workspace. A module-level
+  // registration (coach) can outlive its screen; it must not consume board keys.
+  if (!/^#\/p\//.test(location.hash) || event.defaultPrevented || event.isComposing) return;
   if (!(event.metaKey || event.ctrlKey)) return;
   if (event.altKey || event.shiftKey) return;      // ⌘⇧B and ⌘⌥J belong to the browser
   const chord = CHORDS.find((c) => c.code === event.code);

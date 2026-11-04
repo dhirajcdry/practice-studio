@@ -32,6 +32,11 @@ flowchart TB
 The app has a **local Node server**, not a hosted backend. `server/paths.mjs` fixes the
 host to `127.0.0.1`; the router checks request `Host`/`Origin`. The browser receives
 static files and calls JSON routes. Coaching and interviewing stream events over SSE.
+Client files are captured in memory when the server starts (currently about 29 MB,
+mostly vendored editors). A running process never serves newly edited UI files against
+its older loaded API modules. Restarting Studio publishes the client and backend
+together; reload the browser afterward. Containment and symlink checks apply when
+capturing the snapshot, and raw learner data is never included in it.
 
 The editor, catalog, and local runner don't wait for a coach turn or judge verdict.
 Opening an uncached problem does require a content fetch; cached statements are used
@@ -56,24 +61,42 @@ dependencies" doesn't mean the entire system is dependency-free.
 
 ## Storage
 
-`STUDIO_HOME` defaults to `~/LeetCodeTutor`. Important records are ordinary files:
+`STUDIO_HOME` defaults to `~/LeetCodeTutor`. Storage is local, single-server file storage. Canonical records are ordinary files under three track namespaces:
+
+`tracks/<coding|lld|design>/problems/<slug>/` contains the problem workspace. Track
+memory is `tracks/<discipline>/MEMORY.md`; migrated hand-written legacy memory is kept
+as `tracks/<discipline>/LEGACY.md`. Shared preferences and durable cross-discipline
+coaching memory live in `shared/learner.md`; explicit target levels remain in `learner-profile.json`. The resolver in
+`server/storage-layout.mjs` supports old `problems/<slug>/` and `memory/*.md` paths
+through compatibility aliases/symlinks and rejects ambiguous locations. All archives
+are retained losslessly; history scans remain linear and this is not a distributed
+storage design.
+
+Important records include:
 
 | Path under the workspace | Role |
 | --- | --- |
-| `problems/<slug>/solution.py` | Current working solution; atomically saved by the editor route |
-| `problems/<slug>/attempts/*.py` | Code snapshots from runs |
-| `problems/<slug>/sessions/*.jsonl` | Append-only activity events |
-| `problems/<slug>/chats.jsonl` | Coach conversation record |
-| `problems/<slug>/transcripts/` | Saved coding transcripts and timing metadata |
-| `problems/<slug>/NOTES.md`, `debriefs/` | Coach memory and feedback |
-| `problems/<slug>/attempts/<id>/attempt.md` | Derived readable attempt document |
+| `tracks/<discipline>/problems/<slug>/solution.py` | Current working solution; atomically saved by the editor route |
+| `tracks/<discipline>/problems/<slug>/attempts/*.py` | Code snapshots from runs |
+| `tracks/<discipline>/problems/<slug>/sessions/*.jsonl` | Append-only activity events |
+| `tracks/<discipline>/problems/<slug>/chats.jsonl` | Coach conversation record |
+| `tracks/<discipline>/problems/<slug>/transcripts/` | Saved coding transcripts and timing metadata |
+| `tracks/<discipline>/problems/<slug>/NOTES.md`, `debriefs/` | Coach memory and feedback |
+| `tracks/<discipline>/problems/<slug>/attempts/<id>/attempt.md` | Derived readable attempt document |
 | `cache/leetcode/<slug>.json` | Cached problem content, metadata, and starter code |
 | `cache/neetcode/<ncSlug>.json` | Whitelisted NeetCode problem definition for premium problems, fetched lazily on open |
-| `design/<id>/interview.json` | Mutable interview state: phase, timing, session identity |
+| `tracks/lld/problems/<lld-slug>/interviews/<id>/code.py`, `interview.json`, `turns.jsonl` | Python LLD document, resumable state, and append-only evidence |
+| `tracks/design/problems/<design-slug>/interviews/<id>/` | New system-design state, turns, scene snapshots, follow-ups and derived transcript |
+| `tracks/<discipline>/problems/<slug>/NOTES.md`, `LEARNING.md` | Additive learner-saved notes and regenerated assessment summary |
+| `tracks/<discipline>/problems/<slug>/problem.json` | Server-owned prepared problem, private facts, curveball and selection provenance |
+| `mock-preparations/<discipline>-<request-id>.json` | Idempotent preparation receipt; no running interview or timer |
+| `learner-profile.json` | Explicit target-level preferences; performance evidence is derived from records |
+| `design/<id>.json` | Locator for a system-design interview stored under its problem folder |
+| `design/<id>/interview.json` | Legacy mutable interview state: phase, timing, session identity |
 | `design/<id>/turns.jsonl`, `scenes/*.json` | Recorded answers/questions and board snapshots |
 | `design/<id>/interview.md` | Derived readable interview document |
 | `design/<id>/NOTES.md`, `DESIGN.md` | Design-interview coaching memory |
-| `problems/<slug>/visuals/<id>.png`, `<id>.json` | Coach pictures and what they were drawn from |
+| `tracks/<discipline>/problems/<slug>/visuals/<id>.png`, `<id>.json` | Coach pictures and what they were drawn from |
 
 Raw activity/turn logs and code/scene snapshots preserve the evidence. Readers tolerate
 an invalid final JSONL line from an interrupted write. Rendered documents are rebuilt
@@ -115,20 +138,69 @@ That framing helps the model interpret data; permission scoping is a separate bo
 
 `server/coach/claude-cli.mjs` spawns the CLI with manual permissions, restricted tools,
 strict MCP configuration, workspace path rules, and explicit denies for working code and
-server-owned evidence. Design notes, coding notes/debriefs, journal, profile, and skill
-memory are the writable areas. The CLI can read workspace files, so moving private files
-into the workspace makes them available to coaching.
+server-owned evidence. Live coaching turns disable native file/shell tools and use only Studio’s named tools.
+Claude hooks, auto-memory, discovered instruction files, and slash commands are disabled
+for these turns. Legacy file permissions remain in the wrapper for compatibility; they
+do not grant live turns arbitrary file access.
+
+Interactive turns resume a native conversation through `server/coach/native-sessions.mjs`.
+Studio logical identities remain distinct from native IDs. New/provider-switched segments
+bootstrap from saved evidence; subsequent turns append current messages and acknowledged
+context changes. Native compaction triggers a full current-state resync. Three-day idle
+expiry archives the segment without deleting evidence. See
+[NATIVE-CONVERSATIONS.md](NATIVE-CONVERSATIONS.md) for the canonical lifecycle contract.
+Both providers report actual usage where available, including cache counts; telemetry in
+`usage/turns.jsonl` contains no prompts. Tools page memory and evidence; omission from a
+handoff excerpt never means absence from the saved record.
 
 The turn registry keeps a streaming turn separate from the viewer's HTTP connection.
 Reloading a tab can reattach rather than launch a duplicate turn. Failed and interrupted
 turns are recorded as such. Ending an attempt requests a review of the available evidence;
 its judgment is advisory.
 
+## Coding interviews
+
+The problem sidebar stays mounted with Chat, Interviews, and Submissions tabs.
+`web/js/interviews.js` owns the interview list and one expanded row; `interview.js`
+owns that row's transcript, draft, voice input, and session controls. Browser storage
+remembers the selected tab and expanded interview per problem. Server records own
+interview identity, timing, feedback, and the append-only transcript. Chat history
+contains chat threads only. Interview controls live in the sidebar, not the editor
+bar; the legacy recorder remains available there for already-recorded attempts.
+`web/css/sidebar.css` owns shared header and record-card geometry. Record summaries
+use bounded card surfaces rather than the negative-margin `hover-surface` style;
+expanded interview content shares the summary's outer border and horizontal edges.
+The interview list owns scrolling, including expanded transcripts and feedback;
+embedded cards grow with their content instead of introducing a second scroll box.
+New replies follow the active card only when the reader is already at its end.
+Background status updates reconcile existing rows without detaching the active panel.
+
+Opening a saved interview is read-only. Resume explicitly continues an unfinished
+session; starting fresh creates a separate record and pauses other running interviews.
+A completed row opens with saved feedback and a collapsible conversation transcript.
+Switching tabs retains the mounted row and draft, and closes its microphone. Typed
+interviews do not implicitly enable recording. Only explicit Pause freezes the clock.
+Loading a transcript waits for any in-flight server turn before replaying it, and
+disables mutations until the read finishes.
+
+Short interviewer replies are buffered for filler classification. Debriefs stream
+through the same tag and narration guards as they arrive. Failed or stopped replies
+retain their guarded text as explicitly partial evidence. An empty or stopped debrief
+does not complete the interview. `POST /api/interview/retry` uses the original saved
+request identity and answer, including failed openings, so retries do not add another
+candidate turn. Request identities cannot be reused for a different action.
+
+Regression coverage: `server/interview/routes.test.mjs` and `npm run check:interview`
+use fake providers and scratch workspaces, including history inspection, selected-row
+restoration, paused drafts, fresh sessions, and interrupted-debrief recovery.
+
 ## System-design interviews
 
 `server/design/interview.mjs` tracks phase, elapsed time, follow-up depth, and curveball
-state. New turns resume the CLI thread when possible; if a saved thread is absent, the
-server can rehydrate a fresh prompt from the recorded interview.
+state. Every native turn is fresh and rehydrates explicit history; saved records preserve
+exact `said`/`asked` events. A fresh debrief includes original requirements, full final
+code, selected chronological code deltas and assistance, with a larger budget. Memory is
+written through Studio tools in the same turn; there is no automatic extra upkeep call.
 
 The browser saves scene changes separately from answers. Posting a scene doesn't wake
 the model. On the candidate's next answer, `sceneToGraph()` extracts labelled components
@@ -179,10 +251,15 @@ setup requirements described in [contributing](../CONTRIBUTING.md).
 
 ## Live dictation
 
-The composer microphone shows a provisional transcript below the draft while speech
-continues. It requests a cumulative audio snapshot about every 1.5 seconds, with at most
-one preview request in flight and no preview queued behind unfinished final phrases.
-Pauses finalize phrases into the editable draft; previews never become saved evidence.
+Coding chat, mock interviews and practice share a live voice panel. Confirmed draft
+text stays separate from highlighted provisional words. The microphone requests a
+cumulative phrase snapshot about every 900 ms, with at most one preview in flight.
+The native preview decoder uses no temperature fallback, a 128-token sampling limit,
+and no word timestamps; the final pass retains full decoding. Final requests take
+priority over queued previews. Phrase sequence and microphone-take generation guard
+preview results: a phrase boundary keeps its pending preview alive until final decoding
+returns, while completed phrases and old takes reject stale results. Previews from
+multiple pending phrases appear in recording order and never become saved evidence.
 The final phrase is drained before Ask becomes available again. Phrases require sustained
 voiced duration and RMS energy before preview or final transcription; Stop uses the same
 gate. Audio-meter failure releases the microphone and asks the user to try again. Shared
@@ -199,7 +276,26 @@ practice evidence. The original `--input` command remains available for file tra
 
 Regression checks: `server/asr/voice-control.test.mjs` covers previews, finalization,
 late results, missing metering and notices; `server/asr/worker.test.mjs` covers worker
-reuse, ordering, crashes, timeouts and cleanup.
+reuse, priority, cancellation, crashes, timeouts and cleanup. Failed final phrases
+retain temporary audio in the mounted browser control for explicit retry/discard,
+block later phrase emission to preserve order, and prevent incomplete submission.
+The shared voice panel offers last accepted answer, manual/pause-to-send policy,
+real input level history and playback captions. The speech queue distinguishes
+preparation from actual playback, prefetches a sentence, supports interruption and
+replay, and labels system fallback. `speech-stream.js` feeds practice and both mock
+interfaces incrementally: complete sentences immediately, or stable short clauses after
+a 320 ms budget. Incomplete words, Markdown, links, and code are held or omitted. Each
+reply owns a cancellable stream so interruption cannot resume audio on later tokens.
+
+Practice's `voice-loop.js` separates continuous conversation intent from individual
+microphone takes. Capture waits for transcription, generation and playback, then resumes;
+an interrupted reply permits capture while its remaining text arrives. Explicit pause,
+mode change, focus/visibility and device failures gate the loop. Voice warmup only checks
+local availability when the learner joins, with no installation or model-generated turn.
+`npm run check:voice` exercises real browser capture/ASR flows with synthetic audio,
+holds SSE open until actual playback starts, and checks automatic second turns,
+interruption, mode switches and delayed previews after phrase boundaries,
+while visual-audit voice states cover all themes without running a real model.
 
 ## Coach visuals
 
@@ -210,8 +306,7 @@ The prompt section that teaches the coach these lives in `server/coach/context.m
 goes into normal and review turns alike.
 
 ````image` carries `{prompt, alt}` for a picture made by Codex's image model.
-`server/coach/visuals.mjs` draws it in its own Codex app-server with the same lockdown as
-the chat coach: ephemeral read-only thread, approvals never, temporary working
+`server/coach/visuals.mjs` draws it in its own Codex app-server with a separate, ephemeral read-only thread, approvals never, temporary working
 directory, no `OPENAI_API_KEY`, every MCP server disabled by name, every server-to-client
 request refused. Only `image_generation` is enabled, and only there. The description is
 fenced as data, and the bytes are accepted only as PNG, JPEG or WebP by magic number, up
@@ -236,13 +331,13 @@ or entitlement, so inference errors remain visible.
 
 `server/coach/provider.mjs` dispatches a snapshotted provider/model choice. Claude retains
 its existing scoped tool permissions. Codex uses the installed CLI's ChatGPT sign-in via
-app-server stdio, with a temporary working directory, an ephemeral read-only thread,
-web/shell/apps/plugins/image generation disabled, and every interactive tool request
-rejected. The child environment excludes `OPENAI_API_KEY`. No credentials are returned to
+app-server stdio, with a temporary working directory and persisted read-only thread.
+Shell/apps/plugins/image generation are disabled. Only Studio dynamic tools and explicitly
+authorized native web research are available. The child environment excludes `OPENAI_API_KEY`. No credentials are returned to
 the browser.
 
 MCP servers from the user's own `~/.codex/config.toml` are turned off by name on every
-thread. `mcp_servers: {}` on `thread/start`, and `-c mcp_servers={}` on the command line,
+start and resume. `mcp_servers: {}` on `thread/start`, and `-c mcp_servers={}` on the command line,
 are merged into that config rather than replacing it, so a browser server with unsafe code
 execution auto-approved still started inside Studio's threads. Studio now lists the
 configured servers with `mcpServerStatus/list` (which does not start them) and passes
@@ -250,9 +345,9 @@ configured servers with `mcpServerStatus/list` (which does not start them) and p
 starting anyway, the turn fails closed and the process is stopped.
 The protocol follows the [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server).
 
-Codex receives bounded conversation history and server-read TUTOR/NOTES excerpts, with
-reference data fenced separately from instructions. It cannot edit memory files; Studio
-still saves its chats and interview outcomes. Automatic note edits remain Claude-only.
+Codex receives saved history on bootstrap, acknowledged context changes on resume and scoped memory, with
+reference data fenced separately from instructions. It can maintain scoped memory through Studio tools; Studio
+still saves its chats and interview outcomes. Both providers update scoped memory through Studio tools.
 Native Claude session IDs are never passed to Codex as native thread IDs. Switching back
 to Claude reconstructs context before starting a new native session. Provider/model
 metadata is additive; untagged older records are treated as Claude. Existing learner
@@ -261,3 +356,63 @@ records are not rewritten.
 Use `codex login` or the normal Claude Code sign-in for the selected provider. The model
 picker does not claim to bypass either provider's subscription limits. Provider, routing,
 context-switching, lifecycle, and permission regressions are under `server/coach/test/`.
+
+
+## Practice branches and local storage
+
+`STUDIO_HOME` is the local data root (default `~/LeetCodeTutor`, configurable at
+launch). Each topic owns `problems/<slug>/interviews/<mock-id>/` and
+`problems/<slug>/practice/<practice-id>/`. Existing system-design records under
+`design/<mock-id>/` remain readable; newer design records use a small
+`design/<mock-id>.json` topic locator. Branching never migrates an original.
+
+A practice directory contains `session.json` (identity, mode, dates, typed source
+provenance), `document.json` or `elements.json` (editable work), `exchanges.json`
+(questions, answers and request snapshots), and `runs.jsonl` (execution evidence).
+A branch also has immutable `source.json`: source identity, original problem,
+starting work, compact conversation and model feedback. Source run history and all
+prior code/scene snapshots stay in the mock folder; they are not recursively copied.
+Problem-level `NOTES.md` contains saved learning notes; `LEARNING.md` is derived
+from interviews. Practice remains ungraded and does not create another mock verdict.
+
+Creation stages all initial files in a hidden sibling directory and renames it into
+place only when complete. Autosaves use atomic file replacement and a per-session
+in-process queue. Questions are recorded before generation and retry identities
+reuse the original question evidence. These protect normal operation in the single
+local Node server; they are not multi-process database transactions or a backup.
+
+The per-problem layout keeps records portable and independent. Current list/profile
+queries still scan files and load histories; some histories are whole JSON documents.
+Their work grows with accumulated sessions, so this is a personal local workspace,
+not an unbounded multi-user storage design. The scaling path is a rebuildable indexed
+metadata store (for example SQLite), paginated history reads and bounded transcript
+reads, while retaining these files as the source of truth. No automatic deletion or
+rotation of interview evidence is used to hide that cost.
+
+
+### Shared agent actions across workspaces
+
+`server/coach/tools.mjs` remains the common tool contract/executor. The workspace
+factory selects coding, Python-document, whiteboard, or finished-review abilities
+for both Codex dynamic tools and Claude's per-turn MCP bridge. Reused Codex mock
+threads dispatch to the current turn's ToolSession, with native tools and user MCP
+servers still disabled. Turning off editing for a finished report is server-enforced.
+
+Browser actions carry a target containing the practice/mock identity. Code uses exact
+unique replacements and the shared editor's undo history; board changes compare a
+SHA-256 revision before applying through Excalidraw's undo history. Each application
+awaits its normal save path before acknowledgement. Failed acknowledgements are not
+successful edits. Actions have persisted pending and final receipts; reopening a
+record displays those receipts without replaying mutations. Practice stores receipts
+in its exchange; mocks append `tool_action` records. Coach Python execution is
+`coach_run` evidence, separate from candidate runs. The debrief must distinguish
+assisted contributions from unaided performance.
+
+Durable agent memory lives in `tracks/<discipline>/problems/<slug>/NOTES.md` and
+`tracks/<discipline>/MEMORY.md` and `shared/learner.md`. Tools read named scopes, append a dated problem
+note, or replace one unique exact passage. Updates are atomic and share a per-file
+write lock with other note tools, user note saves and legacy Claude upkeep. These
+files feed subsequent chat/mock/practice turns and adaptive problem selection;
+recorded assessments remain evidence sources, not editable memory. Files are bounded
+and prompts carry bounded context. This is local single-server storage, not a
+multi-process database or a claim of unlimited scalability.

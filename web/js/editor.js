@@ -18,7 +18,8 @@
 // keeps working; losing syntax colour is survivable, losing the editor is not.
 
 import { el, clear, replace } from './dom.js';
-import { getSettings, isDark, onSettingsChange } from './settings.js';
+import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
+export { loadMonaco, monacoThemeFor } from './python-editor.js';
 import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, logSessionEvent, api } from './api.js';
 import { registerActionHandlers, createMonacoTutor, createTextareaTutor } from './coach-actions.js';
 import { createRunPanel, summaryLine } from './run.js';
@@ -26,425 +27,13 @@ import { createSubmitPanel, submitLine } from './submit.js';
 import { neetcodeMismatch } from './neetcode-shape.js';
 import { celebrate } from './celebrate.js';
 import { onChord, chordLabel } from './shortcuts.js';
-import { attachTypingFx } from './typing-fx.js';
-import { attachTypingReveal } from './typing-reveal.js';
+import { icon } from './ui/icon.js';
 
-const MONACO_BASE = new URL('../vendor/monaco/vs', import.meta.url).href;
 const SAVE_DEBOUNCE_MS = 900;
 const DRAFT_DEBOUNCE_MS = 300;
 const SAVE_RETRY_MS = 5000;
 const FOCUS_KEY = 'studio.editor.focus.v1';
 const PANEL_KEY = 'studio.editor.panel.v1';
-
-/* ------------------------------ Monaco loading ----------------------------- */
-
-let monacoPromise = null;
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const tag = document.createElement('script');
-    tag.src = src;
-    tag.onload = () => resolve();
-    tag.onerror = () => reject(new Error('could not load ' + src));
-    document.head.append(tag);
-  });
-}
-
-/** Resolves to the monaco namespace, or rejects — callers must handle both. */
-function loadMonaco() {
-  if (monacoPromise) return monacoPromise;
-  monacoPromise = (async () => {
-    if (!window.require) {
-      window.MonacoEnvironment = { baseUrl: MONACO_BASE.replace(/\/vs$/, '') };
-      await loadScript(MONACO_BASE + '/loader.js');
-    }
-    if (!window.require || typeof window.require.config !== 'function') {
-      throw new Error('the Monaco loader did not initialise');
-    }
-    window.require.config({ paths: { vs: MONACO_BASE } });
-    const monaco = await new Promise((resolve, reject) => {
-      const bail = setTimeout(() => reject(new Error('Monaco took too long to load')), 15000);
-      try {
-        window.require(['vs/editor/editor.main'], () => { clearTimeout(bail); resolve(window.monaco); });
-      } catch (error) { clearTimeout(bail); reject(error); }
-    });
-    if (!monaco) throw new Error('Monaco loaded but exposed nothing');
-    defineTheme(monaco);
-    return monaco;
-  })().catch(error => { monacoPromise = null; throw error; });
-  return monacoPromise;
-}
-
-/** Monaco follows the selected family and effective appearance. */
-export function monacoThemeFor(theme, dark = false) {
-  return `ps-${theme}-${dark ? 'dark' : 'light'}`;
-}
-
-/**
- * The find widget, the go-to-line box, the hover — Monaco's own chrome.
- *
- * A theme that only names `editor.*` gets the code right and leaves every widget at the
- * `vs-dark` factory grey, so ⌘F opened a slab of Visual Studio Code inside a hand-set
- * page. These are the colours that chrome is actually built from, expressed once and
- * given a palette per theme, so a widget belongs to the theme it opened in.
- *
- * @param {{ground:string, raised:string, ink:string, dim:string, edge:string, accent:string,
- *           match:string, matchDim:string, hoverWash:string, onAccent:string}} p
- */
-function widgetColors(p) {
-  return {
-    'editorWidget.background': p.raised,
-    'editorWidget.foreground': p.ink,
-    'editorWidget.border': p.edge,
-    'editorWidget.resizeBorder': p.accent,
-    'widget.border': p.edge,
-    'widget.shadow': '#00000059',
-    'input.background': p.ground,
-    'input.foreground': p.ink,
-    'input.border': p.edge,
-    'input.placeholderForeground': p.dim,
-    // The three toggles that were the only visible part of the broken widget.
-    'inputOption.activeBackground': `${p.accent}2E`,
-    'inputOption.activeBorder': p.accent,
-    'inputOption.activeForeground': p.ink,
-    'inputOption.hoverBackground': p.hoverWash,
-    'focusBorder': p.accent,
-    'icon.foreground': p.dim,
-    'toolbar.hoverBackground': p.hoverWash,
-    'toolbar.activeBackground': p.hoverWash,
-    'badge.background': p.accent,
-    'badge.foreground': p.onAccent,
-    // What ⌘F is for: the hit you are on, and the ones you are not.
-    'editor.findMatchBackground': p.match,
-    'editor.findMatchBorder': p.accent,
-    'editor.findMatchHighlightBackground': p.matchDim,
-    'editor.findRangeHighlightBackground': p.hoverWash,
-    'editorOverviewRuler.findMatchForeground': p.accent,
-    'list.hoverBackground': p.hoverWash,
-    'list.activeSelectionBackground': `${p.accent}2E`,
-    'list.activeSelectionForeground': p.ink,
-    'scrollbarSlider.shadow': '#00000000',
-  };
-}
-
-/** Monaco cannot read CSS variables, so each visual theme needs its own definition. */
-function defineTheme(monaco) {
-  // Terminal after dark: neutral near-black, grey text, green only where it means something.
-  monaco.editor.defineTheme('ps-terminal-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: 'D9DED9' },
-      { token: 'comment', foreground: '6B736D', fontStyle: 'italic' },
-      { token: 'string', foreground: 'E8B455' },
-      { token: 'number', foreground: 'F0A35E' },
-      { token: 'keyword', foreground: '5FD38D', fontStyle: 'bold' },
-      { token: 'type', foreground: 'A8D8B5' },
-      { token: 'predefined', foreground: 'A8D8B5' },
-      { token: 'identifier', foreground: 'D9DED9' },
-      { token: 'delimiter', foreground: '8A918B' },
-      { token: 'operator', foreground: '8A918B' },
-    ],
-    colors: {
-      'editor.background': '#141414',
-      'editor.foreground': '#D9DED9',
-      'editorGutter.background': '#141414',
-      'editorLineNumber.foreground': '#4A4F4B',
-      'editorLineNumber.activeForeground': '#D9DED9',
-      'editor.lineHighlightBackground': '#1B1B1B',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#5FD38D',
-      'editor.selectionBackground': '#D9DED92A',
-      ...widgetColors({
-        ground: '#0F0F0F', raised: '#202020', ink: '#D9DED9', dim: '#8A918B',
-        edge: '#363A37', accent: '#5FD38D', onAccent: '#141414',
-        match: '#5FD38D4D', matchDim: '#D9DED92A', hoverWash: '#FFFFFF12',
-      }),
-    },
-  });
-
-  // Slate: the light theme's palette, re-lit. Same hue for each token so the code reads
-  // the same way in both modes — only the ground and the contrast change.
-  monaco.editor.defineTheme('ps-studio-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: 'E8E8E8' },
-      { token: 'comment', foreground: '7A7A7A', fontStyle: 'italic' },
-      { token: 'string', foreground: '8FD9AE' },
-      { token: 'number', foreground: 'E3B457' },
-      { token: 'keyword', foreground: 'C7A0E8' },
-      { token: 'keyword.flow', foreground: 'C7A0E8' },
-      { token: 'type', foreground: '86C2EC' },
-      { token: 'type.identifier', foreground: '86C2EC' },
-      { token: 'predefined', foreground: '86C2EC' },
-      { token: 'identifier', foreground: 'E8EAED' },
-      { token: 'delimiter', foreground: 'A0A0A0' },
-      { token: 'operator', foreground: 'A0A0A0' },
-    ],
-    colors: {
-      'editor.background': '#161616',
-      'editor.foreground': '#E8E8E8',
-      'editorGutter.background': '#161616',
-      'editorLineNumber.foreground': '#4E4E4E',
-      'editorLineNumber.activeForeground': '#E8EAED',
-      'editor.lineHighlightBackground': '#1E1E1E',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#91A7FF',
-      'editor.selectionBackground': '#E8EAED26',
-      'editor.inactiveSelectionBackground': '#E8EAED14',
-      'editorIndentGuide.background1': '#FFFFFF12',
-      'editorIndentGuide.activeBackground1': '#FFFFFF2E',
-      'editorWhitespace.foreground': '#FFFFFF18',
-      'editorBracketMatch.background': '#00000000',
-      ...widgetColors({
-        ground: '#101010', raised: '#222222', ink: '#E8E8E8', dim: '#A0A0A0',
-        edge: '#3A3A3A', accent: '#91A7FF', onAccent: '#161616',
-        match: '#91A7FF4D', matchDim: '#91A7FF26', hoverWash: '#FFFFFF12',
-      }),
-    },
-  });
-
-  monaco.editor.defineTheme('ps-studio-light', {
-    base: 'vs',
-    inherit: true,
-    rules: [
-      { token: '', foreground: '111111' },
-      { token: 'comment', foreground: '9a9a9a', fontStyle: 'italic' },
-      { token: 'string', foreground: '2E6B4F' },
-      { token: 'string.escape', foreground: '2E6B4F' },
-      { token: 'number', foreground: '93650B' },
-      { token: 'keyword', foreground: '7A3E8F' },
-      { token: 'keyword.flow', foreground: '7A3E8F' },
-      { token: 'type', foreground: '1E5A8A' },
-      { token: 'type.identifier', foreground: '1E5A8A' },
-      { token: 'predefined', foreground: '1E5A8A' },
-      { token: 'identifier', foreground: '111111' },
-      { token: 'delimiter', foreground: '6E6E6E' },
-      { token: 'operator', foreground: '6E6E6E' },
-    ],
-    colors: {
-      'editor.background': '#FFFFFF',
-      'editor.foreground': '#111111',
-      'editorGutter.background': '#FFFFFF',
-      'editorLineNumber.foreground': '#C9C9C9',
-      'editorLineNumber.activeForeground': '#111111',
-      'editor.lineHighlightBackground': '#F7F7F7',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#111111',
-      'editor.selectionBackground': '#1111111F',
-      'editor.inactiveSelectionBackground': '#1111110D',
-      'editor.selectionHighlightBackground': '#11111112',
-      'editor.wordHighlightBackground': '#11111110',
-      'editor.wordHighlightStrongBackground': '#11111110',
-      'editorIndentGuide.background1': '#0000000F',
-      'editorIndentGuide.activeBackground1': '#00000026',
-      'editorWhitespace.foreground': '#00000018',
-      'editorBracketMatch.background': '#00000000',
-      'editorBracketMatch.border': '#00000040',
-      'editorRuler.foreground': '#0000000D',
-      'scrollbarSlider.background': '#00000016',
-      'scrollbarSlider.hoverBackground': '#00000026',
-      'scrollbarSlider.activeBackground': '#00000036',
-      'editorOverviewRuler.border': '#00000000',
-      'editorError.foreground': '#B33A1A',
-      'editorWarning.foreground': '#93650B',
-      ...widgetColors({
-        ground: '#FFFFFF', raised: '#F7F7F7', ink: '#111111', dim: '#6E6E6E',
-        edge: '#00000022', accent: '#C4401C', onAccent: '#FFFFFF',
-        match: '#C4401C40', matchDim: '#C4401C1F', hoverWash: '#0000000D',
-      }),
-    },
-  });
-
-  // Each generated row supplies syntax hues as well as the editor surfaces.
-  const palettes = [
-    ['ps-editorial-light', 'vs', '#FBF8F2', '#28251F', '#F3EEE4', '#6D665B', '#A3432B', '#A3432B', '#1E5A8A', '#2E6B4F', '#93650B', '#A3432B33', ''],
-    ['ps-ink-light', 'vs', '#FFFFFF', '#111111', '#F4F4F4', '#666666', '#0057B8', '#0057B8', '#1E5A8A', '#2E6B4F', '#93650B', '#0057B833', 'bold'],
-    ['ps-desk-light', 'vs', '#FFFDF9', '#181818', '#F6F2EA', '#8A8178', '#BD5F3C', '#A34A2A', '#2F5D7C', '#3F7A55', '#9A6A12', '#BD5F3C2E', ''],
-    ['ps-desk-dark', 'vs-dark', '#211E1B', '#EEE8E0', '#2A2622', '#8C8279', '#E2875F', '#E59A78', '#8FB8D8', '#9ACB9F', '#E0B060', '#E2875F33', ''],
-    ['ps-editorial-dark', 'vs-dark', '#1E1915', '#ECE3D4', '#27211C', '#8E8172', '#E07B6E', '#D3A6E0', '#8DBFE0', '#A8CC9A', '#D9B061', '#E07B6E33', ''],
-    ['ps-ink-dark', 'vs-dark', '#141414', '#F4F4F0', '#1E1E1E', '#8A8A86', '#6E8BFF', '#9DB0FF', '#7FD1C7', '#4ED68C', '#F0B429', '#6E8BFF40', 'bold'],
-    ['ps-terminal-light', 'vs', '#FAF8F0', '#17301F', '#F0EDE0', '#6F7A66', '#A35F00', '#0F5C33', '#5A4A00', '#1D7A45', '#8A5A00', '#A35F0033', 'bold'],
-    ['ps-nebula-light', 'vs', '#F6F3FB00', '#1D1733', '#6B3FD412', '#7F7A8D', '#6B3FD4', '#8A2BB8', '#2160A8', '#1F7A55', '#94650C', '#6B3FD433', ''],
-    ['ps-nebula-dark', 'vs-dark', '#0B0A1A00', '#ECE8FF', '#B69CFF12', '#878498', '#B69CFF', '#E59CFF', '#7FE3FF', '#6EE7B7', '#F5C46B', '#B69CFF33', ''],
-    ['ps-horizon-light', 'vs', '#FBF6EC00', '#22180C', '#B4600A12', '#847C71', '#B4600A', '#A04E00', '#6B4A12', '#2E6B4F', '#8C5A06', '#B4600A33', ''],
-    ['ps-horizon-dark', 'vs-dark', '#08070A00', '#F3ECE0', '#FFB25C12', '#898580', '#FFB25C', '#FFB25C', '#F2D49B', '#7FD4A0', '#FFD27A', '#FFB25C33', ''],
-    ['ps-abyss-light', 'vs', '#EEF8F800', '#0B2A33', '#00808A12', '#71878C', '#00808A', '#006D77', '#1F5FA8', '#1F7A55', '#8C5A06', '#00808A33', ''],
-    ['ps-abyss-dark', 'vs-dark', '#04101A00', '#DDF6F7', '#3FF0D012', '#7B8F94', '#3FF0D0', '#5CF2DA', '#7DB8FF', '#5EE6A0', '#F2CB6C', '#3FF0D033', ''],
-    ['ps-dunes-light', 'vs', '#FBF2E800', '#2A1A10', '#C2491D12', '#887B71', '#C2491D', '#B0431C', '#2F5D7C', '#2E6B4F', '#8C5A06', '#C2491D33', ''],
-    ['ps-dunes-dark', 'vs-dark', '#08141A00', '#E9E4DA', '#FF9A6212', '#848684', '#FF9A62', '#FF9A62', '#8CC7D9', '#7FD4A0', '#F2CB6C', '#FF9A6233', ''],
-  ];
-  for (const [name, base, background, foreground, line, dim, accent, keyword, type, string, number, selection, fontStyle] of palettes) {
-    const dark = base === 'vs-dark';
-    const art = name.startsWith('ps-nebula-') || name.startsWith('ps-horizon-') || name.startsWith('ps-abyss-') || name.startsWith('ps-dunes-');
-    monaco.editor.defineTheme(name, {
-      base, inherit: true,
-      rules: [
-        { token: '', foreground: foreground.slice(1) },
-        { token: 'comment', foreground: dim.slice(1), fontStyle: 'italic' },
-        { token: 'string', foreground: string.slice(1) }, { token: 'number', foreground: number.slice(1) },
-        { token: 'keyword', foreground: keyword.slice(1), fontStyle },
-        { token: 'type', foreground: type.slice(1) }, { token: 'predefined', foreground: type.slice(1) },
-        { token: 'identifier', foreground: foreground.slice(1) }, { token: 'delimiter', foreground: dim.slice(1) },
-        { token: 'operator', foreground: dim.slice(1) },
-      ],
-      colors: {
-        'editor.background': background, 'editor.foreground': foreground,
-        'editorGutter.background': background, 'editorLineNumber.foreground': dim,
-        'editorLineNumber.activeForeground': foreground, 'editor.lineHighlightBackground': line,
-        'editor.lineHighlightBorder': '#00000000', 'editorCursor.foreground': accent,
-        'editor.selectionBackground': selection, 'editorIndentGuide.background1': dark ? '#FFFFFF12' : '#00000012',
-        'editorIndentGuide.activeBackground1': dark ? '#FFFFFF2E' : '#0000002E',
-        'editorWhitespace.foreground': dark ? '#FFFFFF18' : '#00000018',
-        ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? background.slice(0, 7) : line, ink: foreground, dim,
-          edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: art ? (dark ? background.slice(0, 7) : '#FFFFFF') : (dark ? background : '#FFFFFF'), match: `${accent}40`,
-          matchDim: `${accent}1F`, hoverWash: dark ? '#FFFFFF12' : '#0000000D' }),
-      },
-    });
-  }
-}
-
-const MONO_STACK = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-
-/** Defaults for someone typing algorithms all day: four spaces, no minimap,
- *  and nothing that pops up over the code while they are thinking. */
-function editorOptions() {
-  return {
-    language: 'python',
-    theme: monacoThemeFor(getSettings().theme, isDark()),
-    automaticLayout: true,
-    fontFamily: MONO_STACK,
-    fontSize: getSettings().codeSize,
-    lineHeight: 22,
-    tabSize: 4,
-    insertSpaces: true,
-    detectIndentation: false,
-    minimap: { enabled: false },
-    scrollBeyondLastLine: false,
-    // Scrolling here is keyboard-driven (PageDown, find-next, go-to-line) and happens all
-    // day; an animated scroll is latency, not polish.
-    smoothScrolling: false,
-    cursorBlinking: getSettings().motion ? 'smooth' : 'solid',
-    // The caret glides to each new character, so the reveal and the caret travel together.
-    cursorSmoothCaretAnimation: getSettings().motion && getSettings().typingFx !== false ? 'on' : 'off',
-    renderLineHighlight: 'line',
-    renderWhitespace: 'selection',
-    lineNumbersMinChars: 3,
-    glyphMargin: false,
-    folding: true,
-    padding: { top: 14, bottom: 18 },
-    overviewRulerLanes: 0,
-    overviewRulerBorder: false,
-    hideCursorInOverviewRuler: true,
-    bracketPairColorization: { enabled: false },
-    guides: { indentation: true, highlightActiveIndentation: false, bracketPairs: false },
-    scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false, alwaysConsumeMouseWheel: false },
-    // Nothing appears over the code uninvited. Ctrl+Space still summons it.
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    acceptSuggestionOnEnter: 'off',
-    wordBasedSuggestions: 'off',
-    tabCompletion: 'off',
-    parameterHints: { enabled: false },
-    hover: { enabled: false },
-    lightbulb: { enabled: false },
-    occurrencesHighlight: 'off',
-    selectionHighlight: false,
-    codeLens: false,
-    contextmenu: true,
-    fixedOverflowWidgets: true,
-  };
-}
-
-/* ------------------------------ editor adapters ---------------------------- */
-
-/** Plain-textarea stand-in with the same tiny interface, used when Monaco is
- *  unavailable. Tab inserts four spaces; nothing else is clever. */
-function textareaEditor(host, initial) {
-  const area = el('textarea', {
-    class: 'ws-fallback', spellcheck: 'false', autocomplete: 'off',
-    autocapitalize: 'off', autocorrect: 'off', 'aria-label': 'Python solution',
-  });
-  area.value = initial;
-  host.append(area);
-  let changed = () => {};
-  area.addEventListener('input', () => changed());
-  area.addEventListener('keydown', (event) => {
-    if (event.key !== 'Tab') return;
-    event.preventDefault();
-    const { selectionStart: start, selectionEnd: end, value } = area;
-    area.value = value.slice(0, start) + '    ' + value.slice(end);
-    area.selectionStart = area.selectionEnd = start + 4;
-    changed();
-  });
-  return {
-    kind: 'textarea',
-    raw: { area },
-    getValue: () => area.value,
-    setValue: (value) => { area.value = value; },
-    focus: () => area.focus(),
-    blur: () => area.blur(),
-    hasFocus: () => document.activeElement === area,
-    onChange: (fn) => { changed = fn; },
-    onCursorChange: () => () => {},
-    // The same three verbs Monaco's adapter answers to, so the settings watcher never
-    // has to ask which editor it got. Two of them have nothing to do here.
-    setFontSize: (px) => { area.style.fontSize = `${px}px`; },
-    setTheme: () => {},
-    layout: () => {},
-    dispose: () => area.remove(),
-  };
-}
-
-function monacoEditor(monaco, host, initial, { onRun, onSubmit, onSave, onEscape }) {
-  const instance = monaco.editor.create(host, { ...editorOptions(), value: initial });
-  const stopFx = attachTypingFx(instance, host, monaco);
-  const stopReveal = attachTypingReveal(instance, monaco, { getSettings, onSettingsChange });
-  let changed = () => {};
-  instance.onDidChangeModelContent(() => changed());
-
-  const KeyMod = monaco.KeyMod, KeyCode = monaco.KeyCode;
-  // ⌘↵ submits and ⌘' runs. LeetCode has these the other way round, and matching it was
-  // the wrong call twice over: ⌘' is the key he actually reaches for to run, and ⌘↵ is
-  // the one his hands expect to submit. The tool should fit the hands using it.
-  instance.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, () => onSubmit());
-  instance.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, () => onSubmit());
-  instance.addCommand(KeyMod.CtrlCmd | KeyCode.Quote, () => onRun());
-  instance.addCommand(KeyMod.CtrlCmd | KeyCode.KeyS, () => onSave());
-  // Escape hands the keyboard back to the app; a second Escape then leaves the page.
-  instance.addCommand(KeyCode.Escape, () => onEscape());
-
-  return {
-    kind: 'monaco',
-    // The tutor's marks and edits (coach-actions.js) work on the instance itself.
-    raw: { instance, monaco },
-    getValue: () => instance.getValue(),
-    setValue: (value) => {
-      // pushEditOperations keeps the undo stack, so a restore is reversible.
-      const model = instance.getModel();
-      if (!model) return;
-      model.pushEditOperations([], [{ range: model.getFullModelRange(), text: value }], () => null);
-    },
-    focus: () => instance.focus(),
-    blur: () => { const node = host.querySelector('textarea'); if (node) node.blur(); },
-    hasFocus: () => instance.hasTextFocus(),
-    onChange: (fn) => { changed = fn; },
-    onCursorChange: (fn) => instance.onDidChangeCursorPosition((event) => fn(event.position)),
-    setFontSize: (px) => instance.updateOptions({ fontSize: px }),
-    setMotion: (on, typing = true) => instance.updateOptions({
-      cursorBlinking: on ? 'smooth' : 'solid',
-      cursorSmoothCaretAnimation: on && typing ? 'on' : 'off',
-    }),
-    setTheme: (name) => monaco.editor.setTheme(name),
-    // Monaco measures its container once and caches it; a collapsed pane or a resized
-    // column has to say so.
-    layout: () => instance.layout(),
-    // The standalone editor owns the model it created from `value`; disposing the
-    // model separately makes Monaco throw on the way out.
-    dispose: () => { stopFx(); stopReveal(); instance.dispose(); },
-  };
-}
 
 /* --------------------------------- helpers -------------------------------- */
 
@@ -490,11 +79,11 @@ export function mountWorkspace(entry, options = {}) {
   let savedAt = null;
   let touched = false;          // the stub is never written back; only real edits are
   let saveTimer = null;
+  let saveChain = Promise.resolve();
   let draftTimer = null;
   let retryTimer = null;
   let disposed = false;
   let lane = 'run';             // which results lane is open; the other is a stub
-  let stopCursor = null;
   let tutor = null;             // the tutor's marks and edits, once the editor exists
   const releaseChords = [];
 
@@ -517,18 +106,20 @@ export function mountWorkspace(entry, options = {}) {
     if (resetArmed) clearTimeout(resetArmed);
     resetArmed = null;
     revertButton.classList.remove('is-arming');
-    revertButton.textContent = 'Reset';
+    revertLabel.textContent = 'Reset';
     revertButton.title = 'Put LeetCode\'s starter code back. What you wrote is not kept.';
   }
 
+  // It lives in the file row, beside the file it resets, and away from Run and Submit.
+  const revertLabel = el('span', { class: 'ws-reset-label', text: 'Reset' });
   const revertButton = el('button', {
-    class: 'ws-mini ws-reset', type: 'button', hidden: true, text: 'Reset',
+    class: 'editor-tool ws-reset', type: 'button', hidden: true,
     title: 'Put LeetCode\'s starter code back. What you wrote is not kept.',
     onclick: () => {
       if (stubCode === null || !editor) return;
       if (!resetArmed) {
         revertButton.classList.add('is-arming');
-        revertButton.textContent = 'Discard your code?';
+        revertLabel.textContent = 'Discard your code?';
         revertButton.title = 'Click again to replace what you wrote with the starter.';
         // Disarms itself, so a click you walked away from is not still loaded.
         resetArmed = setTimeout(disarmReset, 4000);
@@ -539,7 +130,17 @@ export function mountWorkspace(entry, options = {}) {
       onEdit();
       editor.focus();
     },
-  });
+  }, [icon('reset', 14), revertLabel]);
+
+  const editorControls = createPythonEditorControls();
+
+  // Hiding the sidebar must never be one-way. Shown only while it is closed.
+  const sidebarButton = el('button', {
+    class: 'icon-btn editor-open-sidebar', type: 'button',
+    'aria-label': `Show sidebar · ${chordLabel('coach')}`,
+    title: `Show sidebar (${chordLabel('coach')})`,
+    onclick: () => window.dispatchEvent(new CustomEvent('studio:open-coach')),
+  }, [icon('sidebar', 16)]);
 
   // Two collapses, one button each, and the same chord from anywhere on the page.
   // There used to be a Problem button *and* a Focus button doing opposite halves of the
@@ -576,8 +177,8 @@ export function mountWorkspace(entry, options = {}) {
     }
   }).catch(() => {});
 
-  const noticeEl = el('div', { class: 'ws-notice', hidden: true });
-  const shapeNotice = el('div', { class: 'ws-notice warn', hidden: true, role: 'status' });
+  const noticeEl = el('div', { class: 'ws-notice ui-inset ui-cluster', hidden: true });
+  const shapeNotice = el('div', { class: 'ws-notice ui-inset ui-cluster warn', hidden: true, role: 'status' });
   const host = el('div', { class: 'ws-host' });
 
   const panel = createRunPanel({ slug, getCode: () => (editor ? editor.getValue() : ''), onEvent: onRunEvent });
@@ -628,7 +229,6 @@ export function mountWorkspace(entry, options = {}) {
 
   // The cursor position rides in the file tab row. A status bar under the results said
   // "Python 3 · UTF-8 · 4 spaces", which never change, and cost a row of editor height.
-  const cursorEl = el('span', { class: 'editor-cursor', text: 'Ln 1, Col 1' });
   // Only there while the tutor has lines marked: what they are, and one click to clear them.
   const marksCount = el('span', { class: 'tutor-chip-n' });
   const marksChip = el('button', {
@@ -646,7 +246,9 @@ export function mountWorkspace(entry, options = {}) {
     el('span', { class: 'editor-meta' }, [
       marksChip,
       el('span', { class: 'editor-path mono', text: `problems/${slug}/solution.py` }),
-      cursorEl,
+      editorControls.root,
+      revertButton,
+      sidebarButton,
     ]),
   ]);
   const root = el('section', { class: 'card ws' }, [
@@ -660,12 +262,10 @@ export function mountWorkspace(entry, options = {}) {
       el('span', { class: 'ws-probtitle', text: entry.title || slug }),
       statusEl,
       el('span', { class: 'spacer' }),
-      revertButton,
       probButton,
       // Run, then Submit. Run is the one pressed fifty times an hour and Submit is the one
       // that leaves the machine, so the safe one comes first and the irreversible one sits
       // on its own at the end.
-      el('span', { class: 'recmount', id: 'recmount' }),
       runButton,
       submitButton,
     ]),
@@ -695,29 +295,36 @@ export function mountWorkspace(entry, options = {}) {
     saveState = state; saveDetail = detail; paintStatus();
   }
 
-  async function flush() {
+  function flush() {
+    if (disposed || !editor || !touched) return Promise.resolve(true);
+    const code = editor.getValue();
+    const task = saveChain.catch(() => false).then(() => persistCode(code));
+    saveChain = task;
+    return task;
+  }
+
+  async function persistCode(code) {
     // Nothing the user wrote, nothing to write. This is what keeps an untouched
     // stub from ever being PUT back over the server's copy.
-    if (disposed || !editor || !touched) return;
-    const code = editor.getValue();
-    if (code === loaded && saveState !== 'failed') { setSave('clean'); return; }
+    if (code === loaded && saveState !== 'failed') { if (!disposed) setSave('clean'); return true; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
     setSave('saving');
     const result = await saveCode(slug, code);
-    if (disposed) return;
+    if (disposed) return result.ok === true;
     if (result.ok) {
       loaded = code;
       savedAt = result.updatedAt || new Date().toISOString();
       setSave(editor.getValue() === code ? 'clean' : 'dirty');
-      return;
+      return true;
     }
     if (result.kind === 'unavailable') {
       // A server without the endpoint is a real state, not a transient error.
       setSave('local', result.source === 'mock' ? '' : 'this server has no save endpoint');
-      return;
+      return false;
     }
     setSave('failed', result.message || '');
     retryTimer = setTimeout(() => { retryTimer = null; flush(); }, SAVE_RETRY_MS);
+    return false;
   }
 
   function onEdit() {
@@ -739,7 +346,7 @@ export function mountWorkspace(entry, options = {}) {
     clearTimeout(draftTimer);
     if (editor && touched) writeDraft(slug, editor.getValue());
     clearTimeout(saveTimer);
-    flush();
+    return flush();
   }
 
   function currentMismatch() {
@@ -989,20 +596,6 @@ export function mountWorkspace(entry, options = {}) {
   }
   document.addEventListener('keydown', onDocumentKey);
 
-  // The slider and the theme move the RUNNING editor, not just the next one created.
-  //
-  // This used to call editor.updateOptions(), which neither adapter has ever had — so
-  // every settings change threw here, on the first line, and the two lines under it
-  // never ran. The font size did not move and the editor kept the theme it was born
-  // with while the page around it changed. Silent, because a listener that throws takes
-  // nothing else down with it.
-  const stopWatchingSettings = onSettingsChange((settings) => {
-    if (!editor) return;
-    editor.setFontSize?.(settings.codeSize);
-    editor.setMotion?.(settings.motion, settings.typingFx !== false);
-    editor.setTheme?.(monacoThemeFor(settings.theme, isDark()));
-    requestAnimationFrame(() => editor.layout?.());
-  });
   const onToggleResults = () => setResultsHidden(!isResultsHidden());
   window.addEventListener('studio:toggle-results', onToggleResults);
 
@@ -1055,33 +648,17 @@ export function mountWorkspace(entry, options = {}) {
     if (text === '') text = fallbackStub(slug, entry);
 
     clear(host);
-    let failure = null;
-    try {
-      const monaco = await loadMonaco();
-      if (disposed) return;
-      editor = monacoEditor(monaco, host, text, {
-        onRun: doRun,
-        onSubmit: doSubmit,
-        onSave: flushNow,
-        onEscape: () => { editor.blur(); runButton.focus(); },
-      });
-    } catch (error) {
-      failure = error;
-      editor = textareaEditor(host, text);
-    }
-    editor.onChange(onEdit);
+    editor = mountPythonEditor(host, text, {
+      controls: editorControls, onChange: onEdit,
+      onRun: doRun, onSubmit: doSubmit, onSave: flushNow,
+      onEscape: () => { editor.blur(); runButton.focus(); },
+    });
+    const { error: failure } = await editor.ready;
+    if (disposed) return;
     paintNeetCodeNotice();
     tutor = editor.kind === 'monaco'
       ? createMonacoTutor(editor.raw.instance, editor.raw.monaco, { onMarksChange: paintMarks })
       : createTextareaTutor(editor.raw.area, { onEdit });
-    if (editor.kind === 'textarea') {
-      cursorEl.hidden = true;
-    } else {
-      stopCursor = editor.onCursorChange?.(({ lineNumber, column }) => {
-        cursorEl.textContent = `Ln ${lineNumber}, Col ${column}`;
-      });
-      cursorEl.textContent = 'Ln 1, Col 1';
-    }
     paintStatus();
 
     if (failure) {
@@ -1125,23 +702,23 @@ export function mountWorkspace(entry, options = {}) {
   const unregisterActions = registerActionHandlers(slug, {
     markLines: (args) => (tutor ? tutor.markLines(args) : notReady()),
     clearMarks: () => (tutor ? tutor.clearMarks() : { ok: true, message: 'There were no marks to clear.' }),
-    editCode(args, action) {
+    async editCode(args, action) {
       if (!tutor || !editor) return notReady();
       const isStub = stubCode !== null && editor.getValue() === stubCode;
       const result = tutor.editCode(args, { isStub, actionId: action?.id ?? null });
       if (!result.ok) return result;
       // The next run_code reads solution.py from disk, so this cannot wait for the
       // debounce. Same path as ⌘S: browser mirror first, then the real save.
-      flushNow();
+      if (!await flushNow()) return { ok: false, message: 'The editor changed, but saving failed. The draft is visible; use editor Undo to revert.' };
       logSessionEvent(slug, 'coach_edited_code', {
         why: String(args?.why ?? '').slice(0, 4000), added: result.added, removed: result.removed,
       }).catch(() => {});
       return { ok: true, message: result.message };
     },
-    undoEdit(actionId) {
+    async undoEdit(actionId) {
       if (!tutor) return notReady();
       const result = tutor.undoEdit(actionId);
-      if (result.ok) flushNow();
+      if (result.ok && !await flushNow()) return { ok: false, message: 'Undo changed the editor, but saving failed.' };
       return result;
     },
     async openPanel(which) {
@@ -1215,13 +792,11 @@ export function mountWorkspace(entry, options = {}) {
       if (editor && touched) {
         const code = editor.getValue();
         try { writeDraft(slug, code); } catch { /* noop */ }
-        if (code !== loaded) { try { saveCode(slug, code); } catch { /* noop */ } }
+        if (code !== loaded) saveChain.catch(() => false).then(() => saveCode(slug, code)).catch(() => {});
       }
       document.removeEventListener('keydown', onDocumentKey);
       for (const release of releaseChords) release();
-      stopWatchingSettings();
       window.removeEventListener('studio:toggle-results', onToggleResults);
-      stopCursor?.dispose?.();
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flushNow);
       unregisterActions();
@@ -1248,7 +823,7 @@ export async function flushEditorSave(slug, capMs = 2000) {
   let timer = null;
   try {
     return await Promise.race([
-      Promise.resolve(active.flushSave()).then(() => true, () => false),
+      Promise.resolve(active.flushSave()).then(saved => saved !== false, () => false),
       new Promise((resolve) => { timer = setTimeout(() => resolve(false), capMs); }),
     ]);
   } catch {

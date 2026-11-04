@@ -21,12 +21,14 @@
 // The pure helpers at the top are what tests.js covers.
 
 import { reportCoachAction, undoCoachAction } from './api.js';
+import { icon } from './ui/icon.js';
 
 /* ============================== pure helpers ============================== */
 
 /** The studio tools, by their bare names. MCP delivers them as `mcp__studio__<name>`. */
 export const STUDIO_TOOLS = Object.freeze([
-  'get_submissions', 'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
+  'read_coaching_instructions', 'update_coaching_instructions',
+  'read_memory', 'update_memory', 'edit_board', 'get_submissions', 'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
   'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note', 'get_recall_evidence', 'save_recall_note',
 ]);
 
@@ -43,7 +45,7 @@ const NOTE_LIMIT = 4000;
 /** Case tools are undone by the server; code edits by the editor. Nothing else is undoable. */
 export function undoKind(tool) {
   if (tool === 'add_case' || tool === 'update_case' || tool === 'remove_case') return 'server';
-  if (tool === 'edit_code') return 'editor';
+  if (tool === 'edit_code' || tool === 'edit_board') return 'editor';
   return null;
 }
 
@@ -282,6 +284,14 @@ export function registerActionHandlers(slug, impl) {
   return () => { if (handlers.get(slug) === impl) handlers.delete(slug); };
 }
 
+export function registerActionAlias(target, slug) {
+  const proxy = new Proxy({}, { get: (_, name) => (...args) => {
+    const impl = handlers.get(slug);
+    return impl?.[name]?.(...args) ?? { ok: false, message: 'The problem editor is not open.' };
+  } });
+  return registerActionHandlers(target, proxy);
+}
+
 export function hasHandlers(slug) {
   return handlers.has(slug);
 }
@@ -293,7 +303,12 @@ async function perform(h, action) {
     case 'clear_marks': return h.clearMarks();
     case 'edit_code': {
       const result = await h.editCode(args, action);
-      if (result?.ok) editUndo.set(action.id, { slug: action.slug });
+      if (result?.ok) editUndo.set(action.id, { slug: action.target || action.slug });
+      return result;
+    }
+    case 'edit_board': {
+      const result = await h.editBoard(args, action);
+      if (result?.ok) editUndo.set(action.id, { slug: action.target || action.slug });
       return result;
     }
     case 'open_panel': return h.openPanel(args.panel);
@@ -314,7 +329,8 @@ export async function applyAction(action) {
   // (without posting again) so a reloaded receipt is not left waiting forever.
   if (seen.has(id)) {
     const before = seen.get(id);
-    return before && action.needsAck && !isResolved(action) ? { ...before, replayed: true } : null;
+    if (before && action.needsAck && !isResolved(action)) { reportCoachAction(id, before).catch(() => {}); return { ...before, replayed: true }; }
+    return null;
   }
 
   const at = action.at ? Date.parse(action.at) : NaN;
@@ -322,7 +338,7 @@ export async function applyAction(action) {
 
   if (action.needsAck) {
     if (isResolved(action)) { remember(id); return null; }
-    const h = handlers.get(action.slug);
+    const h = handlers.get(action.target || action.slug);
     // Not open here. Leave it unseen so nothing is claimed; the server times out.
     if (!h) return null;
     remember(id, null);
@@ -340,7 +356,7 @@ export async function applyAction(action) {
 
   // Applied by the server already; the page only has to show it.
   if (action.refresh) {
-    const h = handlers.get(action.slug);
+    const h = handlers.get(action.target || action.slug);
     if (!h) return null;
     remember(id);
     try {
@@ -370,14 +386,14 @@ export async function undoAction(action) {
   if (kind === 'server') {
     const result = await undoCoachAction(id);
     if (!result.ok) return { ok: false, message: result.message || 'That could not be undone.' };
-    handlers.get(action.slug)?.refreshCases?.(null);
+    handlers.get(action.target || action.slug)?.refreshCases?.(null);
     return { ok: true, message: 'Undone' };
   }
   if (kind === 'editor') {
     const record = editUndo.get(id);
     const h = record && handlers.get(record.slug);
     if (!h) return { ok: false, message: 'That edit was made on a page that is no longer open. Use ⌘Z in the editor.' };
-    const result = h.undoEdit(id);
+    const result = await h.undoEdit(id);
     if (result.ok) editUndo.delete(id);
     return result;
   }
@@ -404,39 +420,110 @@ export function createMonacoTutor(instance, monaco, { onMarksChange = () => {} }
   let flashIds = [];
   let flashTimer = null;
   let changing = false;              // our own removals do not count as his edits
+  let disposed = false, layoutFrame = null;
 
   const model = () => instance.getModel();
 
+  const lineLabel = mark => mark.from === mark.to ? `Line ${mark.from}` : `Lines ${mark.from}–${mark.to}`;
+
+  function scheduleNoteLayout() {
+    if (disposed || layoutFrame !== null) return;
+    layoutFrame = requestAnimationFrame(() => {
+      layoutFrame = null;
+      if (disposed) return;
+      const width = instance.getLayoutInfo().contentWidth;
+      const changed = [];
+      for (const mark of marks) {
+        if (!mark.zone) continue;
+        const { node, inner, zone } = mark;
+        // A view zone can be as wide as horizontally scrolling code. Notes should
+        // wrap to the visible editor width, not to the longest line in the file.
+        node.style.setProperty('--tutor-note-width', `${width}px`);
+        const height = inner.getBoundingClientRect().height;
+        if (!height) continue; // Monaco may not have mounted an offscreen zone yet.
+        const style = getComputedStyle(node);
+        const reserved = Math.ceil(height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom));
+        if (reserved !== zone.heightInPx || zone.afterLineNumber !== mark.to) {
+          zone.heightInPx = reserved;
+          zone.afterLineNumber = mark.to;
+          changed.push(mark);
+        }
+      }
+      if (changed.length) instance.changeViewZones(zones => {
+        for (const mark of changed) zones.layoutZone(mark.zoneId);
+      });
+    });
+  }
+
   function dropMark(mark) {
+    mark.observer?.disconnect();
     instance.deltaDecorations(mark.decorations, []);
-    if (mark.zoneId !== null) instance.changeViewZones((zones) => zones.removeZone(mark.zoneId));
+    if (mark.zoneId !== null) instance.changeViewZones(zones => zones.removeZone(mark.zoneId));
+  }
+
+  function dismissMark(mark) {
+    dropMark(mark);
+    marks = marks.filter(entry => entry !== mark);
+    onMarksChange(marks.length);
+    instance.focus();
+  }
+
+  function updateNoteLabels(mark) {
+    if (!mark.zone) return;
+    mark.rangeLabel.textContent = lineLabel(mark);
+    mark.node.setAttribute('aria-label', `Coach note · ${lineLabel(mark)}`);
+    mark.toggle.setAttribute('aria-label', `${mark.collapsed ? 'Expand' : 'Collapse'} coach note for ${lineLabel(mark).toLowerCase()}`);
+    mark.dismiss.setAttribute('aria-label', `Dismiss coach note for ${lineLabel(mark).toLowerCase()}`);
   }
 
   function noteZone(mark) {
     if (!mark.note) return null;
     const node = document.createElement('div');
     node.className = `tutor-note tone-${mark.tone}`;
+    node.setAttribute('role', 'note');
+    node.style.setProperty('--tutor-note-width', `${instance.getLayoutInfo().contentWidth}px`);
     const inner = document.createElement('div');
-    inner.className = 'tutor-note-body';
-    const who = document.createElement('span');
+    inner.className = 'tutor-note-body ui-inset ui-stack';
+    const head = document.createElement('div');
+    head.className = 'tutor-note-head ui-cluster';
+    const meta = document.createElement('div');
+    meta.className = 'tutor-note-meta ui-cluster-content';
+    const who = document.createElement('strong');
     who.className = 'tutor-note-who';
-    who.textContent = 'Tutor';
-    const text = document.createElement('span');
+    who.textContent = `Coach · ${{ hint: 'Suggestion', bug: 'Check this', good: 'Working well' }[mark.tone]}`;
+    const rangeLabel = document.createElement('span');
+    rangeLabel.className = 'tutor-note-range';
+    meta.append(who, rangeLabel);
+    const actions = document.createElement('div');
+    actions.className = 'tutor-note-actions';
+    const toggle = document.createElement('button');
+    toggle.type = 'button'; toggle.className = 'btn btn--quiet btn--sm'; toggle.textContent = 'Collapse';
+    toggle.setAttribute('aria-expanded', 'true');
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button'; dismiss.className = 'icon-btn'; dismiss.append(icon('close'));
+    const text = document.createElement('div');
     text.className = 'tutor-note-text';
-    text.textContent = mark.note;            // plain text, always
-    inner.append(who, text);
-    node.append(inner);
-    const zone = { afterLineNumber: mark.to, heightInPx: 30, domNode: node, suppressMouseDown: true };
-    let id = null;
-    instance.changeViewZones((zones) => { id = zones.addZone(zone); });
-    // The height depends on how the note wraps at this width; measure it once it is in.
-    requestAnimationFrame(() => {
-      const h = Math.ceil(inner.getBoundingClientRect().height) + 8;
-      if (h > 8 && Math.abs(h - zone.heightInPx) > 1) {
-        zone.heightInPx = h;
-        instance.changeViewZones((zones) => zones.layoutZone(id));
-      }
+    text.textContent = mark.note; // Plain text only; learner/tool content never becomes HTML.
+    actions.append(toggle, dismiss); head.append(meta, actions);
+    inner.append(head, text); node.append(inner);
+    const zone = { afterLineNumber: mark.to, heightInPx: 80, domNode: node, suppressMouseDown: true };
+    Object.assign(mark, { node, inner, zone, rangeLabel, toggle, dismiss, collapsed: false });
+    updateNoteLabels(mark);
+    toggle.addEventListener('click', () => {
+      mark.collapsed = !mark.collapsed;
+      text.hidden = mark.collapsed;
+      toggle.textContent = mark.collapsed ? 'Expand' : 'Collapse';
+      toggle.setAttribute('aria-expanded', String(!mark.collapsed));
+      updateNoteLabels(mark); scheduleNoteLayout();
     });
+    dismiss.addEventListener('click', () => dismissMark(mark));
+    // Keep text selection and note controls separate from code-editing gestures.
+    node.addEventListener('mousedown', event => event.stopPropagation());
+    let id;
+    instance.changeViewZones(zones => { id = zones.addZone(zone); });
+    mark.observer = new ResizeObserver(scheduleNoteLayout);
+    mark.observer.observe(inner);
+    scheduleNoteLayout();
     return id;
   }
 
@@ -488,15 +575,22 @@ export function createMonacoTutor(instance, monaco, { onMarksChange = () => {} }
       const range = m.getDecorationRange(mark.decorations[0]);
       if (!range) { touched.push(mark); continue; }
       const hit = event.changes.some((c) => linesOverlap(
-        c.range.startLineNumber, c.range.endLineNumber, range.startLineNumber, range.endLineNumber,
+        c.range.startLineNumber, c.range.endLineNumber, mark.from, mark.to,
       ));
       if (hit) touched.push(mark);
+      else { mark.from = range.startLineNumber; mark.to = range.endLineNumber; updateNoteLabels(mark); }
+
     }
+    scheduleNoteLayout();
     if (!touched.length) return;
     for (const mark of touched) dropMark(mark);
     marks = marks.filter((mark) => !touched.includes(mark));
     onMarksChange(marks.length);
   });
+
+  const layoutWatcher = instance.onDidLayoutChange(scheduleNoteLayout);
+  const configWatcher = instance.onDidChangeConfiguration(scheduleNoteLayout);
+  const modelWatcher = instance.onDidChangeModel(() => clearMarks());
 
   function flash(range) {
     if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
@@ -569,9 +663,15 @@ export function createMonacoTutor(instance, monaco, { onMarksChange = () => {} }
     editCode,
     undoEdit,
     dispose() {
-      watcher.dispose();
+      if (disposed) return;
+      disposed = true;
+      watcher.dispose(); layoutWatcher.dispose(); configWatcher.dispose(); modelWatcher.dispose();
+      if (layoutFrame !== null) cancelAnimationFrame(layoutFrame);
       if (flashTimer) clearTimeout(flashTimer);
-      marks = [];
+      clearMarks();
+      instance.deltaDecorations(flashIds, []);
+      for (const edit of edits.values()) instance.deltaDecorations([edit.decoration], []);
+      edits.clear();
     },
   };
 }

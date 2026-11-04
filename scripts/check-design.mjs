@@ -17,6 +17,7 @@
 // home, and resuming is safe here for the same reason — reopening an interview replays
 // what was already said and asks the model nothing.
 
+import { visualLint } from './visual-lint.js';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -117,7 +118,11 @@ for (const entry of SEED) {
 
 const server = spawn(process.execPath, ['server/index.mjs'], {
   cwd: ROOT,
-  env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT) },
+  env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT),
+    STUDIO_TTS_PYTHON: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
+    STUDIO_TTS_SCRIPT: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
+    STUDIO_TTS_MODEL: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
+    STUDIO_TTS_VOICES: path.join(ROOT, 'server/tts/test/fake-helper.mjs') },
   stdio: 'ignore',
 });
 for (let i = 0; i < 100; i += 1) {
@@ -403,6 +408,8 @@ try {
       return {fits:buttons.every(b=>b.left>=mode.left&&b.right<=mode.right&&b.height>=32),bottom:compose.bottom<=side.bottom+1,
         theme:document.body.classList.contains('is-dark')===Boolean(document.querySelector('.excalidraw.theme--dark'))};
     })()`);
+    const spacing = await evaluate('(' + visualLint.toString() + ')().filter(x => /^(pane-|workspace-|content-inset)/.test(x.kind))');
+    if(spacing.length)bad(theme+': shared pane spacing',JSON.stringify(spacing));
     if(metrics.fits&&metrics.bottom&&metrics.theme)ok(theme+': controls fit, composer stays visible, board theme updates');
     else bad(theme+': layout and live theme',JSON.stringify(metrics));
   }
@@ -445,8 +452,9 @@ try {
     const originalFetch = window.fetch;
     let sent = '';
     window.fetch = (url, options) => String(url) === '/api/design/turn'
-      ? (sent = JSON.parse(options.body).said, Promise.resolve(new Response('event: done\\ndata: {}\\n\\n', {headers:{'content-type':'text/event-stream'}})))
+      ? (sent = JSON.parse(options.body).said, Promise.resolve(new Response('event: accepted\\ndata: {}\\n\\nevent: done\\ndata: {}\\n\\n', {headers:{'content-type':'text/event-stream'}})))
       : originalFetch(url, options);
+    for (let i = 0; i < 100 && notice.querySelector('.dz-send').disabled; i++) await new Promise(r => setTimeout(r, 25));
     notice.querySelector('.dz-send').click();
     document.querySelector('[data-mode="type"]').click();
     await new Promise(r => setTimeout(r, 100));
@@ -471,7 +479,36 @@ try {
   if(voiceRecovery)ok('keyboard mode switching exposes microphone errors and returns to typing');
   else bad('voice permission recovery','hidden error or inaccessible mode controls');
 
+  const liveModeSwitch=await evaluate(`(async()=>{
+    for(let i=0;i<100 && document.querySelector('.dz-done').disabled;i++) await new Promise(r=>setTimeout(r,25));
+    const original=window.fetch, encoder=new TextEncoder();
+    let chunks=0;
+    window.fetch=(url,options)=>String(url)==='/api/design/turn' && JSON.parse(options.body).said==='Switch while replying'
+      ?Promise.resolve(new Response(new ReadableStream({async start(controller){
+        const emit=(name,data)=>controller.enqueue(encoder.encode('event: '+name+'\\ndata: '+JSON.stringify(data)+'\\n\\n'));
+        emit('accepted',{});
+        for(let i=0;i<40;i++){emit('token',{text:'A streamed question. '});chunks++;await new Promise(r=>setTimeout(r,35));}
+        emit('done',{});controller.close();
+      }}),{headers:{'content-type':'text/event-stream'}}))
+      :original(url,options);
+    try {
+      const input=document.querySelector('.dz-input');input.value='Switch while replying';input.dispatchEvent(new Event('input'));
+      document.querySelector('.dz-actions .dz-send').click();
+      for(let i=0;i<100 && chunks<3;i++)await new Promise(r=>setTimeout(r,25));
+      document.querySelector('[data-mode="voice"]').click();
+      const voiceDuringReply=chunks>0 && chunks<40 && !document.querySelector('.dz-voice').hidden;
+      document.querySelector('[data-mode="type"]').click();
+      input.value='Unsent next design thought';input.dispatchEvent(new Event('input'));
+      for(let i=0;i<150 && (chunks<40 || document.querySelector('.dz-done').disabled);i++)await new Promise(r=>setTimeout(r,25));
+      const kept=voiceDuringReply && !document.querySelector('.dz-type').hidden && input.value==='Unsent next design thought' && !document.querySelector('.dz-done').disabled;
+      input.value='';input.dispatchEvent(new Event('input'));return kept;
+    } finally {window.fetch=original;}
+  })()`);
+  if(liveModeSwitch)ok('mode switches during a streamed reply preserve the next unsent draft and finish saving');
+  else bad('live mode switching','mode, draft, or saving state did not survive streaming');
+
   const failedDebrief=await evaluate(`(async()=>{
+    for(let i=0;i<100 && document.querySelector('.dz-done').disabled;i++) await new Promise(r=>setTimeout(r,25));
     const original=window.fetch;
     window.fetch=(url,options)=>String(url)==='/api/design/done'
       ?Promise.resolve(new Response(JSON.stringify({error:{message:'Test debrief unavailable'}}),{status:503,headers:{'content-type':'application/json'}}))
@@ -487,14 +524,17 @@ try {
     const original=window.fetch;
     window.fetch=(url,options)=>String(url)==='/api/design/done'
       ?Promise.resolve(new Response('event: token\\ndata: {"text":"Test debrief"}\\n\\nevent: done\\ndata: {}',{headers:{'content-type':'text/event-stream'}}))
-      :original(url,options);
+      : String(url).startsWith('/api/design/') ? original(url,options).then(r=>r.json()).then(data=>new Response(JSON.stringify({...data,debriefed:true,report:null}),{headers:{'content-type':'application/json'}})) : original(url,options);
     document.querySelector('.dz-done').click();
-    await new Promise(r=>setTimeout(r,100));
+    await new Promise(r=>setTimeout(r,300));
     window.fetch=original;
-    return document.querySelector('.dz-done').disabled && document.querySelector('.dz-compose').hidden;
+    return document.querySelector('.dz-compose').hidden && document.querySelector('.dz-done').textContent === 'View report';
   })()`);
   if(complete)ok('successful debrief closes the composer, including a final SSE event without a blank line');
   else bad('successful debrief lifecycle','composer still accepts answers');
+
+  if(await evaluate('document.scrollingElement.scrollHeight<=innerHeight+1'))ok('bounded design workspace has no document overflow');
+  else bad('workspace scroll ownership','document extends below viewport');
 
   /* ---- 7. a finished interview opens read-only ---- */
 

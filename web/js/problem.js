@@ -45,7 +45,7 @@ function skeleton(rows = 6) {
 }
 
 function stateBlock({ tone = '', head, body, actions = [] }) {
-  return el('div', { class: 'state ' + tone }, [
+  return el('div', { class: 'state ui-inset ui-inset--roomy ' + tone }, [
     el('h3', { text: head }),
     ...[].concat(body).map(text => (text instanceof Node ? text : el('p', { text }))),
     actions.length

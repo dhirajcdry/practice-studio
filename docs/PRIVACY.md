@@ -12,7 +12,7 @@ contact LeetCode. The local server is bound to `127.0.0.1`.
 | NeetCode problem definitions | Only slug, name, description, Python starter, example inputs, test case type, Pro-only flag and message in `STUDIO_HOME/cache/neetcode/` | Opening an uncached premium problem fetches its NeetCode question page once. Solutions, article bodies and videos are discarded at parse time and never cached, logged, shown or sent to the coach |
 | Problem statements and starters | Cached in `STUDIO_HOME/cache/leetcode/` | First open of an uncached problem calls LeetCode |
 | Python run | Temporary driver and code; case comparison | Runner sandbox denies network when enabled on macOS |
-| AI coaching | Local CLI process, context assembly, session files | CLI sends the prompt/context to its configured service |
+| AI coaching | Local CLI process, context assembly, session files | CLI sends the prompt/context to its configured service; native web research can search public sources and read pages |
 | System-design interview | Canvas, scene snapshots, transcript, phase state | New interviewer turns use the same connected CLI |
 | Speech recognition | Audio decoded and transcribed on-device by Swift/WhisperKit 0.18.0 | Initial dependency/model downloads; recognition itself is on-device |
 | Interviewer speech output | Local Kokoro ONNX, with browser `speechSynthesis` fallback | Kokoro synthesis sends nothing off-device; setup downloads dependencies and models. System voice behavior depends on browser/OS |
@@ -24,18 +24,33 @@ contact LeetCode. The local server is bound to `127.0.0.1`.
 
 A coding turn can include the current editor buffer, a diff from the latest code snapshot,
 problem content, local case results, stdout/errors, elapsed time, available speech
-transcripts, and recent session activity. The CLI can read files inside `STUDIO_HOME`
-and write the designated coach memory files there. Its configured account/service
+transcripts, and relevant session activity. Studio tools retrieve scoped evidence and
+apply visible code/board edits or memory updates. The configured account/service
 processes the prompts; provider retention and account settings apply.
 
 On the design side, the interviewer receives the candidate's answer, phase/timing context,
 and a textual component/connection graph with changes from the previous board. It isn't
 sent a screenshot of the canvas by Studio. Saved transcript context may be resent when
-resuming an interview without its original CLI thread.
+starting a fresh native segment. Same-provider interactive turns resume native CLI
+history; provider-managed compaction and retention settings apply. Native session files
+are held by the CLI. Studio additionally stores conversation identity/checkpoints and
+partial reply journals under `context/conversations`, and exact tool-result pages under
+`context/tool-results`. These contain private learner context. Three-day idle expiry
+archives session metadata without deleting any learning evidence.
 
-The allowed CLI tools are `Read`, `Glob`, `Write`, and `Edit`, with filesystem allow/deny
-rules. Bash, web tools, and unrelated MCP servers are excluded. These permissions govern
-tool access; they don't turn a remote model into an offline one.
+Interactive coaches use Studio-defined tools plus provider-native web research
+(Codex web search, Claude WebSearch/WebFetch). Shell and unrelated MCP servers remain
+disabled. Research guidance excludes private code/history from queries and treats web
+content as untrusted; search queries and fetched URLs are processed by the provider.
+Legacy Claude memory maintenance retains its scoped file rules; it is never triggered
+automatically after an answer. Studio does not introduce separate API billing.
+
+Settings → What was sent? shows exact application-supplied prompts, instructions and
+Studio tool definitions for recent requests, plus provider-reported usage when available.
+Prompt contents are retained in memory only, up to 20 requests within one million
+characters. Content-free usage records live under `usage/turns.jsonl`. Provider-owned
+instructions, web result payloads and later tool exchanges are not included in the
+inspector's exact prompt. Their tokens may be reflected in provider-reported usage.
 
 ## Audio and transcripts
 
@@ -44,6 +59,13 @@ The route removes that temporary file afterward. Coding transcripts can be store
 `problems/<slug>/transcripts/`; spoken design answers are recorded in the interview turns.
 Studio's transcription route doesn't send audio to a speech API. Text produced from audio
 can subsequently be included in a coach/interviewer prompt.
+
+Live previews use a faster local decoding pass and are never stored as transcript
+records or sent as answers. Final phrase decoding supplies the saved text. If a final
+phrase fails, its audio is held temporarily in the current browser workspace for an
+explicit retry or discard; it is not persisted in browser storage and is lost when
+leaving the workspace or reloading. Successful phrases remain in the recoverable text
+draft. Cancelling a preview releases its temporary file after native decoding finishes.
 
 Natural speech uses a long-lived local Python/Kokoro process. Sentence text travels only
 between the browser and the loopback server; WAV audio stays in memory. No speech text

@@ -9,6 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
+import { problemDir as storageProblemDir } from '../storage-layout.mjs';
 
 const MAX_CODE_BYTES = 1024 * 1024; // a solution file is never a megabyte; refuse the pathological case
 
@@ -20,7 +21,7 @@ function rootOf(ctx) {
 }
 
 function problemDir(ctx, slug) {
-  return path.join(rootOf(ctx), 'problems', slug);
+  return storageProblemDir(rootOf(ctx), slug);
 }
 
 function solutionFile(ctx, slug) {

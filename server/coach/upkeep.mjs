@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { withMemoryLock } from './memory.mjs';
 import { runCoachTurn as runClaude } from './claude-cli.mjs';
 
 const MAX_QUEUED = 20;
@@ -39,6 +41,7 @@ export function createUpkeepQueue({ runner = runClaude, logger = console, now = 
     const onToken = () => {
       if (first === null) first = now() - started;
     };
+    const execute = () => {
     let turn;
     try {
       turn = runner({
@@ -53,7 +56,10 @@ export function createUpkeepQueue({ runner = runClaude, logger = console, now = 
       warn(job);
       turn = { exited: Promise.resolve() };
     }
-    Promise.resolve(turn?.exited).catch(() => warn(job)).then(() => {
+    return Promise.resolve(turn?.exited);
+    };
+    const notes = String(job.slug).startsWith('design:') ? path.join(job.root, 'design', job.slug.slice(7), 'NOTES.md') : path.join(job.root, 'problems', job.slug, 'NOTES.md');
+    withMemoryLock(notes, execute).catch(() => warn(job)).then(() => {
       const total = now() - started;
       log.info?.(`[coach] upkeep ${job.slug}: ${toolSummary.join(', ') || 'none'} total=${total}ms`);
       log.info?.(`[coach] timing ${job.slug} upkeep provider=claude model=${job.model ?? 'default'} first=${first ?? '-'} total=${total} tools=${tools}`);

@@ -12,7 +12,7 @@ class Element extends EventTarget {
   setAttribute(k, v) { this[k] = v; }
   append(...nodes) { this.children.push(...nodes); }
 }
-function harness({ signal = () => 0.08, meter = true, result = { ok: true, text: 'Hello world' }, permission = null } = {}) {
+function harness({ signal = () => 0.08, meter = true, result = { ok: true, text: 'Hello world' }, permission = null, voiceOptions = {} } = {}) {
   let now = 0, stopped = 0;
   const timers = new Map(), requests = [], emitted = [];
   let timerId = 0;
@@ -32,12 +32,13 @@ function harness({ signal = () => 0.08, meter = true, result = { ok: true, text:
     close() {}
   } });
   const el = (_, props = {}, children = []) => {
-    const e = new Element(); Object.assign(e, props); e.textContent = props.text || ''; e.children = children.filter(Boolean); return e;
+    const e = new Element(); Object.assign(e, props); e.textContent = props.text || ''; e.children = (Array.isArray(children) ? children : [children]).filter(Boolean); return e;
   };
   const ctx = vm.createContext({
     window, MediaRecorder: Recorder, Blob, AbortController, filterTranscript, hasVoicedAudio,
     navigator: { mediaDevices: { getUserMedia: async () => { if (permission) await permission; return { getTracks: () => [{ stop() { stopped++; } }] }; } } },
     document: { createElementNS: () => new Element() },
+    icon: () => new Element(),
     el, clear: (e) => { e.children = []; }, replace: (e, nodes) => { e.children = nodes.filter(Boolean); },
     transcribeAudio: async (_slug, blob, opts) => { requests.push({ blob, opts }); return typeof result === 'function' ? result(opts) : result; },
     logSessionEvent: async () => {},
@@ -46,7 +47,7 @@ function harness({ signal = () => 0.08, meter = true, result = { ok: true, text:
     Date: { now: () => now },
   });
   vm.runInContext(source + '\nthis.make = createVoiceControl;', ctx);
-  const voice = ctx.make({ getSlug: () => '', logTakes: false, onTranscript: (text) => emitted.push(text) });
+  const voice = ctx.make({ ...voiceOptions, getSlug: () => '', logTakes: false, onTranscript: (text) => emitted.push(text) });
   const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
   return { voice, window, requests, emitted, stopped: () => stopped, flush,
     async advance(ms) { const end = now + ms; while (now < end) { now += 100; for (const t of [...timers.values()]) if (t.next <= now) { t.next += t.ms; t.fn(); } await flush(); } },
@@ -77,7 +78,7 @@ test('empty take shows compact notice; service errors retain their real cause', 
   for (const result of [{ ok: false, kind: 'empty_transcript' }, { ok: false, kind: 'offline', message: 'Server offline' }]) {
     const h = harness({ result }); await h.voice.start(); await h.advance(1100); h.voice.stop(); await h.flush();
     const text = h.voice.status.children.map(e => e.textContent).join(' ');
-    assert.match(text, result.kind === 'offline' ? /Server offline/ : /No speech detected\. Try again\./);
+    assert.match(text, result.kind === 'offline' ? /Some words need another pass/ : /No speech detected\. Try again\./);
     assert.equal(h.emitted.length, 0); h.voice.dispose();
   }
 });
@@ -88,6 +89,56 @@ test('late preview after stop cannot replace or duplicate the final transcript',
   await h.voice.start(); await h.advance(1700); h.voice.stop(); await h.flush();
   resolvePreview({ ok: true, text: 'Stale partial' }); await h.flush();
   assert.deepEqual(h.emitted, ['Final words']); assert.equal(h.voice.preview.hidden, true); h.voice.dispose();
+});
+
+test('a delayed preview survives its phrase cut until final transcription arrives', async () => {
+  let partial, final;
+  const h = harness({ signal: now => now < 1200 ? .08 : 0,
+    result: opts => new Promise(resolve => { if (opts.preview) partial = resolve; else final = resolve; }) });
+  await h.voice.start(); await h.advance(2100);
+  assert.equal(typeof final, 'function', 'the phrase must already have been cut');
+  assert.equal(h.requests.find(r => r.opts.preview).opts.signal.aborted, false);
+  partial({ok:true,text:'Provisional words'}); await h.flush();
+  assert.equal(h.voice.preview.textContent, 'Provisional words');
+  assert.deepEqual(h.emitted, []);
+  final({ok:true,text:'Confirmed words'}); await h.flush();
+  assert.deepEqual(h.emitted, ['Confirmed words']);
+  assert.equal(h.voice.preview.hidden, true);
+  h.voice.stop(); await h.flush(); h.voice.dispose();
+});
+
+test('pending phrase previews stay ordered and an empty final clears its provisional text', async () => {
+  const partials = [], finals = [];
+  const h = harness({ signal: now => now < 1200 || now > 2400 ? .08 : 0,
+    result: opts => new Promise(resolve => (opts.preview ? partials : finals).push(resolve)) });
+  await h.voice.start(); await h.advance(2100);
+  partials[0]({ok:true,text:'First provisional'}); await h.flush();
+  await h.advance(1600);
+  assert.equal(finals.length, 1, 'first final is still pending');
+  assert.equal(partials.length, 2, 'a later phrase can preview while the first final is pending');
+  await h.advance(1000);
+  assert.equal(partials.length, 2, 'only one preview may be in flight');
+  partials[1]({ok:true,text:'Second provisional'}); await h.flush();
+  assert.equal(h.voice.preview.textContent, 'First provisional Second provisional');
+  h.voice.stop(); await h.flush();
+  finals[1]({ok:true,text:'Second confirmed'}); await h.flush();
+  assert.equal(h.voice.preview.textContent, 'First provisional Second confirmed');
+  assert.deepEqual(h.emitted, []);
+  finals[0]({ok:false,kind:'empty_transcript'}); await h.flush();
+  assert.deepEqual(h.emitted, ['Second confirmed']);
+  assert.equal(h.voice.preview.textContent, '');
+  assert.equal(h.voice.preview.hidden, true); h.voice.dispose();
+});
+
+test('a preview from a previous take cannot reappear in the next take', async () => {
+  let partial;
+  const h = harness({ result: opts => opts.preview ? new Promise(resolve => { partial = resolve; }) : {ok:true,text:'Confirmed'} });
+  await h.voice.start(); await h.advance(1100); h.voice.stop(); await h.flush();
+  await h.voice.start();
+  partial({ok:true,text:'Old provisional'}); await h.flush();
+  assert.equal(h.voice.preview.hidden, true);
+  assert.deepEqual(h.emitted, ['Confirmed']);
+  h.voice.stop(); await h.flush(); h.voice.dispose();
 });
 
 test('finish disposal drains an in-flight transcription after detaching', async () => {
@@ -165,4 +216,83 @@ test('noise transcripts cannot enter preview or composer; real short answers can
     h.voice.stop(); await h.flush();
     assert.deepEqual(h.emitted, filterTranscript(text) ? [text] : []); h.voice.dispose();
   }
+});
+
+
+test('continuous interview silence settles quietly and resumes only after draining', async () => {
+  let settled = 0;
+  const h = harness({ signal: () => 0, voiceOptions: { reportEmptyTake: false, onSettled: () => settled++ } });
+  await h.voice.start(); await h.advance(1100); h.voice.stop(); await h.flush();
+  assert.equal(h.voice.status.hidden, true, 'normal silent transitions do not warn');
+  assert.equal(settled, 1);
+  assert.equal(h.voice.isBusy(), false);
+  h.voice.dispose();
+});
+
+test('continuous interview mode preserves service errors without requesting resume', async () => {
+  let settled = 0;
+  const h = harness({ result: { ok: false, kind: 'offline', message: 'Server offline' },
+    voiceOptions: { reportEmptyTake: false, onSettled: () => settled++ } });
+  await h.voice.start(); await h.advance(1100); h.voice.stop(); await h.flush();
+  assert.match(h.voice.status.children.map(e => e.textContent).join(' '), /Some words need another pass/);
+  assert.equal(settled, 0);
+  h.voice.dispose();
+});
+
+
+test('interview resume callback waits for final transcription to drain', async () => {
+  let finish, settled = 0;
+  const h = harness({ result: () => new Promise(resolve => { finish = resolve; }),
+    voiceOptions: { reportEmptyTake: false, onSettled: () => {
+      assert.equal(h.voice.isBusy(), false);
+      assert.deepEqual(h.emitted, ['Final answer']);
+      settled++;
+    } } });
+  await h.voice.start(); await h.advance(1100); h.voice.stop(); await h.flush();
+  assert.equal(h.voice.isBusy(), true);
+  assert.equal(settled, 0);
+  finish({ ok: true, text: 'Final answer' }); await h.flush();
+  assert.equal(settled, 1);
+  h.voice.dispose();
+});
+
+test('failed audio blocks later phrases, retries in original order, and retains unload guard', async () => {
+  let finals = 0;
+  const h = harness({ signal: now => now < 1200 || now > 2400 ? .08 : 0,
+    result: opts => opts.preview ? {ok:true,text:'Partial'} : ++finals === 1
+      ? {ok:false,kind:'offline',message:'Server offline'} : {ok:true,text: finals === 2 ? 'Second phrase' : 'First phrase'} });
+  await h.voice.start(); await h.advance(3700); h.voice.stop(); await h.flush();
+  assert.equal(h.voice.hasTranscriptionError(), true);
+  assert.deepEqual(h.emitted, [], 'later words cannot jump the failed phrase');
+  const leave = new Event('beforeunload', {cancelable:true}); h.window.dispatchEvent(leave);
+  assert.equal(leave.defaultPrevented, true);
+  await h.voice.start(); assert.equal(h.voice.isRecording(), false, 'new take cannot erase failed audio');
+  await h.voice.retry(); await h.flush();
+  assert.deepEqual(h.emitted, ['First phrase','Second phrase']);
+  assert.equal(h.voice.hasTranscriptionError(), false);
+  const safe = new Event('beforeunload', {cancelable:true}); h.window.dispatchEvent(safe);
+  assert.equal(safe.defaultPrevented, false); h.voice.dispose();
+});
+
+test('retry during recording drains final words then retries without a second click', async () => {
+  let finals = 0;
+  const h = harness({signal:now=>now<1200||now>2400?.08:0,
+    result: opts=>opts.preview?{ok:true,text:'Partial'}:++finals===1
+      ? {ok:false,kind:'offline',message:'Offline'}:{ok:true,text:finals===2?'Second':'First'}});
+  await h.voice.start(); await h.advance(3700);
+  assert.equal(h.voice.hasTranscriptionError(), true);
+  await h.voice.retry(); await h.flush();
+  assert.deepEqual(h.emitted, ['First','Second']);
+  assert.equal(h.voice.isBusy(), false); h.voice.dispose();
+});
+
+test('explicitly discarding failed audio releases later confirmed words', async () => {
+  let finals = 0;
+  const h = harness({signal:now=>now<1200||now>2400?.08:0,
+    result: opts=>opts.preview?{ok:true,text:'Partial'}:++finals===1
+      ? {ok:false,kind:'offline',message:'Offline'}:{ok:true,text:'Second'}});
+  await h.voice.start(); await h.advance(3700); h.voice.stop(); await h.flush();
+  h.voice.discardFailed();
+  assert.deepEqual(h.emitted, ['Second']); assert.equal(h.voice.hasTranscriptionError(), false);
+  h.voice.dispose();
 });

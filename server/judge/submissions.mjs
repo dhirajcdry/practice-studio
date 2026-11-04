@@ -4,6 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import { readSubmissionDetails } from './record.mjs';
+import { problemDir } from '../storage-layout.mjs';
 
 export function mergeSubmissionDetails(previous, next) {
   const merged = { ...(previous ?? {}) };
@@ -23,7 +24,7 @@ export function mergeSubmissionDetails(previous, next) {
 }
 
 function metaFile(root, slug) {
-  return path.join(root, 'problems', slug, 'meta.json');
+  return path.join(problemDir(root, slug), 'meta.json');
 }
 
 /** Read the server-owned submission rows and their optional sidecars. */
@@ -38,13 +39,13 @@ export async function readSubmissions({ root, slug }) {
   const rows = Array.isArray(meta?.submissions)
     ? [...meta.submissions].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     : [];
-  const dir = path.resolve(root, 'problems', slug, 'submissions');
+  const dir = path.join(problemDir(root, slug), 'submissions');
 
   return Promise.all(rows.map(async (row) => {
     const sidecar = await readSubmissionDetails({ root, slug, submissionId: row.submissionId });
     let code = null;
     if (typeof row.codeFile === 'string' && /^submissions\/[^/\\]+\.py$/.test(row.codeFile)) {
-      const file = path.resolve(root, 'problems', slug, row.codeFile);
+      const file = path.resolve(problemDir(root, slug), row.codeFile);
       try {
         const real = await fsp.realpath(file);
         const realDir = await fsp.realpath(dir);

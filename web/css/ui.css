@@ -1,0 +1,146 @@
+:root,body{
+  --surface-card-bg:var(--card);
+  --surface-card-border:1px solid var(--hair-10);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:none;
+  --surface-card-hover-bg:var(--hair-06);
+  --surface-card-hover-shadow:none;
+  --row-radius:var(--r-sm);
+  --row-hover-bg:var(--hair-06);
+  --row-gap:var(--space-2);
+  --row-border:var(--surface-card-border);
+  --row-rule:1px solid var(--hair-10);
+  --tab-radius:var(--r-sm);
+  --tab-shape:var(--tab-radius) var(--tab-radius) 0 0;
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:inset 0 -2px 0 var(--accent);
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-sm);
+  --chip-border:0;
+  --chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow-lift);
+  --float-border:1px solid var(--hair-20);
+  --control-border:1px solid var(--hair-20);
+  --select-chevron-border:solid var(--ink-50);
+  --select-chevron-width:0 1.5px 1.5px 0;
+  --phase-rule:2px solid var(--hair-10);
+  --tab-selected-shadow:var(--tab-active-indicator),var(--tab-active-shadow);
+  --chart-marker-border:2px solid var(--card);
+}
+/* Shared controls inherit theme geometry and color. */
+:root,body{--radius-sm:var(--r-sm);--radius-md:var(--r-md);--radius-lg:var(--r-lg,var(--r-md));--shadow-pop:var(--shadow-lift,var(--shadow));--control-sm:var(--control-h-sm,28px);--control-md:var(--control-h,34px);--status-success-ink:var(--easy);--status-success-bg:var(--easy-soft);--status-warn-ink:var(--med);--status-warn-bg:var(--med-soft);--status-danger-ink:var(--hard);--status-danger-bg:var(--hard-soft);--status-accent-ink:var(--accent);--status-accent-bg:var(--accent-soft)}
+body .btn,body .ui-select-button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:var(--control-sm);min-height:var(--control-sm);padding:0 var(--space-3);border:var(--control-border);border-radius:var(--tab-radius);background:var(--card);color:var(--ink);font:500 var(--text-sm)/var(--line-sm) var(--ui);cursor:pointer;white-space:nowrap}
+body .btn--sm{height:var(--control-sm);min-height:var(--control-sm);padding-inline:var(--space-2);font-size:var(--text-xs)}
+body .btn--md{height:var(--control-md);min-height:var(--control-md)}
+body .btn--primary{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
+body .btn--secondary{background:var(--card);color:var(--ink)}
+body .btn--quiet,body .btn--danger-quiet{background:transparent;border-color:transparent;color:var(--ink-70)}
+body .btn--danger-quiet{color:var(--status-danger-ink)}
+body .btn:hover:not(:disabled){filter:brightness(.95)}
+body .btn--quiet:hover:not(:disabled),body .btn--danger-quiet:hover:not(:disabled){background:var(--row-hover-bg);filter:none}
+body .icon-btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--control-sm);height:var(--control-sm);min-height:var(--control-sm);padding:var(--space-1);border:0;border-radius:var(--row-radius);background:transparent;color:var(--ink-70);cursor:pointer}
+body .icon-btn:hover:not(:disabled),body .icon-btn[aria-pressed=true]{background:var(--row-hover-bg);color:var(--ink)}
+body .btn:disabled,body .icon-btn:disabled,body .ui-select-button:disabled{opacity:.45;cursor:default}
+.ui-select{display:inline-block;position:relative;max-width:100%;min-width:0}
+body .ui-select-button{width:100%;justify-content:flex-start;text-align:left;padding-right:var(--space-7);position:relative}
+.ui-select-button::after{content:'';position:absolute;right:var(--space-3);top:50%;width:5px;height:5px;margin-top:-4px;border:var(--select-chevron-border);border-width:var(--select-chevron-width);transform:rotate(45deg);pointer-events:none}
+.ui-icon{display:block;flex:none}
+.ui-menu{position:fixed;inset:auto;margin:0;box-sizing:border-box;z-index:10000;overflow:auto;padding:var(--space-1);background:var(--card);color:var(--ink);border:var(--float-border);border-radius:var(--float-radius);box-shadow:var(--float-shadow);font-family:var(--ui)}
+.ui-menu[hidden]{display:none!important}
+.ui-menu::backdrop{background:transparent;pointer-events:none}
+body .ui-menu-item{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:var(--control-sm);padding:var(--space-2) var(--space-3);border:0;border-radius:var(--row-radius);background:transparent;color:var(--ink);font:400 var(--text-sm)/var(--line-md) var(--ui);text-align:left;cursor:pointer}
+.ui-menu-item:focus-visible,.ui-menu-item:hover{background:var(--row-hover-bg);outline:none}
+.ui-menu-item:disabled{opacity:.4;cursor:default}
+.ui-menu-label{flex:1;overflow-wrap:anywhere}
+.ui-menu-check{width:var(--space-4);flex:none;color:var(--accent)}
+.ui-menu-hint,.ui-menu-heading{font-size:var(--text-xs);color:var(--ink-70)}
+.ui-menu-heading{padding:var(--space-2) var(--space-3);font-weight:600}
+.ui-menu [role=group]+[role=group]{border-top:1px solid var(--hair-10);margin-top:var(--space-1);padding-top:var(--space-1)}
+.ui-tabs{display:flex;gap:var(--space-1);border-bottom:1px solid var(--hair-10)}
+body .ui-tab{box-sizing:border-box;position:relative;display:inline-flex;align-items:center;gap:var(--space-1);height:var(--control-sm);padding:0 var(--space-2);border:0;border-radius:var(--tab-shape);background:transparent;color:var(--ink-70);font:500 var(--text-sm)/var(--line-sm) var(--ui);cursor:pointer;white-space:nowrap}
+body .ui-tab[aria-selected=true]{color:var(--tab-active-fg);background:var(--tab-active-bg);box-shadow:var(--tab-selected-shadow);border-bottom:0}
+.ui-badge{box-sizing:border-box;display:inline-flex;align-items:center;gap:var(--space-1);padding:var(--space-1) var(--space-2);border:var(--chip-border);border-radius:var(--chip-radius);font:var(--chip-font);white-space:nowrap}
+.ui-badge--neutral{color:var(--ink);background:var(--hair-06)}
+.ui-badge--accent{color:var(--status-accent-ink);background:var(--status-accent-bg)}
+.ui-badge--success{color:var(--status-success-ink);background:var(--status-success-bg)}
+.ui-badge--warn{color:var(--status-warn-ink);background:var(--status-warn-bg)}
+.ui-badge--danger{color:var(--status-danger-ink);background:var(--status-danger-bg)}
+.ui-count{box-sizing:border-box;border:var(--chip-border);font:var(--chip-font);display:inline-flex;align-items:center;justify-content:center;min-width:var(--space-4);padding-inline:var(--space-1);border-radius:var(--chip-radius);background:var(--hair-06);font-size:var(--text-xs)}
+.ui-live-dot{display:inline-block;flex:none;width:calc(var(--space-2) - 2px);height:calc(var(--space-2) - 2px);border-radius:50%;background:currentColor}
+
+body .ui-tab:hover:not([aria-selected=true]){background:var(--row-hover-bg)}
+
+
+/* Content layout contract. Hover/theme treatments never own these dimensions.
+   Inset is the edge clearance; gap is the space between children, not a margin patch. */
+:root,body{--content-inset:var(--space-3);--content-rail:var(--space-4);--content-gap:var(--space-3);--content-stack-gap:var(--space-2)}
+body .ui-inset{box-sizing:border-box;min-width:0;padding:var(--content-inset);overflow-wrap:anywhere}
+body .ui-inset--roomy{--content-inset:var(--space-5)}
+body .ui-inset--compact{--content-inset:var(--space-2)}
+body .ui-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--content-gap);min-width:0}
+body .ui-row-content{min-width:0;overflow-wrap:anywhere}
+body .ui-row-trailing{position:static;flex:none;margin:0;align-self:center}
+body .ui-action-row{width:100%;height:auto;min-height:var(--control-md);text-align:left;white-space:normal;border:var(--row-border);border-radius:var(--row-radius);background:var(--surface-card-bg);color:var(--ink);font:var(--text-sm)/var(--line-md) var(--ui);cursor:pointer}
+body .ui-action-row:hover{background:var(--row-hover-bg)}
+body .ui-row-chevron{display:block;width:16px;height:16px;color:var(--ink-50);transform:rotate(-90deg);pointer-events:none}
+body .ui-stack{display:flex;flex-direction:column;gap:var(--content-stack-gap);min-width:0}
+body .ui-cluster{display:flex;flex-wrap:wrap;align-items:center;gap:var(--content-gap);min-width:0}
+body .ui-cluster-content{flex:1 1 14rem;min-width:0;overflow-wrap:anywhere}
+body .ui-cluster > :is(button,.btn):not(.ui-cluster-content){flex:none;max-width:100%}
+
+/* Workspace contract: the page supplies height; content panes own overflow.
+   No fixed subtraction of toolbar sizes, and no sticky overlays inside a pane. */
+main:has(>.ui-workspace){max-width:none;padding:0}
+body .ui-workspace{--content-inset:var(--space-4);width:100%;min-height:0;margin:0;padding:var(--space-2) var(--space-3) var(--space-3)}
+.ui-pane{--content-inset:var(--space-4);display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.ui-pane-scroll{flex:1 1 0;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable}
+.ui-pane-controls{flex:none;max-height:50%;overflow:auto;overscroll-behavior:contain}
+@media(min-width:901px){
+  body:has(main>.ui-workspace){height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+  body:has(main>.ui-workspace)>.topbar{flex:none}
+  main:has(>.ui-workspace){flex:1;min-height:0;width:100%;overflow:hidden}
+  main>.ui-workspace{height:100%;max-width:none;display:flex;flex-direction:column;overflow:hidden}
+}
+
+/* Headings are structure, not free-floating controls. UI text never inherits
+   the theme's prose face. The title shrinks/wraps; the action rail stays trailing. */
+.ui-workspace-header{display:flex;flex:none;align-items:center;gap:var(--space-2);min-width:0;min-height:var(--space-8);font-family:var(--ui)}
+.ui-workspace-identity{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-1) var(--space-3)}
+.ui-workspace-back{flex:none;color:var(--ink-70);text-decoration:none}
+.ui-workspace-back:hover{color:var(--ink);background:var(--row-hover-bg)}
+.ui-workspace-identity h1{margin:0;font:600 var(--text-md)/var(--line-md) var(--ui);overflow-wrap:anywhere}
+.ui-workspace-identity p{margin:0;font:var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50)}
+.ui-header-actions{display:flex;flex:none;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--space-2);margin-left:auto}
+.ui-dialog-header{flex:none;display:flex;align-items:flex-start;gap:var(--space-4);padding:var(--space-4);border-bottom:1px solid var(--hair-10);font-family:var(--ui)}
+.ui-dialog-identity{flex:1;min-width:0}
+.ui-dialog-identity h2{margin:0;font:600 var(--text-md)/var(--line-md) var(--ui);overflow-wrap:anywhere}
+.ui-dialog-identity p{margin:var(--space-1) 0 0;font:var(--text-sm)/var(--line-md) var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
+.ui-dialog-close{flex:none}
+@media(max-width:600px){.ui-workspace-header{flex-wrap:wrap}.ui-workspace-identity{flex-basis:calc(100% - 48px)}.ui-workspace-header>.ui-header-actions{margin-left:auto}.ui-dialog-header{gap:var(--space-2)}}
+
+/* Dense chrome is separate from reading/content insets. All file rows and panel
+   toolbars share these rails; adding a control must not add another padded card. */
+body .ui-toolbar{padding:var(--space-2) var(--space-3);min-height:calc(var(--control-sm) + var(--space-4));box-sizing:border-box}
+
+/* A single composer, shared by coaching, practice and both interview types.
+   Normal flow reserves its height; there is no overlay/inset synchronization. */
+body[class] .ui-composer{box-sizing:border-box;flex:none;min-width:0;display:flex;flex-direction:column;position:static;margin:var(--space-2);padding:var(--space-2);border:var(--float-border);border-radius:var(--float-radius);background:var(--card);box-shadow:none;font:var(--text-sm)/var(--line-md) var(--ui);max-height:50%;overflow:hidden;overscroll-behavior:contain}
+.ui-composer-body{min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain}
+body[class] .ui-composer:focus-within{border-color:var(--accent)}
+body[class] .ui-composer textarea.ui-composer-input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:var(--space-8);max-height:min(calc(var(--space-8) * 4 + var(--space-5)),20dvh);margin:0;padding:var(--space-2);border:0;border-radius:0;outline:none;box-shadow:none;resize:none;background:transparent;color:var(--ink);font:var(--text-sm)/1.6 var(--ui);overflow-y:auto}
+body[class] .ui-composer textarea.ui-composer-input::placeholder{color:var(--ink-50)}
+.ui-composer-footer{flex:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-1) var(--space-2);min-width:0;margin-top:var(--space-1)}
+.ui-composer-options,.ui-composer-actions{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1);min-width:0;max-width:100%}
+.ui-composer-options{flex:1 1 auto}
+.ui-composer-actions{margin-left:auto;flex:0 1 auto}
+body[class] .ui-composer .ui-select-button{height:var(--control-sm);min-height:var(--control-sm);border:0;background:transparent;font-size:var(--text-xs);color:var(--ink-70);padding-left:var(--space-2)}
+body[class] .ui-composer .ui-select-button:hover{background:var(--row-hover-bg);color:var(--ink)}
+.ui-composer .coach-model-picker{flex:0 1 auto;max-width:100%}
+body[class] .ui-composer-send{flex:none;width:var(--control-md);height:var(--control-md);min-height:var(--control-md);padding:0;border-radius:var(--float-radius)}
+.ui-composer [hidden]{display:none!important}
+
+/* Workspace splits keep their own 900px stacking boundary, independent of coding. */
+.split.ui-pane-divider{touch-action:none}
+@media(min-width:901px){.split.ui-pane-divider:not([hidden]){display:block}}

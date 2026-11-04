@@ -1,19 +1,13 @@
 # Coding interviews
 
-Start interview replaces the recorder's start button. Its setup chooses 30/45/60 minutes,
-Typed/Voice and Interviewer on/off. Off uses the existing silent recorder and attempt review.
-On replaces the entire coach panel, so the coach composer, history and submission tab cannot
-be mistaken for the interviewer. The editor's Connector submission button remains unchanged.
-
-The debrief stays visible until **Back to coach**. Past chats includes interview records;
-opening a finished record never starts a provider turn. An unfinished interview resumes its
-original wall-clock start. Only Pause excludes elapsed time; navigating away does not pause.
-If the tab is closed at expiry, reopening ends the interview rather than granting more time.
+The coding sidebar contains Chat, Interviews and Submissions. Start a typed or voice
+interview from Interviews; select a saved row to inspect it without starting a provider.
+Only explicit Resume continues a saved interview. Finished rows open a structured
+report with post-interview questions. Only Pause freezes the coding/LLD clock.
 
 ## Recording and recovery
 
-Typed mode retains the segment recorder as an archive, without triggering a second coach
-review. Voice mode instead uses the live phrase pipeline with `think_aloud` archival mode and
+Typed mode does not implicitly open a microphone. Voice mode uses the live phrase pipeline with `think_aloud` archival mode and
 an interview identity. They never acquire two microphones for the same interview. Voice
 phrases enter a persisted draft immediately, then `turnDecision` submits after silence and
 all pending transcriptions finish. Ending drains outstanding phrases before the debrief.
@@ -35,6 +29,17 @@ the existing turn and replays its durable result. Stop owns finalization even if
 kill callback never fires. Pauses and completions cannot overwrite an in-flight response.
 
 ## Providers and interjections
+
+### Low-level design mode
+
+The `#/lld` screen uses the same interview panel, provider lifecycle, pause/resume
+handling, raw record, and report pipeline as coding interviews. It is a strict 45-minute
+L4 exercise by default with a blank Python document owned by the candidate. The library
+includes three example Python scenarios: meeting-room booking, parcel lockers,
+and a vending machine. Fresh mock preparation is not limited to those examples.
+The interviewer asks one short question at a time, avoids
+proposing classes or methods, and introduces at most one persisted curveball. Typed and
+Voice are the same mutually exclusive modes used by the other interview screens.
 
 Both providers use `readCoachChoice` and `runProviderTurn`, with no Studio or native tools.
 Claude resumes its native session. Coding interviews opt into a separate tool-free Codex
@@ -60,3 +65,74 @@ holds the floor. No event can trigger a submission or run code.
   Live visual fixtures refresh their clock at read time; they do not open a microphone.
 - Reviewer: verify real speech turn boundaries, echo hold, interruption, mic permissions,
   background archive behavior and navigation with an unfinished spoken phrase.
+
+## Python low-level design
+
+Open **LLD** and choose **Start a new mock**. The selected coach model prepares a
+fresh Python OOD problem using the learner's recorded history, prior assessments,
+saved notes, target level and duration. The sample cards remain available for deliberate
+practice; they are not the question bank. System Design's **Start a new mock** defaults
+to **Choose for me · unseen** and uses the same preparation service.
+
+Preparation checks recorded identities, titles, statements and semantic family IDs,
+including legacy design sessions. A rejected repeat requires an explicit retry; there
+is no canned fallback or automatic model retry. Exact/family checks cannot establish
+semantic novelty for every paraphrase. History covers local Studio records and supplied
+memory notes, not inaccessible external Claude or ChatGPT chats.
+
+The default is 45 minutes at L4, using Python. The candidate starts with a blank
+`design.py` editor. Put requirements and design notes in Python comments, then write
+classes, methods and executable assertions or unittest tests. Run Python executes only
+that document with Studio's timeout, output cap and process-group cleanup. It is a
+standalone execution aid, not hidden correctness testing: a normal exit establishes no
+correctness verdict. Completed documents are read-only.
+
+LLD uses the coding interview panel, voice controls, drafts, lifecycle, reports and
+review questions. Every interviewer turn receives the full current document. The
+opening is the literal one-line scenario. Private clarification facts are supplied to
+the interviewer; it is instructed to answer only what was asked. Probe counts and
+curveball delivery tags are persisted, but substantive interview behavior still needs
+real-session evaluation. Say “done” or click Finish to request the debrief.
+
+LLD reports cover requirements, responsibilities, interfaces, state, correctness,
+edge cases, self-verification, extensibility and communication. Technical errors,
+missing considerations, and self-caught versus interviewer-surfaced bugs are separate
+sections. Unassessed areas have no rating. Model observations remain judgments.
+
+System-design interviews now open the same report sheet and support post-interview
+questions in a separate `followups.jsonl`; original transcripts and scenes stay intact.
+The mock is strict while running; completed-report follow-ups switch to open teaching,
+including approaches, complexity, edge cases, tests, and corrected code when asked.
+Questions and answers are saved. Legacy prose debriefs remain readable, and legacy phase
+durations are not invented.
+
+Learning is organized per topic under `problems/<lld-or-design-slug>/`: requested notes
+append to `NOTES.md`, while `LEARNING.md` is derived from recorded interviews. New
+system-design topics use their own `design-<topic>` folder; legacy `design/<id>/` records
+and index sidecars are preserved and remain readable.
+
+
+## Shared learner context and answer modes
+
+`server/learning/profile.mjs` derives cross-problem context from raw records, accepted
+submissions, meaningful coding activity, interview reports and saved notes. Target
+levels are explicit preferences in `learner-profile.json`; they are never presented as
+assessed ability. Completed interviews and solved coding problems are separate facts.
+Missing assessments stay unknown. Recent evidence is bounded with coverage markers;
+problem identities remain exhaustive. Coaches, live interviewers and report follow-ups
+receive this context as untrusted data. Current-session evidence is excluded from the
+historical assessment list and supplied separately for grading.
+
+New setups default to **Voice**, respecting a deliberately remembered Typed choice.
+The live **Answer mode** control switches between Voice and Typed without a new session,
+clock reset or transcript reset. Leaving Voice stops audio and drains the final phrase
+into the same saved draft. Entering Voice with an unsent answer requires explicit send
+or edit. Mode changes during a streamed reply take effect locally immediately and save
+when that reply finishes. Failed saves have an explicit retry. Reload restores the saved
+mode; reopening history does not implicitly enable the microphone.
+
+Prepared definitions are server-owned `problems/<slug>/problem.json`; preparation
+receipts in `mock-preparations/` make explicit retries idempotent. No interview clock
+starts until preparation succeeds. Private clarification facts, curveballs and selection
+rationale stay server-side. Interview records retain a definition snapshot, so a later
+catalog change cannot alter what an existing interview was about.

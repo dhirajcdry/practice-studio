@@ -16,13 +16,14 @@ import path from 'node:path';
 import { isoWithOffset } from '../coach/sessions.mjs';
 import { parseRuntimeMs, parseMemoryMb } from './verdict.mjs';
 import { normaliseLeetCodeDetails, DETAILS_MAX } from './details.mjs';
+import { problemDir } from '../storage-layout.mjs';
 
 // Kept as compatibility exports for callers that recorded submissions before the
 // read/merge code moved to its own module.
 export { readSubmissions, submissionSummary } from './submissions.mjs';
 
 function metaFile(root, slug) {
-  return path.join(root, 'problems', slug, 'meta.json');
+  return path.join(problemDir(root, slug), 'meta.json');
 }
 
 async function writeAtomic(file, text) {
@@ -48,7 +49,7 @@ async function writeAtomic(file, text) {
 export async function saveSubmittedCode({ root, slug, submissionId, code }) {
   if (!root || !slug || !submissionId || typeof code !== 'string') return null;
   const name = `${submissionId}.py`;
-  const file = path.join(root, 'problems', slug, 'submissions', name);
+  const file = path.join(problemDir(root, slug), 'submissions', name);
   try {
     await fsp.mkdir(path.dirname(file), { recursive: true });
     await fsp.writeFile(file, code, 'utf8');
@@ -61,7 +62,7 @@ export async function saveSubmittedCode({ root, slug, submissionId, code }) {
 const safeId = (id) => /^(?:[1-9][0-9]*|nc-[0-9]+)$/.test(String(id));
 export async function saveSubmissionDetails({ root, slug, submissionId, record }) {
   if (!root || !slug || !safeId(submissionId)) return null;
-  const file = path.join(root, 'problems', slug, 'submissions', `${submissionId}.json`);
+  const file = path.join(problemDir(root, slug), 'submissions', `${submissionId}.json`);
   try {
     await writeAtomic(file, `${JSON.stringify(record, null, 2)}\n`);
     return `submissions/${submissionId}.json`;
@@ -72,7 +73,7 @@ export async function saveSubmissionDetails({ root, slug, submissionId, record }
 export async function readSubmissionDetails({ root, slug, submissionId }) {
   if (!safeId(submissionId)) return null;
   try {
-    const record = JSON.parse(await fsp.readFile(path.join(root, 'problems', slug, 'submissions', `${submissionId}.json`), 'utf8'));
+    const record = JSON.parse(await fsp.readFile(path.join(problemDir(root, slug), 'submissions', `${submissionId}.json`), 'utf8'));
     return record?.schemaVersion === 1 ? record : null;
   } catch {
     return null;

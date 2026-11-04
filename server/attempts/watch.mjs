@@ -14,6 +14,7 @@ import path from 'node:path';
 import { onSessionEvent } from '../coach/sessions.mjs';
 import { gatherAttempt } from './assemble.mjs';
 import { renderAttempt } from './render.mjs';
+import { problemDir } from '../storage-layout.mjs';
 
 /** ISO instants make poor directory names off macOS. */
 export function dirNameFor(attemptId) {
@@ -23,7 +24,7 @@ export function dirNameFor(attemptId) {
 export async function writeAttemptDoc({ root, slug, attemptId, title = null }) {
   const attempt = await gatherAttempt({ root, slug, attemptId });
   if (!attempt) return null;
-  const outDir = path.join(root, 'problems', slug, 'attempts', dirNameFor(attemptId));
+  const outDir = path.join(problemDir(root, slug), 'attempts', dirNameFor(attemptId));
   await fsp.mkdir(outDir, { recursive: true });
   const file = path.join(outDir, 'attempt.md');
   await fsp.writeFile(file, renderAttempt(attempt, { title }), 'utf8');

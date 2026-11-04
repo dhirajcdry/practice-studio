@@ -205,6 +205,27 @@ try {
     }
   }
 
+  /* ---- 3b. The file row's wrap toggle and the way back to a hidden sidebar ---- */
+  const wrapOption = () => evaluate(`(() => { const e = window.monaco.editor.getEditors()[0]; return e.getOption(window.monaco.editor.EditorOption.wordWrap); })()`);
+  const wrapBefore = await wrapOption();
+  await evaluate(`document.querySelector('.editor-wrap').click()`);
+  const wrapAfter = await wrapOption();
+  const wrapStored = await evaluate(`localStorage.getItem('studio.editor.wrap')`);
+  if (wrapBefore !== wrapAfter && wrapStored === (wrapAfter === 'on' ? 'on' : 'off')) ok(`Wrap toggles the editor (${wrapBefore} → ${wrapAfter}) and is remembered`);
+  else bad('Wrap toggles the editor and is remembered', `before=${wrapBefore} after=${wrapAfter} stored=${wrapStored}`);
+  await evaluate(`document.querySelector('.editor-wrap').click()`);
+
+  await evaluate(`document.body.classList.contains('coach-open') && document.querySelector('.coach-hide').click()`);
+  await sleep(100);
+  const openVisible = await evaluate(`(() => { const r = document.querySelector('.editor-open-sidebar').getBoundingClientRect(); return r.width > 0 && r.height > 0; })()`);
+  await evaluate(`document.querySelector('.editor-open-sidebar').click()`);
+  await sleep(100);
+  const reopened = await evaluate(`document.body.classList.contains('coach-open')`);
+  const goneWhenOpen = await evaluate(`document.querySelector('.editor-open-sidebar').getBoundingClientRect().width === 0`);
+  if (openVisible && reopened && goneWhenOpen) ok('a hidden sidebar has a button in the file row that brings it back');
+  else bad('a hidden sidebar can be reopened from the file row', `visible=${openVisible} reopened=${reopened} hiddenWhenOpen=${goneWhenOpen}`);
+  await evaluate(`document.querySelector('.coach-hide').click()`);
+
   /* ---- 4. Reference drawer: real pointer resize, persistence and scrim ---- */
   const openReference = async () => {
     await evaluate(`(async () => {

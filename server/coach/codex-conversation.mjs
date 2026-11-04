@@ -1,7 +1,7 @@
-// Interview-only, tool-free native thread reuse. The connection lives for this one
+// Interview native thread reuse with turn-scoped Studio tools. The connection lives for this one
 // interview; losing it is recoverable from Studio's append-only transcript.
-import { connection, startLockedTurn, mcpServerStarting, plainError, MCP_STARTED, safeError, TURN_TIMEOUT_MS } from './codex-cli.mjs';
-export function runConversationTurn({ conversation, prompt, systemPrompt = '', model, binary, onToken = () => {}, onSessionId = () => {}, onDone = () => {}, onError = () => {} }) {
+import { connection, startLockedTurn, dynamicToolsFrom, mcpServerStarting, plainError, MCP_STARTED, safeError, TURN_TIMEOUT_MS } from './codex-cli.mjs';
+export function runConversationTurn({ conversation, prompt, systemPrompt = '', model, reasoningEffort = null, binary, toolSession = null, toolSpecs = [], onToken = () => {}, onSessionId = () => {}, onDone = () => {}, onError = () => {} }) {
   let settled = false, timer, streamed = '', finalText = '';
   function close() {
     conversation.client?.close(); conversation.client = null; conversation.threadId = null; conversation.ready = false;
@@ -25,6 +25,14 @@ export function runConversationTurn({ conversation, prompt, systemPrompt = '', m
     settled = true; clearTimeout(timer); conversation.ready = true;
     onDone(conversation.threadId, 'completed');
   };
+  conversation.request = message => {
+    if (settled || !toolSession || message.method !== 'item/tool/call') return null;
+    const p = message.params || {};
+    if (!conversation.threadId || p.threadId !== conversation.threadId || typeof p.tool !== 'string') return null;
+    let args = p.arguments;
+    if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = null; } }
+    return toolSession.call(p.tool, args ?? {}).then(({ ok, text }) => ({ success: ok === true, contentItems: [{ type: 'inputText', text: String(text ?? '') }] }));
+  };
   conversation.notification = notification;
   conversation.close = close;
   timer = setTimeout(() => fail('The interviewer took too long and was stopped.'), TURN_TIMEOUT_MS);
@@ -32,21 +40,21 @@ export function runConversationTurn({ conversation, prompt, systemPrompt = '', m
   (async () => {
     try {
       if (!conversation.client) {
-        conversation.client = connection({ binary, onNotification: message => conversation.notification?.(message) });
+        conversation.client = connection({ binary, onNotification: message => conversation.notification?.(message), onRequest: message => conversation.request?.(message) });
         const client = conversation.client;
         client.exited.then(error => {
           if (conversation.client !== client) return;
           conversation.ready = false; conversation.client = null; conversation.threadId = null;
           if (!settled) fail(error);
         });
-        await client.initialize();
+        await client.initialize({ experimentalApi: Boolean(toolSession) });
         if (settled) return;
-        await startLockedTurn(client, { model, baseInstructions: systemPrompt, text: prompt,
+        await startLockedTurn(client, { model, reasoningEffort, baseInstructions: systemPrompt, text: prompt, dynamicTools: toolSession ? dynamicToolsFrom(toolSpecs) : null,
           onThread: id => { conversation.threadId = id; onSessionId(id); }, alive: () => !settled });
       } else {
         conversation.ready = false;
         onSessionId(conversation.threadId);
-        await conversation.client.rpc('turn/start', { threadId: conversation.threadId, input: [{ type: 'text', text: prompt, text_elements: [] }] });
+        await conversation.client.rpc('turn/start', { threadId: conversation.threadId, ...(reasoningEffort ? { effort: reasoningEffort } : {}), input: [{ type: 'text', text: prompt, text_elements: [] }] });
       }
     } catch (error) { fail(error); }
   })();

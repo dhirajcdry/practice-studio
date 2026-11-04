@@ -15,6 +15,7 @@ import { routes } from '../routes.mjs';
 import { VisualService, ImageQueue, generateImage, visualId, imageKind, QUEUE_FULL, MAX_IMAGE_BYTES } from '../visuals.mjs';
 import { MCP_STARTED, MCP_UNCONFIRMED } from '../codex-cli.mjs';
 import { HttpError, sendError } from '../../http-util.mjs';
+import { problemDir } from '../../storage-layout.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CODEX = path.join(HERE, 'bin', 'fake-codex.mjs');
@@ -189,7 +190,7 @@ test('end to end with the fake Codex: one spawn for two asks, stored, served wit
   assert.equal(spawns, 1);
   assert.deepEqual({ ...ready, elapsedMs: 0 }, { id, status: 'ready', url: `/api/coach/visuals/two-sum/${id}/image`, alt: 'A kite', elapsedMs: 0 });
 
-  const dir = path.join(root, 'problems', 'two-sum', 'visuals');
+  const dir = path.join(problemDir(root, 'two-sum'), 'visuals');
   assert.deepEqual((await fsp.readdir(dir)).sort(), [`${id}.json`, `${id}.png`]);
   const meta = JSON.parse(await fsp.readFile(path.join(dir, `${id}.json`), 'utf8'));
   assert.equal(meta.prompt, 'a red kite'); assert.equal(meta.ext, 'png'); assert.equal(meta.model, 'gpt-6-astra');

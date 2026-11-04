@@ -17,6 +17,7 @@ const CALL_TIMEOUT_MS = 120_000; // a run_code over 25 cases, or a 15 s browser 
 
 const url = process.env.STUDIO_TOOLS_URL;
 const token = process.env.STUDIO_TOOLS_TOKEN;
+const specs = process.env.STUDIO_TOOL_SPECS ? JSON.parse(process.env.STUDIO_TOOL_SPECS) : TOOL_SPECS;
 
 function send(message) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
@@ -60,7 +61,7 @@ async function handle(message) {
       return isRequest && send({ id, result: {} });
     case 'tools/list':
       return isRequest && send({ id, result: {
-        tools: TOOL_SPECS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        tools: specs.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
       } });
     case 'tools/call': {
       if (!isRequest) return undefined;

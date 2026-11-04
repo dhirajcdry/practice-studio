@@ -12,6 +12,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { problemDir } from '../storage-layout.mjs';
 
 export const MAX_CASES = 25;        // beyond this a local "quick run" is not quick
 export const MAX_INPUT_CHARS = 8000;
@@ -23,7 +24,7 @@ export const SOURCES = new Set(['custom', 'leetcode', 'coach']);
 export const MAX_NOTE_CHARS = 200;
 
 export function casesFile(root, slug) {
-  return path.join(root, 'problems', slug, 'cases.json');
+  return path.join(problemDir(root, slug), 'cases.json');
 }
 
 /** One stored case, or null when it cannot be trusted. Never throws. */

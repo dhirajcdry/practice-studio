@@ -1,3 +1,4 @@
+import { problemDir } from '../server/storage-layout.mjs';
 // Reload the page while the coach is writing, and see whether the answer survives.
 //
 //   node scripts/check-coach-reload.mjs
@@ -143,7 +144,7 @@ try {
   else bad('the part written before the reload is still there', 'it is missing');
 
   // And the workspace has the whole thing, filed once, not as a stopped turn.
-  const raw = await fsp.readFile(path.join(HOME, 'problems', 'two-sum', 'chats.jsonl'), 'utf8').catch(() => '');
+  const raw = await fsp.readFile(path.join(problemDir(HOME, 'two-sum'), 'chats.jsonl'), 'utf8').catch(() => '');
   const turns = raw.split('\n').filter(Boolean).map((l) => JSON.parse(l));
   if (turns.length === 1) ok('filed exactly once');
   else bad('the turn is filed exactly once', `${turns.length} turns in chats.jsonl`);

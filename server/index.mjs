@@ -24,6 +24,7 @@ import { LeetCodeContentCache } from './leetcode.mjs';
 import { NeetCodeContentCache } from './neetcode.mjs';
 import { StaticSite } from './static.mjs';
 import { createApp } from './app.mjs';
+import { archiveIdleConversations } from './coach/native-sessions.mjs';
 
 export function boot({ quiet = false } = {}) {
   const solutions = loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT);
@@ -65,6 +66,12 @@ export function start() {
   report(catalog, solutions, site);
 
   const server = http.createServer(app);
+  // Expire resumability, never learning evidence. No model or memory-upkeep turn.
+  const expireSessions = () => archiveIdleConversations(HOME_ROOT).catch(error => console.warn(`[sessions] expiry: ${error.message}`));
+  void expireSessions();
+  const sessionExpiry = setInterval(expireSessions, 60 * 60 * 1000);
+  sessionExpiry.unref();
+  server.on('close', () => clearInterval(sessionExpiry));
   const stopRecall = startRecallSync({ root: HOME_ROOT });
   server.on('close', stopRecall);
   server.on('close', () => ttsWorker.close());

@@ -17,6 +17,8 @@ import path from 'node:path';
 import { DesignStore } from './store.mjs';
 import { sceneToGraph, renderGraph, diffGraphs, describeDiff } from './graph.mjs';
 import { PHASES } from './interview.mjs';
+import { buildDesignReport } from './report.mjs';
+import { reportMarkdown } from '../interview/report.mjs';
 
 const labelOf = (id) => PHASES.find((p) => p.id === id)?.label ?? id;
 
@@ -38,14 +40,16 @@ export async function gatherInterview({ root, id }) {
 
 export function renderInterview(interview) {
   const { id, state, turns, scenes } = interview;
-  const startMs = state.startedAt ?? (turns[0]?.at ? Date.parse(turns[0].at) : null);
-  const at = (iso) => (startMs && iso ? clock(Date.parse(iso) - startMs) : '--:--');
+  const startMs = (turns[0]?.at ? Date.parse(turns[0].at) : null) || state.startedAt;
+  // Resume shifts startedAt. Only recorded elapsed time is an active-time timestamp;
+  // legacy turns and canvas snapshots keep their actual recording time instead.
+  const at = event => Number.isFinite(event.elapsedMs) ? clock(event.elapsedMs) : event.at || 'Timing not recorded';
 
   const asked = turns.filter((t) => t.kind === 'turn' || t.kind === 'opening');
-  const answered = turns.filter((t) => t.kind === 'turn' && String(t.said ?? '').trim());
+  const answered = turns.filter((t) => String(t.said ?? '').trim());
   const debrief = turns.find((t) => t.kind === 'debrief');
 
-  const spokenByThem = turns.reduce((n, t) => n + words(t.asked), 0);
+  const spokenByThem = turns.filter(t => t.kind !== 'debrief').reduce((n, t) => n + words(t.asked), 0);
   const spokenByMe = turns.reduce((n, t) => n + words(t.said), 0);
   const share = spokenByThem + spokenByMe === 0 ? 0 : spokenByThem / (spokenByThem + spokenByMe);
 
@@ -55,7 +59,7 @@ export function renderInterview(interview) {
   out.push(`- **When** ${startMs ? new Date(startMs).toLocaleString() : 'unknown'}`);
   out.push(`- **Bar** ${state.level}`);
   if (state.endedAt && startMs) {
-    out.push(`- **Took** ${Math.round((state.endedAt - startMs) / 60000)} minutes of ${state.minutes}`);
+    out.push(`- **Took** ${Math.round((state.endedAt - state.startedAt) / 60000)} minutes of ${state.minutes}`);
   }
   out.push(`- **Questions** ${asked.length}, of which ${answered.length} got an answer`);
   out.push(`- **Talk share** the interviewer spoke ${Math.round(share * 100)}% of the words (target 20%)`);
@@ -85,16 +89,26 @@ export function renderInterview(interview) {
     ...stages.map((s) => ({ kind: 'draw', at: s.at, stage: s })),
   ].sort((a, b) => Date.parse(a.at ?? 0) - Date.parse(b.at ?? 0));
 
+  const actions = new Map(turns.filter(t => t.kind === 'tool_action').map(t => [t.action.id, t]));
   for (const event of events) {
     if (event.kind === 'draw') {
-      out.push(`### \`${at(event.at)}\`  ·  the board`, '');
+      out.push(`### \`${at(event.stage || event.turn)}\`  ·  the board`, '');
       if (event.stage.change) out.push(`*${event.stage.change}*`, '');
       out.push('```', renderGraph(event.stage.graph), '```', '');
       continue;
     }
     const t = event.turn;
+    if (t.kind === 'tool_action') {
+      if (actions.get(t.action.id) === t) out.push(`### ${at(t)} · Agent action`, '', `${t.action.status === 'done' ? 'Applied' : 'Not confirmed'}: ${t.action.summary}`, '', t.action.message || '', '');
+      continue;
+    }
     out.push(`### \`${at(t.at)}\`  ·  ${labelOf(t.phase ?? state.phase)}`, '');
+    if (t.kind === 'candidate') {
+      out.push(`**A** ${String(t.said ?? '').trim() || '*— said nothing —*'}`, '');
+      continue;
+    }
     out.push(`**Q** ${String(t.asked ?? '').trim() || '*(the turn was cut — see below)*'}`, '');
+    if (t.requestId && t.kind === 'turn') continue;
     const said = String(t.said ?? '').trim();
     // A silence is printed as a silence. Leaving it blank would read, a week later, as
     // if the question had simply not been asked.
@@ -102,7 +116,8 @@ export function renderInterview(interview) {
   }
 
   if (debrief) {
-    out.push('', '## The debrief', '', String(debrief.asked ?? '').trim() || '*(empty)*', '');
+    const report = buildDesignReport(state, turns);
+    out.push('', '## The debrief', '', (report && reportMarkdown(report)) || String(debrief.asked ?? '').trim() || '*(empty)*', '');
   }
 
   if (scenes.length) {
@@ -117,7 +132,7 @@ export function renderInterview(interview) {
 export async function writeInterviewDoc({ root, id }) {
   const interview = await gatherInterview({ root, id });
   if (!interview) return null;
-  const file = path.join(root, 'design', id, 'interview.md');
+  const file = path.join(new DesignStore({ root }).dir(id), 'interview.md');
   await fsp.writeFile(file, renderInterview(interview), 'utf8');
   return file;
 }

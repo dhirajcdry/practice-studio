@@ -1,0 +1,41 @@
+.lld-view{padding:var(--space-6);max-width:1600px;margin:auto}
+.lld-heading{display:flex;align-items:center;gap:var(--space-5);margin-bottom:var(--space-6)}
+.lld-heading h1{font-size:var(--text-xl);margin:0}.lld-heading p{margin:var(--space-1) 0 0}
+.lld-library{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-7)}
+.lld-library h2{font-size:var(--text-lg);margin:0 0 var(--space-4)}
+.lld-scenarios,.lld-records{display:grid;gap:var(--space-3)}
+.lld-scenario,.lld-record{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);text-align:left;color:var(--ink);background:var(--card);border:1px solid var(--hair-10);border-radius:var(--r-card);padding:var(--space-4);font:inherit;text-decoration:none}
+.lld-record-link{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;color:inherit;text-decoration:none}.lld-record-link:hover{color:var(--accent)}
+.lld-scenario:hover,.lld-record:hover{background:var(--accent-soft)}
+.lld-choice{min-width:0}
+.lld-scenario{width:100%}
+.lld-scenario-copy{display:flex;flex:1;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-1) var(--space-4);min-width:0}
+.lld-scenario[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.lld-scenario .ui-icon{flex:none}
+.lld-scenario[aria-expanded="true"] .ui-icon{transform:rotate(180deg)}
+.lld-scenario:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lld-workspace{display:grid;grid-template-columns:var(--workspace-columns,minmax(0,1.3fr) minmax(360px,1fr));gap:var(--space-4);flex:1;min-height:0}
+.lld-document{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.lld-document-bar{flex:none;display:flex;align-items:center;gap:var(--space-3);border-bottom:1px solid var(--hair-10)}
+.lld-document-bar .lld-notice{flex:1;min-width:0;font-size:var(--text-xs);color:var(--ink-70);margin:0}
+.lld-code{position:relative;flex:1;min-height:0;overflow:hidden}
+.lld-output{flex:0 1 auto;max-height:30%;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:var(--space-4);margin:0;border-top:1px solid var(--hair-10);font-size:var(--text-sm)}
+.lld-interviewer{min-width:0;min-height:0;display:flex}.lld-interviewer>.ci-panel{position:static;display:flex;width:100%;height:100%;max-height:none;margin:0}
+.lld-notice{color:var(--ink-70);overflow-wrap:anywhere}.lld-start{margin-top:var(--space-2)}
+@media(max-width:900px){.lld-workspace{grid-template-columns:1fr;height:auto}.lld-document{height:60dvh}.lld-interviewer{height:max(540px,75dvh)}.lld-library{grid-template-columns:1fr}.lld-view{padding:var(--space-3)}.lld-heading{flex-wrap:wrap}.lld-scenario,.lld-record{flex-wrap:wrap}}
+
+
+
+.lld-interviewer>.ci-panel.is-complete{display:block;overflow:auto;padding:var(--space-4)}
+.lld-new-mock{max-width:780px;margin-bottom:var(--space-7)}
+
+/* The desktop workspace consumes the space below the actual navigation bar.
+   Its two panes own scrolling; document height never grows with the conversation. */
+@media(min-width:901px){
+  .lld-view.is-workspace{display:flex;flex-direction:column;gap:var(--space-2);height:100%;width:100%;max-width:none;margin:0;overflow:hidden}
+  .lld-view.is-workspace .lld-heading{flex:none;margin:0}
+}
+.lld-modes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-5);align-items:start}
+.lld-modes .lld-new-mock{max-width:none;margin:0}
+.lld-modes+.learner-summary{margin-bottom:var(--space-5)}
+@media(max-width:900px){.lld-modes{grid-template-columns:1fr;gap:var(--space-3)}}

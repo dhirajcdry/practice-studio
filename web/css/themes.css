@@ -1,5 +1,29 @@
 /* Each family keeps its shape and type when the light changes. */
 body.theme-studio{
+  --control-border:1px solid var(--hair-20);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:var(--card);
+  --surface-card-border:1px solid var(--hair-10);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:none;
+  --surface-card-hover-bg:var(--hair-06);
+  --surface-card-hover-shadow:none;
+  --row-radius:var(--r-sm);
+  --row-hover-bg:var(--hair-06);
+  --row-gap:var(--space-2);
+  --row-border:var(--surface-card-border);
+  --tab-radius:var(--r-sm);
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:inset 0 -2px 0 var(--accent);
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-sm);
+  --chip-border:0;
+  --chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow-lift);
+  --float-border:1px solid var(--hair-20);
+
   --verdict-easy:#246044;
   --verdict-hard:#B33A1A;
   --verdict-med:#795400;
@@ -82,6 +106,30 @@ body.theme-studio.is-dark{
 body.theme-desk:not(.is-dark){--tok-num:#93650B}
 
 body.theme-desk{
+  --control-border:1px solid var(--hair-20);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:var(--card);
+  --surface-card-border:1px solid var(--hair-10);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:var(--shadow);
+  --surface-card-hover-bg:var(--hair-06);
+  --surface-card-hover-shadow:var(--shadow);
+  --row-radius:var(--r-md);
+  --row-hover-bg:var(--hair-06);
+  --row-gap:var(--space-2);
+  --row-border:var(--surface-card-border);
+  --tab-radius:var(--r-sm);
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:inset 0 -2px 0 var(--accent);
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-md);
+  --chip-border:0;
+  --chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow-lift);
+  --float-border:1px solid var(--hair-20);
+
   --verdict-easy:#356747;
   --verdict-hard:#B4432A;
   --verdict-med:#805700;
@@ -161,6 +209,31 @@ body.theme-desk.is-dark{
 }
 
 body.theme-editorial{
+  --control-border:1px solid var(--hair-20);
+  --row-rule:1px dashed var(--hair-20);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:var(--card);
+  --surface-card-border:1px solid var(--hair-20);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:none;
+  --surface-card-hover-bg:var(--hair-06);
+  --surface-card-hover-shadow:none;
+  --row-radius:0;
+  --row-hover-bg:var(--hair-06);
+  --row-gap:0px;
+  --row-border:0;
+  --tab-radius:0;
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:inset 0 -3px 0 var(--accent);
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-sm);
+  --chip-border:1px solid var(--hair-20);
+  --chip-font:500 var(--text-xs)/var(--line-sm) var(--display);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow-lift);
+  --float-border:1px solid var(--hair-20);
+
   --verdict-easy:#2F6B4F;
   --verdict-hard:#9B2C2C;
   --verdict-med:#795400;
@@ -240,6 +313,31 @@ body.theme-editorial.is-dark{
 }
 
 body.theme-ink{
+  --control-border:1.5px solid var(--rule-color);
+  --row-rule:1.5px solid var(--rule-color);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:var(--card);
+  --surface-card-border:1.5px solid var(--rule-color);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:var(--shadow);
+  --surface-card-hover-bg:var(--hair-06);
+  --surface-card-hover-shadow:var(--shadow);
+  --row-radius:0;
+  --row-hover-bg:var(--hair-06);
+  --row-gap:0px;
+  --row-border:0;
+  --tab-radius:0;
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:inset 0 -4px 0 var(--ink);
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-sm);
+  --chip-border:1.5px solid currentColor;
+  --chip-font:700 var(--text-xs)/var(--line-sm) var(--ui);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow);
+  --float-border:1.5px solid var(--rule-color);
+
   --verdict-easy:#0A6B3D;
   --verdict-hard:#B4160F;
   --verdict-med:#7A5200;
@@ -325,6 +423,31 @@ body.theme-ink.is-dark{
 }
 
 body.theme-terminal{
+  --control-border:1px dashed var(--hair-20);
+  --row-rule:1px dashed var(--hair-20);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:var(--card);
+  --surface-card-border:1px dashed var(--hair-20);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:none;
+  --surface-card-hover-bg:var(--hair-06);
+  --surface-card-hover-shadow:none;
+  --row-radius:0;
+  --row-hover-bg:var(--hair-06);
+  --row-gap:0px;
+  --row-border:0;
+  --tab-radius:0;
+  --tab-active-bg:transparent;
+  --tab-active-fg:rgb(var(--line-rgb));
+  --tab-active-indicator:0 0 0 transparent;
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-sm);
+  --chip-border:1px dashed currentColor;
+  --chip-font:500 var(--text-xs)/var(--line-sm) var(--mono);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow-lift);
+  --float-border:1px dashed var(--hair-20);
+
   --verdict-easy:#176638;
   --verdict-hard:#B3261E;
   --verdict-med:#8A5A00;
@@ -444,7 +567,7 @@ body.theme-ink :is(.viewhead,.dash-head,.roadmap) h1{font-size:44px;letter-spaci
 body.theme-ink.ws-wide .phero h1{font-size:28px;letter-spacing:-.05em}
 body.theme-ink .tag{background:transparent;border:2px solid currentColor;font-weight:700}
 body.theme-ink.ws-wide .tag.pattern{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
-body.theme-ink .rr-tab[aria-pressed="true"]{border-bottom-width:4px;border-bottom-color:var(--ink);font-weight:700}
+body.theme-ink :is(.ui-tab,.rr-tab,.coach-tab):is([aria-pressed="true"],[aria-selected="true"]){border-bottom-width:4px;border-bottom-color:var(--ink);font-weight:700}
 body.theme-ink.ws-wide .ws{border-inline:2px solid var(--rule-color)}
 body.theme-ink.ws-wide .ws>.ws-bar,body.theme-ink.ws-wide .rr-tabs{border-color:var(--rule-color);border-width:2px}
 body.theme-ink.ws-wide .workspace-rail{border-right:2px solid var(--rule-color)}
@@ -455,7 +578,7 @@ body.theme-ink .workspace-rail button[aria-pressed="true"]::before{background:cu
 body.theme-ink .settings,body.theme-ink .navmenu,body.theme-ink:not(.ws-wide) .card,body.theme-ink .catalog .psec{box-shadow:var(--shadow)}
 /* Pressed choices go solid. Not tabs and the rail, whose pressed state is an underline or an
    accent mark, and not the day/night switch, whose pressed state just means "dark". */
-body.theme-ink button[aria-pressed="true"]:not(.workspace-rail button,.rr-tab,.coach-tab,.set-daynight,.icon-btn),body.theme-ink .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
+body.theme-ink button:is([aria-pressed="true"],[aria-selected="true"]):not(.workspace-rail button,.ui-tab,.rr-tab,.coach-tab,.set-daynight,.icon-btn),body.theme-ink .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
 body.theme-ink .set-card[aria-pressed="true"] :is(.set-cardname,.set-cardblurb){color:var(--solid-fg)}
 /* Inside an inverted (pressed) button the accent count would be blue on black; follow the button. */
 body.theme-ink button[aria-pressed="true"] .tree-count{color:var(--solid-fg)}
@@ -480,17 +603,21 @@ body.theme-terminal.ws-wide .ws>.ws-bar{
   background:var(--line-bg);color:var(--ink);border-top:0}
 body.theme-terminal.ws-wide .ws>.ws-bar .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
 body.theme-terminal .ws-run{background:var(--accent);color:var(--on-ink);border-color:var(--accent)}
-body.theme-terminal :is(.ws-bar button:not(.icon-btn),.rr-tab,.coach-tab,.tc-tab){border-color:transparent;background:transparent;box-shadow:none}
-body.theme-terminal :is(.ws-bar button:not(.icon-btn),.rr-tab,.coach-tab,.tc-tab)::before{content:"[";margin-right:3px;opacity:.6}
-body.theme-terminal :is(.ws-bar button:not(.icon-btn),.rr-tab,.coach-tab,.tc-tab)::after{content:"]";margin-left:3px;opacity:.6}
-body.theme-terminal :is(.rr-tab,.coach-tab)[aria-pressed="true"],body.theme-terminal .tc-tab.is-on,body.theme-terminal .ptoggle[aria-pressed="true"]{background:var(--line-bg);color:rgb(var(--line-rgb));border-color:var(--line-bg)}
+body.theme-terminal :is(.ws-bar button:not(.icon-btn),.ui-tab,.rr-tab,.coach-tab,.tc-tab){border-color:transparent;background:transparent;box-shadow:none}
+body.theme-terminal :is(.ws-bar button:not(.icon-btn),.ui-tab,.rr-tab,.coach-tab,.tc-tab)::before{content:"[";margin-right:3px;opacity:.6}
+body.theme-terminal :is(.ws-bar button:not(.icon-btn),.ui-tab,.rr-tab,.coach-tab,.tc-tab)::after{content:"]";margin-left:3px;opacity:.6}
+body.theme-terminal .coach-tab{padding-inline:var(--space-1)}
+body.theme-terminal .coach-tab::before{margin-right:1px}
+body.theme-terminal .coach-tab::after{margin-left:1px}
+body.theme-terminal :is(.ui-tab,.rr-tab,.coach-tab):is([aria-pressed="true"],[aria-selected="true"]),body.theme-terminal .tc-tab.is-on,body.theme-terminal .ptoggle:is([aria-pressed="true"],[aria-selected="true"]){background:var(--line-bg);color:rgb(var(--line-rgb));border-color:var(--line-bg)}
+body.theme-terminal :is(.ui-tab,.coach-tab)[aria-selected="true"]{background:transparent}
 body.theme-terminal :is(h1,h2,h3){font-weight:600;letter-spacing:0}
 body.theme-terminal :is(.phero,.viewhead,.dash-head,.roadmap) h1::before{content:"$ ";color:var(--accent)}
 body.theme-terminal.is-dark :is(h1,h2,h3,.wordmark){text-shadow:0 0 8px rgba(var(--ink-rgb),.45)}
 body.theme-terminal .tag,body.theme-terminal .ptoggle{background:transparent;border:1px dashed currentColor}
 body.theme-terminal.ws-wide .ws>.ws-bar .ws-submit{color:var(--ink)}
 body.theme-terminal .cmsg-who::before{content:"# ";color:var(--accent)}
-body.theme-terminal .cmsg.you .cmsg-body::before{content:"> ";color:var(--accent)}
+body.theme-terminal :is(.cmsg.you .cmsg-body,.ci-candidate .ci-text)::before{content:"> ";color:var(--accent)}
 body.theme-terminal .cmsg.reply .cmsg-body{font-size:12px;line-height:1.8}
 body.theme-terminal .coach-input{caret-color:var(--accent)}
 
@@ -517,6 +644,30 @@ body.theme-terminal .coach-input{caret-color:var(--accent)}
 
 /* Painted worlds keep complete palettes so switching families leaves no inherited colours. */
 body.theme-nebula{
+  --control-border:1px solid rgba(var(--accent-rgb),.35);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:color-mix(in srgb,var(--card) 82%,transparent);
+  --surface-card-border:1px solid rgba(var(--accent-rgb),.2);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:none;
+  --surface-card-hover-bg:var(--accent-soft);
+  --surface-card-hover-shadow:inset 0 0 24px rgba(var(--accent-rgb),.12);
+  --row-radius:var(--r-sm);
+  --row-hover-bg:var(--accent-soft);
+  --row-gap:var(--space-2);
+  --row-border:var(--surface-card-border);
+  --tab-radius:var(--r-sm);
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--accent);
+  --tab-active-indicator:0 0 0 transparent;
+  --tab-active-shadow:0 0 10px rgba(var(--accent-rgb),.25);
+  --chip-radius:var(--r-sm);
+  --chip-border:1px solid rgba(var(--accent-rgb),.35);
+  --chip-font:var(--hud);
+  --float-radius:var(--r-md);
+  --float-shadow:var(--shadow-lift),inset 0 0 60px rgba(var(--accent-rgb),.07);
+  --float-border:1px solid rgba(var(--accent-rgb),.35);
+
   --verdict-easy:#176640;
   --verdict-hard:#B83A4B;
   --verdict-med:#795400;
@@ -613,6 +764,30 @@ body.theme-nebula.is-dark{
 }
 
 body.theme-horizon{
+  --control-border:1px solid var(--rule-soft);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:color-mix(in srgb,var(--card) 88%,transparent);
+  --surface-card-border:3px double var(--rule-soft);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:var(--shadow);
+  --surface-card-hover-bg:var(--accent-soft);
+  --surface-card-hover-shadow:none;
+  --row-radius:var(--r-sm);
+  --row-hover-bg:var(--accent-soft);
+  --row-gap:var(--space-2);
+  --row-border:var(--surface-card-border);
+  --tab-radius:var(--r-sm);
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:0 0 0 transparent;
+  --tab-active-shadow:0 0 0 transparent;
+  --chip-radius:var(--r-sm);
+  --chip-border:1px solid var(--rule-soft);
+  --chip-font:600 var(--text-xs)/var(--line-sm) var(--ui);
+  --float-radius:0;
+  --float-shadow:var(--shadow-lift);
+  --float-border:3px double var(--rule);
+
   --verdict-easy:#246044;
   --verdict-hard:#B33A1A;
   --verdict-med:#795400;
@@ -709,6 +884,30 @@ body.theme-horizon.is-dark{
 }
 
 body.theme-abyss{
+  --control-border:1px solid rgba(var(--accent-rgb),.2);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:color-mix(in srgb,var(--card) 82%,transparent);
+  --surface-card-border:0;
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.18);
+  --surface-card-hover-bg:var(--accent-soft);
+  --surface-card-hover-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 20px rgba(var(--accent-rgb),.15);
+  --row-radius:14px;
+  --row-hover-bg:var(--accent-soft);
+  --row-gap:var(--space-2);
+  --row-border:var(--surface-card-border);
+  --tab-radius:999px;
+  --tab-active-bg:rgba(var(--accent-rgb),.16);
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:0 0 0 transparent;
+  --tab-active-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 18px rgba(var(--accent-rgb),.22);
+  --chip-radius:999px;
+  --chip-border:1px solid rgba(var(--accent-rgb),.2);
+  --chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
+  --float-radius:26px;
+  --float-shadow:var(--shadow-lift);
+  --float-border:1px solid rgba(var(--accent-rgb),.2);
+
   --verdict-easy:#176640;
   --verdict-hard:#B33A1A;
   --verdict-med:#795400;
@@ -805,6 +1004,30 @@ body.theme-abyss.is-dark{
 }
 
 body.theme-dunes{
+  --control-border:1.5px solid rgba(var(--ink-rgb),.55);
+  /* Component contract; dark mode inherits geometry and resolves its own palette. */
+  --surface-card-bg:var(--board);
+  --surface-card-border:1px dashed rgba(var(--ink-rgb),.35);
+  --surface-card-radius:var(--r-md);
+  --surface-card-shadow:-2px 2px 0 var(--sun-a),2px 2px 0 var(--sun-b);
+  --surface-card-hover-bg:var(--accent-soft);
+  --surface-card-hover-shadow:-3px 3px 0 var(--sun-a),3px 3px 0 var(--sun-b);
+  --row-radius:var(--r-sm);
+  --row-hover-bg:var(--accent-soft);
+  --row-gap:var(--space-3);
+  --row-border:var(--surface-card-border);
+  --tab-radius:var(--r-sm);
+  --tab-active-bg:transparent;
+  --tab-active-fg:var(--ink);
+  --tab-active-indicator:0 0 0 transparent;
+  --tab-active-shadow:2px 2px 0 var(--sun-b);
+  --chip-radius:var(--r-sm);
+  --chip-border:1px dashed currentColor;
+  --chip-font:var(--stencil);
+  --float-radius:var(--r-md);
+  --float-shadow:-6px 6px 0 var(--sun-a),6px 6px 0 var(--sun-b);
+  --float-border:1.5px solid rgba(var(--ink-rgb),.55);
+
   --verdict-easy:#246044;
   --verdict-hard:#B33A1A;
   --verdict-med:#795400;
@@ -909,11 +1132,11 @@ body.theme-art::before{
   content:"";position:fixed;inset:0;z-index:-1;
   background:var(--canvas) var(--art) center/cover no-repeat;pointer-events:none;
 }
-body.theme-art :is(.topbar,.pcol,.ws,.coach,.filterbar,.dz-side,.dz-canvas){
+body.theme-art :is(.topbar,.pcol,.ws,.coach,.filterbar,.dz-side,.dz-canvas):not(.ui-editor-surface){
   background:var(--glass);
   -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));backdrop-filter:blur(var(--blur)) saturate(var(--sat));
 }
-body.theme-art :is(.card,.psec,.dash-card,.dash-stats,.roadmap-node,.roadmap-graph-col,.roadmap-detail,.dzl-list,.dz-setup){
+body.theme-art :is(.card,.psec,.dash-card,.dash-stats,.roadmap-node,.roadmap-graph-col,.roadmap-detail,.dzl-list,.dz-setup):not(.ui-editor-surface){
   background:color-mix(in srgb,var(--card) 80%,transparent);
   -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));backdrop-filter:blur(var(--blur)) saturate(var(--sat));
 }
@@ -997,20 +1220,20 @@ body.theme-art .catalog .psec{
   background:var(--art-card-fill);
   -webkit-backdrop-filter:none;backdrop-filter:none;
 }
-body.theme-art :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){
+body.theme-art :is(.rich pre,.tc input,.tc textarea,:is(.cmsg.you .cmsg-body,.ci-candidate .ci-text)){
   border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);border:1px solid rgba(var(--ink-rgb),.10);
   -webkit-backdrop-filter:none;backdrop-filter:none;
 }
 /* Reference syntax needs a solid surface above the drawer's artwork. */
 /* Code in the reference drawer sits on a solid surface in art themes: a painted scene behind
-   syntax colours makes them unreadable and unmeasurable. Specificity must beat the art-theme :is(.rich pre, …, .cmsg.you .cmsg-body) rule, which
+   syntax colours makes them unreadable and unmeasurable. Specificity must beat the art-theme :is(.rich pre, …, :is(.cmsg.you .cmsg-body,.ci-candidate .ci-text)) rule, which
    takes its highest argument (0,4,1). */
 body.theme-art aside.drawer.show .dbody :is(.rich pre,pre.solutioncode){background:var(--canvas)}
 body.theme-art :is(.tag,.tc-tab,.tc-add,.ws-bar .ws-mini,.ws-bar .btn,.tc .btn,.ws-submit){border-radius:var(--pill)}
-body.theme-art :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){
+body.theme-art :is(.tag:is([aria-pressed="true"],[aria-selected="true"]),.tc-tab.is-on,.tc-tab:is([aria-pressed="true"],[aria-selected="true"]),.ws-bar .ws-mini:is([aria-pressed="true"],[aria-selected="true"]),.ws-bar .btn:is([aria-pressed="true"],[aria-selected="true"]),.tc .btn:is([aria-pressed="true"],[aria-selected="true"])){
   background:rgba(var(--accent-rgb),.16);color:var(--accent);border-color:rgba(var(--accent-rgb),.45);
 }
-body.theme-art:not(.is-dark) :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){color:var(--ink)}
+body.theme-art:not(.is-dark) :is(.tag:is([aria-pressed="true"],[aria-selected="true"]),.tc-tab.is-on,.tc-tab:is([aria-pressed="true"],[aria-selected="true"]),.ws-bar .ws-mini:is([aria-pressed="true"],[aria-selected="true"]),.ws-bar .btn:is([aria-pressed="true"],[aria-selected="true"]),.tc .btn:is([aria-pressed="true"],[aria-selected="true"])){color:var(--ink)}
 body.theme-art .tc-tab.is-on .tc-mark{color:inherit}
 body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit){transition:border-color var(--dur-hover) ease,background var(--dur-hover) ease,color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out)}
 body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit):hover:not(:disabled){
@@ -1019,14 +1242,14 @@ body.theme-art :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit)
 body.theme-art .ws-submit{background:transparent}
 body.theme-art .ws-submit:hover:not(:disabled) .ws-submitscope{color:inherit}
 /* The file tab is always active; replace its top stripe and the other tabs' filled states. */
-body.theme-art :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){
+body.theme-art :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file){
   position:relative;border-color:transparent;background:transparent;box-shadow:none;
 }
-body.theme-art :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{
+body.theme-art :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file)::after{
   content:"";position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;
   background:linear-gradient(90deg,var(--accent),transparent);
 }
-body.theme-art.is-dark :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{box-shadow:0 2px 12px rgba(var(--accent-rgb),.5)}
+body.theme-art.is-dark :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file)::after{box-shadow:0 2px 12px rgba(var(--accent-rgb),.5)}
 body.theme-art :is(.ws-run,.ws-run.tc-run,.coach-send){
   background:linear-gradient(var(--solid-bg),color-mix(in srgb,var(--solid-bg) 88%,black));
   color:var(--solid-fg);border-color:var(--solid-edge);border-radius:var(--pill);
@@ -1036,11 +1259,7 @@ body.theme-art .topbar{
   background-image:linear-gradient(90deg,transparent,rgba(var(--accent-rgb),.5),transparent);
   background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;
 }
-body.theme-art,body.theme-art *{scrollbar-width:thin;scrollbar-color:rgba(var(--accent-rgb),.35) transparent}
-body.theme-art ::-webkit-scrollbar{width:8px;height:8px}
-body.theme-art ::-webkit-scrollbar-track{background:transparent}
-body.theme-art ::-webkit-scrollbar-thumb{background:rgba(var(--accent-rgb),.35);border-radius:999px}
-body.theme-art ::-webkit-scrollbar-corner{background:transparent}
+body.theme-art{--scrollbar-thumb:rgba(var(--accent-rgb),.35);--scrollbar-thumb-hover:rgba(var(--accent-rgb),.55)}
 
 /* A small veil keeps the preview's type bars legible over both paintings. */
 .theme-preview[data-theme-preview="nebula"]{--preview-radius:2px;border-color:color-mix(in srgb,var(--pd-accent) 70%,transparent)}
@@ -1083,18 +1302,18 @@ body.theme-art.theme-nebula :is(h1,h2,h3),body.theme-art.theme-nebula :is(.phero
 body.theme-art.theme-nebula .phero .pno{color:var(--accent);font-size:12px}
 body.theme-art.theme-nebula .phero .pno::before{content:"#"}
 /* Controls read like instrument labels. */
-body.theme-art.theme-nebula :is(.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt,.dash-card > header h2,.phead .pname){
+body.theme-art.theme-nebula :is(.ui-tab,.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt,.dash-card > header h2,.phead .pname){
   font:var(--hud);letter-spacing:.14em;text-transform:uppercase}
 body.theme-art.theme-nebula .phead .pname{font-size:11.5px}
-body.theme-art.theme-nebula :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){color:var(--accent);text-shadow:0 0 10px rgba(var(--accent-rgb),.55)}
-body.theme-art.theme-nebula :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{
+body.theme-art.theme-nebula :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file){color:var(--accent);text-shadow:0 0 10px rgba(var(--accent-rgb),.55)}
+body.theme-art.theme-nebula :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file)::after{
   left:50%;right:auto;width:22px;height:2px;transform:translateX(-50%);background:var(--accent);box-shadow:0 0 10px var(--accent)}
 body.theme-art.theme-nebula :is(.ws-run,.ws-run.tc-run,.coach-send){
   background:rgba(var(--accent-rgb),.14);color:var(--accent);border:1px solid var(--accent);
   box-shadow:0 0 18px rgba(var(--accent-rgb),.3),inset 0 0 12px rgba(var(--accent-rgb),.2)}
 body.theme-art.theme-nebula :is(.ws-run,.ws-run.tc-run,.coach-send):hover:not(:disabled){background:rgba(var(--accent-rgb),.26)}
 body.theme-art.theme-nebula:not(.is-dark) :is(.ws-run,.ws-run.tc-run,.coach-send){background:var(--accent);color:#fff}
-body.theme-art.theme-nebula :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"]){box-shadow:0 0 12px rgba(var(--accent-rgb),.35)}
+body.theme-art.theme-nebula :is(.tag:is([aria-pressed="true"],[aria-selected="true"]),.tc-tab.is-on,.tc-tab:is([aria-pressed="true"],[aria-selected="true"])){box-shadow:0 0 12px rgba(var(--accent-rgb),.35)}
 body.theme-art.theme-nebula .workspace-rail button[aria-pressed="true"]{filter:drop-shadow(0 0 6px rgba(var(--accent-rgb),.8))}
 body.theme-art.theme-nebula .catalog .prow.sel{box-shadow:inset 0 0 24px rgba(var(--accent-rgb),.12)}
 body.theme-art.theme-nebula .topbar{background-image:linear-gradient(90deg,transparent 5%,rgba(var(--accent-rgb),.7) 50%,transparent 95%)}
@@ -1115,10 +1334,10 @@ body.theme-art.theme-horizon .wordmark :is(.solid,.outline){font-family:var(--di
 body.theme-art.theme-horizon .wordmark .solid{background:var(--gilt);-webkit-background-clip:text;background-clip:text;color:transparent}
 body.theme-art.theme-horizon .phero h1{font-size:30px;font-weight:400;letter-spacing:.02em}
 body.theme-art.theme-horizon :is(.viewhead,.dash-head,.roadmap) h1{font-size:40px;font-style:italic}
-body.theme-art.theme-horizon :is(.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt){
+body.theme-art.theme-horizon :is(.ui-tab,.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt){
   font-weight:600;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase}
-body.theme-art.theme-horizon :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){overflow:visible}
-body.theme-art.theme-horizon :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{
+body.theme-art.theme-horizon :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file){overflow:visible}
+body.theme-art.theme-horizon :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file)::after{
   left:50%;right:auto;bottom:-4px;width:7px;height:7px;transform:translateX(-50%) rotate(45deg);background:var(--gilt);box-shadow:none;z-index:1}
 body.theme-art.theme-horizon :is(.ws-run,.ws-run.tc-run,.coach-send){
   background:var(--gilt);color:#2A1702;border:1px solid #8A5612;text-shadow:0 1px 0 rgba(255,240,200,.5);
@@ -1146,10 +1365,10 @@ body.theme-art.theme-abyss{--pill:999px;--r-sm:12px;--r-md:18px;--r-pane:26px;--
 body.theme-art.theme-abyss :is(.card,.psec,.dash-card){border:0;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.18),0 14px 40px rgba(0,0,0,.18)}
 body.theme-art.theme-abyss :is(h1,h2,h3),body.theme-art.theme-abyss :is(.phero,.viewhead,.dash-head,.roadmap) h1{font-weight:600;letter-spacing:-.01em}
 body.theme-art.theme-abyss.is-dark :is(.phero,.viewhead,.dash-head) h1{text-shadow:0 0 22px rgba(var(--accent-rgb),.35)}
-body.theme-art.theme-abyss :is(.rr-tab,.coach-tab,.editor-file){border-radius:999px;margin:0 2px;padding-inline:14px}
-body.theme-art.theme-abyss :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){
+body.theme-art.theme-abyss :is(.ui-tab,.rr-tab,.coach-tab,.editor-file){border-radius:999px;margin:0 2px;padding-inline:14px}
+body.theme-art.theme-abyss :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file){
   background:rgba(var(--accent-rgb),.16);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 18px rgba(var(--accent-rgb),.22)}
-body.theme-art.theme-abyss :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{content:none}
+body.theme-art.theme-abyss :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file)::after{content:none}
 body.theme-art.theme-abyss :is(.editor-tabs,.rr-tabs){border-bottom-color:transparent}
 body.theme-art.theme-abyss :is(.ws-run,.ws-run.tc-run,.coach-send){
   background:radial-gradient(120% 140% at 30% 20%,color-mix(in srgb,var(--solid-bg) 60%,white),var(--solid-bg) 60%);
@@ -1158,7 +1377,7 @@ body.theme-art.theme-abyss:not(.motion-off) :is(.ws-run,.coach-send):not(:disabl
 @keyframes abyss-breathe{50%{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.55),0 0 34px rgba(var(--accent-rgb),.7)}}
 @media(prefers-reduced-motion:reduce){body.theme-art.theme-abyss :is(.ws-run,.coach-send){animation:none}}
 body.theme-art.theme-abyss .workspace-rail button[aria-pressed="true"]::before{left:5px;top:50%;bottom:auto;width:6px;height:6px;margin-top:-3px;border-radius:50%;box-shadow:0 0 10px 2px rgba(var(--accent-rgb),.8)}
-body.theme-art.theme-abyss :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){border-radius:14px;border:0;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.16)}
+body.theme-art.theme-abyss :is(.rich pre,.tc input,.tc textarea,:is(.cmsg.you .cmsg-body,.ci-candidate .ci-text)){border-radius:14px;border:0;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.16)}
 body.theme-art.theme-abyss .catalog .prow{border-radius:14px;border-left-color:transparent}
 body.theme-art.theme-abyss .catalog .prow.sel{border-left-color:transparent;box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.35),0 0 20px rgba(var(--accent-rgb),.15)}
 body.theme-art.theme-abyss .topbar{background-image:none;box-shadow:0 1px 0 rgba(var(--accent-rgb),.18),0 10px 30px rgba(var(--accent-rgb),.06)}
@@ -1192,11 +1411,11 @@ body.theme-art.theme-dunes .topbar{
   background-size:100% 5px,auto;background-position:left bottom,0 0;background-repeat:no-repeat,repeat}
 body.theme-art.theme-dunes .wordmark :is(.solid,.outline){font:600 13px/1 Futura,"Avenir Next",sans-serif;letter-spacing:.22em;text-transform:uppercase}
 body.theme-art.theme-dunes .wordmark .solid{background:none;color:var(--accent)}
-body.theme-art.theme-dunes :is(.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt,.dash-card > header h2,.phead .pname){
+body.theme-art.theme-dunes :is(.ui-tab,.rr-tab,.coach-tab,.tc-tab,.editor-file,.ws-bar .btn,.ws-bar .ws-mini,.ws-submit,.ws-run,.coach-send,.tc .btn,.tag,.navlink,.navbtn,.catalog-modes button,.catalog .seg-opt,.dash-card > header h2,.phead .pname){
   font:var(--stencil);letter-spacing:.16em;text-transform:uppercase}
 body.theme-art.theme-dunes .phead .pname{font-size:13px}
-body.theme-art.theme-dunes :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file){color:var(--ink)}
-body.theme-art.theme-dunes :is(.rr-tab[aria-pressed="true"],.coach-tab[aria-pressed="true"],.editor-file)::after{height:4px;background:var(--accent);box-shadow:none}
+body.theme-art.theme-dunes :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file){color:var(--ink)}
+body.theme-art.theme-dunes :is(.ui-tab:is([aria-pressed="true"],[aria-selected="true"]),.rr-tab:is([aria-pressed="true"],[aria-selected="true"]),.coach-tab:is([aria-pressed="true"],[aria-selected="true"]),.editor-file)::after{height:4px;background:var(--accent);box-shadow:none}
 body.theme-art.theme-dunes .phero .pno{display:inline-block;padding:3px 7px 2px;border:1.5px solid var(--accent);color:var(--accent);font:600 12px/1 Futura,var(--ui);letter-spacing:.08em;transform:rotate(-3deg)}
 body.theme-art.theme-dunes .phero .pno::before{content:"Nº "}
 body.theme-art.theme-dunes :is(.ws-run,.ws-run.tc-run,.coach-send){
@@ -1204,11 +1423,11 @@ body.theme-art.theme-dunes :is(.ws-run,.ws-run.tc-run,.coach-send){
   box-shadow:0 3px 0 rgba(var(--ink-rgb),.7);transform:translateY(-1px);transition:transform 80ms ease,box-shadow 80ms ease}
 body.theme-art.theme-dunes :is(.ws-run,.ws-run.tc-run,.coach-send):active:not(:disabled){transform:translateY(2px);box-shadow:0 0 0 rgba(var(--ink-rgb),.7)}
 body.theme-art.theme-dunes :is(.btn.ghost,.ws-bar .btn,.tc .btn,.ws-mini,.tc-add,.ws-submit){border:1.5px solid rgba(var(--ink-rgb),.55)}
-body.theme-art.theme-dunes :is(.tag[aria-pressed="true"],.tc-tab.is-on,.tc-tab[aria-pressed="true"],.ws-bar .ws-mini[aria-pressed="true"],.ws-bar .btn[aria-pressed="true"],.tc .btn[aria-pressed="true"]){
+body.theme-art.theme-dunes :is(.tag:is([aria-pressed="true"],[aria-selected="true"]),.tc-tab.is-on,.tc-tab:is([aria-pressed="true"],[aria-selected="true"]),.ws-bar .ws-mini:is([aria-pressed="true"],[aria-selected="true"]),.ws-bar .btn:is([aria-pressed="true"],[aria-selected="true"]),.tc .btn:is([aria-pressed="true"],[aria-selected="true"])){
   background:var(--solid-bg);color:var(--solid-fg);border-color:rgba(var(--ink-rgb),.7)}
 body.theme-art.theme-dunes .catalog .prow.sel{border-left-width:4px}
 body.theme-art.theme-dunes .workspace-rail button[aria-pressed="true"]::before{width:4px}
-body.theme-art.theme-dunes :is(.rich pre,.tc input,.tc textarea,.cmsg.you .cmsg-body){border-radius:2px;border:1px dashed rgba(var(--ink-rgb),.35)}
+body.theme-art.theme-dunes :is(.rich pre,.tc input,.tc textarea,:is(.cmsg.you .cmsg-body,.ci-candidate .ci-text)){border-radius:2px;border:1px dashed rgba(var(--ink-rgb),.35)}
 body.theme-art.theme-horizon:not(.is-dark) .wordmark .solid{background:none;color:var(--accent)}
 /* "solution.py" already names the language; in Abyss the PY badge becomes the same lit dot the rail uses. */
 body.theme-art.theme-abyss .file-language{width:6px;height:6px;border-radius:50%;overflow:hidden;font-size:0;color:transparent;background:var(--accent);box-shadow:0 0 8px 1px rgba(var(--accent-rgb),.7)}
@@ -1221,6 +1440,20 @@ body.theme-art:is(.theme-dunes,.theme-horizon,.theme-nebula) .ptags .tag{font-si
 /* Nebula's light display headings are intentionally thin; verdicts need emphasis. */
 body.theme-art.theme-nebula .submission-hero h3{font-weight:600}
 /* Quiet, content-width switches share the theme's surfaces and corner geometry. */
-body[class] :is(.set-seg,.submission-segments){display:inline-flex;align-self:flex-start;width:fit-content;max-width:100%;gap:2px;padding:2px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--hair-06)}
-body[class] :is(.set-seg,.submission-segments) > button{flex:0 0 auto;width:auto;height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;padding:0 8px;border:0;border-radius:var(--r-sm);box-shadow:none;background:transparent;color:var(--ink-70);font:500 11px var(--ui);display:inline-flex;align-items:center;justify-content:center}
-body[class] :is(.set-seg,.submission-segments) > button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px var(--hair-20)}
+body[class] :is(.set-seg,.submission-segments){display:inline-flex;align-self:flex-start;width:fit-content;max-width:100%;gap:2px;padding:2px;border:1px solid var(--hair-10);border-radius:var(--tab-radius);background:var(--hair-06)}
+body[class] :is(.set-seg,.submission-segments) > button{flex:0 0 auto;width:auto;height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;padding:0 8px;border:0;border-radius:var(--tab-radius);box-shadow:none;background:transparent;color:var(--ink-70);font:500 11px var(--ui);display:inline-flex;align-items:center;justify-content:center}
+body[class] :is(.set-seg,.submission-segments) > button[aria-pressed="true"]{background:var(--tab-active-bg);color:var(--tab-active-fg);box-shadow:var(--tab-selected-shadow)}
+
+/* Lists remain ruled in the typographic families, inset cards elsewhere. */
+body:is(.theme-editorial,.theme-ink,.theme-terminal) :is(.sidebar-record,.recent-chat){border-bottom:var(--row-rule);box-shadow:none;background:transparent}
+/* Primitive controls share the family material without changing their 28px footprint. */
+body[class] :is(.btn,.ui-select-button){border:var(--control-border);border-radius:var(--tab-radius)}
+body[class] :is(.btn--quiet,.btn--danger-quiet){border-color:transparent}
+body[class] .btn--primary{border-color:var(--solid-edge)}
+body[class] .ui-tabs .ui-tab[aria-selected=true]{background:var(--tab-active-bg);color:var(--tab-active-fg);box-shadow:var(--tab-selected-shadow)}
+body[class] .ui-tabs .ui-tab[aria-selected=false]{box-shadow:none}
+body.theme-art.theme-horizon .ui-tab[aria-selected=true]{background-image:var(--gilt);background-size:100% 2px;background-repeat:no-repeat;background-position:bottom;box-shadow:var(--tab-active-shadow)}
+body.theme-art:is(.theme-nebula,.theme-dunes) :is(.ui-badge,.ui-count){letter-spacing:.04em;text-transform:uppercase}
+body.theme-editorial :is(.ui-badge,.ui-count){font-variant:small-caps}
+/* The live dot must stay in flow; art indicators otherwise use this same pseudo-element. */
+body[class] .coach-tabs .ui-tab.coach-tab.has-live::after{position:static;inset:auto;transform:none;width:6px;height:6px;margin:0;content:'';background:var(--easy);border-radius:50%;box-shadow:none;opacity:1}

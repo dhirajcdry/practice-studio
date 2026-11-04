@@ -85,7 +85,8 @@ export function createRecorder({ getSlug, getTitle = slug => slug, onAttemptStar
     const live = attemptId !== null || Boolean(interview);
     label.textContent = interview ? 'End interview' : live ? (recorder ? 'End interview' : 'Resume interview') : 'Start interview';
     toggle.disabled = opening || stopping;
-    root.hidden = !live && !getSlug();
+    // Legacy self-recorded attempts can still be finished in Interviews.
+    root.hidden = !attemptId || Boolean(archiveId);
     back.hidden = !attemptId || getSlug() === attemptSlug;
     back.textContent = attemptTitle || attemptSlug || '';
     root.dataset.attemptId = attemptId || '';
@@ -456,14 +457,8 @@ export function installRecorder(getSlug, { getTitle, onAttemptStart, onAttemptEn
 
 export function mountRecorder() {
   if (!active) return;
-  const workspace = document.querySelector('.ws .recmount');
-  const home = document.getElementById('rec-home');
-  // One id, one visible mount. The toolbar itself is replaceable; the recorder isn't.
-  home?.removeAttribute('id');
-  const fallback = home || document.querySelector('[data-rec-home]');
-  document.querySelectorAll('#recmount').forEach(node => node.removeAttribute('id'));
-  const mount = workspace || fallback;
-  if (mount) { mount.id = 'recmount'; mount.append(active.root); }
+  const mount = document.querySelector('[data-interview-recorder]');
+  if (mount) mount.append(active.root);
   active.refresh();
 }
 

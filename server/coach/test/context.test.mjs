@@ -148,7 +148,7 @@ test('the prompt states what the coach may and may not write', async () => {
   const { prompt } = buildPrompt({ context, message: 'hi' });
 
   assert.ok(prompt.includes('problems/two-sum/NOTES.md'));
-  assert.ok(prompt.includes('separate step right after this reply'));
+  assert.ok(prompt.includes('no background model turn follows your answer'));
   assert.ok(prompt.includes('Do not write or edit any file'));
   for (const old of ['Read it before you answer', 'Files you may write this turn', 'update your memory as usual']) assert.ok(!prompt.includes(old));
   for (const forbidden of ['`meta.json`', '`index.json`', '`solution.py`', '`sessions/`']) {
@@ -379,12 +379,12 @@ test('attempt review spans sittings and includes both tagged takes', async () =>
   } finally { await fsp.rm(root, { recursive: true, force: true }); }
 });
 
-test('both normal and review turns teach the coach to draw, just before the instruction', async () => {
+test('normal and review turns carry stable visual guidance before changing context', async () => {
   const { root, log } = await workspace();
   const context = await gatherContext({ root, slug: 'two-sum', sessionLog: log });
   const { prompt } = buildPrompt({ context, message: 'show me' });
   const visuals = prompt.indexOf('## VISUALS');
-  assert.ok(visuals > prompt.indexOf('## CURRENT CONTEXT'));
+  assert.ok(visuals < prompt.indexOf('## CURRENT CONTEXT'));
   assert.ok(visuals < prompt.lastIndexOf('\n## THE USER SAYS'));
   assert.ok(prompt.includes('```viz') && prompt.includes('```image') && prompt.includes('```mermaid'));
   assert.match(prompt, /no-spoilers rule/);

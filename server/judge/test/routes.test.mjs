@@ -12,6 +12,7 @@ import { HttpError, sendError } from '../../http-util.mjs';
 import { routes, handleRecord } from '../routes.mjs';
 import { SessionLog } from '../../coach/sessions.mjs';
 import { ACCEPTED_CHECK } from './helpers.mjs';
+import { problemDir } from '../../storage-layout.mjs';
 
 const CODE = 'class Solution:\n    def twoSum(self, nums, target):\n        return [0,1]\n';
 let nextId = 3100000000;
@@ -50,7 +51,7 @@ test('the route table exposes submission record and history routes', () => {
   ]);
 });
 
-const readMeta = async (root) => JSON.parse(await fsp.readFile(path.join(root, 'problems', 'two-sum', 'meta.json'), 'utf8'));
+const readMeta = async (root) => JSON.parse(await fsp.readFile(path.join(problemDir(root, 'two-sum'), 'meta.json'), 'utf8'));
 
 test('a judged browser submission comes back as the contract verdict and is recorded', async () => {
   const ctx = await freshCtx();
@@ -66,7 +67,7 @@ test('a judged browser submission comes back as the contract verdict and is reco
   const meta = await readMeta(ctx.homeRoot);
   assert.equal(meta.submissions.length, 1);
   assert.equal(meta.submissions[0].submissionId, String(id));
-  assert.equal(await fsp.readFile(path.join(ctx.homeRoot, 'problems', 'two-sum', meta.submissions[0].codeFile), 'utf8'), CODE);
+  assert.equal(await fsp.readFile(path.join(problemDir(ctx.homeRoot, 'two-sum'), meta.submissions[0].codeFile), 'utf8'), CODE);
 });
 
 test('acceptance is status code 10 only, even when the browser sends the body', async () => {
@@ -100,7 +101,7 @@ test('a submission with no verdict yet records the code and event but no verdict
     assert.equal(json.recorded.meta, false);
   });
   await assert.rejects(readMeta(ctx.homeRoot), { code: 'ENOENT' });
-  assert.equal(await fsp.readFile(path.join(ctx.homeRoot, 'problems', 'two-sum', 'submissions', `${id}.py`), 'utf8'), CODE);
+  assert.equal(await fsp.readFile(path.join(problemDir(ctx.homeRoot, 'two-sum'), 'submissions', `${id}.py`), 'utf8'), CODE);
 });
 
 test('malformed record requests are refused and write nothing', async () => {

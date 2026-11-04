@@ -26,7 +26,7 @@ private struct CommandLineOptions {
     let inputFilePath: String
 }
 
-private struct WorkerRequest: Decodable { let input: String }
+private struct WorkerRequest: Decodable { let input: String; let preview: Bool? }
 
 private let usageText = """
 usage: studio-asr --input <path> [--json]
@@ -83,7 +83,7 @@ private let silencePeakAmplitudeThreshold: Float = 0.001
 /// Whisper uses 10 ms audio frames; shorter audible inputs cannot form a frame.
 private let minimumTranscribableSeconds: Double = 0.01
 
-private func runTranscription(options: CommandLineOptions, loaded: (pipe: WhisperKit, modelId: String)? = nil) async throws -> TranscriptionDocument {
+private func runTranscription(options: CommandLineOptions, loaded: (pipe: WhisperKit, modelId: String)? = nil, preview: Bool = false) async throws -> TranscriptionDocument {
     let fileManager = FileManager.default
     let inputFileURL = URL(fileURLWithPath: (options.inputFilePath as NSString).expandingTildeInPath)
         .standardizedFileURL
@@ -159,8 +159,10 @@ private func runTranscription(options: CommandLineOptions, loaded: (pipe: Whispe
     let started = Date()
     let results: [TranscriptionResult]
     do {
-        // justwisper's final pass uses defaults. Only enable word timestamps.
-        results = try await loadedModel.pipe.transcribe(audioArray: samples, decodeOptions: DecodingOptions(wordTimestamps: true))
+        let decodeOptions = preview
+            ? DecodingOptions(temperatureFallbackCount: 0, sampleLength: 128, skipSpecialTokens: true, withoutTimestamps: true, wordTimestamps: false)
+            : DecodingOptions(wordTimestamps: true)
+        results = try await loadedModel.pipe.transcribe(audioArray: samples, decodeOptions: decodeOptions)
     } catch {
         throw StudioASRError(kind: "transcription_failed",
                             message: "Transcription of '\(inputFileURL.lastPathComponent)' failed: \(error.localizedDescription)")
@@ -233,7 +235,7 @@ private func runWorker() async {
             do {
                 let request = try JSONDecoder().decode(WorkerRequest.self, from: Data(line.utf8))
                 let document = try await runTranscription(
-                    options: CommandLineOptions(inputFilePath: request.input), loaded: loaded
+                    options: CommandLineOptions(inputFilePath: request.input), loaded: loaded, preview: request.preview ?? false
                 )
                 try writeWorkerDocument(document)
             } catch let error as StudioASRError {

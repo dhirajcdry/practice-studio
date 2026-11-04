@@ -112,7 +112,7 @@ body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
 
 /* ---------------- problem rows ---------------- */
 .catalog .plist{position:relative;padding:4px 0}
-.catalog .prow{grid-template-columns:18px 38px minmax(0,1fr) 32px 70px 44px;gap:12px;padding:11px 18px 11px 16px;min-height:48px;border-left:2px solid transparent}
+.catalog .prow{grid-template-columns:18px 38px minmax(0,1fr) 32px minmax(70px,max-content) 44px;gap:12px;padding:11px 18px 11px 16px;min-height:48px;border-left:2px solid transparent}
 .catalog .plist li + li .prow{border-top-color:var(--hair-06)}
 .catalog .prow .ptitle{font:500 13.5px/1.4 var(--ui);letter-spacing:-.005em}
 .catalog .prow .pnum{font:11px var(--mono);color:var(--ink-35);text-align:right}
@@ -129,7 +129,7 @@ body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
 .catalog .prow.sel,.catalog .prow.sel .ptitle{transition:none}
 .catalog .tag{font:10px var(--ui);text-transform:none;letter-spacing:0;border-radius:var(--r-sm);padding:3px 7px}
 .catalog .tag.quiet{border:0;color:var(--ink-35)}
-.catalog .prow .pdiff .tag{min-width:58px;text-align:center}
+.catalog .prow .pdiff .tag{flex:none;min-width:58px;text-align:center}
 .catalog .assetdot{width:18px;height:18px;font-size:9px}
 .catalog .prow:not(:hover) .assetdot{opacity:.7}
 
@@ -152,11 +152,11 @@ body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
 /* The art themes put panes on frosted glass; the tree would otherwise sit straight on
    the painting and its small text would fight the image. */
 body.theme-art .catalog-tree{padding:10px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:color-mix(in srgb,var(--card) 80%,transparent);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6)}
-body.theme-art .catalog .viewhead>div:first-child{padding:10px 16px;margin:-10px -16px;border-radius:var(--r-md);background:color-mix(in srgb,var(--card) 55%,transparent);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+body.theme-art .catalog .viewhead>div:first-child{padding:var(--space-3) var(--content-rail);margin:0;border-radius:var(--r-md);background:color-mix(in srgb,var(--card) 55%,transparent);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
 
 /* Reduced motion: no movement; colour fades stay. */
 @media(prefers-reduced-motion:reduce){.catalog :is(*,*::before,*::after){transition-property:opacity,color,background-color,border-color !important}}
 
-@media(max-width:1250px){.catalog-layout{grid-template-columns:225px minmax(0,1fr);gap:20px}.catalog .prow{grid-template-columns:18px 34px minmax(0,1fr) 70px}.catalog .prow .plists,.catalog .prow .assets{display:none}.sec-progress{min-width:0}.sec-progress .meter{width:64px}}
+@media(max-width:1250px){.catalog-layout{grid-template-columns:225px minmax(0,1fr);gap:20px}.catalog .prow{grid-template-columns:18px 34px minmax(0,1fr) minmax(70px,max-content)}.catalog .prow .plists,.catalog .prow .assets{display:none}.sec-progress{min-width:0}.sec-progress .meter{width:64px}}
 @media(max-width:850px){body.browse-page main{padding:24px 16px}.catalog-layout{grid-template-columns:minmax(0,1fr)}.catalog-tree{position:static;max-height:260px;border:1px solid var(--hair-10);border-radius:var(--r-md);padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 10px}.tree-heading,.tree-root,.tree-report{grid-column:1/-1}.tree-pattern{padding-left:10px}.tree-pattern::before,.tree-pattern::after{content:none}}
-@media(max-width:520px){body.browse-page .topbar{padding-inline:14px}.catalog .viewhead h1{font-family:var(--display);font-size:27px}.catalog .prow{grid-template-columns:18px minmax(0,1fr) 62px;gap:8px;padding:12px}.catalog .prow .pnum{display:none}.catalog .phead{gap:8px;padding:12px;grid-template-columns:10px 18px minmax(0,1fr) auto}.catalog .phead .pcount{display:none}.catalog .phead .pname{font-size:12px}.sec-progress .meter{display:none}.catalog-tree{grid-template-columns:minmax(0,1fr)}.catalog .filterbar .countpill{margin-left:auto}}
+@media(max-width:520px){body.browse-page .topbar{padding-inline:14px}.catalog .viewhead h1{font-family:var(--display);font-size:27px}.catalog .prow{grid-template-columns:18px minmax(0,1fr) minmax(62px,max-content);gap:8px;padding:12px}.catalog .prow .pnum{display:none}.catalog .phead{gap:8px;padding:12px;grid-template-columns:10px 18px minmax(0,1fr) auto}.catalog .phead .pcount{display:none}.catalog .phead .pname{font-size:12px}.sec-progress .meter{display:none}.catalog-tree{grid-template-columns:minmax(0,1fr)}.catalog .filterbar .countpill{margin-left:auto}}

@@ -360,6 +360,33 @@ test('static: serves studio/web when present, and cannot be escaped', async () =
   await fsp.rm(outsideDir, { recursive: true, force: true });
 });
 
+test('static: client assets stay paired with the running backend until restart', async t => {
+  const web=await fsp.mkdtemp(path.join(os.tmpdir(),'studio-client-version-'));
+  const outside=await fsp.mkdtemp(path.join(os.tmpdir(),'studio-client-outside-'));
+  t.after(()=>Promise.all([fsp.rm(web,{recursive:true,force:true}),fsp.rm(outside,{recursive:true,force:true})]));
+  await fsp.writeFile(path.join(web,'index.html'),'<h1>old client</h1>');
+  await fsp.writeFile(path.join(web,'app.js'),'old API contract');
+  await fsp.writeFile(path.join(outside,'secret.js'),'private data');
+  await fsp.symlink(path.join(outside,'secret.js'),path.join(web,'outside.js'));
+  await fsp.symlink(web,path.join(web,'loop'));
+  await withServer({webDir:web},async({call})=>{
+    // Edit before the first request: a lazy cache would still expose mixed versions.
+    await fsp.writeFile(path.join(web,'index.html'),'<h1>new client</h1>');
+    await fsp.writeFile(path.join(web,'app.js'),'new API contract');
+    await fsp.writeFile(path.join(web,'new.js'),'new feature');
+    assert.match((await call('/')).text,/old client/);
+    assert.equal((await call('/app.js')).text,'old API contract');
+    assert.equal((await call('/new.js')).status,404);
+    assert.equal((await call('/outside.js')).status,404);
+    await fsp.rm(path.join(web,'app.js'));
+    assert.equal((await call('/app.js')).text,'old API contract','deleting a file cannot break the captured client');
+  });
+  await withServer({webDir:web},async({call})=>{
+    assert.match((await call('/')).text,/new client/);
+    assert.equal((await call('/new.js')).text,'new feature');
+  });
+});
+
  test('demo cache misses have a distinct code instead of suggesting a network retry',async()=>{
   await withServer({fetchQuestionImpl:async()=>{throw new LeetCodeError('No cached statement.',{kind:'demo-unavailable'});}},async({call})=>{
     const {status,json}=await call('/api/problems/two-sum');assert.equal(status,503);assert.equal(json.error.code,'DEMO_CONTENT_UNAVAILABLE');assert.equal(json.error.message,'No cached statement.');

@@ -14,12 +14,13 @@
     "catalog": "node scripts/extract-catalog.mjs",
     "warm": "node scripts/warm-cache.mjs",
     "warm:check": "node scripts/warm-cache.mjs --check",
+    "storage:migrate": "node scripts/migrate-storage.mjs",
     "attempts": "node scripts/rebuild-attempts.mjs",
     "solutions": "node scripts/index-solutions.mjs",
     "check:layout": "node scripts/check-layout.mjs",
     "check:shortcuts": "node scripts/check-shortcuts.mjs",
     "check:preservation": "node scripts/check-preservation.mjs",
-    "check": "node scripts/check-layout.mjs && node scripts/check-coach-stream.mjs && node scripts/check-shortcuts.mjs && node scripts/check-toolbar.mjs && node scripts/check-lanes.mjs && node scripts/check-coach-reload.mjs && node scripts/check-runchip.mjs && node scripts/check-find.mjs && node scripts/check-design.mjs && node scripts/check-preservation.mjs && node scripts/check-submissions.mjs && node scripts/check-interview.mjs && node scripts/check-recall.mjs && node scripts/check-visual.mjs",
+    "check": "node scripts/check-layout.mjs && node scripts/check-coach-stream.mjs && node scripts/check-shortcuts.mjs && node scripts/check-toolbar.mjs && node scripts/check-lanes.mjs && node scripts/check-coach-reload.mjs && node scripts/check-runchip.mjs && node scripts/check-find.mjs && node scripts/check-design.mjs && node scripts/check-preservation.mjs && node scripts/check-submissions.mjs && node scripts/check-interview.mjs && node scripts/check-recall.mjs && node scripts/check-lld.mjs && node scripts/check-lld-scroll.mjs && node scripts/check-practice.mjs && node scripts/check-composer.mjs && node scripts/check-python-editor.mjs && node scripts/check-voice.mjs && node scripts/check-visual.mjs",
     "vendor:excalidraw": "node scripts/vendor-excalidraw.mjs",
     "demo": "node scripts/capture-demo.mjs --serve",
     "demo:capture": "node scripts/capture-demo.mjs",
@@ -29,6 +30,14 @@
     "check:controls": "node scripts/check-controls.mjs",
     "check:visual": "node scripts/check-visual.mjs",
     "check:interview": "node scripts/check-interview.mjs",
-    "check:recall": "node scripts/check-recall.mjs"
+    "check:lld": "node scripts/check-lld.mjs && node scripts/check-lld-scroll.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "check:recall": "node scripts/check-recall.mjs",
+    "check:coaching-instructions": "node scripts/check-coaching-instructions.mjs",
+    "check:practice": "node scripts/check-practice.mjs",
+    "check:composer": "node scripts/check-composer.mjs",
+    "check:tutor-marks": "node scripts/check-tutor-marks.mjs",
+    "check:python-editor": "node scripts/check-python-editor.mjs",
+    "check:voice": "node scripts/check-voice.mjs"
   }
 }

@@ -4,6 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { CATALOG_FILE } from '../paths.mjs';
 import { enqueueRecall } from './sync.mjs';
+import { problemDir } from '../storage-layout.mjs';
 export { startRecallSync } from './sync.mjs';
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
@@ -34,7 +35,7 @@ async function writeState(root, state) {
   await fsp.writeFile(tmp, JSON.stringify(state) + '\n'); await fsp.rename(tmp, stateFile(root));
 }
 async function problemDigest(root, slug) {
-  const dir = path.join(root, 'problems', slug);
+  const dir = problemDir(root, slug);
   const events = [];
   for (const name of (await names(path.join(dir, 'sessions'))).filter(n => /^[\w.-]+\.jsonl$/.test(n)).slice(-3)) {
     events.push(...rows(await tail(path.join(dir, 'sessions', name))));

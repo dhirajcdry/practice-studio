@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { CoachService, handleCoachMessage, handleCoachRuns } from '../routes.mjs';
 import { upkeepQueue } from '../upkeep.mjs';
 import { DesignService, routes as designRoutes } from '../../design/routes.mjs';
+import { _inspection } from '../request-inspection.mjs';
 
 const fake = new URL('./bin/fake-claude.mjs', import.meta.url).pathname;
 const designFake = new URL('../../design/test/fake-claude.mjs', import.meta.url).pathname;
@@ -27,7 +28,7 @@ async function workspace(t) {
   return root;
 }
 
-test('Claude answer sends done and finishes run before enqueuing the same-model upkeep', async t => {
+test('Claude answer sends done and does not enqueue automatic upkeep', async t => {
   const root = await workspace(t), res = new Response(), jobs = [], logs = [];
   const promptFile = path.join(root, 'prompt.txt'), argsFile = path.join(root, 'args.json');
   await fs.writeFile(path.join(root, 'coach-settings.json'), JSON.stringify({ provider: 'claude', model: 'opus' }));
@@ -38,24 +39,26 @@ test('Claude answer sends done and finishes run before enqueuing the same-model 
     jobs.push(job);
   });
   await handleCoachMessage(request({ slug: 'two-sum', message: 'help' }), res, { coach });
-  assert.equal(jobs.length, 1);
-  assert.equal(jobs[0].model, 'opus');
-  assert.equal(jobs[0].kind, 'question');
-  assert.ok(jobs[0].sessionId);
+  assert.equal(jobs.length, 0);
   const first = await fs.readFile(promptFile, 'utf8');
   assert.match(first, /Learner profile/);
   assert.match(first, /Prior notes/);
   assert.match(first, /Files you must NEVER write/);
   const args = JSON.parse(await fs.readFile(argsFile));
-  assert.equal(args[args.indexOf('--tools') + 1], 'Read,Glob');
+  assert.equal(args[args.indexOf('--tools') + 1], 'WebSearch,WebFetch');
+  assert.ok(args.slice(args.indexOf('--allowedTools')+1,args.indexOf('--disallowedTools')).includes('WebSearch'));
+  assert.ok(!args.slice(args.indexOf('--disallowedTools')+1,args.indexOf('--setting-sources')).includes('WebSearch'));
+  const inspected=_inspection.rings.get(root).at(-1);
+  assert.equal(inspected.systemPrompt,args[args.indexOf('--system-prompt')+1],'inspector includes all app-supplied system instructions, including web guidance');
+  assert.equal(inspected.prompt,first);assert.deepEqual(inspected.nativeTools,['WebSearch','WebFetch']);
   await handleCoachMessage(request({ slug: 'two-sum', message: 'another question' }), res, { coach });
   const second = await fs.readFile(promptFile, 'utf8');
-  assert.doesNotMatch(second, /Learner profile|Prior notes/);
-  assert.match(second, /unchanged since earlier in this conversation/);
+  assert.match(second, /Learner history|Agent memory/);
+  assert.doesNotMatch(second, /Full saved conversation/, 'native history is retained, not replayed');
   await fs.writeFile(path.join(root, 'problems/two-sum/NOTES.md'), 'Updated observation');
   await handleCoachMessage(request({ slug: 'two-sum', kind: 'attempt-review' }), res, { coach });
   assert.match(await fs.readFile(promptFile, 'utf8'), /Updated observation/);
-  assert.equal(jobs.at(-1).kind, 'attempt-review');
+  assert.equal(jobs.length, 0);
   assert.equal(logs.filter(line => line.includes('[coach] timing')).length, 3);
   const list = new Response();
   await handleCoachRuns({}, list, { coach });
@@ -77,7 +80,7 @@ test('failed and stopped coach turns never enqueue upkeep', async t => {
   assert.equal(jobs.length, 0);
 });
 
-test('design opening preloads memory; only completed debrief queues upkeep after done', async t => {
+test('design opening preloads memory and completed debrief does not queue upkeep', async t => {
   const root = await workspace(t), jobs = [];
   await fs.writeFile(path.join(root, 'DESIGN.md'), 'Design observation');
   const promptFile = path.join(root, 'design-prompt.txt');
@@ -94,17 +97,15 @@ test('design opening preloads memory; only completed debrief queues upkeep after
     await finished;
     return current.text;
   };
-  const opening = await call('POST /api/design/start', { prompt: 'Design a cache' });
+  const opening = await call('POST /api/design/start', {});
   const id = JSON.parse(opening.match(/event: interview\ndata: (.*)/)[1]).id;
   assert.match(await fs.readFile(promptFile, 'utf8'), /Design observation/);
   assert.equal(jobs.length, 0);
   await call('POST /api/design/turn', { interviewId: id, said: 'I would use a cache' });
-  assert.doesNotMatch(await fs.readFile(promptFile, 'utf8'), /Design observation/);
+  assert.doesNotMatch(await fs.readFile(promptFile, 'utf8'), /Design observation/, 'unchanged memory is retained in native history');
   assert.equal(jobs.length, 0);
   await fs.writeFile(path.join(root, 'design', id, 'NOTES.md'), 'Changed design notes');
   await call('POST /api/design/done', { interviewId: id });
   assert.match(await fs.readFile(promptFile, 'utf8'), /Changed design notes/);
-  assert.equal(jobs.length, 1);
-  assert.equal(jobs[0].slug, `design:${id}`);
-  assert.equal(jobs[0].kind, 'design-debrief');
+  assert.equal(jobs.length, 0);
 });

@@ -1,3 +1,4 @@
+import { problemDir } from '../../storage-layout.mjs';
 // End-to-end over a real node:http server, with a fake `claude` on disk.
 // The router does not exist yet (the main agent wires the route table in), so this test
 // stands one up from `routes` exactly as the contract's integration rule describes.
@@ -11,10 +12,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { routes, CoachService } from '../routes.mjs';
+import { upkeepQueue } from '../upkeep.mjs';
 import { HttpError, sendError } from '../../http-util.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'bin', 'fake-claude.mjs');
+
+test('an unwritable transcript cannot commit native history or report a saved reply', async t => {
+  const f=await fixture();t.after(f.close);
+  await fsp.mkdir(path.join(problemDir(f.root,'two-sum'),'chats.jsonl'),{recursive:true});
+  const events=await readSse(await fetch(`${f.base}/api/coach/message`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slug:'two-sum',message:'Explain my code'})}));
+  assert.ok(events.some(e=>e.event==='error'));assert.ok(!events.some(e=>e.event==='done'));
+  // Server response and provider finalization are separate; the service owns completion.
+  const run=f.coach.runs.liveFor('two-sum');await run?.child?.exited;
+  const dirs=await fsp.readdir(path.join(f.root,'context','conversations'));
+  const state=JSON.parse(await fsp.readFile(path.join(f.root,'context','conversations',dirs[0],'state.json')));
+  assert.equal(state.revision,0);assert.notEqual(state.segments.at(-1).status,'ready');
+});
 
 /** A minimal stand-in for the router the main agent will write. */
 function serverFor(ctx) {
@@ -96,7 +110,7 @@ test('POST /api/sessions/event appends and reports the session it landed in', as
   const a = await postJson(f.base, '/api/sessions/event', { slug: 'two-sum', type: 'problem_opened' });
   assert.equal(a.status, 200);
   assert.match(a.json.at, /^\d{4}-\d{2}-\d{2}T.*[+-]\d{2}:\d{2}$/);
-  assert.equal(a.json.file, path.join('problems', 'two-sum', 'sessions', `${a.json.sessionId}.jsonl`));
+  assert.equal(a.json.file, path.relative(f.root, path.join(problemDir(f.root, 'two-sum'), 'sessions', `${a.json.sessionId}.jsonl`)));
 
   const b = await postJson(f.base, '/api/sessions/event', {
     slug: 'two-sum',
@@ -105,7 +119,7 @@ test('POST /api/sessions/event appends and reports the session it landed in', as
   });
   assert.equal(b.json.sessionId, a.json.sessionId);
 
-  const raw = await fsp.readFile(path.join(f.root, 'problems', 'two-sum', 'sessions', `${a.json.sessionId}.jsonl`), 'utf8');
+  const raw = await fsp.readFile(path.join(problemDir(f.root, 'two-sum'), 'sessions', `${a.json.sessionId}.jsonl`), 'utf8');
   assert.equal(raw.split('\n').filter(Boolean).length, 2);
 });
 
@@ -212,13 +226,16 @@ test('asking the coach is itself logged as a session event', async (t) => {
 
 // -------------------------------------------------------------------- session resumption
 
-test('the first turn starts a session; the next turn for that problem resumes exactly it', async (t) => {
+test('logical chat resumes native history without resending the saved conversation', async (t) => {
+  // This test observes answer invocations; upkeep has its own integration coverage.
+  t.mock.method(upkeepQueue, 'enqueue', () => {});
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-resume-'));
   const argsFile = path.join(root, 'args.json');
+  const promptFile=path.join(root,'prompt.txt');
   const coach = new CoachService({
     root,
     binary: FAKE,
-    env: { ...process.env, FAKE_CLAUDE_MODE: 'ok', FAKE_CLAUDE_ARGS_FILE: argsFile },
+    env: { ...process.env, FAKE_CLAUDE_MODE: 'ok', FAKE_CLAUDE_ARGS_FILE: argsFile, FAKE_CLAUDE_PROMPT_FILE: promptFile },
     timeoutMs: 15_000,
     log: { warn() {}, error() {} },
   });
@@ -238,7 +255,8 @@ test('the first turn starts a session; the next turn for that problem resumes ex
   assert.ok(firstArgs.includes('--session-id'), 'the first turn should start a session');
   assert.ok(!firstArgs.includes('--resume'));
   const sessionId = first.at(-1).data.sessionId;
-  assert.equal(sessionId, firstArgs[firstArgs.indexOf('--session-id') + 1]);
+  assert.ok(sessionId);
+  assert.notEqual(sessionId, firstArgs[firstArgs.indexOf('--session-id') + 1]);
 
   // A different problem must not inherit it.
   await ask('valid-anagram', 'unrelated question');
@@ -246,34 +264,29 @@ test('the first turn starts a session; the next turn for that problem resumes ex
   assert.ok(otherArgs.includes('--session-id'));
   assert.notEqual(otherArgs[otherArgs.indexOf('--session-id') + 1], sessionId);
 
-  // Back to the first problem: resume that conversation, not the other one.
+  // Returning to the same chat resumes its native history; another problem stays isolated.
   const second = await ask('two-sum', 'a week later');
   const resumeArgs = JSON.parse(await fsp.readFile(argsFile, 'utf8'));
-  assert.ok(resumeArgs.includes('--resume'), 'the second turn should resume');
-  assert.equal(resumeArgs[resumeArgs.indexOf('--resume') + 1], sessionId);
+  assert.equal(resumeArgs[resumeArgs.indexOf('--resume')+1], firstArgs[firstArgs.indexOf('--session-id')+1]);
+  const secondPrompt=await fsp.readFile(promptFile,'utf8');
+  assert.doesNotMatch(secondPrompt,/Full saved conversation/);
+  assert.doesNotMatch(secondPrompt,/unrelated question/);
+  assert.match(secondPrompt,/a week later/);
   assert.equal(second.at(-1).data.sessionId, sessionId);
 
-  const stored = JSON.parse(await fsp.readFile(path.join(root, 'problems', 'two-sum', 'coach-session.json'), 'utf8'));
+  const stored = JSON.parse(await fsp.readFile(path.join(problemDir(root, 'two-sum'), 'coach-session.json'), 'utf8'));
   assert.equal(stored.sessionId, sessionId);
   assert.equal(stored.turns, 2);
 });
 
-test('a session id that no longer resumes is reported once and then forgotten', async (t) => {
-  const f = await fixture({ mode: 'noresume' });
-  t.after(f.close);
+test('a missing provider-side conversation cannot break Studio-owned history', async (t) => {
+  const f = await fixture(); t.after(f.close);
   await f.coach.coachSessions.remember('two-sum', 'sess-from-a-deleted-machine');
-
   const events = await fetch(`${f.base}/api/coach/message`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ slug: 'two-sum', message: 'hello again' }),
+    method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slug:'two-sum',message:'hello again'}),
   }).then(readSse);
-
-  const errors = events.filter((e) => e.event === 'error');
-  assert.equal(errors.length, 1);
-  assert.match(errors[0].data.message, /could not resume/);
-  // The dead pointer is gone, so the next turn starts clean instead of failing forever.
-  assert.equal(await f.coach.coachSessions.read('two-sum'), null);
+  assert.equal(events.filter(e=>e.event==='error').length,0);
+  assert.equal(events.at(-1).data.sessionId,'sess-from-a-deleted-machine');
 });
 
 // ------------------------------------------------------------------------- failure paths
@@ -406,7 +419,8 @@ test('the prompt handed to the CLI fences the buffer and forbids the server-owne
   assert.ok(prompt.includes('UNTRUSTED DATA'));
   assert.ok(prompt.includes('class Solution:'));
   assert.ok(prompt.includes('`sessions/`'));
-  assert.ok(prompt.trimEnd().endsWith('take a look'));
+  assert.match(prompt,/take a look/);
+  assert.match(prompt,/selected view of its saved record/);
 });
 
 test('an empty message is refused with a normal 400 before any stream opens', async (t) => {
@@ -455,7 +469,7 @@ test('a turn stopped halfway still keeps what the coach had already said', async
   abort.abort();
   await reader.cancel().catch(() => {});
 
-  const file = path.join(f.root, 'problems', 'two-sum', 'chats.jsonl');
+  const file = path.join(problemDir(f.root, 'two-sum'), 'chats.jsonl');
   let turns = [];
   for (let i = 0; i < 60 && turns.length === 0; i++) {
     await new Promise((r) => setTimeout(r, 100));

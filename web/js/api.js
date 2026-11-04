@@ -1172,7 +1172,7 @@ export async function loadSessions(slug) {
  * `ok:true` with an empty `text` is converted into a failure, because a silent
  * success would look exactly like a successful transcription of nothing.
  */
-export async function transcribeAudio(slug, blob, { filename = 'take.webm', mode = 'think_aloud', attemptId = null, signal = null } = {}) {
+export async function transcribeAudio(slug, blob, { filename = 'take.webm', mode = 'think_aloud', attemptId = null, preview = false, signal = null } = {}) {
   if (api.mode !== 'live') {
     return {
       ok: false, kind: 'offline', code: 'NO_SERVER',
@@ -1193,6 +1193,7 @@ export async function transcribeAudio(slug, blob, { filename = 'take.webm', mode
     form.append('audio', blob, filename);
     form.append('slug', slug);
     form.append('mode', mode);
+    if (preview) form.append('preview', 'true');
     if (attemptId) form.append('attemptId', attemptId);
 
     const response = await fetch('/api/asr', { method: 'POST', body: form, signal: controller.signal });

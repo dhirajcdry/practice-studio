@@ -16,6 +16,9 @@ The server prints its listening address. Open `http://127.0.0.1:4173` in a deskt
 browser. Search and open a problem while online to cache its content. An empty workspace
 has no cached statements; the committed catalog supplies the list, not the statements.
 
+For a read-only readiness check, run `npm run doctor`. It does not start a provider,
+download a model, or warm the cache; it checks required tools and reports optional assets.
+
 ## AI coaching
 
 Install Claude Code using its official installation instructions, sign in, and check:
@@ -44,9 +47,8 @@ swift build -c release --package-path asr
 ```
 
 The server expects `asr/.build/release/studio-asr` in this checkout. The first
-transcription downloads the Parakeet CoreML model; do that while online before relying
-on offline speech recognition. The model cache is separate from `STUDIO_HOME`, under
-`~/Library/Application Support/FluidAudio/Models/`.
+transcription uses the on-device WhisperKit model cache. Studio reuses a selected
+justwisper cache read-only or downloads into its own cache when explicitly requested.
 
 Allow microphone access in the browser. In a coding attempt, **Start attempt** records
 spoken reasoning alongside edits and runs. In a system-design interview, **Type** and
@@ -54,6 +56,10 @@ spoken reasoning alongside edits and runs. In a system-design interview, **Type*
 transcribed locally, but a transcript used for AI coaching becomes part of the connected
 coach context. Browser speech output uses `speechSynthesis`; available voices and their
 offline behavior depend on your browser and operating system.
+
+Typed and Voice are distinct answer modes shared by coding, low-level-design, and
+system-design interviews. Voice submits after silence; Typed uses the answer field and
+Send, and does not open a microphone.
 
 ## Reference material
 
@@ -102,6 +108,9 @@ Set environment variables in the shell that starts Studio.
 | `STUDIO_NO_SANDBOX` | unset | `1` disables the macOS sandbox; removes its network restriction |
 | `STUDIO_LEETCODE_UA` | Pinned browser user agent | User agent for real judge requests |
 | `STUDIO_MIRROR_DIR` | unset | Optional destination for a daily Markdown summary |
+
+Settings can choose the configured coach provider/model and, when advertised by that
+model, a supported reasoning effort. The choice applies to new turns.
 
 For a separate practice workspace:
 

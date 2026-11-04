@@ -32,6 +32,28 @@ function rules(css) {
 const scrolls = (b) => /overflow(-y)?:(auto|scroll)/.test(b);
 const flexColumn = (b) => b.includes('display:flex') && b.includes('flex-direction:column');
 
+const SHAPE_CSS = ['ui.css', 'sidebar.css', 'interview.css', 'report.css', 'submissions.css'];
+const shapeDeclarations = (body) => body.split(';').map((part) => part.trim())
+  .map((part) => part.match(/^(border(?:-(?!color)[a-z]+)?|border-radius|box-shadow):(.+)$/))
+  .filter(Boolean);
+const shapeValueOk = (property, value) => {
+  if (property === 'border-radius') return /^(?:var\(--[\w-]+\)|0|50%)$/.test(value);
+  if (property === 'box-shadow') return /^(?:var\(--[\w-]+\)|none)$/.test(value);
+  return /^(?:var\(--[\w-]+\)|0|1px(?: |)solid(?: |)var\(--hair-[\w-]+\))$/.test(value);
+};
+
+for (const file of SHAPE_CSS) {
+  test(`${file}: component shapes use tokens`, () => {
+    const offenders = [];
+    for (const rule of rules(fs.readFileSync(path.join(WEB_CSS, file), 'utf8'))) {
+      for (const [, property, value] of shapeDeclarations(rule.body)) {
+        if (!shapeValueOk(property, value)) offenders.push(`${property}:${value} in ${rule.selector}`);
+      }
+    }
+    assert.deepEqual(offenders, [], 'Shape literals must use a whole token, 0/none/50%, or 1px solid var(--hair-*):\n  ' + offenders.join('\n  '));
+  });
+}
+
 for (const file of fs.readdirSync(WEB_CSS).filter((f) => f.endsWith('.css'))) {
   test(`${file}: nothing that scrolls is also a flex column`, () => {
     const offenders = rules(fs.readFileSync(path.join(WEB_CSS, file), 'utf8'))
@@ -182,4 +204,69 @@ test('all five families define a complete light and dark palette', () => {
       for (const token of tokens) assert.ok(palette[0].body.includes(`--${token}:`), `${selector}: missing ${token}`);
     }
   }
+});
+
+test('all theme families define the component shape token contract', () => {
+  const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
+  const contract = `surface-card-bg surface-card-border surface-card-radius surface-card-shadow surface-card-hover-bg surface-card-hover-shadow
+    row-radius row-hover-bg row-gap row-border tab-radius tab-active-bg tab-active-fg tab-active-indicator tab-active-shadow
+    chip-radius chip-border chip-font float-radius float-shadow float-border`.split(/\s+/);
+  const families = ['studio', 'desk', 'editorial', 'ink', 'terminal', 'nebula', 'horizon', 'abyss', 'dunes'];
+  for (const family of families) {
+    const base = rules(css).find(rule => rule.selector === `body.theme-${family}`);
+    const dark = rules(css).find(rule => rule.selector === `body.theme-${family}.is-dark`);
+    assert.ok(base, `body.theme-${family}: missing palette block`);
+    assert.ok(dark, `body.theme-${family}.is-dark: missing palette block`);
+    for (const token of contract) {
+      assert.ok(base.body.includes(`--${token}:`), `body.theme-${family}: missing --${token}`);
+      // Dark themes may inherit geometry, but must define their palette-relative values.
+      assert.ok(dark.body.includes(`--${token}:`) || base.body.includes(`--${token}:`), `body.theme-${family}.is-dark: missing --${token}`);
+    }
+  }
+});
+
+test('theme tab selectors support aria-selected wherever they support aria-pressed', () => {
+  const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
+  const offenders = rules(css).filter(({ selector }) =>
+    /\.(?:ui|rr|coach|tc)-tab/.test(selector) && selector.includes('[aria-pressed="true"]')
+    && selector.replaceAll(':is([aria-pressed="true"],[aria-selected="true"])', '').includes('[aria-pressed="true"]')
+  ).map(({ selector }) => selector);
+  assert.deepEqual(offenders, []);
+});
+
+test('component defaults exist and no shape token refers to itself', () => {
+  const ui = rules(fs.readFileSync(path.join(WEB_CSS, 'ui.css'), 'utf8'));
+  const defaults = ui.filter(({ selector }) => selector.includes(':root')).map(({ body }) => body).join(';');
+  const theme = rules(fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8'));
+  for (const { body } of [...ui, ...theme]) {
+    for (const [, token, value] of body.matchAll(/(?:^|;)(--[\w-]+):([^;]+)/g)) {
+      assert.ok(!value.includes(`var(${token})`), `${token} cannot refer to itself`);
+      if (/^--(?:surface-card|row|tab|chip|float)-/.test(token)) {
+        assert.ok(defaults.includes(`${token}:`), `${token} needs a deliberate default in ui.css`);
+      }
+    }
+  }
+});
+
+// These surfaces share one spacing owner. Reintroducing feature-level padding or
+// positioned trailing actions recreates the repeated cramped-card regressions.
+test('content surfaces do not override shared inset geometry', () => {
+  const surfaces = new Set(['.recent-chat', '.submission-row', '.sidebar-record-summary',
+    '.submission-card', '.rr-tutor', '.state', '.ws-notice', '.ci-setup', '.ci-live-header',
+    '.ci-notice', '.ci-paused', '.ci-score-hero', '.ci-empty-session', '.set-card',
+    '.set-themes .set-card', '.dzl-row', '.cmsg-receipt', '.detail-problem']);
+  const offenders=[];
+  for (const file of fs.readdirSync(WEB_CSS).filter(f=>f.endsWith('.css') && f!=='ui.css')) {
+    const css=fs.readFileSync(path.join(WEB_CSS,file),'utf8').replace(/\/\*[\s\S]*?\*\//g,'');
+    for (const rule of rules(css)) {
+      const selectors=rule.selector.split(',').map(s=>s.trim().replace(/^body(?:\[class\])?\s+/,''));
+      if (selectors.some(s=>surfaces.has(s)) && /(?:^|;)padding(?:-[\w-]+)?:/.test(rule.body))
+        offenders.push(`${file}: ${rule.selector}`);
+      if (selectors.some(s=>/^\.(?:recent-chevron|submission-chevron|interview-row-resume)$/.test(s)) && /position:absolute|(?:^|;)(?:right|left):/.test(rule.body))
+        offenders.push(`${file}: positioned trailing control ${rule.selector}`);
+      if (selectors.some(s=>s==='.hover-surface') && /(?:^|;)(?:padding|margin)(?:-[\w-]+)?:/.test(rule.body))
+        offenders.push(`${file}: hover treatment owns spacing`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'Use the ui-inset/row/cluster contract instead of a competing geometry rule');
 });

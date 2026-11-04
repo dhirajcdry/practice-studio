@@ -1,3 +1,4 @@
+import { problemDir } from '../server/storage-layout.mjs';
 // Navigation/reload regression checks using synthetic records, a fake coach and fake
 // audio. No learner cache, real coach turn, or running Studio server is involved.
 import assert from 'node:assert/strict';
@@ -93,6 +94,7 @@ try {
   ` });
   await call('Page.navigate', { url: `${origin}/#/p/two-sum` });
   await waitFor(`document.querySelector('.coach-compose textarea')`);
+  assert.equal(await evaluate(`import('/js/api.js').then(m=>m.api.mode)`), 'live', await evaluate(`import('/js/api.js').then(m=>m.api.reason)`));
   await evaluate(`document.querySelector('.coach-launch').click()`);
   const type = text => evaluate(`(() => { const box=document.querySelector('.coach-compose textarea'); box.value=${JSON.stringify(text)}; box.dispatchEvent(new Event('input',{bubbles:true})); })()`);
   const text = () => evaluate(`document.querySelector('.coach-compose textarea').value`);
@@ -137,20 +139,22 @@ try {
   console.log('ok — seen finished runs stay acknowledged after remount, adoption and reload');
 
   await go('two-sum');
-  await evaluate(`document.querySelector('.rec-toggle').click()`);
-  // Start now opens the interview choices. This preservation case exercises the
-  // background recorder, so explicitly choose the silent interviewer path rather
-  // than accidentally starting a typed interview.
-  await waitFor(`document.querySelector('.ci-setup')`);
-  await evaluate(`(() => { const group=document.querySelector('.ci-segment[aria-label="Interviewer"]'); [...group.querySelectorAll('button')].find(button => button.textContent.trim() === 'Off').click(); document.querySelector('.ci-setup form').requestSubmit(); })()`);
+  assert.equal(await evaluate("[...document.querySelectorAll('select')].some(n => n.getClientRects().length && !n.closest('[hidden]'))"), false, 'no visible native selects');
+  // Exercise legacy recorded-attempt preservation directly. New interviews now
+  // have their own sidebar tab; the legacy recorder no longer owns a toolbar slot.
+  await evaluate(`(async () => { const coach = await import('/js/coach.js'); coach.setOpen(true); [...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Interviews').click(); const recorder = (await import('/js/recorder.js')).installRecorder(() => 'two-sum'); await recorder.start(); })()`);
   await waitFor(`document.querySelector('.rec.is-live') && localStorage.getItem('studio.attempt.v1')`);
   const attempt = await evaluate(`JSON.parse(localStorage.getItem('studio.attempt.v1'))`);
   for (const hash of ['#/p/contains-duplicate', '#/', '#/roadmap', '#/progress', '#/design', '#/p/two-sum']) {
     await evaluate(`location.hash=${JSON.stringify(hash)}`); await sleep(200);
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('studio.attempt.v1')).attemptId`), attempt.attemptId);
-    const bounds = await evaluate(`(() => { const node=document.querySelector('#recmount .rec'); const r=node?.getBoundingClientRect(); return {width:r?.width,height:r?.height, title:node?.querySelector('.rec-problem')?.textContent}; })()`);
-    assert.ok(bounds.width > 0 && bounds.height > 0, `recorder visible on ${hash}`);
-    if (hash !== '#/p/two-sum') assert.equal(bounds.title, 'Two Sum');
+    if (hash.startsWith('#/p/')) {
+      await evaluate(`(async () => { (await import('/js/coach.js')).setOpen(true); [...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Interviews').click(); })()`);
+      const bounds = await evaluate(`(() => { const node=document.querySelector('[data-interview-recorder] .rec'); const r=node?.getBoundingClientRect(); return {width:r?.width,height:r?.height, title:node?.querySelector('.rec-problem')?.textContent}; })()`);
+      assert.ok(bounds.width > 0 && bounds.height > 0, 'recorder accessible in sidebar on ' + hash);
+      if (hash !== '#/p/two-sum') assert.equal(bounds.title, 'Two Sum');
+    }
+
   }
   await call('Page.reload', { ignoreCache: true });
   await sleep(500); await waitFor(`document.querySelector('.rec.is-live')`);
@@ -161,8 +165,8 @@ try {
   await evaluate(`document.querySelector('.rec-toggle').click()`);
   await waitFor(`!localStorage.getItem('studio.attempt.v1')`);
   await waitFor(`document.querySelector('.coach-run-title')?.textContent === 'Two Sum'`);
-  const files = await fsp.readdir(path.join(scratch, 'problems', 'two-sum', 'sessions'));
-  const events = (await Promise.all(files.filter(f=>f.endsWith('.jsonl')).map(f=>fsp.readFile(path.join(scratch,'problems','two-sum','sessions',f),'utf8')))).join('\n').split('\n').filter(Boolean).map(JSON.parse);
+  const files = await fsp.readdir(path.join(problemDir(scratch, 'two-sum'), 'sessions'));
+  const events = (await Promise.all(files.filter(f=>f.endsWith('.jsonl')).map(f=>fsp.readFile(path.join(problemDir(scratch,'two-sum'),'sessions',f),'utf8')))).join('\n').split('\n').filter(Boolean).map(JSON.parse);
   assert.equal(events.filter(e=>e.type==='attempt_started').length, 1);
   assert.equal(events.filter(e=>e.type==='attempt_resumed').length, 1);
   assert.equal(events.filter(e=>e.type==='attempt_ended').length, 1);

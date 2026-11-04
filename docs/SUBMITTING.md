@@ -38,12 +38,12 @@ sequenceDiagram
   P->>B: postMessage submit {slug, code}
   B->>W: port "studio-submit"
   W->>W: signed in? (LEETCODE_SESSION, csrftoken cookies)
-  W->>T: use an open tab, or open one in the background
-  W->>T: inject pageSubmit
+  W->>T: use an open tab that answers a ping, or open one in the background
+  W->>T: inject pageSubmit (lookup only)
   T->>T: GraphQL questionData → internal questionId
+  W->>T: inject pageSubmit (with questionId)
   T->>T: ONE POST /problems/{slug}/submit/ → submission_id
-  W->>T: inject pagePoll
-  T->>T: GET /submissions/detail/{id}/check/ every 1 s until SUCCESS (max 55 s)
+  W->>T: inject pageCheck every 1 s, timed by the worker, until SUCCESS (max 55 s)
   W->>T: ONE read-only submissionDetails GraphQL query (best-effort)
   W-->>B: {ok, submissionId, check, details}
   B-->>P: postMessage result
@@ -54,8 +54,8 @@ sequenceDiagram
 1. You click **Submit**. The page asks the Connector, through `window.postMessage`.
 2. The Connector checks that this browser is signed in to LeetCode. If not, it stops and
    says so; nothing is sent.
-3. It uses an open, loaded leetcode.com tab, or opens the problem page in a background tab
-   and closes it afterwards.
+3. It uses an open, loaded leetcode.com tab that answers a ping, or opens the problem page
+   in a background tab and closes it afterwards. A tab the browser has frozen is skipped.
 4. Inside that tab it looks up the problem's **internal** `questionId` and sends **one**
    POST to `/problems/{slug}/submit/`. Because the request comes from LeetCode's own page,
    it carries your cookies, CSRF token, Cloudflare clearance and the browser's TLS
@@ -109,7 +109,7 @@ are recorded.
 | **The judge could not be reached** (Cloudflare) | Cloudflare wants the browser to verify itself | Open the leetcode.com tab, finish the check, submit again |
 | **LeetCode is rate limiting submissions** | Too many submissions in a short window | Wait a minute or two |
 | **LeetCode has not finished judging** | Judging took longer than 55 s | Open the linked submission on LeetCode; don't resubmit |
-| **A submission is already on its way** | You clicked twice | Wait for the first verdict |
+| **An earlier submission request is still active** | The connector is preparing, sending, or polling an earlier request; this is not proof LeetCode received it | Check the original Studio tab for its result |
 
 ## Troubleshooting
 
@@ -314,3 +314,23 @@ Only class/method headers and node-definition comments are retained from the Pyt
 solution, with method bodies replaced by `pass`. Existing saved code and recovery drafts
 keep precedence. Example outputs are used only when their parsed inputs match all of
 LeetCode's supplied example cases; ambiguous formats retain unpublished expectations.
+
+### Connector 1.2.1: stalled requests
+
+Problem lookup and the one submission POST each have a 15-second deadline, including
+reading their response bodies. Poll requests are bounded by the remaining judge deadline.
+A failed lookup is `not_sent`; a dropped submission response remains `unknown`; a poll
+timeout retains the known submission id. The per-problem lock is released when the
+operation settles. There is no automatic retry or resubmission. Reload the extension
+in `chrome://extensions` and then reload Studio to activate this update.
+
+### Connector 1.2.2–1.2.3: frozen tabs, and reloads
+
+1.2.1's deadlines lived inside the LeetCode page, and a tab the browser froze in the
+background runs no timers, so a script injected there never came back and the lock was
+held until the extension reloaded. Every injected script now has a deadline kept by the
+worker (`inTab`), an open tab must answer a 3-second ping before it is used (otherwise a
+fresh background tab is opened), and `/check/` polling is paced by the worker, not by the
+tab's throttled timers. The lookup and the POST are separate injections, so a tab that
+goes quiet during the lookup is `not_sent` and one that goes quiet while sending is
+`unknown`. Still one POST, no retry.

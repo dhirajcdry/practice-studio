@@ -168,7 +168,7 @@ export function renderImageCard(code, { slug = null, live = false } = {}) {
   const failed = (state) => {
     stopTicker();
     status.textContent = '';
-    replace(stage, el('div', { class: 'state warn pic-failed' }, [
+    replace(stage, el('div', { class: 'state ui-inset ui-inset--roomy warn pic-failed' }, [
       el('h3', { text: state.status === 'gave-up' ? 'Stopped waiting for the picture' : 'The picture was not painted' }),
       el('p', { text: state.status === 'gave-up'
         ? 'Five minutes passed without a picture. Codex may still finish it; trying again picks it up if it did.'

@@ -1,3 +1,4 @@
+import { checkSidebar } from './check-sidebar.mjs';
 import { checkControls } from './check-controls.mjs';
 // Exercise saved submissions in a disposable workspace and browser profile.
 // External judge hosts are blocked before navigation; no real tutor turns are run.
@@ -141,8 +142,9 @@ async function checkPanel({ call, evaluate, wait }) {
     const popover = document.querySelector('.chat-history-popover').getBoundingClientRect();
     return popover.left >= panel.left && popover.right <= panel.right && popover.bottom <= panel.bottom;
   })()`), true, 'history popover fits inside the panel');
-  await evaluate(`document.querySelectorAll('.coach-tab')[1].click()`);
+  await evaluate(`[...document.querySelectorAll('.coach-tab')].find(tab => tab.textContent.startsWith('Submissions')).click()`);
   await wait(`document.querySelectorAll('.submission-row').length === 3`);
+  await checkSidebar(evaluate);
   assert.equal(await evaluate(`document.querySelector('[aria-label=History]').hidden && document.querySelector('[aria-label="New chat"]').hidden && document.querySelector('.chat-history-popover').hidden`), true, 'submissions hides chat tools and popover');
   for (const width of [380, 460]) {
     // Set the panel itself, not the viewport: the workspace uses desktop columns.
@@ -209,15 +211,16 @@ async function checkPanel({ call, evaluate, wait }) {
   }
   await evaluate(`document.querySelectorAll('.submission-row')[1].click()`);
   assert.equal(await evaluate(`!!document.querySelector('.failure-block') && !document.querySelector('.submission-chart')`), true, 'wrong answer has failure blocks only');
-  await evaluate(`document.querySelectorAll('.coach-tab')[1].click()`);
+  await evaluate(`[...document.querySelectorAll('.coach-tab')].find(tab => tab.textContent.startsWith('Submissions')).click()`);
   await wait(`document.querySelectorAll('.submission-row').length === 3`);
+  await checkSidebar(evaluate);
   await evaluate(`document.querySelectorAll('.submission-row')[2].click()`);
   assert.equal(await evaluate(`document.querySelector('.submissions').textContent.includes("Charts weren't kept for this submission.")`), true, 'old accepted record has missing charts');
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.submission-segments button')].map(b => b.textContent)`),
     ['Code', 'vs editor'], 'no chart switch or previous comparison for the oldest chartless submission');
   await evaluate(`[...document.querySelectorAll('.submission-segments button')].find(b => b.textContent === 'vs editor').click()`);
   await wait(`document.querySelector('.submission-diff')`);
-  await evaluate(`document.querySelectorAll('.coach-tab')[1].click()`);
+  await evaluate(`[...document.querySelectorAll('.coach-tab')].find(tab => tab.textContent.startsWith('Submissions')).click()`);
   await evaluate(`document.querySelector('.submission-row').click()`);
   await evaluate(`[...document.querySelectorAll('.submissions button')]
     .find(button => button.textContent === 'vs previous').click()`);

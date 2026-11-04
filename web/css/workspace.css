@@ -80,7 +80,9 @@ body.ws-wide .ws-run.tc-run:hover{border-color:var(--ink-35)}
 body.ws-wide .tc-label,body.ws-wide .tc-origin{font:11px var(--ui);letter-spacing:0;text-transform:none}
 /* Read-only is said by the note under the fields; a dashed edge read as a drop zone. */
 body.ws-wide .tc-input[readonly]{border-style:solid;border-color:var(--hair-10)}
-.editor-cursor{flex:none;font:10px var(--mono);color:var(--ink-50);white-space:nowrap}
+/* File-level tools ride in the file row: quiet until hovered, away from Run and Submit. */
+.editor-meta:has(.editor-tool){gap:var(--space-3);padding-right:var(--space-2)}
+.editor-tool[hidden],body.coach-open .editor-open-sidebar{display:none}
 
 /* One row of buttons: 28px controls in a 40px bar. Height here comes out of the editor. */
 body.ws-wide .ws>.ws-bar{min-height:40px;flex-shrink:0;padding:6px 12px 6px 16px;gap:8px;border-top:1px solid var(--hair-10);border-bottom:0;align-items:center}
@@ -102,7 +104,6 @@ body.ws-wide .coach-title{display:none}
 body.ws-wide .coach-context{margin-top:7px;gap:10px}
 body.ws-wide .coach-context span{font:10px var(--ui);letter-spacing:0;text-transform:none;border:0;padding:0;color:var(--ink-50)}
 body.ws-wide .coach-context span+span::before{content:"·";padding-right:10px;color:var(--ink-35)}
-body.ws-wide .coach-bar{background:transparent;min-height:35px;padding:5px 12px}
 body.ws-wide .coach-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm);padding:4px 8px}
 body.ws-wide .coach-state{font:10px var(--ui);letter-spacing:0}
 body.ws-wide .coach-log{padding:20px 18px}
@@ -110,9 +111,6 @@ body.ws-wide .coach-log>*+*{margin-top:24px}
 body.ws-wide .cmsg-who{font:600 10px var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--ink-50)}
 body.ws-wide .cmsg.you .cmsg-body{font:12px/1.7 var(--ui);border:1px solid var(--hair-10);border-radius:var(--r-sm);background:var(--card);padding:11px 13px}
 body.ws-wide .cmsg.reply .cmsg-body{font:13px/1.8 var(--prose)}
-body.ws-wide .coach-compose{padding:12px;background:transparent;border-top:1px solid var(--hair-10)}
-body.ws-wide .coach-input{font:12px/1.6 var(--ui);background:var(--card);border-radius:var(--r-sm);border-color:var(--hair-20);padding:12px}
-body.ws-wide .coach-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 body.ws-wide .vc-talk{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm)}
 body.ws-wide .coach-starters{display:grid;gap:8px}
 body.ws-wide .coach-starters button{font:12px var(--ui);letter-spacing:0;text-transform:none;text-align:left;padding:11px 12px;border-radius:var(--r-sm);border:1px solid var(--hair-10);background:var(--card)}
@@ -162,7 +160,6 @@ body.ws-wide .coach{border-left:1px solid var(--hair-20)}
 body.ws-wide .coach-identity,body.ws-wide .coach-bar{flex-shrink:0}
 body.ws-wide .coach-identity{background:var(--card);padding:16px 18px 14px}
 body.ws-wide .coach-context span{color:var(--ink-70);font-size:11px}
-body.ws-wide .coach-bar{min-height:44px;border-block:1px solid var(--hair-10);background:var(--surface-inset);gap:8px}
 body.ws-wide .coach-tab{font-size:12px;min-height:30px;padding:6px 10px;color:var(--ink-70)}
 body.ws-wide .coach-tab[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(var(--ink-rgb),.09)}
 body.ws-wide .coach-state{color:var(--ink-70);font-size:11px}
@@ -171,10 +168,7 @@ body.ws-wide .coach-empty{padding:0}
 body.ws-wide .coach-starters{display:grid;grid-template-columns:1fr;gap:10px}
 body.ws-wide .coach-starters button{color:var(--ink-70);min-height:42px;padding:11px 14px;border-color:var(--hair-20);background:var(--card);line-height:1.5}
 body.ws-wide .coach-starters button:hover{color:var(--ink);border-color:var(--accent);background:var(--accent-soft)}
-body.ws-wide .coach-compose{border-top:1px solid var(--hair-20);background:var(--card);padding:14px;gap:10px}
-body.ws-wide .coach-input{font-size:13px;min-height:64px;background:var(--canvas)}
 body.ws-wide .coach-input::placeholder{color:var(--ink-50)}
-body.ws-wide .coach-actions .ws-mini,body.ws-wide .coach-actions .vc-talk{min-height:34px;font-size:12px}
 body.ws-wide .cmsg-who{color:var(--ink-70)}
 @media(min-width:1081px){
   body.ws-wide.coach-open .pbody>.coach{grid-column:auto;grid-row:auto}
@@ -203,19 +197,22 @@ body.ws-wide .ws>.ws-bar .recmount .rec-toggle{height:28px;padding:0 10px;font:5
 .monaco-editor .tutor-bar.tone-hint{background:var(--accent)}
 .monaco-editor .tutor-bar.tone-bug{background:var(--hard)}
 .monaco-editor .tutor-bar.tone-good{background:var(--easy)}
-/* The note sits under the lines it is about, like a review comment. Plain text only. */
-.tutor-note{box-sizing:border-box;padding:3px 14px 5px 0;pointer-events:none}
+/* Review cards reserve their measured height in Monaco; never paint over code. */
+.tutor-note{--tutor-tone:var(--accent);box-sizing:border-box;padding:var(--space-2) var(--space-4) var(--space-3) 0;overflow:hidden;pointer-events:auto}
+.tutor-note.tone-bug{--tutor-tone:var(--hard)}
+.tutor-note.tone-good{--tutor-tone:var(--easy)}
 .tutor-note-body{
-  display:flex;gap:8px;align-items:baseline;max-width:72ch;
-  padding:5px 10px;border-left:3px solid var(--accent);border-radius:0 var(--r-sm) var(--r-sm) 0;
-  background:rgba(var(--accent-rgb),.07);color:var(--ink);
-  font:12px/1.5 var(--ui);white-space:normal;overflow-wrap:anywhere;
+  position:relative;box-sizing:border-box;width:calc(var(--tutor-note-width) - var(--space-4));max-width:78ch;
+  border:var(--surface-card-border);border-radius:var(--surface-card-radius);
+  background:var(--card);color:var(--ink);font:var(--text-sm)/var(--line-lg) var(--ui);
+  white-space:normal;overflow-wrap:anywhere;overflow:hidden;user-select:text;
 }
-.tutor-note.tone-bug .tutor-note-body{border-left-color:var(--hard);background:rgba(var(--hard-rgb),.07)}
-.tutor-note.tone-good .tutor-note-body{border-left-color:var(--easy);background:rgba(var(--easy-rgb),.07)}
-.tutor-note-who{flex:none;font:600 10px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
-.tutor-note.tone-bug .tutor-note-who{color:var(--hard)}
-.tutor-note.tone-good .tutor-note-who{color:var(--easy)}
+.tutor-note-body::before{content:'';position:absolute;inset:0 auto 0 0;width:var(--space-1);background:var(--tutor-tone)}
+.tutor-note-meta{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
+.tutor-note-who{color:var(--tutor-tone);font:600 var(--text-sm)/var(--line-sm) var(--ui)}
+.tutor-note-range{color:var(--ink-70);font:var(--text-xs)/var(--line-sm) var(--ui)}
+.tutor-note-actions{display:flex;align-items:center;gap:var(--space-1);flex:none}
+.tutor-note-text{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:var(--line-lg)}
 /* An edit the tutor just made, lit briefly so the eye finds it. Still under reduced motion. */
 .monaco-editor .tutor-flash{background:rgba(var(--accent-rgb),.28);animation:tutor-flash 1.5s var(--ease-out) forwards}
 .monaco-editor .tutor-flash.is-still{animation:none;background:rgba(var(--accent-rgb),.16)}
@@ -238,8 +235,3 @@ body.motion-off .monaco-editor .tutor-flash{animation:none;background:rgba(var(-
 .tc-mark-coach{font-weight:400;font-size:10px}
 .tc-why{display:flex;gap:8px;align-items:baseline;margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0;font:12px/1.5 var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
 .tc-why-who{flex:none;font:600 10px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
-
-/* A run the tutor asked for, never to be read as his own. */
-.rr-tutor{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:7px 10px;border:1px solid rgba(var(--accent-rgb),.3);border-radius:var(--r-sm);background:var(--accent-soft)}
-.rr-tutor-mark{font:600 11px/1.4 var(--ui);color:var(--accent)}
-.rr-tutor-what{font:11px/1.4 var(--ui);color:var(--ink-50)}

@@ -7,7 +7,7 @@ import path from 'node:path';
 async function load(fetchImpl) {
   const source = await fsp.readFile(path.resolve('extension/background.js'), 'utf8');
   const context = { console, fetch: fetchImpl, location: { origin: 'https://leetcode.com' }, chrome: {
-    runtime: { onConnect: { addListener() {} } }, cookies: {}, tabs: {}, scripting: {},
+    runtime: { onConnect: { addListener() {} }, onInstalled: { addListener() {} } }, cookies: {}, tabs: {}, scripting: {},
   }, setTimeout, clearTimeout, URL, AbortController, AbortSignal };
   vm.createContext(context);
   vm.runInContext(`${source}\nglobalThis.__pageDetails = pageDetails; globalThis.__pageDetails.fetchDetails = fetchDetails;`, context);

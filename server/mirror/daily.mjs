@@ -14,6 +14,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { buildStats } from '../stats/aggregate.mjs';
+import { listProblemSlugs, problemDir } from '../storage-layout.mjs';
 
 const SECTION = '## LeetCode';
 const DEBOUNCE_MS = 1500;
@@ -97,14 +98,9 @@ async function currentPatterns(root, limit = 3) {
 /** Think-aloud and debrief takes recorded today, across every problem. */
 async function spokenToday(root, dateKey) {
   const out = { takes: 0, seconds: 0, slugs: [] };
-  let slugs;
-  try {
-    slugs = await fs.readdir(path.join(root, 'problems'));
-  } catch {
-    return out;
-  }
+  const slugs = await listProblemSlugs(root);
   for (const slug of slugs) {
-    const dir = path.join(root, 'problems', slug, 'transcripts');
+    const dir = path.join(problemDir(root, slug), 'transcripts');
     let names;
     try {
       names = (await fs.readdir(dir)).filter((n) => n.endsWith('.json'));

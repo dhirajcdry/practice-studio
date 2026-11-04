@@ -1,3 +1,5 @@
+import { routes as learningRoutes } from './learning/index.mjs';
+import { learnerRoutes } from './learning/routes.mjs';
 // The router. Every API response shape here is fixed by docs/API-CONTRACT.md.
 
 import { HttpError, sendJson, sendError, checkLoopback, isSafeSlug } from './http-util.mjs';
@@ -11,15 +13,19 @@ import { routes as statsRoutes } from './stats/routes.mjs';
 import { routes as asrRoutes } from './asr/routes.mjs';
 import { routes as judgeRoutes } from './judge/routes.mjs';
 import { interviewRoutes } from './interview/routes.mjs';
+import { routes as lldRoutes } from './lld/routes.mjs';
 import { routes as designRoutes } from './design/routes.mjs';
 import { scheduleMirror } from './mirror/daily.mjs';
 import { SessionLog, onSessionEvent } from './coach/sessions.mjs';
 import { armAttemptWriter } from './attempts/watch.mjs';
 import { routes as ttsRoutes } from './tts/routes.mjs';
+import { routes as practiceRoutes } from './practice/routes.mjs';
 
 // Modules are built independently and each exports a plain route table; the router is the
 // single place they meet. Keys are 'METHOD /path/with/:params'.
 const MODULE_ROUTES = {
+  ...learningRoutes,
+  ...learnerRoutes,
   ...runnerRoutes,
   ...coachRoutes,
   ...workspaceRoutes,
@@ -28,7 +34,9 @@ const MODULE_ROUTES = {
   ...judgeRoutes,
   ...designRoutes,
   ...interviewRoutes,
+  ...lldRoutes,
   ...ttsRoutes,
+  ...practiceRoutes,
 };
 
 const sessionLog = new SessionLog({ root: HOME_ROOT });

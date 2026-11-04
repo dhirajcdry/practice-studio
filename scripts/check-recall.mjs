@@ -97,19 +97,20 @@ try {
   const { call, evaluate, wait } = await connectBrowser();
   await call('Network.enable'); await call('Network.setBlockedURLs', { urls: ['https://*', 'http://leetcode.com/*', 'http://neetcode.io/*'] });
   await call('Page.navigate', { url: origin + '/#/p/two-sum' });
-  await wait(`document.querySelector('.coach-recall')`);
+  await wait(`document.querySelector('.coach-compose textarea')`);
   await evaluate(`document.body.classList.add('coach-open')`);
-  await wait(`document.querySelector('.coach-recall').getBoundingClientRect().width > 0`);
-  const geometry = await evaluate(`(() => { const b = document.querySelector('.coach-recall').getBoundingClientRect(); const c = document.querySelector('.coach-compose').getBoundingClientRect(); return {width:b.width,height:b.height,left:b.left,right:b.right,parentLeft:c.left,parentRight:c.right}; })()`);
+  assert.equal(await evaluate(`document.querySelector('.coach-recall')`), null);
+  const geometry = await evaluate(`(() => { const b = document.querySelector('.coach-compose textarea').getBoundingClientRect(); const c = document.querySelector('.coach-compose').getBoundingClientRect(); return {width:b.width,height:b.height,left:b.left,right:b.right,parentLeft:c.left,parentRight:c.right}; })()`);
   assert.ok(geometry.height >= 24 && geometry.width > 80 && geometry.left >= geometry.parentLeft && geometry.right <= geometry.parentRight);
-  await evaluate(`document.querySelector('.coach-recall').click()`);
+  const ask = async message => evaluate(`(() => { const input = document.querySelector('.coach-compose textarea'); input.value = ${JSON.stringify(message)}; input.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.coach-send').click(); })()`);
+  await ask('Create notes about complement lookups and save them to Studycraft.');
   await wait(`document.querySelector('[data-tool="save_recall_note"] a')?.textContent === 'Saved to Studycraft ↗'`);
-  await wait(`!document.querySelector('.coach-recall').disabled`);
+  await wait(`!document.querySelector('.coach-send').disabled`);
   offline = true;
   await fsp.writeFile(path.join(fixture.root, 'coach-settings.json'), JSON.stringify({ provider: 'codex', model: 'gpt-6-astra' }));
-  await evaluate(`document.querySelector('.coach-recall').click()`);
+  await ask('Add why lookup comes before insertion to those notes and save them.');
   await wait(`[...document.querySelectorAll('[data-tool="save_recall_note"]')].some(n => n.textContent.includes('Pending sync'))`);
-  await wait(`!document.querySelector('.coach-recall').disabled`);
+  await wait(`!document.querySelector('.coach-send').disabled`);
   offline = false;
   process.env.STUDYCRAFT_RECALL_URL = endpoint; process.env.STUDYCRAFT_RECALL_TOKEN = 'fake-recall-token';
   await flushRecall(fixture.root, { force: true });
@@ -117,12 +118,20 @@ try {
   assert.equal(state.outbox.items.length, 2); assert.ok(state.outbox.items.every(i => i.status === 'saved'));
   assert.equal(state.mapping[note.patternId].noteId, 'pattern-note'); assert.equal(calls, 3);
   await call('Page.reload');
-  await wait(`document.querySelector('.coach-recall')`);
+  await wait(`document.querySelector('.coach-compose textarea')`);
   await evaluate(`document.body.classList.add('coach-open')`);
   await wait(`document.querySelector('.recent-chat') || document.querySelector('[data-tool="save_recall_note"] a')`);
   await evaluate(`document.querySelector('.recent-chat')?.click()`);
   await wait(`document.querySelector('[data-tool="save_recall_note"] a')`);
-  console.log('ok — recall action, both fake providers, saved/pending receipts, retry without generation, reload, measured bounds');
+  if (process.env.STUDIO_RECALL_SCREENSHOTS) {
+    await fsp.mkdir(process.env.STUDIO_RECALL_SCREENSHOTS, { recursive: true });
+    for (const mode of ['light', 'dark']) {
+      await evaluate(`(async () => { const settings = await import('/js/settings.js'); settings.setSetting('mode', ${JSON.stringify(mode)}); await new Promise(resolve => setTimeout(resolve, 500)); })()`);
+      const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+      await fsp.writeFile(path.join(process.env.STUDIO_RECALL_SCREENSHOTS, `recall-${mode}.png`), Buffer.from(screenshot.data, 'base64'));
+    }
+  }
+  console.log('ok — conversational notes, both fake providers, saved/pending receipts, retry without generation, reload, measured bounds');
 } finally {
   socket?.close();
   for (const child of [chrome, server]) if (child && child.exitCode === null && !child.signalCode) {

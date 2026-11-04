@@ -1,3 +1,4 @@
+import { listProblemSlugs, problemDir } from '../server/storage-layout.mjs';
 // Rebuild every attempt document from the raw logs.
 //
 //   node scripts/rebuild-attempts.mjs                 every problem
@@ -24,17 +25,8 @@ const only = args.filter((a) => !a.startsWith('--'));
 
 const catalog = loadCatalog(CATALOG_FILE, loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT));
 
-const problemsDir = path.join(HOME_ROOT, 'problems');
-let slugs;
-try {
-  slugs = (await fsp.readdir(problemsDir, { withFileTypes: true }))
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .sort();
-} catch {
-  console.error(`No workspace at ${problemsDir}.`);
-  process.exit(1);
-}
+const slugsInWorkspace = await listProblemSlugs(HOME_ROOT,{discipline:'coding'});
+let slugs = slugsInWorkspace;
 if (only.length) slugs = slugs.filter((s) => only.includes(s));
 
 let written = 0;
@@ -54,7 +46,7 @@ for (const slug of slugs) {
     const markdown = renderAttempt(attempt, { title: catalog.get(slug)?.title ?? slug });
     // The id is an ISO instant; ':' and '.' are legal on macOS but miserable everywhere.
     const dirName = attemptId.replace(/[:.]/g, '-');
-    const outDir = path.join(problemsDir, slug, 'attempts', dirName);
+    const outDir = path.join(problemDir(HOME_ROOT,slug), 'attempts', dirName);
     const outFile = path.join(outDir, 'attempt.md');
 
     const spoken = attempt.speech.length;

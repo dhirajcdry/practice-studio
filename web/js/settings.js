@@ -1,13 +1,16 @@
+import { openContextInspector } from './context-inspector.js';
 // Settings: the theme, and how the editor reads.
 //
 // Everything here is stored locally and applied before first paint, so choosing a theme
 // never costs a flash of the previous one.
 
 import { el, replace } from './dom.js';
+import { openCoachingInstructions } from './coaching-instructions.js';
 import { createSpeaker } from './speech.js';
 import { NATURAL_VOICES, voicePreferences, saveVoicePreferences } from './speech-preferences.js';
 import { CHORDS } from './shortcuts.js';
 import { createCoachModelPicker } from './coach-model.js';
+import { createSelect } from './ui/select.js';
 
 const STORE_KEY = 'studio.settings.v1';
 
@@ -97,7 +100,7 @@ export function setSetting(key, value) {
   // keys: the code-size slider fires on every pixel of a drag. Opacity only, so it stays
   // on with motion off.
   if ((key === 'theme' || key === 'mode') && typeof document.startViewTransition === 'function') {
-    try { document.startViewTransition(commit); return; } catch { /* fall through */ }
+    try { document.startViewTransition(commit).ready.catch(() => { /* superseded by a newer theme choice */ }); return; } catch { /* fall through */ }
   }
   commit();
 }
@@ -125,7 +128,7 @@ function themeCard(theme, onPick) {
   const chosen = current.theme === theme.id;
   const previewStyle = `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}${theme.art ? `;--pl-art:url(img/themes/${theme.id}-light.jpg);--pd-art:url(img/themes/${theme.id}-dark.jpg)` : ''}`;
   return el('button', {
-    class: 'set-card set-theme', type: 'button', 'aria-pressed': String(chosen),
+    class: 'set-card set-theme ui-inset', type: 'button', 'aria-pressed': String(chosen),
     onclick: () => onPick(theme.id),
   }, [
     el('div', {
@@ -215,14 +218,13 @@ export function openSettings() {
   ]);
 
   const voicePrefs = voicePreferences();
-  const voiceEngine = el('select', { 'aria-label': 'Speech output', onchange: event => {
+  const voiceEngine = createSelect({ label: 'Speech output', value: voicePrefs.engine, options: [['natural','Natural (on-device)'], ['system','System']], onChange: event => {
     saveVoicePreferences({ engine: event.target.value }); voicePreview?.cancel();
     voicePicker.disabled = event.target.value === 'system';
-  } }, [['natural', 'Natural (on-device)'], ['system', 'System']].map(([value, text]) =>
-    el('option', { value, text, selected: voicePrefs.engine === value })));
-  const voicePicker = el('select', { 'aria-label': 'Natural voice', disabled: voicePrefs.engine === 'system',
-    onchange: event => { saveVoicePreferences({ voice: event.target.value }); voicePreview?.cancel(); },
-  }, NATURAL_VOICES.map(([value, text]) => el('option', { value, text, selected: voicePrefs.voice === value })));
+  }});
+  const voicePicker = createSelect({ label: 'Natural voice', value: voicePrefs.voice, options: NATURAL_VOICES, onChange: event => {
+    saveVoicePreferences({ voice: event.target.value }); voicePreview?.cancel();
+  }});
   const speedValue = el('span', { class: 'mono dim set-value', text: `${voicePrefs.speed.toFixed(1)}×` });
   const voiceSpeed = el('input', { type: 'range', min: '0.5', max: '2', step: '0.1', value: String(voicePrefs.speed),
     class: 'set-range', 'aria-label': 'Speech speed', oninput: event => {
@@ -250,7 +252,9 @@ export function openSettings() {
     el('div', { class: 'set-body' }, [
       el('div', { class: 'mono dim set-label', text: 'Coach' }),
       coachPicker.root,
-      el('p', { class: 'set-cardblurb', text: 'Applies to new coach and system-design replies. Each provider uses its own sign-in and limits. Automatic note updates are available with Claude.' }),
+      el('button', {class:'btn btn--quiet',type:'button',text:'Coaching instructions',onclick:()=>{closeSettings();void openCoachingInstructions();}}),
+      el('button', {class:'btn btn--quiet',type:'button',text:'What was sent?',onclick:()=>{closeSettings();void openContextInspector();}}),
+      el('p', { class: 'set-cardblurb', text: 'Applies to new replies across all three disciplines. Each provider uses its own sign-in and limits. Coaches maintain notes through shared Studio tools.' }),
       el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
       el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
       voiceSection,

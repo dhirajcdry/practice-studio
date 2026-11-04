@@ -13,6 +13,7 @@ import { handleRecord, neetcodeSubmissionId } from '../routes.mjs';
 import { buildNeetCodeVerdict, NEETCODE_DETAILS_MAX } from '../verdict.mjs';
 import { SessionLog } from '../../coach/sessions.mjs';
 import { readProblemDir, statusOf } from '../../stats/aggregate.mjs';
+import { problemDir as storageProblemDir } from '../../storage-layout.mjs';
 
 const CODE = 'class Solution:\n    def validTree(self, n, edges):\n        return True\n';
 const URL_ = 'https://neetcode.io/problems/valid-tree/history?submissionIndex=3';
@@ -105,7 +106,7 @@ async function freshCtx() {
   return { homeRoot, sessionLog: new SessionLog({ root: homeRoot }), log: { warn() {} } };
 }
 
-const problemDir = (root) => path.join(root, 'problems', 'graph-valid-tree');
+const problemDir = (root) => storageProblemDir(root, 'graph-valid-tree');
 const readMeta = async (root) => JSON.parse(await fsp.readFile(path.join(problemDir(root), 'meta.json'), 'utf8'));
 
 async function readEvents(root) {

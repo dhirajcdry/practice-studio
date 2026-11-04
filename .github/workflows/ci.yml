@@ -40,3 +40,11 @@ jobs:
 
       - name: Run unit and integration tests
         run: npm test
+
+      - name: Browser smoke checks
+        env:
+          CHROME_PATH: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+        run: |
+          test -x "$CHROME_PATH"
+          npm run check:interview
+          npm run check:lld

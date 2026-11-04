@@ -24,7 +24,7 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 
 const args = process.argv.slice(2);
-const mode = process.env.FAKE_CLAUDE_MODE || 'ok';
+let mode = process.env.FAKE_CLAUDE_MODE || 'ok';
 
 if (process.env.FAKE_CLAUDE_ARGS_FILE) {
   fs.writeFileSync(process.env.FAKE_CLAUDE_ARGS_FILE, JSON.stringify(args, null, 2));
@@ -65,7 +65,36 @@ process.stdin.on('end', () => {
 });
 
 function run() {
+  if (process.env.FAKE_CLAUDE_STATE_FILE) {
+    const file = process.env.FAKE_CLAUDE_STATE_FILE;
+    const state = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+    if (resumeIdx !== -1 && !state[sessionId]) {
+      emit({ type: 'result', is_error: true, errors: ['No conversation found'] }); process.exit(0);
+    }
+    (state[sessionId] ??= []).push(prompt);
+    fs.writeFileSync(file, JSON.stringify(state));
+    emit({ type: 'system', subtype: 'compact_boundary', session_id: sessionId, compact_metadata: { trigger: 'auto', pre_tokens: 100 } });
+  }
+  if (process.env.FAKE_CLAUDE_TOOLS_WHEN && prompt.includes(process.env.FAKE_CLAUDE_TOOLS_WHEN)) mode = 'tools';
+  if (process.env.FAKE_CLAUDE_ECHO_WHEN && prompt.includes(process.env.FAKE_CLAUDE_ECHO_WHEN)) mode = 'tool-echo';
   emit({ type: 'system', subtype: 'init', session_id: sessionId, cwd: process.cwd() });
+
+  if (mode === 'tool-echo') {
+    const text = 'Yes, size matters. Each package is small, medium or large.';
+    const event = event => emit({ type: 'stream_event', event, session_id: sessionId });
+    event({ type: 'message_start', message: { id: 'before-tool' } }); delta(text);
+    event({ type: 'content_block_stop', index: 0 });
+    emit({ type: 'assistant', message: { id: 'before-tool', content: [{ type: 'text', text }, { type: 'tool_use', name: 'mcp__studio__record_session', input: { key: 'req_package_size' } }] } });
+    event({ type: 'message_stop' });
+    emit({ type: 'user', message: { content: [{ type: 'tool_result', content: 'Recorded session requirement.' }] } });
+    event({ type: 'message_start', message: { id: 'after-tool' } });
+    for (const c of text) delta(c);
+    event({ type: 'content_block_stop', index: 0 });
+    emit({ type: 'assistant', message: { id: 'after-tool', content: [{ type: 'text', text }] } });
+    event({ type: 'message_stop' });
+    emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false, result: text });
+    process.exit(0);
+  }
 
   if (mode === 'noresume') {
     process.stderr.write('Error: No conversation found with session ID: ' + sessionId + '\n');
@@ -179,6 +208,7 @@ function run() {
     session_id: sessionId,
     stop_reason: 'end_turn',
     result: 'Hello, coach here.',
+    ...(process.env.FAKE_CLAUDE_USAGE ? {usage:JSON.parse(process.env.FAKE_CLAUDE_USAGE)} : {}),
   });
   process.exit(0);
 }

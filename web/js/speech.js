@@ -52,8 +52,13 @@ export function turnDecision({ sinceLoud, chars, speaking, busy, pending }) {
 /** Markdown and code read terribly aloud. Spoken text is not written text. */
 export function stripForSpeech(text) {
   return String(text ?? '')
-    .replace(/```[\s\S]*?```/g, ' code block ')
+    .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]*)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/https?:\/\/\S+|www\.\S+/gi, ' ')
+    .replace(/^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$/gm, ' ')
+    .replace(/^\s*\|\s*/gm, '')
+    .replace(/\s*\|\s*/g, ', ')
     .replace(/\*\*([^*]*)\*\*/g, '$1')
     .replace(/(^|\s)[*_]([^*_\n]+)[*_](?=\s|$)/g, '$1$2')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
@@ -75,13 +80,25 @@ export function splitForSpeech(buffer) {
   const text = String(buffer ?? '');
   const ready = [];
   let start = 0;
+  let fenced = false;
   for (let i = 0; i < text.length; i += 1) {
+    if (text.startsWith('```', i)) { fenced = !fenced; i += 2; continue; }
+    if (fenced) continue;
     if (!'.?!'.includes(text[i])) continue;
     // "e.g." and "200M." are not sentence ends; a following space and capital is.
-    const next = text[i + 1];
-    if (next !== undefined && !/\s/.test(next)) continue;
-    const piece = text.slice(start, i + 1).trim();
-    if (piece.length >= 2) { ready.push(piece); start = i + 1; }
+    let end = i + 1;
+    while (end < text.length && /[\"'”’)*_\]]/.test(text[end])) end++;
+    const next = text[end];
+    // A terminal mark is held until a following chunk supplies whitespace. The
+    // caller flushes the final `rest` once generation is complete.
+    if (next === undefined || !/\s/.test(next)) continue;
+    const before = text.slice(0, i + 1);
+    // Hold common abbreviations and decimal numbers until the next chunk clarifies
+    // whether this is really a sentence boundary.
+    if (i > 0 && /\d\.\d$/.test(before)) continue;
+    if (/(?:^|\s)(?:e\.g|i\.e|dr|mr|mrs|ms|prof|sr|jr|vs)\.$/i.test(before)) continue;
+    const piece = text.slice(start, end).trim();
+    if (piece.length >= 2) { ready.push(piece); start = end; }
   }
   return { ready, rest: text.slice(start) };
 }
@@ -111,14 +128,19 @@ export function speechSupported() {
  * the interrupt. `onStateChange(speaking)` fires on every transition, and the caller
  * uses it to hold the microphone shut.
  */
-export function createSpeaker({ onStateChange = () => {}, preferences = voicePreferences } = {}) {
+export function createSpeaker({ onStateChange = () => {}, onPlayback = () => {}, preferences = voicePreferences } = {}) {
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
   let disposed = false, speaking = false, generation = 0, running = false;
   let queue = [], active = null, audio = null, finishPlayback = null;
   let status = null, failed = false;
+  let playback = { phase: 'idle', text: '', engine: null };
   const controllers = new Set();
   const setSpeaking = next => {
     if (speaking !== next) { speaking = next; onStateChange(next); }
+  };
+  const setPlayback = (phase, item = null, engine = null, message) => {
+    playback = { phase, text: item?.text ?? '', engine, ...(message ? { message } : {}) };
+    try { onPlayback({ ...playback }); } catch { /* observers must not break playback */ }
   };
   async function request(url, options = {}) {
     const controller = new AbortController(); controllers.add(controller);
@@ -143,27 +165,46 @@ export function createSpeaker({ onStateChange = () => {}, preferences = voicePre
     })().catch(() => { if (item.generation === generation) failed = true; return null; });
   }
   function systemSpeak(item) {
-    if (!synth || !window.SpeechSynthesisUtterance) return Promise.resolve();
-    return new Promise(resolve => {
+    if (!synth || !window.SpeechSynthesisUtterance) return Promise.reject(Error('System speech unavailable'));
+    return new Promise((resolve, reject) => {
+      const token = item.generation;
+      let settled = false;
+      const start = () => {
+        if (!settled && token === generation && !disposed) {
+          setSpeaking(true);
+          setPlayback('speaking', item, 'system');
+        }
+      };
+      const done = () => { if (!settled) { settled = true; resolve(); } };
       finishPlayback = resolve;
       const utterance = new window.SpeechSynthesisUtterance(item.text);
       const voice = pickVoice(synth);
       if (voice) utterance.voice = voice;
       utterance.rate = item.options.speed;
-      utterance.onend = utterance.onerror = resolve;
-      try { synth.speak(utterance); } catch { resolve(); }
+      utterance.onstart = start;
+      utterance.onend = done;
+      utterance.onerror = () => { if (!settled) { settled = true; reject(Error('System speech failed')); } };
+      try { synth.speak(utterance); } catch (error) { if (!settled) { settled = true; reject(error); } }
     });
   }
-  async function play(blob) {
+  async function play(blob, item) {
     audio ??= new window.Audio();
     const url = URL.createObjectURL(blob);
     try {
       await new Promise((resolve, reject) => {
         finishPlayback = resolve;
-        audio.onended = resolve;
-        audio.onerror = () => reject(Error('Audio playback failed'));
+        let ended = false;
+        audio.onended = () => { ended = true; resolve(); };
+        audio.onerror = () => { ended = true; reject(Error('Audio playback failed')); };
         audio.src = url;
-        Promise.resolve(audio.play()).catch(reject);
+        Promise.resolve(audio.play()).then(() => {
+          // `play()` resolving is the first reliable signal that audio actually
+          // started; don't label synthesis/preload as speaking.
+          if (!ended && item.generation === generation && !disposed) {
+            setSpeaking(true);
+            setPlayback('speaking', item, 'natural');
+          }
+        }).catch(reject);
       });
     } finally {
       if (audio.src === url) audio.removeAttribute('src');
@@ -176,19 +217,35 @@ export function createSpeaker({ onStateChange = () => {}, preferences = voicePre
       while (queue.length && token === generation && !disposed) {
         active = queue.shift();
         const item = active;
+        setPlayback('preparing', item, null);
         prepare(item);
         if (queue[0]) prepare(queue[0]);
         const blob = await item.prepared;
         if (token !== generation || disposed) return;
         if (blob) {
-          try { await play(blob); }
-          catch { if (token === generation) { failed = true; await systemSpeak(item); } }
-        } else await systemSpeak(item);
+          try { await play(blob, item); }
+          catch (error) {
+            if (token !== generation) return;
+            failed = true;
+            try { await systemSpeak(item); }
+            catch (fallbackError) {
+              if (token !== generation || disposed) return;
+              setPlayback('error', item, null, fallbackError?.message || error?.message || 'Speech failed');
+              queue = [];
+              return;
+            }
+          }
+        } else {
+          try { await systemSpeak(item); }
+          catch (error) {
+            if (token === generation) { setPlayback('error', item, null, error?.message || 'Speech unavailable'); queue = []; }
+          }
+        }
         if (token !== generation) return;
         active = null; finishPlayback = null;
       }
     } finally {
-      if (token === generation) { running = false; active = null; setSpeaking(false); }
+      if (token === generation) { running = false; active = null; setSpeaking(false); if (playback.phase !== 'error') setPlayback('idle'); }
     }
   }
   function cancel() {
@@ -200,23 +257,33 @@ export function createSpeaker({ onStateChange = () => {}, preferences = voicePre
     try { synth?.cancel(); } catch { /* already stopped */ }
     finishPlayback?.(); finishPlayback = null;
     setSpeaking(false);
+    setPlayback('idle');
   }
   return {
     supported: speechSupported(),
+    prepare() {
+      if (disposed || preferences().engine === 'system' || failed) return Promise.resolve(null);
+      status ??= request('/api/tts/status');
+      return status.catch(() => null);
+    },
     say(text) {
       if (disposed) return;
       const clean = stripForSpeech(text);
       if (!clean) return;
       const { ready, rest } = splitForSpeech(clean);
       for (const sentence of [...ready, ...(rest.trim() ? [rest.trim()] : [])]) {
-        queue.push({ text: sentence, options: preferences(), generation });
+        const options = preferences();
+        queue.push({ text: sentence, options, generation });
+        // Gate the microphone throughout preparation for either engine. Captions
+        // still use the actual playback phase, which changes only on audio start.
+        setSpeaking(true);
       }
-      setSpeaking(true);
       if (!running) void drain(generation);
       else if (queue[0]) prepare(queue[0]);
     },
     cancel,
     get speaking() { return speaking; },
+    get playback() { return { ...playback }; },
     dispose() { cancel(); disposed = true; },
   };
 }

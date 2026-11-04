@@ -1,3 +1,4 @@
+import { icon } from './ui/icon.js';
 // Saved verdicts beside their exact code. Reads never submit; loading a snapshot
 // goes through the editor's save and undo path, and asking attaches only its id.
 import { tooltip } from './tooltip.js';
@@ -219,9 +220,10 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
         ? submission.runtimeMs - previous.runtimeMs : null;
       const rowTone = tone(submission);
       parts.push(el('button', {
-        type: 'button', class: `submission-row hover-surface hover-divided tone-${rowTone}`,
+        type: 'button', class: `sidebar-record sidebar-record-summary submission-row ui-inset ui-row tone-${rowTone}`,
         onclick: () => detail(submission),
       }, [
+        el('span', { class: 'ui-row-content ui-stack' }, [
         el('span', { class: 'submission-row-top' }, [
           el('strong', { text: submission.verdict || 'Verdict unavailable' }),
           el('time', { text: when(submission.at) }),
@@ -237,7 +239,8 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
         ]),
         !submission.accepted && submission.testsTotal > 0
           ? meter(submission.testsPassed, submission.testsTotal, rowTone) : null,
-        el('span', { class: 'submission-chevron', text: '›', 'aria-hidden': 'true' }),
+        ]),
+        el('span', { class: 'submission-chevron ui-row-trailing ui-row-chevron', 'aria-hidden': 'true' }, [icon('chevron', 16)]),
       ]));
     });
     replace(root, parts);
@@ -264,7 +267,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
 
   function distributionCard(submission) {
     const chart = el('div');
-    const card = el('section', { class: 'submission-card' });
+    const card = el('section', { class: 'submission-card ui-inset' });
     function show(index) {
       const name = index ? 'Memory' : 'Runtime';
       const drawing = histogram(submission.details?.[name.toLowerCase()], name);
@@ -296,7 +299,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       failureBlock('Expected', expected, difference && [difference.start, difference.endExpected]),
       failureBlock('Your output', output, difference && [difference.start, difference.endActual]),
     ]);
-    const card = el('section', { class: 'submission-card' }, [
+    const card = el('section', { class: 'submission-card ui-inset' }, [
       el('h4', { text: 'Where it failed' }), failureBlock('Input', input), comparison,
       failureBlock('Stdout', failure.stdout ?? failure.consoleOutput ?? details.stdOutput),
       failureBlock('Error', error),
@@ -332,7 +335,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
         }));
     }
     show(0);
-    return el('section', { class: 'submission-card' }, [
+    return el('section', { class: 'submission-card ui-inset' }, [
       el('header', { class: 'submission-card-head' }, [
         segmented(previous ? ['Code', 'vs previous', 'vs editor'] : ['Code', 'vs editor'],
           index => show(!previous && index === 1 ? 2 : index)),

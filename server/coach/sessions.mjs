@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { problemDir } from '../storage-layout.mjs';
 
 /** The event vocabulary from the contract. Unknown types are rejected rather than stored,
  *  so a client typo does not quietly create a category nobody ever queries. */
@@ -101,7 +102,7 @@ export class SessionLog {
   }
 
   problemDir(slug) {
-    return path.join(this.root, 'problems', slug);
+    return problemDir(this.root, slug);
   }
 
   sessionsDir(slug) {
@@ -300,7 +301,7 @@ export class CoachSessionStore {
   }
 
   file(slug) {
-    return path.join(this.root, 'problems', slug, 'coach-session.json');
+    return path.join(problemDir(this.root, slug), 'coach-session.json');
   }
 
   async read(slug) {

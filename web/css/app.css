@@ -3,6 +3,9 @@
    display + body, UI labels, boxed digits, restraint. */
 
 :root{
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;
+  --text-xs:11px;--text-sm:13px;--text-md:15px;--text-lg:20px;--text-xl:28px;
+  --line-sm:1.3;--line-md:1.5;--line-lg:1.7;
   --ui:"Avenir Next",Avenir,"Segoe UI",sans-serif;
   --diagram-paper:#FAFAF7;   /* illustrator drawings are ink on paper in every theme */
   /* Themes redefine these. Everything else in this file is written in terms of them,
@@ -74,6 +77,15 @@ body.motion-off{--dur-turn:0ms;--dur-drawer:0ms}
 @media (prefers-reduced-motion:reduce){body{--dur-turn:0ms;--dur-drawer:0ms}}
 
 *{margin:0;padding:0;box-sizing:border-box}
+/* Every native scroll surface follows the active theme, including dialogs. */
+body{--scrollbar-thumb:var(--ink-35);--scrollbar-thumb-hover:var(--ink-50)}
+*{scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb,var(--ink-35)) transparent}
+*:hover{scrollbar-color:var(--scrollbar-thumb-hover,var(--ink-50)) transparent}
+::-webkit-scrollbar{width:var(--space-2);height:var(--space-2)}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb,var(--ink-35));border-radius:var(--radius-sm)}
+::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover,var(--ink-50))}
+
 /* Several components below set `display`, which would otherwise beat the UA's
    [hidden] rule and leave an empty strip or an invisible click-blocking layer. */
 [hidden]{display:none !important}
@@ -461,7 +473,7 @@ body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
 .codewrap .copy:hover{color:var(--ink);border-color:var(--ink)}
 
 /* honest state blocks */
-.state{border:1px dashed var(--hair-20);border-radius:var(--r-md);padding:18px 18px;background:rgba(var(--ink-rgb),.012)}
+.state{border:1px dashed var(--hair-20);border-radius:var(--r-md);background:rgba(var(--ink-rgb),.012)}
 .state.warn{border-color:rgba(var(--med-rgb),.4);background:var(--med-soft)}
 .state.err{border-color:rgba(var(--hard-rgb),.4);background:var(--hard-soft)}
 .state h3{margin-bottom:8px;color:var(--ink-50);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -483,8 +495,12 @@ body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
 @media (prefers-reduced-motion:reduce){.skel i{animation:none}}
 
 @media (max-width:700px){
-  .topbar{height:auto;flex-wrap:wrap;padding:8px 14px;gap:8px 14px}
-  .searchwrap{order:3;flex-basis:100%}
+  .topbar{height:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;padding:var(--space-2) var(--space-3);gap:var(--space-1) var(--space-2)}
+  .topbar .wordmark{grid-column:1;grid-row:1}
+  .topbar .topmeta{grid-column:2;grid-row:1;gap:var(--space-1)}
+  .topbar .topnav{grid-column:1/-1;grid-row:2}
+  .searchwrap{grid-column:1/-1;grid-row:3}
+  .searchbox{width:100%}
   .topmeta .hide-m{display:none}
   main{padding:20px 14px 90px}
   .filterbar{margin:0 -14px 14px;padding:10px 14px;position:static}
@@ -570,13 +586,6 @@ body.hide-problem .ws-probtitle{
 }
 .ws-bar .spacer{flex:1 1 auto}
 .ws-title{flex:0 0 auto}
-/* Reset is rare and it throws work away, so it does not sit shoulder to shoulder with
-   Run. Quiet, and separated from the two toggles beside it. */
-.ws-reset{margin-right:6px;color:var(--ink-35)}
-.ws-reset:hover{color:var(--hard);border-color:var(--hard)}
-/* Armed: it is about to throw away everything you wrote, and says so in the one colour
-   this page uses for that. */
-.ws-reset.is-arming{color:var(--hard);border-color:var(--hard);background:rgba(var(--hard-rgb),.10)}
 /* Adding Submit crowded this bar: the status label ran under the Focus chip and clipped
    mid-word. It may shrink and ellipsize — the buttons must not. */
 .ws-status{
@@ -621,8 +630,7 @@ body.hide-problem .ws-probtitle{
 
 /* ---- honest one-line notice, above the code ---- */
 .ws-notice{
-  flex:0 0 auto;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
-  padding:8px 10px 8px 14px;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.02);
+  flex:0 0 auto;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.02);
 }
 .ws-notice.warn{background:var(--med-soft);border-bottom-color:rgba(var(--med-rgb),.28)}
 .ws-noticehead{color:var(--med);flex:0 0 auto;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -649,8 +657,17 @@ body.hide-results .ws-results{display:none}
   flex:0 1 auto;max-height:56%;min-height:0;overflow-y:auto;overscroll-behavior:contain;
   border-top:1px solid var(--hair-20);background:rgba(var(--ink-rgb),.016);
 }
-.rr-body > .state{border-style:solid}
-.rr-body > .state{margin:14px 16px}
+/* Full-width result rows own their inner padding; notices share this outer inset,
+   including state cards nested beneath a tutor-run notice. */
+.rr{--result-inset:var(--space-4);--result-notice-gap:var(--space-3)}
+.rr-body > .state,.rr-tutorbody > .state,.rr-tutor{margin:var(--result-notice-gap) var(--result-inset)}
+.rr-body > .state,.rr-tutorbody > .state{border-style:solid}
+.rr-tutor{border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--accent-soft)}
+.rr-tutor-copy{--content-stack-gap:var(--space-1);flex:1 1 16rem;min-width:0;overflow-wrap:anywhere}
+.rr-tutor-mark{font:600 var(--text-sm)/var(--line-sm) var(--ui);color:var(--accent)}
+.rr-tutor-what{font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
+.rr-tutor .btn{flex:none}
+
 .rr-empty{margin:0;padding:18px 16px;font-size:12.5px;color:var(--ink-50)}
 .rr-idle{padding:13px 16px 16px}
 .rr-idle p{font-size:13px;color:var(--ink-50);max-width:58ch;margin-top:5px}
@@ -785,7 +802,6 @@ body.coach-open.hide-problem .pbody.with-workspace{grid-template-columns:minmax(
 body.coach-open.hide-problem .ws{max-width:none}
 body.coach-open .coach-launch{display:none}
 
-.coach-bar .coach-state{white-space:nowrap}
 .coach-hide{padding:5px 10px}
 
 .coach-log{
@@ -902,13 +918,9 @@ body.coach-open .coach-launch{display:none}
 @media (prefers-reduced-motion:reduce){.coach-thinking i{animation:none}}
 
 /* ---- composer ---- */
-.coach-compose{
-  flex:0 0 auto;border-top:1px solid var(--hair-20);background:rgba(var(--ink-rgb),.015);
-  padding:10px 12px 11px;display:flex;flex-direction:column;gap:9px;
-}
 .coach-identity-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .coach-model-picker{min-width:0;display:flex;flex-direction:column;gap:4px}
-.coach-model-select{max-width:100%;min-width:0;border:1px solid var(--hair-20);border-radius:var(--r-sm);background-color:var(--card);color:var(--ink);padding:5px 30px 5px 9px;font:12px var(--ui)}
+.coach-model-select{max-width:100%;min-width:0}
 .coach-model-picker.is-compact{max-width:220px;flex:0 1 auto}
 .coach-model-notice{font-size:12px;color:var(--hard);overflow-wrap:anywhere}
 .coach-model-notice[hidden]{display:none}
@@ -969,15 +981,15 @@ body.coach-open .coach-launch{display:none}
 
 /* ---- the illustrator ---- */
 .ill{margin:0 0 14px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card);overflow:hidden}
-.ill figcaption{padding:7px 11px 0;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.ill figcaption{padding:var(--space-2) var(--content-inset) 0;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 /* The drawing is ink on paper (illustrator.js), so it keeps a paper surface in dark
    themes too; on a dark card its hairline arrows would vanish. */
-.ill-canvas{padding:12px 12px 14px;overflow-x:auto;background:var(--diagram-paper);margin:8px 11px 11px;border-radius:var(--r-md)}
+.ill-canvas{padding:12px 12px 14px;overflow-x:auto;background:var(--diagram-paper);margin:var(--space-2) var(--content-inset) var(--content-inset);border-radius:var(--r-md)}
 .ill-canvas svg{display:block;max-width:100%;height:auto;margin:0 auto}
 .ill-pending{padding:22px 12px;text-align:center;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.ill-source{margin:8px 11px 11px !important;font-size:11.5px !important;max-height:260px;overflow:auto}
+.ill-source{margin:var(--space-2) var(--content-inset) var(--content-inset) !important;font-size:11.5px !important;max-height:260px;overflow:auto}
 .ill-note{
-  padding:0 11px 10px;font-size:12.5px;color:var(--ink-50);line-height:1.5;
+  padding:0 var(--content-inset) var(--content-inset);font-size:12.5px;color:var(--ink-50);line-height:1.5;
 }
 
 /* ---- narrow: the coach stacks under the editor rather than squeezing it ---- */
@@ -1288,7 +1300,7 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
 .set-cards{display:grid;grid-template-columns:1fr;gap:9px}
 .set-card{
   display:block;text-align:left;width:100%;
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:11px 12px;background:var(--card);
+  border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);
   transition:border-color var(--dur-hover) ease,background var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
 }
 .set-card:hover{border-color:var(--ink-35)}
@@ -1312,7 +1324,7 @@ body.motion-off :is(*,*::before,*::after){animation:none !important;transition-p
 
 body{background-image:var(--texture);background-attachment:fixed}
 
-.set-themes .set-card{padding:9px 10px}
+
 
 /* Coach identity: a compact editorial masthead that makes the context legible before
    the conversation starts. It is intentionally fixed-height friendly and contains no
@@ -1478,9 +1490,9 @@ body.coach-open .coach-runs{bottom:20px}
 .cmsg-receipts:empty{display:none}
 .cmsg-receipts{display:block;margin-bottom:6px;border:1px solid var(--hair-10);border-radius:var(--r-sm);background:var(--card)}
 .cmsg-receipt + .cmsg-receipt{border-top:1px solid var(--hair-06)}
-.cmsg-receipt{
-  display:flex;align-items:center;flex-wrap:wrap;gap:1px 8px;min-width:0;min-height:30px;
-  padding:4px 6px 4px 9px;font:500 12px/1.45 var(--ui);color:var(--ink-70);
+.cmsg-receipt{--content-gap:var(--space-2);
+  min-width:0;min-height:30px;
+  font:500 12px/1.45 var(--ui);color:var(--ink-70);
 }
 .cr-glyph{flex:none;width:14px;text-align:center;color:var(--accent)}
 .cr-text{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1502,7 +1514,7 @@ body.coach-open .coach-runs{bottom:20px}
 
 /* ---- hover surface ---- */
 :root{--hover-pad:8px;--control-h-sm:28px;--control-h:34px}
-body .hover-surface{position:relative;padding-inline:var(--hover-pad);margin-inline:calc(-1 * var(--hover-pad));border-radius:var(--r-sm);transition:background var(--dur-hover)}
+body .hover-surface{position:relative;border-radius:var(--r-sm);transition:background var(--dur-hover)}
 body .hover-surface:hover{background:var(--hair-06)}
 body .hover-surface:active{background:var(--hair-10)}
 body .hover-surface:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
@@ -1519,25 +1531,19 @@ body[class] .icon-btn:hover{background:var(--hair-06);color:var(--ink)}
 body[class] .icon-btn[aria-pressed=true]{background:var(--hair-10)}
 body[class] .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .icon-btn svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:1.6}
-body[class] .coach-bar{align-items:center;gap:8px}
-body[class] .coach-bar :is(.coach-tab,.coach-hide){margin-block:0;height:var(--control-h-sm);min-height:var(--control-h-sm);padding-block:0}
-.coach-tools-sep{width:1px;height:16px;background:var(--hair-20);flex-shrink:0}
 .control-tooltip{position:fixed;z-index:10000;pointer-events:none;padding:5px 8px;border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card);color:var(--ink);box-shadow:var(--shadow);font:11px var(--ui)}
 .chat-date{display:flex;align-items:center;gap:10px;margin:8px 0 18px;font:11px var(--mono);color:var(--ink-50)}
 .chat-date:before,.chat-date:after{content:'';height:1px;flex:1;background:var(--hair-10)}
 /* All compact toolbar families share geometry, including nested voice controls. */
 body[class] :is(.vc-talk,.coach-model-picker select,.catalog-modes button,.catalog .seg-opt,.catalog .linkbtn,.roadmap-mode,.graph-btn,.detail-close,.tc-tab,.tc-add,.set-open,.set-step button,.ptoggle){height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
-body[class] .coach-actions .vc-talk{height:var(--control-h);min-height:var(--control-h)}
 .rr-casehead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
 /* Rows choose one size for both primary and secondary actions. */
 body[class] .tc-foot :is(.ws-mini,.ws-run){height:var(--control-h-sm);min-height:var(--control-h-sm);padding-block:0}
 body[class] :is(.dz-done,.dz-send,.dzl-new,.dzl-go,.dz-pause,.dz-mode,.dz-phase){height:var(--control-h);min-height:var(--control-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
 body[class] :is(.dz-phase,.dz-mode):focus-visible{outline-offset:-2px}
 .dz-phase:disabled{opacity:.45;cursor:not-allowed}
-/* A 32px control plus padding and borders fits the existing 44px wide bar. */
-body.ws-wide .coach-bar{--control-h-sm:32px;flex-wrap:nowrap}
 /* The list mount owns the bleed space, so the scrolling log never gains overflow. */
-.recent-chats{padding-inline:var(--hover-pad);margin-inline:calc(-1 * var(--hover-pad))}
+
 /* Receipts are readable content, not native-tooltip previews. */
 .cr-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal}
 

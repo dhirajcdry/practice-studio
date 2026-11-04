@@ -18,6 +18,7 @@
 //   3. A recording with no speech in it is an ERROR and is shown as one. An empty
 //      transcript is never dressed up as a successful take.
 
+import { icon } from './ui/icon.js';
 import { el, clear, replace } from './dom.js';
 import { transcribeAudio, logSessionEvent } from './api.js';
 import { filterTranscript, hasVoicedAudio } from './transcript-filter.js';
@@ -25,7 +26,7 @@ import { filterTranscript, hasVoicedAudio } from './transcript-filter.js';
 /** A hard ceiling, so a stuck key cannot leave the microphone open all afternoon. */
 const MAX_TAKE_MS = 5 * 60 * 1000;
 /** Below this there is nothing to transcribe — say so rather than posting silence. */
-const PREVIEW_MS = 1500;
+const PREVIEW_MS = 900;
 
 /* ============================== shaping (pure) ============================== */
 
@@ -181,12 +182,13 @@ function micGlyph() {
  * @param {() => string} options.getSlug        the problem being recorded against
  * @param {(text:string, meta:object) => void} options.onTranscript  called only on a real transcript
  * @param {(text:string) => void} [options.onPreview]  provisional text, empty when cleared
- * @param {(state:string) => void} [options.onState]  'idle' | 'recording' | 'working'
+ * @param {(state:string) => void} [options.onState]  'idle' | 'opening' | 'recording' | 'working'
  * @returns {{root:HTMLElement, isRecording:() => boolean, stop:() => void, dispose:() => void}}
  */
 export function createVoiceControl({
   getSlug, onTranscript, onPreview, onState = () => {}, logTakes = true, onLevel = () => {},
   recordingMode = 'dictation', getAttemptId = () => null, maxTakeMs = MAX_TAKE_MS,
+  reportEmptyTake = true, onSettled = () => {},
 }) {
   // Dictation, not think-aloud. The floating recorder owns thinking aloud; this is here
   // so a long message to the coach can be spoken instead of typed, and it must not be
@@ -231,7 +233,7 @@ export function createVoiceControl({
     replace(status, [
       head ? el('span', { class: 'mono vc-statushead', text: head }) : null,
       body ? el('span', { class: 'vc-statusbody', text: body }) : null,
-      el('button', { class: 'vc-dismiss', type: 'button', text: '×', 'aria-label': 'Dismiss microphone notice', onclick: () => note('', '', '') }),
+      el('button', { class: 'icon-btn vc-dismiss', type: 'button', 'aria-label': 'Dismiss microphone notice', onclick: () => { if (!failedPhrases.size) note('', '', ''); } }, icon('close')),
     ]);
   }
 
@@ -240,7 +242,7 @@ export function createVoiceControl({
     // The guard follows actual work, including a detached take's final request. An
     // idle mounted composer must not make every page reload ask for confirmation.
     if (next === 'idle') {
-      window.removeEventListener('beforeunload', beforeUnload);
+      if (!failedPhrases.size || finishing) window.removeEventListener('beforeunload', beforeUnload);
       if (finishing) { finishing = false; disposed = true; }
     } else window.addEventListener('beforeunload', beforeUnload);
     root.classList.toggle('is-recording', next === 'recording');
@@ -254,7 +256,7 @@ export function createVoiceControl({
       : next === 'working' ? 'Transcribing…'
       : next === 'opening' ? 'Opening mic…'
       : 'Speak';
-    onState(next === 'opening' ? 'recording' : next);
+    onState(next);
   }
 
   /** The one place tracks are released. Called from every exit, success or not. */
@@ -304,39 +306,48 @@ export function createVoiceControl({
   const held = new Map();      // seq -> text, waiting for its turn
   let spokenChars = 0;
   let takeError = false;
+  let retryWhenSettled = false;
+  const failedPhrases = new Map();
   let previewBusy = false;
   let lastPreviewAt = 0;
   let previewController = null;
+  let previewSequence = null;
+  let takeGeneration = 0;
+  let currentSequence = null;
+  const provisional = new Map();
+  const finalized = new Set();
 
-  function clearPreview() {
-    if (onPreview) onPreview('');
-    else {
-      preview.hidden = true;
-      preview.textContent = '';
+  function paintPreview() {
+    const text = [...provisional].sort(([a], [b]) => a - b).map(([, value]) => value).filter(Boolean).join(' ');
+    if (onPreview) onPreview(text);
+    else { preview.hidden = !text; preview.textContent = text; }
+  }
+
+  function clearPreview(through = Infinity) {
+    for (const index of provisional.keys()) if (index <= through) provisional.delete(index);
+    paintPreview();
+    if (previewSequence !== null && previewSequence <= through) {
+      previewController?.abort();
+      previewController = null; previewSequence = null; previewBusy = false;
     }
-    previewController?.abort();
   }
 
   async function showPreview(current, blob) {
-    if (previewBusy || sending || disposed || recorder !== current || state !== 'recording' || !phraseHadSpeech) return;
+    if (previewBusy || disposed || recorder !== current || state !== 'recording' || !phraseHadSpeech) return;
     previewBusy = true;
+    const phraseSequence = currentSequence, generation = takeGeneration;
     const controller = new AbortController();
-    previewController = controller;
+    previewController = controller; previewSequence = phraseSequence;
     try {
       const result = await transcribeAudio(getSlug(), blob, {
-        filename: `preview.${extensionFor(current.mimeType)}`, mode: 'dictation', signal: controller.signal,
+        filename: `preview.${extensionFor(current.mimeType)}`, mode: 'dictation', preview: true, signal: controller.signal,
       });
-      if (!disposed && !controller.signal.aborted && recorder === current && state === 'recording' && result.ok) {
-        const text = filterTranscript(result.text);
-        if (onPreview) onPreview(text);
-        else {
-          preview.textContent = text;
-          preview.hidden = false;
-        }
+      if (!disposed && !controller.signal.aborted && generation === takeGeneration && phraseSequence >= nextToEmit && !finalized.has(phraseSequence) && result.ok) {
+        provisional.set(phraseSequence, filterTranscript(result.text));
+        paintPreview();
       }
     } finally {
-      previewBusy = false;
-      if (previewController === controller) previewController = null;
+      if (previewController === controller) { previewBusy = false; previewController = null; previewSequence = null; }
     }
   }
 
@@ -374,7 +385,7 @@ export function createVoiceControl({
 
       // The same signal, offered to whoever is listening. The design interview uses it
       // to decide the turn is over; nothing here needs to know that.
-      onLevel({ loud: loud && phraseHadSpeech, sinceLoud: now - lastLoudAt, pending: sending + closing });
+      onLevel({ loud: loud && phraseHadSpeech, level: Math.min(1, Math.sqrt(rms * 9)), elapsedMs: now - startedAt, sinceLoud: now - lastLoudAt, pending: sending + closing, failed: takeError });
 
       const decision = phraseDecision({
         age: now - phraseStartedAt,
@@ -384,7 +395,7 @@ export function createVoiceControl({
       // Unvoiced audio is discarded, including periodic cuts and Stop.
       if (decision === 'cut') cutPhrase();
       else if (decision === 'drop') cutPhrase({ drop: true });
-      else if (now - lastPreviewAt >= PREVIEW_MS && now - phraseStartedAt >= PREVIEW_MS && !previewBusy && !sending) {
+      else if (now - lastPreviewAt >= PREVIEW_MS && now - phraseStartedAt >= PREVIEW_MS && !previewBusy) {
         lastPreviewAt = now;
         recorder?.requestData();
       }
@@ -395,7 +406,7 @@ export function createVoiceControl({
   function cutPhrase({ drop = false, final = false } = {}) {
     if (!recorder) return;
     const current = recorder;
-    previewController?.abort();
+    const phraseSequence = currentSequence;
     const hadSpeech = phraseHadSpeech && !drop;
     const startedThisPhrase = phraseStartedAt;
     recorder = null;
@@ -407,8 +418,8 @@ export function createVoiceControl({
       const blob = chunks.length ? new Blob(chunks, { type: current.mimeType || 'audio/webm' }) : null;
       chunks = [];
       if (hadSpeech && blob && blob.size > 0) {
-        sendPhrase(blob, current.mimeType, Date.now() - startedThisPhrase);
-      }
+        sendPhrase(blob, current.mimeType, Date.now() - startedThisPhrase, phraseSequence);
+      } else { finalized.add(phraseSequence); emitInOrder(phraseSequence, '', 0); }
       if (!final && state === 'recording' && stream) beginPhrase();
       else settle();
     }, { once: true });
@@ -428,6 +439,7 @@ export function createVoiceControl({
       return;
     }
     chunks = [];
+    currentSequence = seq++;
     phraseStartedAt = Date.now();
     lastPreviewAt = phraseStartedAt;
     lastLoudAt = phraseStartedAt;
@@ -451,9 +463,29 @@ export function createVoiceControl({
     recorder.start();
   }
 
-  async function sendPhrase(blob, mimeType, ms) {
-    const mine = seq;
-    seq += 1;
+  function showRecovery() {
+    const reason = [...failedPhrases.values()][0]?.reason || 'Transcription failed.';
+    note('err', 'Some words need another pass', `${reason} Audio is held temporarily in this tab for retry. Automatic sending is paused.`);
+    status.append(el('button', {class:'btn btn--secondary',type:'button',text:'Retry transcription',onclick:retry}),
+      el('button', {class:'btn btn--quiet',type:'button',text:'Discard failed audio',onclick:discardFailed}));
+  }
+  async function retry() {
+    if (disposed || !failedPhrases.size) return;
+    if (state !== 'idle' || sending || closing) { retryWhenSettled = true; stop(); return; }
+    retryWhenSettled = false;
+    setState('working'); note('', '', 'Retrying your recorded words…');
+    await Promise.all([...failedPhrases].map(([index, phrase]) => sendPhrase(phrase.blob, phrase.mimeType, phrase.ms, index)));
+  }
+  function discardFailed() {
+    if (disposed || state === 'working') return;
+    const indices = [...failedPhrases.keys()]; failedPhrases.clear(); takeError = false; clearPreview();
+    for (const index of indices) emitInOrder(index, '', 0);
+    if (state === 'idle') window.removeEventListener('beforeunload', beforeUnload);
+    note('warn', 'Failed audio discarded', 'Confirmed words remain in your answer.');
+  }
+  async function sendPhrase(blob, mimeType, ms, retryIndex) {
+    const mine = retryIndex ?? seq++;
+    let failed = false, reason = '';
     sending += 1;
     let text = '';
     try {
@@ -466,15 +498,21 @@ export function createVoiceControl({
       // A phrase that came back empty is not an error worth interrupting for: you
       // paused, or coughed. The take as a whole is checked when it ends.
       else if (!['no_audio', 'empty_transcript'].includes(result.kind)) {
-        takeError = true;
-        note(shaped.tone, shaped.head, shaped.body);
+        failed = true; reason = shaped.body;
       }
     } catch {
-      takeError = true;
-      note('err', 'Transcription failed', 'That phrase could not be transcribed. The microphone is still open.');
+      failed = true; reason = 'The transcriber could not be reached.';
     }
     sending -= 1;
-    emitInOrder(mine, text, ms);
+    if (disposed && !finishing) return;
+    finalized.add(mine);
+    if (failed) {
+      failedPhrases.set(mine, {blob,mimeType,ms,reason}); held.set(mine, {failed:true}); takeError = true;
+      showRecovery();
+    } else {
+      provisional.set(mine, text); paintPreview();
+      failedPhrases.delete(mine); takeError = failedPhrases.size > 0; emitInOrder(mine, text, ms);
+    }
     settle();
   }
 
@@ -486,11 +524,13 @@ export function createVoiceControl({
     held.set(mine, { text, ms });
     while (held.has(nextToEmit)) {
       const entry = held.get(nextToEmit);
+      if (entry.failed) break;
+      const emittedIndex = nextToEmit;
       held.delete(nextToEmit);
       nextToEmit += 1;
       if (disposed && !finishing) continue;
+      clearPreview(emittedIndex);
       if (entry.text && entry.text.trim() !== '') {
-        clearPreview();
         spokenChars += entry.text.length;
         onTranscript(entry.text.trim(), { mode, durationSeconds: Math.round(entry.ms / 1000), live: true });
       }
@@ -502,31 +542,33 @@ export function createVoiceControl({
     if (state !== 'working' || sending > 0 || closing > 0 || recorder) return;
     setState('idle');
     const elapsed = Date.now() - startedAt;
+    if (takeError) { if (retryWhenSettled) { retry(); return; } showRecovery(); return; }
     clearPreview();
-    if (takeError) return;
-    if (spokenChars === 0) {
+    if (spokenChars === 0 && reportEmptyTake) {
       note('warn', '', 'No speech detected. Try again.');
     } else {
       note('', '', '');
       // A system design interview has no problem slug and keeps its own record, so
       // there is no session log to append to. Dictating there must not post an event
       // that can only be rejected.
-      if (!logTakes) return;
-      logSessionEvent(getSlug(), 'recorded_audio', {
+      if (logTakes && spokenChars > 0) logSessionEvent(getSlug(), 'recorded_audio', {
         mode,
         durationSeconds: Math.round(elapsed / 1000),
         characters: spokenChars,
       }).catch(() => {});
     }
+    onSettled();
   }
 
   async function start() {
     if (disposed || state === 'recording' || state === 'opening' || state === 'working') return;
+    if (failedPhrases.size) { showRecovery(); return; }
     if (!voiceSupported()) {
       note('err', 'Voice needs a newer browser', 'This browser has no MediaRecorder, so recording is not possible here. Typing to the coach still works.');
       return;
     }
     wantRecording = true;
+    takeGeneration += 1;
     note('', '', '');
     clearPreview();
     setState('opening');
@@ -555,9 +597,14 @@ export function createVoiceControl({
     }
 
     stream = granted;
+    for (const track of stream.getTracks()) track.addEventListener?.('ended', () => {
+      if (state !== 'recording') return;
+      stop(); note('warn', 'Microphone disconnected', 'Your confirmed words are kept. Reconnect the microphone to continue.');
+    }, { once: true });
     seq = 0;
     nextToEmit = 0;
     held.clear();
+    finalized.clear();
     spokenChars = 0;
     takeError = false;
     sending = 0;
@@ -593,7 +640,7 @@ export function createVoiceControl({
     capTimer = setTimeout(() => {
       if (state !== 'recording') return;
       stop();
-      note('warn', 'Five minutes', 'That is the longest the microphone stays open in one go, so it was closed here.');
+      note('warn', 'Recording limit reached', `The microphone closed after ${formatTake(maxTakeMs)}. Your confirmed words are kept.`);
     }, maxTakeMs);
   }
 
@@ -625,7 +672,7 @@ export function createVoiceControl({
 
   const release = () => { if (wantRecording || state === 'recording') stop(); };
   const beforeUnload = (event) => {
-    if (state === 'recording' || state === 'opening' || state === 'working') {
+    if (state === 'recording' || state === 'opening' || state === 'working' || failedPhrases.size) {
       event.preventDefault(); event.returnValue = '';
     }
   };
@@ -651,8 +698,11 @@ export function createVoiceControl({
     start,
     isRecording: () => state === 'recording' || state === 'opening',
     isBusy: () => state !== 'idle',
+    hasTranscriptionError: () => takeError,
     currentMode: () => mode,
     stop,
+    retry,
+    discardFailed,
     dispose({ finish = false } = {}) {
       if (finish && state !== 'idle') {
         finishing = true;

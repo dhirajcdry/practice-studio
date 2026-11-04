@@ -6,6 +6,13 @@
 
 let nextId = 0;
 
+/**
+ * A bridge left behind by an extension reload answers CONNECTOR_GONE at once; the live
+ * one the reloaded extension put in answers properly. Wait this long for that answer
+ * before reporting the stale one. CONNECTOR_GONE always means nothing was sent.
+ */
+const GONE_GRACE_MS = 1500;
+
 /** The installed connector's version, or '' when it is not installed in this browser. */
 export function connectorVersion() {
   return document.documentElement.dataset.studioConnector || '';
@@ -68,7 +75,10 @@ function connectorRequest(request, signal = null) {
   const id = `studio-${Date.now()}-${nextId += 1}`;
   const reading = request.type === 'details';
   return new Promise(resolve => {
+    let gone = null;
+    let goneTimer = null;
     function done(result) {
+      clearTimeout(goneTimer);
       window.removeEventListener('message', onMessage);
       signal?.removeEventListener('abort', onAbort);
       resolve(result);
@@ -77,6 +87,13 @@ function connectorRequest(request, signal = null) {
       const data = event.data;
       if (event.source !== window || data?.source !== 'studio-connector' || data.id !== id) return;
       const result = data.result && typeof data.result === 'object' ? data.result : null;
+      if (result?.code === 'CONNECTOR_GONE') {
+        if (!gone) {
+          gone = result;
+          goneTimer = setTimeout(() => done(gone), GONE_GRACE_MS);
+        }
+        return;
+      }
       if (result) {
         done(request.target === 'neetcode' ? { ...result, requestId: id } : result);
         return;

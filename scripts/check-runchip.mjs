@@ -1,3 +1,4 @@
+import { problemDir } from '../server/storage-layout.mjs';
 // The standing note about answers being written elsewhere, and its dismiss.
 //
 //   node scripts/check-runchip.mjs
@@ -169,7 +170,7 @@ try {
 
   /* ---- 4. and it was NOT a cancel ---- */
 
-  const transcript = path.join(HOME, 'problems', 'two-sum', 'chats.jsonl');
+  const transcript = path.join(problemDir(HOME, 'two-sum'), 'chats.jsonl');
   const landed = await (async () => {
     for (let i = 0; i < 200; i += 1) {
       const raw = await fsp.readFile(transcript, 'utf8').catch(() => '');

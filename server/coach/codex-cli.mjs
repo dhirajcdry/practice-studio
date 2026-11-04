@@ -9,8 +9,8 @@ export const TURN_TIMEOUT_MS = 10 * 60 * 1000;
 const DISABLED = ['shell_tool', 'apps', 'plugins', 'browser_use', 'browser_use_external', 'computer_use', 'multi_agent', 'hooks', 'skill_search'];
 // Image generation is off for chat: a picture made inside a chat thread has nowhere to go
 // and would only spend the user's image quota. The visuals job turns it on, and only it.
-export function buildArgs({ imageGeneration = false } = {}) {
-  const args = ['app-server', '--stdio', '-c', 'forced_login_method="chatgpt"', '-c', 'web_search="disabled"', '-c', 'project_doc_max_bytes=0'];
+export function buildArgs({ imageGeneration = false, webResearch = false } = {}) {
+  const args = ['app-server', '--stdio', '-c', 'forced_login_method="chatgpt"', '-c', `web_search="${webResearch ? 'live' : 'disabled'}"`, '-c', 'project_doc_max_bytes=0'];
   for (const flag of DISABLED) args.push('--disable', flag);
   args.push(imageGeneration ? '--enable' : '--disable', 'image_generation');
   return args;
@@ -35,13 +35,13 @@ export function safeError(error) {
  * `onRequest(message)` may answer one server→client request by returning a promise of its
  * result; returning nothing rejects it. Without it, every request is rejected.
  */
-export function connection({ binary = 'codex', env = process.env, spawnFn = spawn, timeoutMs = 30000, imageGeneration = false, onNotification = () => {}, onRequest = () => null } = {}) {
+export function connection({ binary = 'codex', env = process.env, spawnFn = spawn, timeoutMs = 30000, imageGeneration = false, webResearch = false, onNotification = () => {}, onRequest = () => null } = {}) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-studio-codex-'));
   const childEnv = { ...env };
   delete childEnv.OPENAI_API_KEY;
   delete childEnv.STUDYCRAFT_RECALL_TOKEN;
   let child;
-  try { child = spawnFn(binary, buildArgs({ imageGeneration }), { cwd, env: childEnv, detached: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
+  try { child = spawnFn(binary, buildArgs({ imageGeneration, webResearch }), { cwd, env: childEnv, detached: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
   catch (error) { fs.rmSync(cwd, { recursive: true, force: true }); throw error; }
   let nextId = 0, closed = false, stopping = false, hardTimer;
   const pending = new Map();
@@ -149,6 +149,7 @@ export async function lockedThreadConfig(client) {
       }
       cursor = result?.nextCursor;
     } while (cursor && ++pages < MAX_MCP_PAGES);
+    if (cursor) throw new Error('Incomplete MCP inventory');
   } catch {
     throw plainError(MCP_UNCONFIRMED);
   }
@@ -168,28 +169,46 @@ export function mcpServerStarting(message, threadId = null) {
 }
 
 /**
- * Start an ephemeral, read-only, never-approving thread with every MCP server off, then
+ * Start or resume a read-only, never-approving thread with every MCP server off, then
  * its one turn. `alive()` lets the caller stop between steps if it gave up meanwhile.
  * Returns the thread id, or null when the caller stopped.
  */
-export async function startLockedTurn(client, { model, baseInstructions, text, dynamicTools = null, onThread = () => {}, alive = () => true }) {
+export async function startLockedTurn(client, { model, reasoningEffort, baseInstructions, text, dynamicTools = null, webResearch = false, onThread = () => {}, onTurn = () => {}, persistentSession = false, resumeSessionId = null, alive = () => true }) {
   const config = await lockedThreadConfig(client);
   if (!alive()) return null;
-  const started = await client.rpc('thread/start', {
-    model, cwd: client.cwd, approvalPolicy: 'never', sandbox: 'read-only', ephemeral: true, baseInstructions, config,
-    ...(dynamicTools?.length ? { dynamicTools } : {}),
+  const resuming = persistentSession && resumeSessionId;
+  const started = await client.rpc(resuming ? 'thread/resume' : 'thread/start', {
+    model, cwd: client.cwd, approvalPolicy: 'never', sandbox: 'read-only', ...(resuming ? { threadId: resumeSessionId, excludeTurns: true } : { ephemeral: !persistentSession }), baseInstructions,
+    config: { ...config, web_search: webResearch ? 'live' : 'disabled', ...(reasoningEffort ? { model_reasoning_effort: reasoningEffort } : {}) },
+    ...(!resuming && dynamicTools?.length ? { dynamicTools } : {}),
   });
   if (!alive()) return null;
   const threadId = started?.thread?.id;
   if (!threadId) throw new Error('Codex did not create a thread.');
-  onThread(threadId);
-  await client.rpc('turn/start', { threadId, input: [{ type: 'text', text, text_elements: [] }] });
+  if (resuming && threadId !== resumeSessionId) throw new Error('Codex resumed a different thread.');
+  await onThread(threadId);
+  if (!alive()) return null;
+  const result = await client.rpc('turn/start', { threadId, ...(reasoningEffort ? { effort: reasoningEffort } : {}), input: [{ type: 'text', text, text_elements: [] }] });
+  onTurn(result?.turn?.id);
   return threadId;
 }
 
 /** Studio's tools in the shape app-server's `dynamicTools` takes. */
 export function dynamicToolsFrom(specs) {
   return specs.map(({ name, description, inputSchema }) => ({ type: 'function', name, description, inputSchema }));
+}
+
+export function normalizeUsage(value, previous = null) {
+  const envelope = value?.usage || value?.tokenUsage || value || {};
+  // Verified against app-server generate-ts: thread/tokenUsage/updated carries
+  // tokenUsage.total and .last. A fresh ephemeral thread's total includes every
+  // model call/tool continuation in this Studio turn; never sum notifications.
+  const source = envelope.total || envelope;
+  const fields = { inputTokens: ['input_tokens', 'inputTokens'], cacheReadInputTokens: ['cache_read_input_tokens', 'cacheReadInputTokens','cachedInputTokens'], cacheCreationInputTokens: ['cache_creation_input_tokens', 'cacheCreationInputTokens','cacheWriteInputTokens'], outputTokens: ['output_tokens', 'outputTokens'], reasoningOutputTokens:['reasoningOutputTokens'] };
+  return Object.fromEntries(Object.entries(fields).map(([key, names]) => {
+    const n = names.map(name => source[name]).find(v => Number.isFinite(v));
+    return [key, n == null ? (previous?.[key] ?? null) : Math.max(Number(n), previous?.[key] ?? 0)];
+  }));
 }
 
 /** A one-line summary of a tool call's arguments for the chat's tool lines: the first
@@ -201,24 +220,52 @@ function argSummary(args) {
   return first === null || first === undefined ? '' : String(first).replace(/\s+/g, ' ').slice(0, 120);
 }
 
-export function runCoachTurn({ prompt, systemPrompt = '', model = 'gpt-6-astra', resumeSessionId = null,
+export function coachInstructions(systemPrompt, { hasTools = false, webResearch = false } = {}) {
+  return `${systemPrompt}\nYou are the Practice Studio interview coach. ${hasTools ? 'Use Studio tools for workspace actions; each action is shown to the learner. Do not claim an action happened unless its tool result says it did.' : 'Do not claim to change files or memory.'} ${webResearch ? 'Native web research is available for public sources when useful or requested.' : 'Answer from supplied context and enabled Studio tools only.'} You have no file or shell access.`;
+}
+
+export function runCoachTurn({ prompt, systemPrompt = '', systemPromptComplete = false, model = 'gpt-6-astra', reasoningEffort = null, resumeSessionId = null, persistentSession = false,
   binary = 'codex', env = process.env, spawnFn = spawn, timeoutMs = TURN_TIMEOUT_MS,
   toolSession = null, toolSpecs = [],
-  onToken = () => {}, onTool = () => {}, onDone = () => {}, onError = () => {}, onSessionId = () => {},
+  onToken = () => {}, onTool = () => {}, onDone = () => {}, onError = () => {}, onSessionId = () => {}, onUsage = () => {},
+  webResearch = false, onTurnId = () => {}, onCompaction = () => {},
 } = {}) {
-  const sessionId = resumeSessionId || crypto.randomUUID();
-  let client, timer, settled = false, threadId, streamed = '', finalText = '';
+  let sessionId = persistentSession ? null : resumeSessionId || crypto.randomUUID();
+  let turnId, usageBaseline = null;
+  const queued = [];
+  let releaseTurn;
+  const turnReady = new Promise(resolve => { releaseTurn = resolve; });
+  let client, timer, settled = false, threadId, streamed = '', finalText = '', usage = null;
   function fail(error) {
     if (settled) return;
-    settled = true; clearTimeout(timer);
+    settled = true; releaseTurn?.(); clearTimeout(timer);
     try { onError(safeError(error)); } finally { client?.close(); }
   }
-  function kill() { settled = true; clearTimeout(timer); client?.close(); }
+  function kill() { settled = true; releaseTurn?.(); clearTimeout(timer); client?.close(); }
   function notification(message) {
     if (settled) return;
     if (mcpServerStarting(message, threadId)) return fail(plainError(MCP_STARTED));
     const p = message.params || {};
     if (!threadId || p.threadId !== threadId) return;
+    if (!turnId) { queued.push(message); return; }
+    if ((p.turnId || p.turn?.id) && (p.turnId || p.turn?.id) !== turnId) return;
+    if (message.method === 'thread/tokenUsage/updated') {
+      if (persistentSession && resumeSessionId) {
+        // .last is the most recent model call, not the entire multi-call Studio turn.
+        // The first active-turn total minus last establishes the historical baseline.
+        const total = normalizeUsage(p.tokenUsage?.total);
+        const last = normalizeUsage(p.tokenUsage?.last);
+        usageBaseline ??= Object.fromEntries(Object.keys(total).map(k => [k,
+          total[k] != null && last[k] != null ? Math.max(0, total[k] - last[k]) : null]));
+        usage = Object.fromEntries(Object.keys(total).map(k => [k,
+          total[k] != null && usageBaseline[k] != null ? Math.max(usage?.[k] ?? 0, total[k] - usageBaseline[k]) : null]));
+      } else usage = normalizeUsage(p.tokenUsage, usage);
+      onUsage(usage); return;
+    }
+    if (message.method === 'item/completed' && p.item?.type === 'contextCompaction')
+      onCompaction({ threadId, turnId, itemId: p.item.id });
+
+    if (message.method === 'item/started' && p.item?.type === 'webSearch') onTool('web_search', p.item.query || p.item.action?.query || 'Researching public sources');
     if (message.method === 'item/agentMessage/delta' && typeof p.delta === 'string') { streamed += p.delta; onToken(p.delta); }
     if (message.method === 'item/completed' && p.item?.type === 'agentMessage') finalText = p.item.text || finalText;
     if (message.method !== 'turn/completed') return;
@@ -227,24 +274,27 @@ export function runCoachTurn({ prompt, systemPrompt = '', model = 'gpt-6-astra',
     finalText ||= turn.items?.filter(i => i.type === 'agentMessage').at(-1)?.text || '';
     if (!streamed && finalText) onToken(finalText);
     if (!streamed && !finalText) return fail('No reply was returned. Please retry.');
-    settled = true; clearTimeout(timer);
+    settled = true; releaseTurn?.(); clearTimeout(timer);
     try { onDone(sessionId, 'completed'); } finally { client.close(); }
   }
   // Only a call to one of Studio's own tools, on this turn's thread, is ever answered.
   function request(message) {
     if (!toolSession || message.method !== 'item/tool/call' || settled) return null;
-    const p = message.params || {};
-    if (!threadId || p.threadId !== threadId || typeof p.tool !== 'string') return null;
-    let args = p.arguments;
-    if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = null; } }
-    onTool(p.tool, argSummary(args));
-    return toolSession.call(p.tool, args ?? {}).then(({ ok, text }) => ({
-      success: ok === true, contentItems: [{ type: 'inputText', text: String(text ?? '') }],
-    }));
+    return (async () => {
+      const p = message.params || {};
+      await turnReady;
+      if (settled || !threadId || p.threadId !== threadId || p.turnId !== turnId || !toolSpecs.some(spec => spec.name === p.tool)) throw new Error('Stale or unavailable Studio tool.');
+      let args = p.arguments;
+      if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = null; } }
+      onTool(p.tool, argSummary(args));
+      return toolSession.call(p.tool, args ?? {}).then(({ ok, text }) => ({
+        success: ok === true, contentItems: [{ type: 'inputText', text: String(text ?? '') }],
+      }));
+    })();
   }
-  try { client = connection({ binary, env, spawnFn, timeoutMs: Math.min(timeoutMs, 30000), onNotification: notification, onRequest: request }); }
+  try { client = connection({ binary, env, spawnFn, timeoutMs: Math.min(timeoutMs, 30000), webResearch, onNotification: notification, onRequest: request }); }
   catch (error) { queueMicrotask(() => fail(error)); return { kill, exited: Promise.resolve(), resumeFailed: false }; }
-  onSessionId(sessionId);
+  if (!persistentSession) onSessionId(sessionId);
   timer = setTimeout(() => fail('The coach took too long and was stopped. Your work is untouched.'), timeoutMs);
   client.exited.then(error => { if (!settled) fail(error); });
   (async () => {
@@ -253,11 +303,15 @@ export function runCoachTurn({ prompt, systemPrompt = '', model = 'gpt-6-astra',
       await client.initialize({ experimentalApi: Boolean(tools) });
       if (settled) return;
       await startLockedTurn(client, {
-        model, text: prompt, dynamicTools: tools,
-        baseInstructions: tools
-          ? `${systemPrompt}\nYou are the Practice Studio interview coach. The only tools you may use are the Studio tools you were given; each one is done by Studio and shown to the learner. You have no file or shell access. Do not claim an action happened unless its tool result says it did.`
-          : `${systemPrompt}\nYou are the Practice Studio interview coach. Do not use tools. Answer only from supplied context. Do not claim to change files or memory.`,
-        onThread: id => { threadId = id; },
+        model, reasoningEffort, text: prompt, dynamicTools: tools,
+        webResearch, persistentSession, resumeSessionId,
+        baseInstructions: systemPromptComplete ? systemPrompt : coachInstructions(systemPrompt, { hasTools: !!tools, webResearch }),
+        onThread: async id => { threadId = id; if (persistentSession) { sessionId = id; await onSessionId(id); } },
+        onTurn: id => {
+          if (!id) throw new Error('Codex did not return a turn ID.');
+          turnId = id; onTurnId(id); releaseTurn();
+          for (const message of queued.splice(0)) notification(message);
+        },
         alive: () => !settled,
       });
     } catch (error) { fail(error); }
@@ -276,7 +330,9 @@ export async function listCodexModels(options = {}) {
       const result = await client.rpc('model/list', cursor ? { cursor } : {});
       for (const m of result?.data || []) {
         if (typeof m?.model === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(m.model)) {
-          models.push({ id: m.model, label: typeof m.displayName === 'string' ? m.displayName.slice(0, 100) : m.model });
+          const efforts = Array.isArray(m.supportedReasoningEfforts) ? m.supportedReasoningEfforts
+            .map(e => typeof e === 'string' ? e : e?.reasoningEffort).filter(e => typeof e === 'string') : [];
+          models.push({ id: m.model, label: typeof m.displayName === 'string' ? m.displayName.slice(0, 100) : m.model, ...(efforts.length ? { reasoningEfforts: efforts } : {}) });
         }
       }
       cursor = result?.nextCursor;

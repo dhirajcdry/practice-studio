@@ -347,20 +347,28 @@ export function installResizers() {
 
 export default installResizers;
 
-/** A right-anchored reading pane; independent of the workspace grid splits. */
-export function installDrawerResizer(drawer) {
-  const key = 'studio.reference.width.v1';
-  const handle = makeHandle('col', 'Reference width');
+/**
+ * A right-anchored pane with a draggable left edge; independent of the workspace grid
+ * splits. Used by the reference drawer and the interview report's question panel.
+ * `active()` false (a stacked layout) hands the width back to CSS and hides the handle.
+ */
+export function installDrawerResizer(drawer, {
+  key = 'studio.reference.width.v1', label = 'Reference width', initial = 760, minWidth = 360,
+  maxWidth = () => Math.floor(window.innerWidth * .8), active = () => true,
+} = {}) {
+  const handle = makeHandle('col', label);
   handle.className = 'drawer-resize';
   drawer.prepend(handle);
-  let preferred = 760;
+  let preferred = initial;
   try {
     const saved = Number(localStorage.getItem(key));
     if (Number.isFinite(saved) && saved > 0) preferred = saved;
   } catch { /* Storage is optional. */ }
   const apply = () => {
-    const max = Math.floor(window.innerWidth * .8);
-    const min = Math.min(360, max);
+    handle.hidden = !active();
+    if (handle.hidden) { drawer.style.removeProperty('width'); return; }
+    const max = Math.floor(maxWidth());
+    const min = Math.min(minWidth, max);
     const width = Math.min(max, Math.max(min, preferred));
     drawer.style.width = `${width}px`;
     handle.setAttribute('aria-valuemin', min);
@@ -405,7 +413,7 @@ export function installDrawerResizer(drawer) {
     preferred = drawer.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? 1 : -1) * (event.shiftKey ? 80 : 20);
     apply(); save();
   });
-  handle.addEventListener('dblclick', () => { preferred = 760; apply(); save(); });
+  handle.addEventListener('dblclick', () => { preferred = initial; apply(); save(); });
   window.addEventListener('resize', apply);
   apply();
   return () => { endDrag(); window.removeEventListener('resize', apply); handle.remove(); };

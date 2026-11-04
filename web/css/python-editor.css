@@ -1,0 +1,15 @@
+/* Shared Python file-row controls and layout. Workspaces supply their own actions. */
+.python-editor-frame{position:relative;--python-editor-edge-inset:var(--space-3);--python-editor-padding-top:var(--space-3);--python-editor-padding-bottom:var(--space-4)}
+.python-editor-viewport{position:absolute;inset-block:0;inset-inline:var(--python-editor-edge-inset);min-width:0;min-height:0;overflow:hidden}
+body .python-editor-viewport>.ws-fallback{padding:var(--python-editor-padding-top) 0 var(--python-editor-padding-bottom)}
+.python-editor-tools{display:inline-flex;align-items:center;gap:var(--space-3);flex:none;min-width:0}
+.python-document-bar{flex-wrap:wrap;font:var(--text-sm)/var(--line-md) var(--ui)}
+.python-document-identity{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1) var(--space-3);flex:1 1 12rem;min-width:0}
+.python-document-identity>strong{flex:none}
+.python-document-bar>.python-editor-tools{margin-left:auto}
+.editor-cursor{flex:none;font:10px var(--mono);color:var(--ink-50);white-space:nowrap}
+body[class] .editor-tool{display:inline-flex;align-items:center;gap:var(--space-1);height:24px;min-height:0;padding:0 var(--space-2);border:0;border-radius:var(--row-radius);background:transparent;box-shadow:none;color:var(--ink-50);font:500 var(--text-xs)/1 var(--ui);letter-spacing:0;text-transform:none;white-space:nowrap;cursor:pointer}
+body[class] .editor-tool:hover{background:var(--row-hover-bg);color:var(--ink)}
+body[class] .editor-tool[aria-pressed="true"]{color:var(--ink)}
+body[class] .editor-tool[aria-pressed="true"] svg{color:var(--accent)}
+body[class] .editor-tool.ws-reset:hover,body[class] .editor-tool.ws-reset.is-arming{color:var(--hard);background:rgba(var(--hard-rgb),.10)}

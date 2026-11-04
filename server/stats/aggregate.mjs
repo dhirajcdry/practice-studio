@@ -17,6 +17,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { listProblemSlugs, problemDir } from '../storage-layout.mjs';
 
 /**
  * How much evidence a signal needs before it is allowed to say anything.
@@ -171,7 +172,7 @@ function allCasesPassed(event) {
  * @returns a record whose every field is either read from disk or explicitly null.
  */
 export async function readProblemDir(root, slug) {
-  const dir = path.join(root, 'problems', slug);
+  const dir = problemDir(root, slug);
 
   const record = {
     slug,
@@ -387,12 +388,12 @@ function median(values) {
  */
 export async function buildStats({ root, catalog = null, now = new Date() }) {
   const warnings = [];
-  const problemsRoot = path.join(root, 'problems');
-  const dirEntries = await readDirSafe(problemsRoot);
+  const dirEntries = await listProblemSlugs(root,{discipline:'coding'});
+  const hasDirectory=async file=>{try{return (await fsp.stat(file)).isDirectory();}catch{return false;}};
 
   const workspace = {
     root,
-    exists: dirEntries !== null,
+    exists: dirEntries.length > 0 || await hasDirectory(path.join(root,'problems')) || await hasDirectory(path.join(root,'tracks','coding','problems')),
     problemDirs: 0,
     withSessions: 0,
     withAttempts: 0,
@@ -403,9 +404,7 @@ export async function buildStats({ root, catalog = null, now = new Date() }) {
     sessionsRead: 0,
   };
 
-  const slugs = dirEntries
-    ? dirEntries.filter((e) => e.isDirectory()).map((e) => e.name).sort()
-    : [];
+  const slugs = dirEntries;
   workspace.problemDirs = slugs.length;
 
   const records = [];

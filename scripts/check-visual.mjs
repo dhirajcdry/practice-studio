@@ -1,3 +1,4 @@
+import { problemDir } from '../server/storage-layout.mjs';
 // Full visual audit: disposable data, browser profile, and retained report artifacts.
 import { spawn } from 'node:child_process';
 import fsp from 'node:fs/promises';
@@ -8,6 +9,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { newState } from '../server/interview/state.mjs';
 import { InterviewStore } from '../server/interview/store.mjs';
 import { runVisualAudit } from './visual-audit.mjs';
+import { fixtureReport } from '../server/interview/test/report-fixture.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -49,25 +51,62 @@ async function seed() {
       metaData: JSON.stringify({ name, params, return: { type } }), exampleTestcases: input,
       codeSnippets: [{ langSlug: 'python3', code: solution }],
     } });
-    const dir = path.join(home, 'problems', slug);
+    const dir = problemDir(home,slug);
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, 'solution.py'), solution);
     await json(path.join(dir, 'cases.json'), { cases: [{ input, expected: slug === 'jump-game' ? 'true' : '200', source: 'custom' }] });
   }
   const store = new InterviewStore({ root: home });
+  const lld = { ...newState({ slug: 'lld-locker', startedAt: Date.now() }), discipline: 'lld', targetLevel: 'L4', pausedAt: Date.now(), lastCode: '# Candidate-owned design document\n' };
+  await store.create('lld-locker', '1760000000000-00000009', lld);
+  await store.append('lld-locker', '1760000000000-00000009', { kind: 'opening', elapsedMs: 0, asked: 'Design a parcel locker system.' });
+  await store.create('lld-locker','1760000000000-00000010',{...lld,debriefed:true,endedAt:Date.now()});
+  await store.append('lld-locker','1760000000000-00000010',{kind:'turn',said:'Each reservation owns one locker.',asked:'How do you reject an expired code?',elapsedMs:5000});
+  await store.append('lld-locker','1760000000000-00000010',{kind:'debrief',asked:'Review ownership and atomic reservation.',elapsedMs:60000});
   for (const [id, mode, done] of [['1760000000000-00000001', 'typed', false], ['1760000000000-00000002', 'voice', false], ['1760000000000-00000003', 'typed', true]]) {
     const state = newState({ slug: 'jump-game', mode, startedAt: Date.now() });
     state.phase = 'approach'; state.coachProvider = 'claude'; state.coachModel = 'default';
     state.debriefed = done; state.endedAt = done ? Date.now() : null;
+    if (done) {
+      state.startedAt = Date.now() - 540000; state.hireSignal = 'Lean hire'; state.phase = 'followup'; state.phaseSinceMs = 480000;
+      state.phaseMs = { clarify: 45000, approach: 155000, code: 220000, test: 60000, followup: 0 };
+      state.hints = [{ level: 'nudge', elapsedMs: 200000, phase: 'approach' }];
+    }
     // Audit fixtures are paused so reading a screen cannot wake a model. The setup
     // below paints a running header with DOM only; no microphone or turn is started.
     if (!done) state.pausedAt = Date.now();
     await store.create('jump-game', id, state);
     await store.append('jump-game', id, { kind: 'opening', elapsedMs: 0, asked: 'Read the problem and walk me through your approach.' });
     await store.append('jump-game', id, { kind: 'candidate', elapsedMs: 30000, said: 'I would track the furthest reachable index.' });
-    if (done) await store.append('jump-game', id, { kind: 'debrief', elapsedMs: 45000, asked: '## Problem solving\nSolid — 00:30: “I would track the furthest reachable index.”\n## Coding\nMixed — No evidence recorded.\n## Communication\nSolid — The approach was stated.\n## Testing & verification\nWeak — No evidence recorded.\n## Hire signal\nLean no — Implementation and testing were not demonstrated.\n## Hints used\n0\n## Time per phase\nClarify 00:45\n## Practise next\n1. State complexity.\n2. Trace a zero.\n3. Test boundaries.' });
+    if (done) {
+      // A finished interview with real evidence: a hint, a failing then passing run, an accepted submit.
+      for (const entry of [
+        { kind: 'opening', elapsedMs: 60000, asked: 'What is the time complexity?' },
+        { kind: 'event', elapsedMs: 340000, event: { type: 'run_result', passed: 1, failed: 1, total: 2 } },
+        { kind: 'candidate', elapsedMs: 360000, said: 'The loop bound was off by one, fixing it now.' },
+        { kind: 'event', elapsedMs: 380000, event: { type: 'run_result', passed: 2, failed: 0, total: 2 } },
+        { kind: 'event', elapsedMs: 480000, event: { type: 'verdict', verdict: 'Accepted', status: 'accepted', accepted: true } },
+        { kind: 'buffer', elapsedMs: 480000, code },
+        { kind: 'debrief', elapsedMs: 540000, asked: fixtureReport('I would track the furthest reachable index.') },
+      ]) await store.append('jump-game', id, entry);
+    }
   }
-  const dir = path.join(home, 'problems', 'jump-game');
+  for (const discipline of ['lld', 'design']) {
+    const slug = discipline === 'lld' ? 'lld-locker' : 'design-url-shortener';
+    const id = `visual-practice-${discipline}`, base = path.join(problemDir(home,slug), 'practice', id);
+    await json(path.join(base, 'session.json'), { id, slug, discipline, title: discipline === 'lld' ? 'Locker system' : 'URL shortener', statement: discipline === 'lld' ? 'Design a locker system.' : 'Design a URL-shortening service.', mode: 'voice', createdAt: '2026-10-30T12:00:00Z', updatedAt: '2026-10-30T12:10:00Z' });
+    await json(path.join(base, 'exchanges.json'), [{ requestId: 'fixture-question', question: 'What should I consider about concurrent reservations?', answer: 'Consider what happens when two callers observe the same available resource. Which operation must be atomic?', status: 'complete', at: '2026-10-30T12:10:00Z' }]);
+    await json(path.join(base, 'document.json'), { code: 'class Locker:\n    pass\n' });
+    await json(path.join(base, 'elements.json'), []);
+    await fsp.writeFile(path.join(problemDir(home,slug), 'NOTES.md'), '## Reservation ownership\n\nValidate ownership before releasing the resource.');
+  }
+  const branchId = 'visual-branch-lld', branchDir = path.join(problemDir(home,'lld-locker'),'practice',branchId);
+  const source = {discipline:'lld',slug:'lld-locker',interviewId:'1760000000000-00000009',title:'Locker system',startedAt:Date.now()-3600000,capturedAt:new Date().toISOString(),completed:true};
+  await json(path.join(branchDir,'session.json'),{id:branchId,slug:'lld-locker',discipline:'lld',title:'Locker system',statement:'Design a locker system.',mode:'typed',source,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+  await json(path.join(branchDir,'source.json'),{source,code:'class Locker:\n    pass\n',feedback:'## Technical review\n\nCheck **ownership** before releasing a reservation.\n\n- Reject expired pickup codes.\n- Make reservation atomic.',turns:[]});
+  await json(path.join(branchDir,'document.json'),{code:'class Locker:\n    pass\n'});
+  await json(path.join(branchDir,'exchanges.json'),[]);
+  const dir = problemDir(home,'jump-game');
   const rows = [
     { at: '2026-10-17T01:00:00Z', submissionId: '1', verdict: 'Accepted', accepted: true, testsPassed: 178, testsTotal: 178 },
     { at: '2026-10-18T01:00:00Z', submissionId: '2', verdict: 'Time Limit Exceeded', accepted: false, testsPassed: 12, testsTotal: 178 },

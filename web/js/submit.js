@@ -160,10 +160,10 @@ const BLOCKED = {
     fallback: true,
   },
   in_flight: {
-    // Not a failure: it is the server refusing to send the same work twice.
+    // A connector lock may cover preparation, sending, or polling; it is not proof of submission.
     tone: '',
-    headline: 'A submission is already on its way',
-    message: 'A submission for this problem is still being judged, so this press sent nothing and nothing was duplicated. The verdict goes to whichever panel sent the original — if that was another tab, look there, or open it on LeetCode.',
+    headline: 'An earlier submission request is still active',
+    message: 'The Connector is still handling an earlier request for this problem. This does not confirm that LeetCode received it. This press sent nothing. Check the original Studio tab for its result.',
     retry: false,
     checkFirst: true,
   },
@@ -462,7 +462,7 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
   if (shaped.status === 'blocked') {
     const acts = [];
     if (shaped.retry && handlers.onResubmit) acts.push(el('button', { class: 'act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit }));
-    target.append(el('div', { class: 'state ' + shaped.tone }, [
+    target.append(el('div', { class: 'state ui-inset ui-inset--roomy ' + shaped.tone }, [
       el('h3', { text: shaped.headline }),
       el('p', { text: shaped.message }),
       shaped.advice && !shaped.challenge ? el('p', { text: shaped.advice }) : null,
@@ -599,7 +599,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     replace(body, el('div', { class: 'sub-judging' }, [
       el('div', { class: 'sub-progress' }, fill),
       el('div', { class: 'sub-runrow' }, [
-        el('span', { class: 'mono', text: `Judging on ${siteOf(where.target).name}` }),
+        el('span', { class: 'mono', text: `Waiting for ${siteOf(where.target).name}` }),
         clock,
         el('span', { class: 'spacer' }),
         el('button', { class: 'act', type: 'button', text: 'Stop waiting', onclick: () => stop('cancelled') }),

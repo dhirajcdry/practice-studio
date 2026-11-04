@@ -13,11 +13,12 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { isoWithOffset } from './sessions.mjs';
+import { problemDir } from '../storage-layout.mjs';
 
 const MAX_STORED_CHARS = 200_000; // a turn this long is a bug, not a lesson
 
 export function chatFile(root, slug) {
-  return path.join(root, 'problems', slug, 'chats.jsonl');
+  return path.join(problemDir(root, slug), 'chats.jsonl');
 }
 
 /**
@@ -37,6 +38,7 @@ export async function appendTurn({ root, slug, turn, log = console }) {
   const record = {
     at: turn.at ?? isoWithOffset(),
     sessionId: turn.sessionId ?? null,
+    ...(turn.requestId ? {requestId:String(turn.requestId)} : {}),
     ...(turn.provider ? { provider: turn.provider, model: turn.model ?? null } : {}),
     ...(turn.continuedFromSessionId ? { continuedFromSessionId: turn.continuedFromSessionId } : {}),
     kind: ['attempt-review', 'recall-notes'].includes(turn.kind) ? turn.kind : 'question',

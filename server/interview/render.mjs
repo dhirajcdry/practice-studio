@@ -2,11 +2,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { InterviewStore } from './store.mjs';
 import { clock, phaseTimes } from './state.mjs';
+import { buildReport, reportMarkdown } from './report.mjs';
 export function renderInterview({ state, turns }) {
   const out = [`# Coding interview · ${state.slug}`, '', `Started: ${new Date(state.startedAt).toISOString()}`, '', '## Transcript', ''];
   if (!turns.some(t => t.said)) out.push('— said nothing —', '');
+  const actions = new Map(turns.filter(t => t.kind === 'tool_action').map(t => [t.action.id, t]));
   for (const t of turns) {
-    if (t.kind === 'debrief') out.push('## Debrief', '', t.asked || 'No debrief text was returned.', '');
+    if (t.kind === 'tool_action') {
+      if (actions.get(t.action.id) === t) out.push(`### ${clock(t.elapsedMs)} · Agent action`, '', `${t.action.status === 'done' ? 'Applied' : 'Not confirmed'}: ${t.action.summary}`, '', t.action.message || '', '');
+      continue;
+    }
+    if (t.kind === 'coach_run') { out.push(`### ${clock(t.elapsedMs)} · Coach Python run (assistance)`, '', '```json', JSON.stringify(t.result), '```', ''); continue; }
+    if (t.kind === 'partial') out.push(`### ${clock(t.elapsedMs)} · ${t.replyKind === 'debrief' ? 'Debrief' : 'Interviewer'} (interrupted)`, '', t.asked || 'No reply text was returned.', '', 'Reply interrupted before it finished.', '');
+    else if (t.kind === 'debrief') out.push('## Debrief', '', (state.debriefed && reportMarkdown(buildReport(state, turns))) || t.asked || 'No debrief text was returned.', '');
     else if (t.said || t.asked) out.push(`### ${clock(t.elapsedMs)} · ${t.said ? 'Candidate' : 'Interviewer'}`, '', t.said || t.asked, '');
     else if (t.kind === 'event') out.push(`### ${clock(t.elapsedMs)} · ${t.event.type}`, '', '```json', JSON.stringify(t.event), '```', '');
     else if (t.kind === 'error') out.push(`At ${clock(t.elapsedMs)} the interviewer could not complete the reply.`, '');

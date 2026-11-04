@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { HttpError, sendJson } from '../http-util.mjs';
 import { STUDIO_DIR, HOME_ROOT } from '../paths.mjs';
+import { problemDir } from '../storage-layout.mjs';
 
 const ASR_BINARY = path.join(STUDIO_DIR, 'asr', '.build', 'release', 'studio-asr');
 const MAX_AUDIO_BYTES = 200 * 1024 * 1024; // ~40 min of opus; a debrief is minutes, not hours
@@ -81,9 +82,22 @@ export class AsrWorker {
     this.child = null; this.queue = []; this.active = null; this.lines = '';
   }
 
-  run(file) {
+  run(file, { preview = false, signal = null } = {}) {
     return new Promise((resolve) => {
-      this.queue.push({ file, resolve });
+      const item = { file, preview, resolve, cancelled: false };
+      const cancel = () => {
+        if (this.active === item) { item.cancelled = true; return; }
+        if (item.cancelled) return;
+        item.cancelled = true;
+        const index = this.queue.indexOf(item);
+        if (index !== -1) this.queue.splice(index, 1);
+        item.cleanup?.();
+        resolve({ ok: false, error: { kind: 'cancelled', message: 'The preview was cancelled.' } });
+      };
+      if (signal?.aborted) return cancel();
+      signal?.addEventListener('abort', cancel, { once: true });
+      item.cleanup = () => signal?.removeEventListener('abort', cancel);
+      this.queue.push(item);
       this.#drain();
     });
   }
@@ -135,27 +149,32 @@ export class AsrWorker {
     if (this.active || !this.queue.length) return;
     if (!this.child) this.#start();
     if (!this.child) return;
-    this.active = this.queue.shift();
+    // Final requests are user-visible evidence; previews are best-effort hints.
+    const index = this.queue.findIndex((item) => !item.preview);
+    this.active = this.queue.splice(index === -1 ? 0 : index, 1)[0];
+    if (this.active.cancelled) { this.active = null; return this.#drain(); }
     const child = this.child;
     this.timer = setTimeout(() => {
       if (this.child !== child) return;
       child.kill('SIGKILL');
       this.#workerDied(child, { kind: 'timeout', message: 'Transcription took too long and was stopped.' });
     }, this.timeoutMs);
-    try { child.stdin.write(`${JSON.stringify({ input: this.active.file })}\n`); }
+    try { child.stdin.write(`${JSON.stringify({ input: this.active.file, preview: this.active.preview })}\n`); }
     catch (err) { this.#finish({ ok: false, error: { kind: 'unavailable', message: err.message } }); }
   }
 
   #finish(outcome, drain = true) {
     if (!this.active) return;
     clearTimeout(this.timer);
-    const current = this.active; this.active = null; current.resolve(outcome);
+    const current = this.active; this.active = null; current.cleanup?.();
+    // Resolve only after native decoding releases the input file, even on cancellation.
+    current.resolve(current.cancelled ? { ok: false, error: { kind: 'cancelled', message: 'The preview was cancelled.' } } : outcome);
     if (drain) this.#drain();
   }
 
   #failWorker(error) {
     if (this.active) this.#finish({ ok: false, error });
-    while (this.queue.length) this.queue.shift().resolve({ ok: false, error });
+    while (this.queue.length) { const item = this.queue.shift(); item.cleanup?.(); item.resolve({ ok: false, error }); }
   }
 
   close() {
@@ -163,13 +182,13 @@ export class AsrWorker {
     this.child = null;
     this.lines = '';
     if (this.active) this.#finish({ ok: false, error: { kind: 'shutdown', message: 'Transcription worker stopped.' } }, false);
-    while (this.queue.length) this.queue.shift().resolve({ ok: false, error: { kind: 'shutdown', message: 'Transcription worker stopped.' } });
+    while (this.queue.length) { const item = this.queue.shift(); item.cleanup?.(); item.resolve({ ok: false, error: { kind: 'shutdown', message: 'Transcription worker stopped.' } }); }
     child?.kill('SIGTERM');
   }
 }
 
 const asrWorker = new AsrWorker();
-const runAsr = (file) => asrWorker.run(file);
+const runAsr = (file, options) => asrWorker.run(file, options);
 // Keep the model process tied to the local server lifetime; exit hooks cannot await,
 // so close() only resolves in-memory callers and sends SIGTERM to the child.
 process.once('exit', () => asrWorker.close());
@@ -197,6 +216,7 @@ async function handleTranscribe(req, res, ctx) {
   }
   const slug = parts.find((p) => p.name === 'slug')?.data.toString('utf8').trim() || null;
   const mode = parts.find((p) => p.name === 'mode')?.data.toString('utf8').trim() || 'think_aloud';
+  const preview = parts.find((p) => p.name === 'preview')?.data.toString('utf8').trim() === 'true';
   // Which attempt this take belongs to. Segmenting is a crash-safety detail; the attempt
   // is the real unit, and every segment recorded between record and stop carries its id
   // so they can be read back as one continuous narration.
@@ -207,7 +227,12 @@ async function handleTranscribe(req, res, ctx) {
 
   try {
     await fs.writeFile(file, audio.data);
-    const outcome = await runAsr(file);
+    const disconnected = new AbortController();
+    const onClose = () => disconnected.abort();
+    if (preview) res.once('close', onClose);
+    const outcome = await runAsr(file, { preview, signal: disconnected.signal });
+    res.removeListener('close', onClose);
+    if (res.destroyed) return;
 
     if (!outcome.ok) {
       // no_audio / empty_transcript are honest failures, not server faults: the recording
@@ -227,7 +252,7 @@ async function handleTranscribe(req, res, ctx) {
     // the coach instead of typing. Filing it here would count a message *to* the coach as
     // evidence of thinking out loud, and inflate the one number that is supposed to say
     // whether he is rehearsing the spoken part of an interview.
-    const persist = mode !== 'dictation';
+    const persist = !preview && mode !== 'dictation';
     // The caller logs this filename into the session event, which is how the coach later
     // knows the take belongs to the sitting. Guessing that from timestamps alone dropped
     // the opening take of every sitting; naming it removes the guess.
@@ -236,7 +261,7 @@ async function handleTranscribe(req, res, ctx) {
       try {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `${stamp}-${mode}.json`;
-        const outDir = path.join(HOME_ROOT, 'problems', slug, 'transcripts');
+        const outDir = path.join(problemDir(HOME_ROOT, slug), 'transcripts');
         await fs.mkdir(outDir, { recursive: true });
         await fs.writeFile(
           path.join(outDir, filename),

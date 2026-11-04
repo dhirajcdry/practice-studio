@@ -1,0 +1,37 @@
+/* The header is a single compact navigation row. Content owns its own tools. */
+.coach{--sidebar-inset:var(--space-3)}
+body .coach-bar{display:flex;align-items:center;flex:none;gap:var(--space-1);min-width:0;padding:var(--space-1) var(--sidebar-inset);border-bottom:1px solid var(--hair-10);background:var(--card)}
+body .coach-tabs{display:flex;flex:1;min-width:0;gap:var(--space-1);border:0;width:auto}
+body .coach-tabs .coach-tab{flex:none;width:auto;min-width:0;white-space:nowrap;height:var(--control-sm);min-height:var(--control-sm);margin:0;padding:0 var(--space-2);display:inline-flex;align-items:center;gap:var(--space-1);border-radius:var(--tab-shape);font-size:var(--text-xs);box-sizing:border-box}
+.coach-tab.has-live::after{content:'';width:calc(var(--space-2) - 2px);height:calc(var(--space-2) - 2px);border-radius:50%;background:var(--easy)}
+.coach-chat-tools{display:flex;align-items:center;flex:none;gap:0}
+body .coach-bar .icon-btn{width:28px;height:28px;min-height:0;margin:0;padding:var(--space-1);border:0;box-shadow:none}
+.coach-status-row{display:flex;align-items:center;gap:var(--space-1);font-size:var(--text-xs);color:var(--ink-70)}
+.coach-status-row:has(.coach-state[hidden]){display:none}
+.coach-status-row{margin-left:var(--space-2)}
+.coach-actions .coach-model-picker{min-width:0;max-width:55%;margin:0}
+.coach-actions .coach-model-select{min-width:0;max-width:100%}
+body[class] .coach-actions .ui-select-button{border:0;background:transparent;font-size:var(--text-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coach-context{font-size:var(--text-xs);line-height:var(--line-md);color:var(--ink-50);margin-bottom:var(--space-4)}
+.sidebar-record{position:relative;width:100%;min-width:0;margin:var(--row-gap) 0;border:var(--row-border);border-radius:var(--row-radius);background:var(--surface-card-bg);box-sizing:border-box;box-shadow:var(--surface-card-shadow)}
+.sidebar-record-summary{min-width:0;text-align:left;color:var(--ink);cursor:pointer;box-sizing:border-box;border-radius:var(--row-radius)}
+.sidebar-record-summary:hover,.sidebar-record-summary:focus-visible{background:var(--row-hover-bg)}
+.sidebar-record-summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* An interview card holds two controls (open, Resume), so the open button is the
+   card's padded hit area and the card alone shows hover; a fill on the button
+   would draw a second box inside the card. */
+.interview-row-summary{flex:1;border:0;border-radius:var(--row-radius);background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+.interview-row-summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.interview-row-heading{display:flex;align-items:center}
+.interview-row-resume{flex:none;margin-right:var(--content-inset)}
+
+.submission-row-bottom,.interview-row-meta{overflow-wrap:anywhere}
+.coach [hidden]{display:none!important}
+@container (max-width:360px){body .coach-tabs .coach-tab{padding-inline:var(--space-1)}body .coach-bar .icon-btn{width:24px}}
+.coach{container-type:inline-size}
+/* Terminal's [brackets] don't fit a narrow sidebar; the underline still marks the tab. */
+@container (max-width:360px){body.theme-terminal .coach-tabs .coach-tab::before,body.theme-terminal .coach-tabs .coach-tab:not(.has-live)::after{content:none}}
+body.theme-terminal .coach-tabs .coach-tab.has-live::after{content:'';margin-left:var(--space-1);opacity:1}
+
+.sidebar-record:hover,.sidebar-record:focus-within{background:var(--surface-card-hover-bg);box-shadow:var(--surface-card-hover-shadow)}
+

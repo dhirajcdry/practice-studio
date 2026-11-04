@@ -17,6 +17,18 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'bin', 'fake-claude.mjs');
 
+test('native web research is opt-in without expanding file, shell or MCP access', () => {
+  for (const enabled of [false,true]) {
+    const args=buildArgs({root:'/r',tools:'',webResearch:enabled,studioContext:true});
+    const allowed=args.slice(args.indexOf('--allowedTools')+1,args.indexOf('--disallowedTools'));
+    const denied=args.slice(args.indexOf('--disallowedTools')+1,args.indexOf('--setting-sources'));
+    assert.equal(args[args.indexOf('--tools')+1],enabled?'WebSearch,WebFetch':'');
+    for(const name of ['WebSearch','WebFetch']){assert.equal(allowed.includes(name),enabled);assert.equal(denied.includes(name),!enabled);}
+    assert.ok(denied.includes('Bash'));assert.ok(args.includes('--strict-mcp-config'));
+    assert.ok(!allowed.some(rule=>/^(Read|Write|Edit|Glob)/.test(rule)));
+  }
+});
+
 async function tempRoot() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'studio-cli-'));
 }
@@ -105,11 +117,10 @@ test('permissions are scoped to the workspace, and the server-owned files are de
   assert.ok(deny.includes('WebFetch'));
 });
 
-test('a stored session id becomes --resume; no stored id becomes a fresh --session-id uuid', () => {
+test('the low-level CLI wrapper accepts explicit native session options', () => {
   const resumed = buildArgs({ root: '/r', resumeSessionId: 'abc-123' });
   assert.equal(resumed[resumed.indexOf('--resume') + 1], 'abc-123');
   assert.ok(!resumed.includes('--session-id'));
-
   const fresh = buildArgs({ root: '/r', resumeSessionId: null });
   assert.ok(!fresh.includes('--resume'));
   assert.match(
@@ -159,6 +170,28 @@ test('interpretLine turns text deltas into tokens and completed tool_use into to
   );
 });
 
+test('Claude post-tool assistant echo is suppressed only at a message boundary', () => {
+  const s = { root: '/r' };
+  const start = () => interpretLine({ type: 'stream_event', event: { type: 'message_start' } }, s);
+  start();
+  assert.deepEqual(interpretLine({ type:'stream_event', event:{ type:'content_block_delta', index:0, delta:{type:'text_delta',text:'Yes'}}},s), [{kind:'token',text:'Yes'}]);
+  assert.deepEqual(interpretLine({ type:'assistant', message:{content:[{type:'tool_use',name:'record_session',input:{}}]}},s).map(x=>x.kind), ['tool']);
+  start();
+  // Chunked exact echo stays buffered, including the separator.
+  assert.deepEqual(interpretLine({type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'Y'}}},s),[]);
+  assert.deepEqual(interpretLine({type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'es'}}},s),[]);
+  assert.deepEqual(interpretLine({type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:' indeed'}}},s), [{kind:'token',text:' indeed'}]);
+});
+
+test('echo filter flushes divergent/shorter text and does not dedup same-message repetition', () => {
+  const s = {};
+  const start = () => interpretLine({type:'stream_event',event:{type:'message_start'}},s);
+  start(); interpretLine({type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'Yes'}}},s);
+  interpretLine({type:'assistant',message:{content:[{type:'tool_use',name:'record_session',input:{}}]}},s); start();
+  assert.deepEqual(interpretLine({type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'No'}}},s), [{kind:'token',text:'\n\n'},{kind:'token',text:'No'}]);
+  assert.deepEqual(interpretLine({type:'stream_event',event:{type:'content_block_delta',index:0,delta:{type:'text_delta',text:'No'}}},s), [{kind:'token',text:'No'}]);
+});
+
 test('a result with is_error becomes one plain-English error, not a done', () => {
   const [item] = interpretLine(
     { type: 'result', is_error: true, result: 'Invalid API key · Please run /login', session_id: 's' },
@@ -186,6 +219,37 @@ test('a normal turn streams tokens, a tool event, then done', async () => {
   assert.equal(seen.tokens.join(''), 'Hello, coach here.');
   assert.deepEqual(seen.tools, [{ name: 'Read', summary: 'problems/two-sum/NOTES.md' }]);
   assert.equal(seen.done.stoppedReason, 'end_turn');
+});
+
+test('stream diagnostics distinguish provider arrival and delivery before completion without content', async t => {
+  const root = await tempRoot(); t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  let stats, published = false;
+  const { seen, handle } = collect({ root, prompt: 'PRIVATE QUESTION', binary: FAKE,
+    env: { ...process.env, FAKE_CLAUDE_MODE: 'slow', FAKE_CLAUDE_DELAY_MS: '100' },
+    onStreamStats: value => { stats = value; published = true; },
+    onDone: () => assert.equal(published, true),
+  });
+  await handle.exited;
+  assert.equal(seen.error, null); assert.equal(stats.rawTextDeltaCount, 3);
+  assert.equal(stats.forwardedChunkCount, 3); assert.ok(stats.stdoutDataBatchesWithText >= 2);
+  assert.ok(stats.lastRawTextDeltaMs - stats.firstRawTextDeltaMs >= 70);
+  assert.ok(stats.firstForwardedTokenMs < stats.lastRawTextDeltaMs);
+  assert.ok(stats.firstForwardedTokenMs >= stats.firstRawTextDeltaMs);
+  assert.ok(stats.largestRawTextDeltaChars > 0);
+  assert.doesNotMatch(JSON.stringify(stats), /Hello|PRIVATE|first half/);
+});
+test('diagnostics include the final stdout batch and cannot break a turn', async t => {
+  const root = await tempRoot(); t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  let observed;
+  const { seen, handle } = collect({ root, prompt: 'test', binary: FAKE,
+    env: { ...process.env, FAKE_CLAUDE_MODE: 'tool-echo' },
+    onStreamStats: stats => { observed = stats; throw Error('Observer failure'); },
+  });
+  await handle.exited;
+  assert.equal(seen.error, null); assert.ok(seen.done);
+  assert.ok(observed.stdoutDataBatchesWithText > 0);
+  assert.ok(observed.rawTextDeltaCount > observed.forwardedChunkCount);
+  assert.equal(seen.tokens.join(''), 'Yes, size matters. Each package is small, medium or large.');
 });
 
 test('the prompt reaches the CLI on stdin, and cwd is the workspace root', async () => {
@@ -232,7 +296,7 @@ test('an unresumable session id is reported as such rather than as a generic cra
   const { seen, handle } = collect({
     root,
     prompt: 'x',
-    resumeSessionId: 'long-gone',
+    resumeSessionId: 'long-gone', persistentSession: true,
     binary: FAKE,
     env: { ...process.env, FAKE_CLAUDE_MODE: 'noresume' },
   });
@@ -246,7 +310,7 @@ test('an unresumable session reported in the result stream is recognised too', a
   const { seen, handle } = collect({
     root,
     prompt: 'x',
-    resumeSessionId: 'long-gone',
+    resumeSessionId: 'long-gone', persistentSession: true,
     binary: FAKE,
     env: { ...process.env, FAKE_CLAUDE_MODE: 'noresume-result' },
   });
@@ -357,4 +421,85 @@ test('Studycraft import credentials never reach the Claude subprocess', async t 
   await handle.exited;
   assert.equal(received.STUDYCRAFT_RECALL_TOKEN, undefined);
   assert.equal(received.TEST, 'kept');
+});
+
+test('persistent Claude clients resume native state with fresh MCP config and compaction boundaries', async () => {
+  const root = await tempRoot();
+  try {
+    const stateFile = path.join(root, 'native-state.json'), argsFile = path.join(root, 'args.json');
+    let nativeId;
+    for (let i = 0; i < 2; i++) {
+      const sessions = [], compact = [];
+      let persisted = false;
+      const streamed = [];
+      const config = path.join(root, 'mcp-' + i + '.json');
+      const helper = `
+        const readline = require('node:readline');
+        readline.createInterface({ input: process.stdin }).on('line', line => {
+          const r = JSON.parse(line); if (!r.id) return;
+          const result = r.method === 'tools/list' ? { tools: [{ name: 'get_state' }] }
+            : r.method === 'tools/call' ? { content: [{ type: 'text', text: process.env.STUDIO_TOOLS_TOKEN }] } : {};
+          process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\\n');
+        });
+      `;
+      await fsp.writeFile(config, JSON.stringify({ mcpServers: { studio: {
+        command: process.execPath, args: ['-e', helper], env: { STUDIO_TOOLS_TOKEN: 'fresh-token-' + i },
+      } } }));
+      const { handle, seen } = collect({
+        root, binary: FAKE, prompt: 'prompt-' + i, persistentSession: true, resumeSessionId: nativeId,
+        mcpConfigPath: config, studioTools: ['get_state'], tools: '', studioContext: true,
+        noSessionPersistence: true, forkSession: true, // persistent mode must override these
+        env: { ...process.env, FAKE_CLAUDE_STATE_FILE: stateFile, FAKE_CLAUDE_ARGS_FILE: argsFile,
+          FAKE_CLAUDE_MODE: 'tools', FAKE_CLAUDE_TOOL_CALLS: JSON.stringify([{ tool: 'get_state' }]) },
+        async onSessionId(id) {
+          sessions.push(id);
+          await new Promise(resolve => setTimeout(resolve, 10));
+          const state = await fsp.readFile(stateFile, 'utf8').then(JSON.parse).catch(() => ({}));
+          assert.equal(state[id]?.length ?? 0, i);
+          persisted = true;
+        },
+        onCompaction: meta => compact.push(meta),
+        onToken: text => { assert.ok(persisted); streamed.push(text); },
+      });
+      await handle.exited;
+      assert.equal(seen.error, null); assert.equal(sessions.length, 1);
+      assert.match(streamed.join(''), new RegExp('fresh-token-' + i));
+      assert.equal(seen.done.sessionId, sessions[0]);
+      if (nativeId) assert.equal(sessions[0], nativeId);
+      nativeId = sessions[0];
+      assert.deepEqual(compact, [{ trigger: 'auto', pre_tokens: 100 }]);
+      const args = JSON.parse(await fsp.readFile(argsFile));
+      assert.equal(args[args.indexOf('--mcp-config') + 1], config);
+      assert.ok(args.includes('--strict-mcp-config'));
+      assert.equal(args[args.indexOf('--permission-mode') + 1], 'manual');
+      assert.ok(!args.includes('--no-session-persistence')); assert.ok(!args.includes('--fork-session'));
+      assert.equal(args.includes('--resume'), i === 1);
+      assert.ok(args.includes('mcp__studio__get_state'));
+    }
+    assert.deepEqual(JSON.parse(await fsp.readFile(stateFile))[nativeId], ['prompt-0', 'prompt-1']);
+    const { handle, seen } = collect({ root, binary: FAKE, prompt: 'never',
+      persistentSession: true, resumeSessionId: 'missing',
+      env: { ...process.env, FAKE_CLAUDE_STATE_FILE: stateFile } });
+    await handle.exited;
+    assert.match(seen.error, /could not resume/); assert.equal(seen.done, null);
+    assert.deepEqual(Object.keys(JSON.parse(await fsp.readFile(stateFile))), [nativeId]);
+  } finally { await fsp.rm(root, { recursive: true, force: true }); }
+});
+
+test('Claude requires explicit persistence for native resume and awaits session storage before prompt', async () => {
+  const root = await tempRoot();
+  try {
+    const argsFile = path.join(root, 'args.json'), promptFile = path.join(root, 'prompt');
+    const fresh = collect({ root, binary: FAKE, prompt: 'fresh', resumeSessionId: 'ignored',
+      env: { ...process.env, FAKE_CLAUDE_ARGS_FILE: argsFile } });
+    await fresh.handle.exited;
+    assert.ok(!JSON.parse(await fsp.readFile(argsFile)).includes('--resume'));
+    const failed = collect({ root, binary: FAKE, prompt: 'never', persistentSession: true,
+      env: { ...process.env, FAKE_CLAUDE_PROMPT_FILE: promptFile },
+      onSessionId: async () => { throw new Error('session storage failed'); } });
+    await failed.handle.exited;
+    assert.match(failed.seen.error, /session storage failed/);
+    assert.equal(failed.seen.done, null);
+    await assert.rejects(fsp.access(promptFile));
+  } finally { await fsp.rm(root, { recursive: true, force: true }); }
 });

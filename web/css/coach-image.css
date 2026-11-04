@@ -4,9 +4,9 @@
 /* The larger view dims whatever theme is behind it the same way: it is a photo viewer. */
 :root{--pic-backdrop:rgba(0,0,0,.78);--pic-backdrop-ink:#EEEEEE;--pic-shadow:rgba(0,0,0,.45)}
 
-.pic .pic-head{display:flex;align-items:baseline;gap:8px;padding:7px 11px 0;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.pic .pic-head{display:flex;align-items:baseline;gap:8px;padding:var(--space-2) var(--content-inset) 0;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .pic .pic-status{margin-left:auto}
-.pic-stage{margin:8px 11px 11px}
+.pic-stage{margin:var(--space-2) var(--content-inset) var(--content-inset)}
 
 /* Waiting: a calm shimmer the size of the picture to come, so nothing jumps when it lands. */
 .pic-wait{
@@ -29,7 +29,7 @@ body.motion-off .pic-shimmer{animation:none;opacity:.5}
 .pic-img{display:block;width:100%;height:auto;max-height:420px;object-fit:contain;background:var(--diagram-paper);border-radius:var(--r-md)}
 
 .pic-offer{
-  display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:14px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);padding:var(--content-inset);
   border:1px dashed var(--hair-20);border-radius:var(--r-md);
 }
 .pic-offer p{margin:0;flex:1 1 100%;font-size:13px;line-height:1.5}
@@ -37,7 +37,7 @@ body.motion-off .pic-shimmer{animation:none;opacity:.5}
 .pic-failed{margin:0}
 
 .pic-alt{padding-top:0}
-.pic-asked{margin:0 11px 10px}
+.pic-asked{margin:0 var(--content-inset) var(--content-inset)}
 .pic-asked summary{cursor:pointer;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;list-style-position:inside}
 .pic-asked p{margin:6px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink-70);white-space:pre-wrap}
 

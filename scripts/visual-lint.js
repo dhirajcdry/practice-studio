@@ -6,6 +6,7 @@ export function visualLint() {
   // and a flush child escaping the inset shared by a stacked pane.
   const out = [];
   const visible = (node) => {
+    if (node.checkVisibility && !node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
     if (!node.getClientRects().length) return false;
     const style = getComputedStyle(node);
     return style.visibility !== 'hidden' && style.opacity !== '0' && style.display !== 'none';
@@ -24,6 +25,45 @@ export function visualLint() {
   const vw = innerWidth, vh = innerHeight;
   const onScreen = (rect) => rect.width > 0 && rect.height > 0
     && rect.right > 0 && rect.bottom > 0 && rect.left < vw && rect.top < vh;
+
+  // Shared content contracts: every adopted surface gets these checks in every
+  // visual state, not only in a screenshot-specific assertion.
+  for (const node of document.querySelectorAll('.ui-inset')) {
+    if (!visible(node)) continue;
+    const box=node.getBoundingClientRect(), style=getComputedStyle(node);
+    if (!onScreen(box)) continue;
+    const inset=parseFloat(style.getPropertyValue('--content-inset'));
+    if (!Number.isFinite(inset) || inset < 8) {
+      out.push({kind:'content-inset',where:name(node),detail:'Missing or undersized content inset'}); continue;
+    }
+    for (const edge of ['Top','Right','Bottom','Left']) {
+      if (parseFloat(style['padding'+edge]) < inset-0.5)
+        out.push({kind:'content-inset',where:name(node),detail:`${edge} padding bypasses shared inset`});
+    }
+    const bounds={left:box.left+parseFloat(style.borderLeftWidth)+inset,
+      right:box.right-parseFloat(style.borderRightWidth)-inset,
+      top:box.top+parseFloat(style.borderTopWidth)+inset,
+      bottom:box.bottom-parseFloat(style.borderBottomWidth)-inset};
+    for (const child of node.children) {
+      if (!visible(child)) continue;
+      const r=child.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      if ((!(/auto|scroll/.test(style.overflowX) && node.scrollWidth > node.clientWidth + 1) && (r.left < bounds.left-1 || r.right > bounds.right+1)) || (!(/auto|scroll/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) && (r.top < bounds.top-1 || r.bottom > bounds.bottom+1)))
+        out.push({kind:'content-inset',where:name(child),detail:`Child escapes ${inset}px content inset`});
+    }
+  }
+  for (const node of document.querySelectorAll('.ui-row,.ui-cluster')) {
+    if (!visible(node)) continue;
+    const items=[...node.children].filter(visible).map(n=>({n,r:n.getBoundingClientRect()})).filter(x=>x.r.width&&x.r.height);
+    const gap=parseFloat(getComputedStyle(node).columnGap);
+    for(let i=0;i<items.length;i++) for(let j=i+1;j<items.length;j++) {
+      const a=items[i],b=items[j];
+      const horizontal=Math.max(b.r.left-a.r.right,a.r.left-b.r.right);
+      const vertical=Math.max(b.r.top-a.r.bottom,a.r.top-b.r.bottom);
+      if (horizontal < gap-1 && vertical < gap-1)
+        out.push({kind:'content-gap',where:name(node),detail:`Children ${label(a.n)} / ${label(b.n)} lack ${gap}px separation`});
+    }
+  }
 
   // 1 + 2: catch a misaligned HIDE button or an accidental extra toolbar gap.
   // A row contains controls under one parent whose vertical ranges overlap.
@@ -164,6 +204,72 @@ export function visualLint() {
       const kr = k.getBoundingClientRect(); const centred = Math.abs((kr.left + kr.right) / 2 - (cr.left + cr.right) / 2) < 2;
       if (!full(k) && Math.abs(d) >= 4 && Math.abs(d) <= 40 && !centred) out.push({ kind: 'inset-mismatch', where: name(k), what: label(k), detail: `starts ${d > 0 ? '+' : ''}${d}px from its ${n} siblings' inset in ${name(c)}` });
     });
+  }
+
+  // Monaco's gutter width grows with digit count; it must not own pane spacing.
+  for (const frame of document.querySelectorAll('.python-editor-frame')) {
+    if (!visible(frame)) continue;
+    const f=frame.getBoundingClientRect(), viewport=frame.querySelector('.python-editor-viewport');
+    if (!onScreen(f) || !viewport) continue;
+    const v=viewport.getBoundingClientRect(), inset=parseFloat(getComputedStyle(frame).getPropertyValue('--python-editor-edge-inset'));
+    if (!Number.isFinite(inset) || inset<8 || v.left-f.left<inset-1 || f.right-v.right<inset-1)
+      out.push({kind:'editor-edge',where:name(frame),detail:'Editor viewport bypasses its shared edge inset'});
+    for(const number of frame.querySelectorAll('.line-numbers')) {
+      if(!number.textContent.trim() || !visible(number))continue;
+      const range=document.createRange();range.selectNodeContents(number);
+      if(range.getBoundingClientRect().left<f.left+inset-1)
+        out.push({kind:'editor-gutter',where:name(frame),detail:'Line-number ink touches the pane edge'});
+    }
+  }
+
+  // Bounded workspace panes: one scroll owner, controls inside the pane, and no
+  // sticky-overlay overlap. Completed cards and off-screen mobile states are not
+  // live workspace surfaces and are intentionally excluded.
+  for (const pane of document.querySelectorAll('.ui-pane')) {
+    if (!visible(pane) || pane.closest('.is-complete')) continue;
+    const pr = pane.getBoundingClientRect();
+    if (innerWidth < 901 && !onScreen(pr)) continue;
+    const scrolls = [...pane.children].filter(n => n.matches('.ui-pane-scroll'));
+    const controls = [...pane.children].filter(n => !n.matches('.ui-pane-scroll') && visible(n));
+    if (scrolls.length !== 1) out.push({ kind: 'pane-structure', where: name(pane), detail: 'Expected exactly one direct .ui-pane-scroll owner' });
+    const sr = scrolls[0]?.getBoundingClientRect();
+    if (sr && visible(scrolls[0])) {
+      if (innerWidth >= 901 && sr.height < 80) out.push({ kind: 'pane-height', where: name(scrolls[0]), detail: `Scroll pane is only ${sr.height.toFixed(1)}px tall` });
+      for (const control of controls) {
+        const cr = control.getBoundingClientRect();
+        if (cr.left < pr.left - 1 || cr.right > pr.right + 1 || cr.top < pr.top - 1 || cr.bottom > pr.bottom + 1)
+          out.push({ kind: 'pane-controls', where: name(control), detail: 'Controls escape pane edges' });
+        if (cr.top < sr.bottom - 1 && cr.bottom > sr.top + 1)
+          out.push({ kind: 'pane-overlap', where: name(control), detail: 'Controls overlap scroll owner' });
+      }
+    }
+  }
+  for (const workspace of document.querySelectorAll('.ui-workspace')) {
+    if (!visible(workspace) || innerWidth < 901) continue;
+    const wr = workspace.getBoundingClientRect();
+    if (wr.top < -1 || wr.bottom > innerHeight + 1) out.push({ kind: 'workspace-viewport', where: name(workspace), detail: 'Workspace does not fit viewport' });
+    if (document.scrollingElement.scrollHeight > innerHeight + 1) out.push({ kind: 'workspace-overflow', where: name(workspace), detail: 'Document has vertical overflow' });
+  }
+  for (const header of document.querySelectorAll('.ui-dialog-header')) {
+    if (!visible(header)) continue;
+    const close = header.querySelector('.ui-dialog-close'), h = header.getBoundingClientRect(), c = close?.getBoundingClientRect(), s = getComputedStyle(header);
+    if (!c || Math.abs(h.right - c.right - parseFloat(s.paddingRight)) > 2 || Math.abs(c.top - h.top - parseFloat(s.paddingTop)) > 2)
+      out.push({ kind: 'dialog-close', where: name(header), detail: 'Close must occupy the top-right header rail' });
+  }
+  // Input can grow or scroll; the send/mode rail must always remain reachable.
+  for (const composer of document.querySelectorAll('.ui-composer')) {
+    if (!visible(composer)) continue;
+    const box = composer.getBoundingClientRect(), footer = composer.querySelector('.ui-composer-footer')?.getBoundingClientRect();
+    if (footer && (footer.left < box.left - 1 || footer.right > box.right + 1 || footer.bottom > box.bottom + 1))
+      out.push({ kind: 'composer-controls', where: name(composer), detail: 'Input growth clips the control rail' });
+    if (composer.scrollWidth > composer.clientWidth + 1)
+      out.push({ kind: 'composer-width', where: name(composer), detail: 'Composer requires horizontal scrolling' });
+  }
+  for (const header of document.querySelectorAll('.ui-workspace-header')) {
+    if (!visible(header)) continue;
+    const identity = header.querySelector('.ui-workspace-identity').getBoundingClientRect(), actions = header.querySelector('.ui-header-actions').getBoundingClientRect();
+    if (identity.right > actions.left && identity.bottom > actions.top && actions.bottom > identity.top && actions.width)
+      out.push({ kind: 'header-overlap', where: name(header), detail: 'Title and actions overlap' });
   }
   return out;
 }

@@ -10,6 +10,7 @@ import { renderRoadmap } from './roadmap.js';
 import { renderProblem, openPanel, closeDrawer, isDrawerOpen, setDrawerListener, drawerKind } from './problem.js';
 import { init as initDashboard } from './dashboard.js';
 import { initDesign } from './design.js';
+import { initLLD } from './lld.js';
 import { showInterviewSetup, activeInterview, interviewAction } from './interview.js';
 import { coachBeginAttempt, coachReviewAttempt } from './coach.js';
 import { installResizers } from './resize.js';
@@ -18,6 +19,7 @@ import { installSettingsButton, apply as applySettings, onSettingsChange } from 
 
 let dashboard = null;
 let design = null;
+let lld = null;
 
 const appEl = document.getElementById('app');
 const searchEl = document.getElementById('q');
@@ -177,7 +179,7 @@ function markNav() {
   // A deep-linked interview is still the Design section, the same way a problem page
   // is still Problems.
   const route = hash.startsWith('#/p/') || hash === '#/roadmap' ? '#/'
-    : hash.startsWith('#/design/') ? '#/design'
+    : hash.startsWith('#/lld/') ? '#/lld' : hash.startsWith('#/design/') ? '#/design'
       : hash;
 
   let current = null;
@@ -204,7 +206,7 @@ function render() {
     onAttemptStart: detail => coachBeginAttempt(detail.slug),
     onAttemptEnd: detail => coachReviewAttempt(detail),
   });
-  document.body.classList.toggle('browse-page', !currentSlug() && !location.hash.startsWith('#/design') && location.hash !== '#/progress');
+  document.body.classList.toggle('browse-page', !currentSlug() && !location.hash.startsWith('#/design') && !location.hash.startsWith('#/lld') && location.hash !== '#/progress');
   if (currentSlug()) progressLoadedAt = 0;
   markNav();
   // The dashboard owns its own DOM and its own fetch, so it is torn down explicitly
@@ -213,6 +215,11 @@ function render() {
   // The interview owns a live turn and an 8 MB canvas, so leaving the screen tears it
   // down explicitly rather than leaving both running behind another route.
   if (design) { design.destroy?.(); design = null; }
+
+  if (lld) { lld.destroy(); lld = null; }
+  if (location.hash === '#/lld' || location.hash.startsWith('#/lld/')) {
+    lld = initLLD(appEl); mountRecorder(); return;
+  }
 
   if (location.hash === '#/design' || location.hash.startsWith('#/design/')) {
     replace(appEl, el('div', { class: 'view' }));
@@ -324,6 +331,13 @@ function inTextField() {
 }
 
 document.addEventListener('keydown', (event) => {
+  if (event.defaultPrevented || event.isComposing) return;
+  // Catalog navigation belongs to coding routes, not every screen without a
+  // coding slug. Whiteboards deliberately bubble keys to their own listeners.
+  const codingRoute = currentSlug() || ['', '#/', '#/roadmap'].includes(location.hash);
+  const searching = document.activeElement === searchEl;
+  if (!codingRoute && !searching) return;
+  if (!searching && event.target.closest?.('button,a,[role="button"],[role="separator"],[role="tab"],[role="menuitemradio"],dialog')) return;
   if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
     && (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
     if (inTextField() || isDrawerOpen()) return;
@@ -354,6 +368,7 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (inTextField()) {
+    if (!searching) return;
     if (event.key === 'Enter') {
       const list = visibleProblems(data, state);
       if (list.length) { searchEl.blur(); handlers.onOpen(list[0].slug); }

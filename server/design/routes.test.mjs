@@ -286,6 +286,7 @@ test('an interview that lost its thread is resumable, and the next turn rebuilds
   const store = new DesignStore({ root });
   const state = await store.readState(id);
   state.claudeSessionId = null;
+  await fsp.rm(path.join(root,'context','conversations'),{recursive:true,force:true});
   await store.writeState(id, state);
 
   const fresh = await serve(root, { reply: 'And the write path?' });
@@ -306,7 +307,7 @@ test('an interview that lost its thread is resumable, and the next turn rebuilds
       assert.match(turn.text, /And the write path\?/, 'the rebuilt thread never answered');
 
       const sentPrompt = await fsp.readFile(promptFile, 'utf8');
-      assert.match(sentPrompt, /resuming an interview already in progress/i);
+      assert.match(sentPrompt, /Full saved interview record/i);
       assert.match(sentPrompt, /A CDN in front of it\./, 'the past answer was not handed to the new thread');
       assert.match(sentPrompt, /Postgres, sharded by user id\./, 'the turn itself was dropped from the rebuilt prompt');
     } finally { delete process.env.STUDIO_FAKE_PROMPT_FILE; }

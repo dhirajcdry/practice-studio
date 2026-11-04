@@ -20,7 +20,10 @@
 // which turns.jsonl can rebuild.
 
 import fsp from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { problemDir } from '../storage-layout.mjs';
 
 /** Interview ids are sortable and filename-safe, like session ids. */
 export function newInterviewId(date = new Date()) {
@@ -41,10 +44,21 @@ export class DesignStore {
   }
 
   dir(id) {
+    if (!isSafeInterviewId(id)) throw Error('Invalid interview identity.');
+    try {
+      const { topicSlug } = JSON.parse(readFileSync(path.join(this.root, 'design', `${id}.json`), 'utf8'));
+      if (!/^design-[a-z0-9-]+$/.test(topicSlug)) throw Error('Invalid topic index.');
+      return path.join(problemDir(this.root, topicSlug), 'interviews', id);
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
     return path.join(this.root, 'design', id);
   }
 
   async create(id, state) {
+    if (state.topicSlug) {
+      if (!/^design-[a-z0-9-]+$/.test(state.topicSlug)) throw Error('Invalid topic identity.');
+      await fsp.mkdir(path.join(this.root, 'design'), { recursive: true });
+      await fsp.writeFile(path.join(this.root, 'design', `${id}.json`), JSON.stringify({ topicSlug: state.topicSlug }) + '\n', { flag: 'wx' });
+    }
     const dir = this.dir(id);
     await fsp.mkdir(path.join(dir, 'scenes'), { recursive: true });
     await this.writeState(id, state);
@@ -53,7 +67,7 @@ export class DesignStore {
 
   async writeState(id, state) {
     const file = path.join(this.dir(id), 'interview.json');
-    const tmp = `${file}.${process.pid}.tmp`;
+    const tmp = `${file}.${crypto.randomUUID()}.tmp`;
     await fsp.writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
     await fsp.rename(tmp, file);   // a torn state file would lose the interview
   }
@@ -64,6 +78,16 @@ export class DesignStore {
     } catch {
       return null;
     }
+  }
+
+  async readFollowups(id) {
+    let raw;
+    try { raw = await fsp.readFile(path.join(this.dir(id), 'followups.jsonl'), 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    return raw.split('\n').filter(Boolean).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+  }
+  async appendFollowup(id, entry) {
+    await fsp.appendFile(path.join(this.dir(id), 'followups.jsonl'), JSON.stringify(entry) + '\n');
   }
 
   /** One turn. Append-only: the record of what was asked and answered. */
@@ -96,8 +120,25 @@ export class DesignStore {
   /** The canvas as it stood. Numbered so the order survives, and never overwritten. */
   async writeScene(id, index, elements) {
     const file = path.join(this.dir(id), 'scenes', `${String(index).padStart(4, '0')}.json`);
-    await fsp.writeFile(file, JSON.stringify({ at: new Date().toISOString(), elements }), 'utf8');
+    await fsp.writeFile(file, JSON.stringify({ at: new Date().toISOString(), elements }), { encoding: 'utf8', flag: 'wx' });
     return file;
+  }
+
+  async appendScene(id, elements) {
+    let index = (await this.readScenes(id)).length;
+    for (;;) {
+      try { await this.writeScene(id, index, elements); return index; }
+      catch (error) { if (error.code !== 'EEXIST') throw error; index++; }
+    }
+  }
+
+  async readLatestScene(id) {
+    const dir = path.join(this.dir(id), 'scenes');
+    let names;
+    try { names = (await fsp.readdir(dir)).filter(n => /^\d+\.json$/.test(n)).sort((a, b) => Number.parseInt(a) - Number.parseInt(b)); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    const name = names.at(-1);
+    return name ? { name, ...JSON.parse(await fsp.readFile(path.join(dir, name), 'utf8')) } : null;
   }
 
   async readScenes(id) {
@@ -121,7 +162,9 @@ export class DesignStore {
   async list() {
     try {
       return (await fsp.readdir(path.join(this.root, 'design')))
+        .map(name => name.endsWith('.json') ? name.slice(0, -5) : name)
         .filter(isSafeInterviewId)
+        .filter((id, index, all) => all.indexOf(id) === index)
         .sort();
     } catch {
       return [];

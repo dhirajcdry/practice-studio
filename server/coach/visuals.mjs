@@ -20,6 +20,7 @@ import { readJsonBody } from './http.mjs';
 import { connection, mcpServerStarting, plainError, safeError, startLockedTurn, MCP_STARTED } from './codex-cli.mjs';
 import { newFenceToken } from './context.mjs';
 import { readCoachChoice, DEFAULT_COACH } from './provider.mjs';
+import { problemDir } from '../storage-layout.mjs';
 
 export const IMAGE_TIMEOUT_MS = 4 * 60 * 1000;
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
@@ -185,7 +186,7 @@ export class VisualService {
     this.failures = new Map(); // key → {message, at}; this process only, so a restart retries
   }
 
-  dir(slug) { return path.join(this.root, 'problems', slug, 'visuals'); }
+  dir(slug) { return path.join(problemDir(this.root, slug), 'visuals'); }
 
   async readMeta(slug, id) {
     try {

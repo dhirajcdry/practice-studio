@@ -46,7 +46,7 @@ function viewer() {
 // ------------------------------------------------------------------- validation
 
 test('every spec is a closed object schema with a description', () => {
-  assert.equal(TOOL_SPECS.length, 13);
+  assert.deepEqual(TOOL_SPECS.map(s => s.name), TOOL_NAMES);
   for (const spec of TOOL_SPECS) {
     assert.equal(spec.inputSchema.type, 'object');
     assert.equal(spec.inputSchema.additionalProperties, false);
@@ -434,7 +434,7 @@ test('Codex: dynamic tools on thread/start, item/tool/call answered through the 
   assert.deepEqual(thread.dynamicTools.map((d) => d.name), TOOL_NAMES);
   assert.equal(thread.dynamicTools[0].type, 'function');
   assert.ok(thread.dynamicTools.find(t => t.name === 'add_case').inputSchema.properties.input);
-  assert.match(thread.baseInstructions, /only tools you may use are the Studio tools/);
+  assert.match(thread.baseInstructions, /Use Studio tools for workspace actions/);
   assert.ok(thread.config.mcp_servers, 'the MCP lockdown is still applied');
 
   const responses = (await fsp.readFile(resultsFile, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));

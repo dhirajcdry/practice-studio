@@ -1,5 +1,9 @@
-import { activeInterview, createInterviewPanel } from './interview.js';
+import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
+import { activeInterview } from './interview.js';
+import { createInterviews } from './interviews.js';
+import { readSidebar, saveSidebar } from './sidebar-state.js';
 import { tooltip } from './tooltip.js';
+import { icon } from './ui/icon.js';
 // The coach panel — a streaming conversation beside the editor (ARCHITECTURE.md §5,
 // API-CONTRACT-P2.md Phase 3).
 //
@@ -18,6 +22,7 @@ import { el, clear, replace } from './dom.js';
 import { renderMarkdown, renderUserText, looksLikeCode } from './markdown.js';
 import { splitDiagramBlocks, renderDiagram } from './illustrator.js';
 import { streamCoachMessage, api } from './api.js';
+import { createVoicePanel } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { flushRecorder } from './recorder.js';
@@ -38,9 +43,9 @@ const OPEN_KEY = 'studio.coach.open.v1';
 
 /* ============================== shaping (pure) ============================== */
 
-// Idle has no status ornament; only ongoing work belongs beside the tabs.
+// Thinking is already shown in the conversation; keep other ongoing status here.
 export function setCoachState(label, separator, text) {
-  const active = ['Thinking', 'Asking', 'Listening', 'Transcribing', 'Attempt in progress', 'Stopping'].includes(text);
+  const active = ['Asking', 'Listening', 'Transcribing', 'Attempt in progress', 'Stopping'].includes(text);
   label.textContent = active ? text : '';
   label.hidden = separator.hidden = !active;
 }
@@ -197,7 +202,7 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
   const summary = receiptSummary(action);
   const undoable = !!onUndo && !ui.undone && canUndo(action);
   const why = status === 'failed' ? String(action.message || '').trim() : '';
-  const row = el('div', { class: `cmsg-receipt is-${status}`, 'data-tool': tool }, [
+  const row = el('div', { class: `cmsg-receipt ui-inset ui-inset--compact ui-cluster is-${status}`, 'data-tool': tool }, [
     el('span', { class: 'cr-glyph', 'aria-hidden': 'true', text: receiptGlyph(tool) }),
     action.url && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(action.url)
       ? el('a', { class: 'cr-text', text: summary, href: action.url, target: '_blank', rel: 'noopener noreferrer' })
@@ -235,7 +240,7 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
 }
 
 function noticeBlock({ tone = '', head, body, actions = [] }) {
-  return el('div', { class: 'state ' + tone }, [
+  return el('div', { class: 'state ui-inset ui-inset--roomy ' + tone }, [
     el('h3', { text: head }),
     el('p', { text: body }),
     actions.length
@@ -308,22 +313,13 @@ export function createCoachPanel(entry) {
   });
   const restoredDraft = readDraft(slug);
   if (restoredDraft?.text) input.value = restoredDraft.text;
-  let ghost = '';
+  let partialWords = '';
+  const voiceView = createVoicePanel({autoSend:false, role:'Coach', onEdit:()=>{voice.stop();input.hidden=false;input.focus();}});
+  voiceView.root.hidden = true;
+  function committed() { return input.value; }
 
-  // The provisional words of the phrase still being spoken, shown at the end of the box.
-  // Once anything is typed after them they are yours, and are never cut out again —
-  // searching for them elsewhere could delete words you typed yourself.
-  function committed() {
-    const value = input.value;
-    if (!ghost) return value;
-    if (value.endsWith(ghost)) return value.slice(0, -ghost.length);
-    ghost = '';
-    return value;
-  }
-
-  const sendLabel = el('span', { text: 'Ask' });
-  const sendButton = el('button', { class: 'ws-run coach-send', type: 'button', onclick: () => submit() },
-    [sendLabel, el('kbd', { text: '⌘↵' })]);
+  const inputSize = bindComposerInput(input);
+  const sendButton = composerSend(el('button', { class: 'coach-send', type: 'button', onclick: () => submit() }), 'Ask coach');
 
   const stopButton = el('button', {
     class: 'ws-mini coach-stop', type: 'button', hidden: true, text: 'Stop',
@@ -333,19 +329,9 @@ export function createCoachPanel(entry) {
   const voice = createVoiceControl({
     getSlug: () => slug,
     onPreview: text => {
-      if (disposed) return;
-      input.value = committed();
-      ghost = '';
-      if (text) {
-        const gap = input.value === '' || /\s$/.test(input.value) ? '' : ' ';
-        ghost = gap + text;
-        input.value += ghost;
-      }
-      autosize();
-      if (document.activeElement === input) {
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
+      partialWords = text; if (!disposed) voiceView.update({draft:input.value,partial:partialWords});
     },
+    onLevel: value => voiceView.level(value),
     // Dictation lands phrase by phrase while you are still speaking, so it joins the
     // sentence with a space rather than starting a new paragraph — it should read like
     // typing, because that is what it is standing in for.
@@ -355,6 +341,7 @@ export function createCoachPanel(entry) {
       const gap = existing === '' || /\s$/.test(existing) ? '' : ' ';
       input.value = existing + gap + text;
       saveDraft(slug, committed());
+      voiceView.update({draft:input.value,partial:partialWords});
       autosize();
       // Focus is NOT taken here: you may be reading your code while you talk, and
       // stealing the caret mid-sentence is how a shortcut turns into a typo.
@@ -364,6 +351,8 @@ export function createCoachPanel(entry) {
       log.scrollTop = log.scrollHeight;
     },
     onState: (state) => {
+      voiceView.root.hidden = state === 'idle'; input.hidden = state !== 'idle';
+      voiceView.update({state,draft:input.value,partial:partialWords});
       sendButton.disabled = state !== 'idle' || streaming || changingModel;
       if (state === 'recording') setState('Listening');
       else if (state === 'working') setState('Transcribing');
@@ -371,26 +360,17 @@ export function createCoachPanel(entry) {
     },
   });
 
-  // One row: microphone, then the send controls. The mic used to sit on its own line
-  // above them, which gave the composer three stacked rows to say two things.
-  const recallButton = el('button', { class: 'chip coach-recall', type: 'button',
-    text: 'Make recall notes', onclick: () => submit({ kind: 'recall-notes',
-      ask: 'Make recall notes from my practice evidence and save them to Studycraft.' }) });
-  const composer = el('div', { class: 'coach-compose' }, [
-    api.demo ? null : el('div', { class: 'coach-starters' }, [recallButton]),
-    input,
-    el('div', { class: 'coach-actions' }, [
-      api.demo ? null : voice.root,
-      el('span', { class: 'spacer' }),
-      stopButton,
-      sendButton,
-    ]),
-    api.demo ? null : voice.status,
-  ]);
+  const composer = createComposer({ className: 'coach-compose', content: [input, voiceView.root],
+    trailing: [stopButton, sendButton], notices: api.demo ? [] : [voice.status] });
+  const composerOptions = composer.querySelector('.ui-composer-options');
+  composerOptions.classList.add('coach-actions');
+  if (!api.demo) composerOptions.append(voice.root);
 
   const closeButton = el('button', {
-    class: 'ws-mini coach-hide', type: 'button',
-  }, ['Hide', el('kbd', { text: chordLabel('coach') })]);
+    class: 'icon-btn coach-hide', type: 'button',
+  'aria-label': 'Hide sidebar · ' + chordLabel('coach'),
+  }, [icon('sidebar', 16)]);
+  tooltip(closeButton, 'Hide sidebar · ' + chordLabel('coach'));
   closeButton.addEventListener('click', () => setOpen(false));
 
   let attachment = null;
@@ -407,11 +387,14 @@ export function createCoachPanel(entry) {
   ]);
   composer.prepend(attachmentChip);
   const tabChat = el('button', {
-    class: 'coach-tab mono', type: 'button', 'aria-pressed': 'true', text: 'Chat',
+    class: 'coach-tab ui-tab', type: 'button', 'aria-pressed': 'true', text: 'Chat',
   });
+  const tabInterviews = el('button', { class: 'coach-tab ui-tab', type: 'button', 'aria-pressed': 'false', text: 'Interviews' });
+  const interviews = createInterviews(entry);
+  let selectedTab = 'chat';
   const submissionCount = el('span', { class: 'submission-count' });
   const tabSubmissions = el('button', {
-    class: 'coach-tab mono', type: 'button', 'aria-pressed': 'false',
+    class: 'coach-tab ui-tab', type: 'button', 'aria-pressed': 'false',
   }, ['Submissions', submissionCount]);
   const submissions = createSubmissions({
     slug,
@@ -473,22 +456,29 @@ export function createCoachPanel(entry) {
     showEmptyState();
   });
   function showTab(name) {
-    const onSubmissions = name === 'submissions';
+    selectedTab = ['chat', 'interviews', 'submissions'].includes(name) ? name : 'chat';
+    saveSidebar(slug, { tab: selectedTab });
+    root.dataset.sidebarTab = selectedTab;
+    const onChat = selectedTab === 'chat', onSubmissions = selectedTab === 'submissions';
     const alreadyActive = tabSubmissions.getAttribute('aria-pressed') === 'true';
     submissionsView.hidden = !onSubmissions;
-    log.hidden = onSubmissions;
-    composer.hidden = onSubmissions;
-    tabChat.setAttribute('aria-pressed', String(!onSubmissions));
+    interviews.show(selectedTab === 'interviews');
+    tabInterviews.classList.toggle('has-live', Boolean(activeInterview(slug) && !activeInterview(slug).pausedAt));
+    log.hidden = composer.hidden = !onChat;
+    tabChat.setAttribute('aria-pressed', String(onChat));
+    tabInterviews.setAttribute('aria-pressed', String(selectedTab === 'interviews'));
     tabSubmissions.setAttribute('aria-pressed', String(onSubmissions));
+    [tabChat, tabInterviews, tabSubmissions].forEach((tab, index) => { const chosen = ['chat', 'interviews', 'submissions'][index] === selectedTab; tab.setAttribute('aria-selected', String(chosen)); tab.tabIndex = chosen ? 0 : -1; });
     pastChats.hidden = true;
     historyButton.setAttribute('aria-pressed', 'false');
-    setChatToolsVisible(historyButton, newChatButton, pastChats, !onSubmissions);
+    setChatToolsVisible(historyButton, newChatButton, pastChats, onChat);
     if (onSubmissions) {
-      if (alreadyActive) submissions.showList();
-      else submissions.refresh();
+      if (alreadyActive) submissions.showList(); else submissions.refresh();
     }
+    if (onChat && active?.root === root) showPendingRun();
   }
   tabChat.addEventListener('click', () => showTab('chat'));
+  tabInterviews.addEventListener('click', () => showTab('interviews'));
   tabSubmissions.addEventListener('click', () => showTab('submissions'));
   function submissionChanged(event) {
     if (event.detail?.slug !== slug) return;
@@ -519,44 +509,43 @@ export function createCoachPanel(entry) {
   } });
 
   const root = el('section', { class: 'card coach', 'aria-label': 'Coach' }, [
-    el('div', { class: 'coach-identity' }, [
-      el('div', { class: 'coach-identity-row' }, [
-        el('span', { class: 'coach-eyebrow mono', text: 'Your practice partner' }),
-        api.demo ? null : modelPicker.root,
-      ]),
-      el('div', { class: 'coach-title', text: 'Keep your train of thought.' }),
-      el('div', { class: 'coach-context', 'aria-label': 'Context available with each question',
-        title: 'Each question includes your current code, recent runs and available transcripts. Microphone recording starts only when you choose it.' }, [
-        el('span', { text: 'Code + changes' }),
-        el('span', { text: 'Run results' }),
-        el('span', { text: 'Saved speech' }),
-      ]),
-    ]),
-    el('div', { class: 'ws-bar coach-bar' }, [
-      el('span', { class: 'coach-tabs' }, [tabChat, tabSubmissions]),
-      stateSeparator,
-      stateLabel,
-      el('span', { class: 'spacer' }),
-      historyButton,
-      newChatButton,
-      el('span', { class: 'coach-tools-sep', 'aria-hidden': 'true' }),
-      closeButton,
+    el('div', { class: 'coach-bar' }, [
+      el('span', { class: 'coach-tabs ui-tabs', role: 'tablist', 'aria-label': 'Practice sidebar' }, [tabChat, tabInterviews, tabSubmissions]),
+      el('div', { class: 'coach-chat-tools' }, [historyButton, newChatButton, closeButton]),
     ]),
     log,
     submissionsView,
+    interviews.root,
     pastChats,
     composer,
   ]);
 
+  composer.querySelector('.coach-actions').prepend(modelPicker.root);
+  composerOptions.append(el('div', { class: 'coach-status-row' }, [stateSeparator, stateLabel]));
+  const sidebarTabs = [tabChat, tabInterviews, tabSubmissions];
+  const tabNames = ['chat', 'interviews', 'submissions'];
+  sidebarTabs.forEach((tab, index) => {
+    tab.setAttribute('role', 'tab');
+    tab.addEventListener('keydown', event => {
+      let next = index;
+      if (event.key === 'ArrowRight') next = (index + 1) % 3;
+      else if (event.key === 'ArrowLeft') next = (index + 2) % 3;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = 2;
+      else return;
+      event.preventDefault(); showTab(tabNames[next]); sidebarTabs[next].focus();
+    });
+  });
+  function setupInterview(event) { if (event.detail?.slug === slug) { showTab('interviews'); interviews.showSetup(); } }
+  window.addEventListener('studio-interview-setup', setupInterview);
   /* ---- log helpers ---- */
 
   function autosize() {
-    input.style.height = 'auto';
-    input.style.height = Math.min(180, Math.max(46, input.scrollHeight)) + 'px';
+    inputSize.resize();
   }
   const unwatchDraft = watchDraft(slug, text => {
     // Saving committed text must leave the visible provisional phrase in place.
-    if (committed() !== text) { input.value = text; ghost = ''; autosize(); }
+    if (committed() !== text) { input.value = text; partialWords = ''; voiceView.update({draft:text,partial:''}); autosize(); }
   });
   input.addEventListener('input', autosize);
   input.addEventListener('input', () => saveDraft(slug, committed()));
@@ -640,6 +629,7 @@ export function createCoachPanel(entry) {
     newChatButton.hidden = true;
     const recent = el('div', { class: 'recent-chats' });
     replace(log, el('div', { class: 'coach-empty' }, [
+      el('div', { class: 'coach-context' }, ['Code + changes · Run results · Saved speech']),
       el('div', { class: 'coach-starters' }, STARTERS.map(starter => el('button', {
         class: 'chip', type: 'button', text: starter.label,
         onclick: () => {
@@ -760,8 +750,7 @@ export function createCoachPanel(entry) {
     if (!pastChats.hidden) renderHistory(pastChats, { slug, onResume: chooseThread, disabled: on });
     sendButton.disabled = on || voice.isBusy() || changingModel;
     modelPicker.setBusy(on);
-    recallButton.disabled = on || changingModel || voice.isBusy();
-    sendLabel.textContent = on ? 'Asking' : 'Ask';
+    sendButton.setAttribute('aria-label', on ? 'Asking coach' : 'Ask coach');
     sendButton.classList.toggle('busy', on);
     stopButton.hidden = !on;
     if (label) setState(label);
@@ -905,7 +894,7 @@ export function createCoachPanel(entry) {
     const message = ask !== null ? ask : input.value.trim();
     if (!review && message === '') { input.focus(); return; }
 
-    if (!review && kind !== 'recall-notes') {
+    if (!review) {
       input.value = '';
       clearDraft(slug);
       autosize();
@@ -966,12 +955,18 @@ export function createCoachPanel(entry) {
 
   showEmptyState();
   submissions.refresh();
+  const savedSidebar = readSidebar(slug);
+  showTab(savedSidebar.tab || (activeInterview(slug) ? 'interviews' : 'chat'));
+  if (!savedSidebar.interviewId && activeInterview(slug)) interviews.open(activeInterview(slug).id || null);
   autosize();
 
   return {
     root,
     focus: () => input.focus(),
     isStreaming: () => streaming,
+    isChatVisible: () => selectedTab === 'chat',
+    setVisible(on) { interviews.show(on && selectedTab === 'interviews'); },
+    openInterview(id = null) { showTab('interviews'); interviews.open(id); },
     slug,
     attach: attachRun,
     turnCount: () => turns,
@@ -1007,6 +1002,7 @@ export function createCoachPanel(entry) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      window.removeEventListener('studio-interview-setup', setupInterview);
       window.removeEventListener('studio-submission', submissionChanged);
       window.removeEventListener('studio-open-submission', submissionChanged);
       document.removeEventListener('pointerdown', outsideHistory);
@@ -1016,7 +1012,8 @@ export function createCoachPanel(entry) {
       unwatchDraft();
       saveDraft(slug, committed());
       voice.dispose({ finish: true });
-      modelPicker.dispose();
+      inputSize.dispose(); modelPicker.dispose();
+      interviews.dispose();
     },
   };
 }
@@ -1036,15 +1033,15 @@ function writeOpen(open) {
 
 /** A background answer for the problem on screen, shown as soon as there is room for it. */
 function showPendingRun() {
-  if (!active || !isOpen()) return;
+  if (!active || !isOpen() || !active.isChatVisible()) return;
   const run = runFor(active.slug);
   if (run) active.attach(run, { printAsk: true });
 }
 
 /** Open or close the panel. The editor keeps its width when the coach is away. */
 export function setOpen(open, { focus = true } = {}) {
-  if (active && activeInterview(active.slug)) open = true;
   document.body.classList.toggle('coach-open', open);
+  active?.setVisible(open);
   writeOpen(open);
   if (launcher) launcher.setAttribute('aria-pressed', String(open));
   // Only when *you* opened it. Restoring a panel that was open last time must not
@@ -1136,7 +1133,7 @@ function ensureLauncher() {
 let adoption = null;
 export function mountCoach(entry) {
   if (active) active.dispose();
-  const panel = activeInterview(entry.slug) ? createInterviewPanel(entry, { onBack: () => swapInterview(entry) }) : createCoachPanel(entry);
+  const panel = createCoachPanel(entry);
   active = panel;
   ensureLauncher();
   ensureRunsChip();
@@ -1156,27 +1153,17 @@ export function mountCoach(entry) {
   return panel.root;
 }
 
-// Swap the whole panel atomically: coach controls and its microphone are absent
-// while interviewing. The editor and its undo history stay mounted.
-function swapInterview(entry, recordId = null) {
-  if (!active || active.slug !== entry.slug) return;
-  const previous = active;
-  const panel = recordId || activeInterview(entry.slug)
-    ? createInterviewPanel(entry, { id: recordId, onBack: () => swapInterview(entry) })
-    : createCoachPanel(entry);
-  previous.dispose();
-  previous.root.replaceWith(panel.root);
-  active = panel;
-  setOpen(true, { focus: false });
-}
+// Opening an interview selects an accordion row inside the existing sidebar.
 window.addEventListener('studio-interview-change', () => {
   const interview = activeInterview();
-  if (!interview || active?.slug !== interview.slug || active.root.classList.contains('ci-panel')) return;
-  stopRun(interview.slug);
-  swapInterview({ slug: interview.slug, title: interview.title });
+  if (!interview || active?.slug !== interview.slug) return;
+  active.openInterview(interview.id || null);
+  setOpen(true, { focus: false });
 });
 window.addEventListener('studio-interview-open', event => {
-  if (active?.slug === event.detail.slug) swapInterview({ slug: event.detail.slug }, event.detail.id);
+  if (active?.slug !== event.detail.slug) return;
+  active.openInterview(event.detail.id);
+  setOpen(true, { focus: false });
 });
 
 /** A new attempt owns a fresh thread even if its panel is temporarily absent. */
@@ -1215,6 +1202,7 @@ export function teardownCoach() {
 // cursor was nowhere and typed a letter the rest of the time — including into the coach's
 // own composer, which is the one place you are guaranteed to be typing.
 onChord('coach', () => { if (active) setOpen(!isOpen()); });
+window.addEventListener('studio:open-coach', () => { if (active) setOpen(true); });
 
 window.addEventListener('hashchange', () => {
   if (!/^#\/p\//.test(location.hash)) teardownCoach();

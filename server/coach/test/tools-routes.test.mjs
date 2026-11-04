@@ -198,7 +198,7 @@ test('the memory upkeep step is never given studio tools', async () => {
   assert.equal(opts.toolSession, undefined);
 });
 
-for (const provider of ['claude', 'codex']) test(`${provider}: recall uses bounded evidence, saves offline and skips upkeep`, async t => {
+for (const provider of ['claude', 'codex']) test(`${provider}: ordinary recall request uses tools and preserves conversation`, async t => {
   const oldToken = process.env.STUDYCRAFT_RECALL_TOKEN;
   const oldBinary = process.env.STUDIO_CODEX_BINARY;
   process.env.STUDYCRAFT_RECALL_TOKEN = '';
@@ -215,10 +215,10 @@ for (const provider of ['claude', 'codex']) test(`${provider}: recall uses bound
   ]);
   const f = await fixture(t, { provider, env: { FAKE_CLAUDE_MODE: 'tools', FAKE_CLAUDE_TOOL_CALLS: calls, FAKE_CODEX_TOOL_CALLS: calls } });
   const events = await stream(await fetch(f.base + '/api/coach/message', { method: 'POST',
-    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'two-sum', kind: 'recall-notes', message: 'Make recall notes' }) }));
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'two-sum', message: 'Make recall notes around this pattern and save them' }) }));
   assert.equal(events.at(-1).event, 'done');
   assert.equal(events.find(e => e.event === 'action' && e.data.tool === 'save_recall_note').data.summary, 'Pending sync');
   const turns = await readTurns({ root: f.root, slug: 'two-sum' });
-  assert.equal(turns.at(-1).kind, 'recall-notes');
-  assert.equal(await f.coach.coachSessions.read('two-sum'), null);
+  assert.equal(turns.at(-1).kind, 'question');
+  assert.ok((await f.coach.coachSessions.read('two-sum'))?.sessionId);
 });

@@ -24,6 +24,30 @@ test('serializes concurrent requests and preserves queue order', async () => {
   worker.close();
 });
 
+test('final work jumps ahead of queued previews and preview metadata is sent', async () => {
+  const binary = await fakeWorker(`
+    process.stdin.setEncoding('utf8'); let b=''; process.stdin.on('data', c => { b += c; let i; while((i=b.indexOf('\\n'))>=0) { const x=JSON.parse(b.slice(0,i)); b=b.slice(i+1); setTimeout(() => process.stdout.write(JSON.stringify({text:x.input+':'+x.preview})+'\\n'), x.input==='active'?20:0); } });
+  `);
+  const worker = new AsrWorker(binary, 1000);
+  const active = worker.run('active');
+  const preview = worker.run('preview', { preview: true });
+  const final = worker.run('final');
+  assert.equal((await active).result.text, 'active:false');
+  assert.equal((await final).result.text, 'final:false');
+  assert.equal((await preview).result.text, 'preview:true');
+  worker.close();
+});
+
+test('queued preview cancellation never reaches worker', async () => {
+  const binary = await fakeWorker(`process.stdin.setEncoding('utf8'); process.stdin.on('data', c => { const x=JSON.parse(c); process.stdout.write(JSON.stringify({text:x.input})+'\\n'); });`);
+  const worker = new AsrWorker(binary, 1000);
+  const active = worker.run('active'); const controller = new AbortController();
+  const cancelled = worker.run('preview', { preview: true, signal: controller.signal }); controller.abort();
+  assert.equal((await cancelled).error.kind, 'cancelled');
+  assert.equal((await active).result.text, 'active');
+  worker.close();
+});
+
 test('restarts after a crash and serves queued work', async () => {
   const binary = await fakeWorker(`
     process.stdin.setEncoding('utf8'); let b=''; process.stdin.on('data', c => { b += c; const i=b.indexOf('\\n'); if(i<0)return; const x=JSON.parse(b.slice(0,i)); if(x.input==='crash') process.exit(7); process.stdout.write(JSON.stringify({text:x.input})+'\\n'); });
@@ -72,4 +96,16 @@ test('missing binary fails cleanly', async () => {
   assert.equal((await active).error.kind, 'shutdown');
   assert.equal((await queued).error.kind, 'shutdown');
   assert.equal(worker.child, null);
+});
+
+test('cancelled active decoding settles after native completion so its temp file can be released', async () => {
+  const binary = await fakeWorker(`process.stdin.setEncoding('utf8'); process.stdin.on('data', c => { const x=JSON.parse(c); setTimeout(()=>process.stdout.write(JSON.stringify({text:x.input})+'\\n'),40); });`);
+  const worker = new AsrWorker(binary, 1000), controller = new AbortController();
+  try {
+    const active = worker.run('preview', {preview:true,signal:controller.signal});
+    controller.abort();
+    const next = worker.run('final');
+    assert.equal((await active).error.kind, 'cancelled');
+    assert.equal((await next).result.text, 'final');
+  } finally { worker.close(); }
 });

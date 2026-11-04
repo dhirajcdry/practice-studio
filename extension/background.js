@@ -16,10 +16,29 @@
 const LEETCODE = 'https://leetcode.com';
 const TAB_LOAD_MS = 25000;
 const POLL_CEILING_MS = 55000;
+const POLL_MS = 1000;
+// Deadlines the worker keeps itself. A frozen or throttled tab runs no timers, so a
+// timeout set inside the page cannot be relied on to ever fire.
+const SCRIPT_MS = 30000;
+const PING_MS = 3000;
+const LOOKUP_MS = 20000;
+const POST_MS = 20000;
+const CHECK_MS = 12000;
+const DETAILS_MS = 15000;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const inFlight = new Set();
 const detailsInFlight = new Set();
+
+// Reloading or updating the extension cuts off the bridge in Studio tabs that are already
+// open, so put a fresh one in each. Without this, Submit in such a tab could only say
+// "reload Studio".
+chrome.runtime.onInstalled.addListener(async () => {
+  const tabs = await chrome.tabs.query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] }).catch(() => []);
+  for (const tab of tabs) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['bridge.js'] }).catch(() => {});
+  }
+});
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'studio-submit') return;
@@ -50,7 +69,7 @@ async function submit({ slug, code, lang }) {
   if (typeof slug !== 'string' || !SLUG.test(slug)) return fail('BAD_REQUEST', 'That submit request did not name a valid problem. Nothing was submitted.');
   if (typeof code !== 'string' || code.trim() === '') return fail('BAD_REQUEST', 'There is no code to submit. Nothing was submitted.');
   if (inFlight.has(slug)) {
-    return fail('SUBMIT_IN_FLIGHT', 'A submission for this problem is already being judged. Wait for it to finish. Nothing was sent twice.');
+    return fail('SUBMIT_IN_FLIGHT', 'Studio Connector is still handling an earlier request for this problem. This does not confirm that LeetCode received it. No additional submission was sent.');
   }
   inFlight.add(slug);
   let tab = null;
@@ -68,15 +87,23 @@ async function submit({ slug, code, lang }) {
       return fail('JUDGE_UNREACHABLE', 'A LeetCode tab could not be opened in time. Check your connection, then submit again. Nothing was submitted.');
     }
 
-    const sent = await inTab(tab.id, pageSubmit, [slug, code, lang === 'python3' ? lang : 'python3', csrf.value]);
+    const language = lang === 'python3' ? lang : 'python3';
+    // The lookup sends nothing, so a lookup that never answers is safely not_sent.
+    const found = await inTab(tab.id, pageSubmit, [slug, code, language, csrf.value, null], LOOKUP_MS);
+    if (!found) {
+      return fail('JUDGE_UNREACHABLE', 'The LeetCode tab did not answer while Studio looked the problem up. Nothing was submitted. Submit again.');
+    }
+    if (!found.ok) return found;
+
+    const sent = await inTab(tab.id, pageSubmit, [slug, code, language, csrf.value, found.questionId], POST_MS);
     if (!sent) {
-      return fail('CONNECTOR_ERROR', 'Studio Connector could not run inside the LeetCode tab. Check your submissions on LeetCode before sending another.', { submissionState: 'unknown' });
+      return fail('CONNECTOR_ERROR', 'The LeetCode tab stopped answering while sending. Check your submissions on LeetCode before sending another.', { submissionState: 'unknown' });
     }
     if (!sent.ok) return sent;
 
-    const judged = await inTab(tab.id, pagePoll, [sent.submissionId, csrf.value, POLL_CEILING_MS]);
+    const judged = await pollVerdict(tab.id, sent.submissionId, csrf.value);
     if (judged?.ok && judged.check?.state === 'SUCCESS') {
-      const read = await inTab(tab.id, pageDetails, [sent.submissionId, csrf.value]);
+      const read = await inTab(tab.id, pageDetails, [sent.submissionId, csrf.value], DETAILS_MS);
       judged.details = read?.details ?? null;
       if (!read?.ok) judged.detailsError = read?.detailsError || 'Submission details could not be read.';
     }
@@ -92,11 +119,19 @@ async function submit({ slug, code, lang }) {
   }
 }
 
-/** An open, loaded leetcode.com tab, or a new background one on the problem page. */
+/**
+ * A leetcode.com tab that actually runs scripts: an open one (this problem's first) that
+ * answers a ping, or else a new background one on the problem page. A tab left in the
+ * background gets frozen by the browser, and a script sent into it never comes back, so
+ * being loaded is not enough.
+ */
 async function leetcodeTab(slug) {
   const open = await chrome.tabs.query({ url: `${LEETCODE}/*` });
-  const ready = open.find((t) => !t.discarded && t.status === 'complete');
-  if (ready) return { id: ready.id, created: false };
+  const ready = open.filter((t) => !t.discarded && !t.frozen && t.status === 'complete');
+  ready.sort((a, b) => Number((b.url || '').includes(`/problems/${slug}/`)) - Number((a.url || '').includes(`/problems/${slug}/`)));
+  for (const t of ready.slice(0, 2)) {
+    if (await inTab(t.id, () => true, [], PING_MS)) return { id: t.id, created: false };
+  }
 
   const created = await chrome.tabs.create({ url: `${LEETCODE}/problems/${slug}/`, active: false });
   const loaded = await new Promise((resolve) => {
@@ -113,15 +148,44 @@ async function leetcodeTab(slug) {
     chrome.tabs.remove(created.id).catch(() => {});
     return null;
   }
+  if (!(await inTab(created.id, () => true, [], PING_MS))) {
+    chrome.tabs.remove(created.id).catch(() => {});
+    return null;
+  }
   return { id: created.id, created: true };
 }
 
-async function inTab(tabId, func, args) {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Run `func` in the tab. Null when it cannot run, or has not answered within `ms`. */
+async function inTab(tabId, func, args, ms = SCRIPT_MS) {
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve(null), ms); });
+  const run = chrome.scripting.executeScript({ target: { tabId }, func, args })
+    .then(([frame]) => frame?.result ?? null, () => null);
   try {
-    const [frame] = await chrome.scripting.executeScript({ target: { tabId }, func, args });
-    return frame?.result ?? null;
-  } catch {
-    return null;
+    return await Promise.race([run, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Poll /check/ once a second, from the worker so the tab's throttled timers don't set the pace. Never resubmits. */
+async function pollVerdict(tabId, submissionId, csrf, ceilingMs = POLL_CEILING_MS) {
+  const link = `${LEETCODE}/submissions/detail/${submissionId}/`;
+  const stuck = (code, message) => ({ ok: false, code, message, submissionState: 'submitted', submissionId });
+  const started = Date.now();
+  for (;;) {
+    await sleep(POLL_MS);
+    // A dropped or unanswered poll is not a verdict; the ceiling below still applies.
+    const check = await inTab(tabId, pageCheck, [submissionId, csrf], CHECK_MS);
+    if (check?.state === 'SUCCESS') return { ok: true, submissionId, check };
+    if (check?.state === 'FAILURE') {
+      return stuck('JUDGE_UNREACHABLE', `LeetCode's judge reported an internal failure instead of a verdict. The submission exists: ${link}`);
+    }
+    if (Date.now() - started >= ceilingMs) {
+      return stuck('JUDGE_TIMEOUT', `LeetCode had not finished judging after ${Math.round(ceilingMs / 1000)} seconds. Submission ${submissionId} is real: ${link}. Do not submit again.`);
+    }
   }
 }
 
@@ -288,8 +352,11 @@ function whenLoaded(tabId, fresh) {
 
 /* ===== Everything below runs inside the leetcode.com tab and must be self-contained. ===== */
 
-/** Look up the internal question id, then send exactly one POST to /submit/. */
-async function pageSubmit(slug, code, lang, csrf) {
+/**
+ * Without `questionId`, look up the internal question id and send nothing. With it, send
+ * exactly one POST to /submit/. Two calls, so the worker knows which step went quiet.
+ */
+async function pageSubmit(slug, code, lang, csrf, questionId) {
   const headers = { 'content-type': 'application/json', accept: 'application/json', 'x-csrftoken': csrf, 'x-requested-with': 'XMLHttpRequest' };
   const notSent = (code, message, extra = {}) => ({ ok: false, code, message, submissionState: 'not_sent', ...extra });
 
@@ -316,9 +383,11 @@ async function pageSubmit(slug, code, lang, csrf) {
   }
 
   let res;
+  if (questionId) return post();
+  const lookupSignal = AbortSignal.timeout(15000);
   try {
     res = await fetch(`${location.origin}/graphql/`, {
-      method: 'POST', headers, credentials: 'include',
+      method: 'POST', headers, credentials: 'include', signal: lookupSignal,
       body: JSON.stringify({
         operationName: 'questionData',
         variables: { titleSlug: slug },
@@ -331,57 +400,44 @@ async function pageSubmit(slug, code, lang, csrf) {
   const lookupProblem = await problem(res, false);
   if (lookupProblem) return lookupProblem;
   const lookup = await res.json().catch(() => null);
-  const questionId = String(lookup?.data?.question?.questionId ?? '');
-  if (!/^[1-9][0-9]*$/.test(questionId)) {
+  if (lookupSignal.aborted) return notSent('JUDGE_UNREACHABLE', 'The LeetCode problem lookup timed out. Nothing was submitted.');
+  const found = String(lookup?.data?.question?.questionId ?? '');
+  if (!/^[1-9][0-9]*$/.test(found)) {
     return notSent('PROBLEM_NOT_FOUND', `LeetCode does not know a problem called "${slug}". Nothing was submitted.`);
   }
+  return { ok: true, questionId: found };
 
   // === the one and only POST /submit/ ===
-  try {
-    res = await fetch(`${location.origin}/problems/${slug}/submit/`, {
-      method: 'POST', headers, credentials: 'include',
-      body: JSON.stringify({ lang, question_id: questionId, typed_code: code, test_mode: false, judge_type: 'large' }),
-    });
-  } catch {
-    return notSent('JUDGE_UNREACHABLE', 'The connection dropped while sending. Check your submissions on LeetCode before sending another.', { submissionState: 'unknown' });
+  async function post() {
+    try {
+      res = await fetch(`${location.origin}/problems/${slug}/submit/`, {
+        method: 'POST', headers, credentials: 'include', signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({ lang, question_id: questionId, typed_code: code, test_mode: false, judge_type: 'large' }),
+      });
+    } catch {
+      return notSent('JUDGE_UNREACHABLE', 'The connection dropped while sending. Check your submissions on LeetCode before sending another.', { submissionState: 'unknown' });
+    }
+    const submitProblem = await problem(res, true);
+    if (submitProblem) return submitProblem;
+    const body = await res.json().catch(() => null);
+    const submissionId = body?.submission_id;
+    if (submissionId === undefined || submissionId === null || submissionId === '') {
+      return notSent('JUDGE_UNREACHABLE', 'LeetCode answered but did not return a submission id. Check your submissions on LeetCode before sending another.', { submissionState: 'unknown' });
+    }
+    return { ok: true, submissionId, questionId };
   }
-  const submitProblem = await problem(res, true);
-  if (submitProblem) return submitProblem;
-  const body = await res.json().catch(() => null);
-  const submissionId = body?.submission_id;
-  if (submissionId === undefined || submissionId === null || submissionId === '') {
-    return notSent('JUDGE_UNREACHABLE', 'LeetCode answered but did not return a submission id. Check your submissions on LeetCode before sending another.', { submissionState: 'unknown' });
-  }
-  return { ok: true, submissionId, questionId };
 }
 
-/** Poll /check/ once a second until judging finishes, with a hard ceiling. Never resubmits. */
-async function pagePoll(submissionId, csrf, ceilingMs) {
-  const url = `${location.origin}/submissions/detail/${submissionId}/check/`;
-  const link = `${location.origin}/submissions/detail/${submissionId}/`;
-  const stuck = (code, message) => ({ ok: false, code, message, submissionState: 'submitted', submissionId });
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const started = Date.now();
-
-  await sleep(1000);
-  for (;;) {
-    let check = null;
-    try {
-      const res = await fetch(url, {
-        credentials: 'include',
-        headers: { accept: 'application/json', 'x-csrftoken': csrf, 'x-requested-with': 'XMLHttpRequest' },
-      });
-      if ((res.headers.get('content-type') || '').includes('json')) check = await res.json();
-    } catch { /* one dropped poll is not a verdict; the ceiling below still applies */ }
-
-    if (check?.state === 'SUCCESS') return { ok: true, submissionId, check };
-    if (check?.state === 'FAILURE') {
-      return stuck('JUDGE_UNREACHABLE', `LeetCode's judge reported an internal failure instead of a verdict. The submission exists: ${link}`);
-    }
-    if (Date.now() - started >= ceilingMs) {
-      return stuck('JUDGE_TIMEOUT', `LeetCode had not finished judging after ${Math.round(ceilingMs / 1000)} seconds. Submission ${submissionId} is real: ${link}. Do not submit again.`);
-    }
-    await sleep(1000);
+/** One read of /check/: its JSON, or null. Read-only. */
+async function pageCheck(submissionId, csrf) {
+  try {
+    const res = await fetch(`${location.origin}/submissions/detail/${submissionId}/check/`, {
+      credentials: 'include', signal: AbortSignal.timeout(10000),
+      headers: { accept: 'application/json', 'x-csrftoken': csrf, 'x-requested-with': 'XMLHttpRequest' },
+    });
+    return (res.headers.get('content-type') || '').includes('json') ? await res.json() : null;
+  } catch {
+    return null;
   }
 }
 
@@ -603,7 +659,7 @@ async function fetchDetails({ submissionId, slug }) {
     const csrf = await chrome.cookies.get({ url: LEETCODE, name: 'csrftoken' });
     if (!csrf?.value) return { ok: false, details: null, message: 'Sign in on LeetCode to read details.' };
     tab = await leetcodeTab(slug);
-    const result = tab && await inTab(tab.id, pageDetails, [submissionId, csrf.value]);
+    const result = tab && await inTab(tab.id, pageDetails, [submissionId, csrf.value], DETAILS_MS);
     return result || { ok: false, details: null, message: 'The details could not be read.' };
   } catch {
     return { ok: false, details: null, message: 'The details could not be read.' };

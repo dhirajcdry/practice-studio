@@ -1,5 +1,6 @@
 import {el, replace} from './dom.js';
 import {progressFor, summarizeProgress} from './catalog-progress.js';
+import {createSelect} from './ui/select.js';
 
 // Composed ports and gutters keep paths out of the topic cards.
 const POSITIONS = {
@@ -44,7 +45,7 @@ export function renderRoadmap(data,state,handlers) {
  ]));
  const chips=el('div',{class:'roadmap-chips'},[
   ...[['neetcode250','NeetCode 250'],['neetcode150','NeetCode 150'],['blind75','Blind 75']].map(([id,label])=>el('button',{type:'button',class:'chip','aria-pressed':String(state.list===id),text:label,onclick:()=>handlers.onList(id)})),
-  el('label',{class:'roadmap-level'},['Level ',el('select',{'aria-label':'Problem difficulty',onchange:e=>handlers.onDifficulty(e.target.value)},['all','Easy','Medium','Hard'].map(level=>el('option',{value:level,selected:state.difficulty===level,text:level==='all'?'All levels':level})))]),
+  el('label',{class:'roadmap-level'},['Level ',createSelect({label:'Problem difficulty',value:state.difficulty,options:['all','Easy','Medium','Hard'].map(level=>[level,level==='all'?'All levels':level]),onChange:e=>handlers.onDifficulty(e.target.value)})]),
  ]);root.append(chips);
  if(state.query)root.append(el('p',{class:'roadmap-query'},[`Matching “${state.query}”`,el('button',{type:'button',text:'Clear filters',onclick:handlers.onClear})]));
  const graph=el('section',{class:'roadmap-graph-col','aria-label':'Study roadmap graph'});
@@ -80,7 +81,7 @@ export function renderRoadmap(data,state,handlers) {
   panel.hidden=!pattern;if(!pattern)return;
   const items=problemsFor(data,pattern,state);const summary=summarizeProgress(items,state.progress);
   replace(panel,[el('div',{class:'detail-heading'},[el('span',{class:'detail-kicker',text:'Your next session'}),el('h2',{text:pattern}),el('p',{class:'detail-summary',text:state.progress?`${items.length} problems · ${summary.accepted} accepted · ${summary.localPass} passed locally`:`${items.length} problems · Saved progress ${state.progressState==='loading'?'loading…':'unavailable'}`}),el('button',{type:'button',class:'detail-close icon-btn','aria-label':'Close pattern inspector',text:'×',onclick:()=>select(null)})]),
-   el('div',{class:'detail-list'},items.length?items.map(p=>{const record=progressFor(p.slug,state.progress);return el('button',{class:'detail-problem hover-surface hover-divided',type:'button',onclick:()=>handlers.onOpen(p.slug)},[el('span',{class:'status status-'+record.status,title:record.label,'aria-label':record.label,text:statusIcon(record.status)}),el('span',{class:'detail-title',text:p.title}),el('span',{class:'detail-diff '+p.difficulty.toLowerCase(),text:p.difficulty}),el('span',{class:'open-arrow',text:'↗'})]);}):el('p',{text:'No matching problems.'})),
+   el('div',{class:'detail-list'},items.length?items.map(p=>{const record=progressFor(p.slug,state.progress);return el('button',{class:'detail-problem ui-inset hover-surface hover-divided',type:'button',onclick:()=>handlers.onOpen(p.slug)},[el('span',{class:'status status-'+record.status,title:record.label,'aria-label':record.label,text:statusIcon(record.status)}),el('span',{class:'detail-title',text:p.title}),el('span',{class:'detail-diff '+p.difficulty.toLowerCase(),text:p.difficulty}),el('span',{class:'open-arrow',text:'↗'})]);}):el('p',{text:'No matching problems.'})),
   ]);
   if(reveal){announcement.textContent=`${pattern}: ${items.length} problems. Problem inspector opened below the map.`;requestAnimationFrame(()=>panel.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches||document.body.classList.contains('motion-off')?'auto':'smooth'}));}
  }

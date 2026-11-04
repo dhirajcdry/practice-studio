@@ -3,9 +3,18 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import fs from 'node:fs';
-import { buildArgs, runCoachTurn, listCodexModels, MCP_UNCONFIRMED, MCP_STARTED } from '../codex-cli.mjs';
+import { buildArgs, runCoachTurn, listCodexModels, normalizeUsage, MCP_UNCONFIRMED, MCP_STARTED } from '../codex-cli.mjs';
 
-function fake({ finalOnly = false, failure = false, hang = false, approval = false, mcpPages = null, mcpError = false, mcpStarts = false } = {}) {
+test('usage normalization keeps cumulative maxima and unknown counters null', () => {
+  let u = normalizeUsage({ usage: { input_tokens: 10, output_tokens: 2 } });
+  assert.deepEqual(u, { inputTokens: 10, cacheReadInputTokens: null, cacheCreationInputTokens: null, outputTokens: 2, reasoningOutputTokens:null });
+  u = normalizeUsage({ tokenUsage: { input_tokens: 10, output_tokens: 5 } }, u);
+  assert.equal(u.inputTokens, 10); assert.equal(u.outputTokens, 5);
+  u = normalizeUsage({ usage: { input_tokens: 8, output_tokens: 3 } }, u);
+  assert.equal(u.inputTokens, 10); assert.equal(u.outputTokens, 5);
+});
+
+function fake({ finalOnly = false, failure = false, hang = false, approval = false, mcpPages = null, mcpError = false, mcpStarts = false, usageEvents=[] } = {}) {
   const requests = []; let child, opts, args;
   const emit = message => child.stdout.write(JSON.stringify(message) + '\n');
   const spawnFn = (_binary, argv, options) => {
@@ -30,6 +39,7 @@ function fake({ finalOnly = false, failure = false, hang = false, approval = fal
             : m.method === 'turn/start' ? { turn: { id: 'turn' } } : {};
           emit({ id: m.id, result });
           if (m.method === 'turn/start') {
+            for(const params of usageEvents)emit({method:'thread/tokenUsage/updated',params});
             if (approval) emit({ id: 90, method: 'item/commandExecution/requestApproval', params: {} });
             emit({ method: 'item/agentMessage/delta', params: { threadId: 'other-thread', delta: 'wrong' } });
             if (!finalOnly && !failure) emit({ method: 'item/agentMessage/delta', params: { threadId: 'thread', delta: 'reply' } });
@@ -44,6 +54,16 @@ function fake({ finalOnly = false, failure = false, hang = false, approval = fal
   };
   return { spawnFn, requests, get options() { return opts; }, get args() { return args; }, get child() { return child; } };
 }
+
+test('actual nested Codex usage totals include tool continuations once and ignore foreign threads',async()=>{
+  const event=(threadId,inputTokens,outputTokens)=>({threadId,turnId:'turn',tokenUsage:{total:{inputTokens,cachedInputTokens:20,cacheWriteInputTokens:30,outputTokens,reasoningOutputTokens:4},last:{inputTokens:9,outputTokens:1}}});
+  for(const failure of [false,true]){
+    const f=fake({failure,usageEvents:[event('thread',100,5),event('thread',150,10),event('thread',150,10),event('other-thread',999999,8888)]});
+    let usage;
+    const turn=runCoachTurn({prompt:'q',spawnFn:f.spawnFn,onUsage:value=>{usage=value;}});await turn.exited;
+    assert.deepEqual(usage,{inputTokens:150,cacheReadInputTokens:20,cacheCreationInputTokens:30,outputTokens:10,reasoningOutputTokens:4});
+  }
+});
 
 test('streaming and final-only replies complete once, reuse local grouping, and release process/temp files', async () => {
   for (const finalOnly of [false, true]) {
@@ -91,6 +111,17 @@ test('CLI flags restrict tools and use ChatGPT sign-in', () => {
   for (const name of ['shell_tool', 'apps', 'plugins', 'multi_agent', 'hooks']) assert.ok(args.includes(`--disable ${name}`));
 });
 
+test('coach research enables live web at both boundaries while shell, images and MCP stay disabled', async () => {
+  const f=fake({mcpPages:{first:{data:[{name:'unsafe-user-server'}],nextCursor:null}}}),errors=[];
+  const h=runCoachTurn({prompt:'Check public documentation',webResearch:true,spawnFn:f.spawnFn,onError:e=>errors.push(e)});
+  await h.exited;assert.deepEqual(errors,[]);
+  assert.match(f.args.join(' '),/web_search="live"/);
+  assert.ok(f.args.join(' ').includes('--disable shell_tool'));assert.ok(f.args.join(' ').includes('--disable image_generation'));
+  const thread=f.requests.find(r=>r.method==='thread/start').params;
+  assert.equal(thread.config.web_search,'live');assert.equal(thread.config.mcp_servers['unsafe-user-server'].enabled,false);
+  assert.match(thread.baseInstructions,/Native web research is available/);assert.equal(thread.sandbox,'read-only');
+});
+
 test('chat never makes pictures, and only the visuals job may', () => {
   assert.ok(buildArgs().join(' ').includes('--disable image_generation'));
   const image = buildArgs({ imageGeneration: true }).join(' ');
@@ -124,4 +155,81 @@ test('a tool server that starts anyway stops the turn and the process', async ()
   await h.exited;
   assert.equal(error, MCP_STARTED); assert.deepEqual(tokens, []);
   assert.equal(f.child.exitCode, 0);
+});
+
+test('persistent clients resume native state, rebind tools, reject stale calls, and report current usage', async () => {
+  const os = await import('node:os'), path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-native-test-'));
+  try {
+    const requestsFile = path.join(dir, 'requests');
+    const stateFile = path.join(dir, 'state');
+    const resultsFile = path.join(dir, 'results');
+    const toolSpecs = [{ name: 'get_state', description: 'Current workspace', inputSchema: { type: 'object' } }];
+    let nativeId;
+    for (let i = 0; i < 2; i++) {
+      const calls = [], sessions = [], turns = [], compactions = [], usage = [], tokens = [], errors = [], done = [];
+      let persisted = false, doneYet = false;
+      const h = runCoachTurn({
+        binary: new URL('./bin/fake-codex.mjs', import.meta.url).pathname,
+        persistentSession: true, resumeSessionId: nativeId, prompt: 'prompt-' + i,
+        env: { ...process.env, FAKE_CODEX_STATE_FILE: stateFile, FAKE_CODEX_REQUESTS_FILE: requestsFile,
+          FAKE_CODEX_MCP_NAMES: 'unsafe-browser,unsafe-shell', FAKE_CODEX_TOOL_RESULTS_FILE: resultsFile,
+          FAKE_CODEX_TOOL_CALLS: JSON.stringify([
+            { tool: 'get_state', threadId: 'other-thread' }, { tool: 'get_state', turnId: 'old-turn' }, { tool: 'get_state' },
+          ]) },
+        toolSpecs, toolSession: { async call(name) { calls.push(name); return { ok: true, text: 'callback-' + i }; } },
+        async onSessionId(id) {
+          sessions.push(id);
+          await new Promise(resolve => setTimeout(resolve, 10));
+          const log = fs.readFileSync(requestsFile, 'utf8').trim().split('\n').map(JSON.parse);
+          assert.equal(log.filter(r => r.method === 'turn/start').length, i);
+          persisted = true;
+        },
+        onTurnId: id => turns.push(id), onCompaction: meta => compactions.push(meta),
+        onUsage: u => usage.push(u), onToken: t => { assert.ok(persisted); assert.equal(doneYet, false); tokens.push(t); },
+        onDone: id => { doneYet = true; done.push(id); }, onError: e => errors.push(e),
+      });
+      await h.exited;
+      assert.deepEqual(errors, []); assert.deepEqual(sessions, ['fixture-thread']);
+      assert.deepEqual(done, sessions); nativeId = done[0];
+      assert.deepEqual(turns, ['fixture-turn-' + (i + 1)]);
+      assert.deepEqual(calls, ['get_state']); assert.equal(compactions.length, 1);
+      assert.equal(usage.at(-1).inputTokens, 150); assert.equal(usage.at(-1).outputTokens, 15);
+      assert.match(tokens.join(''), new RegExp('callback-' + i)); assert.equal(tokens[0], 'Early token. ');
+    }
+    const state = JSON.parse(fs.readFileSync(stateFile));
+    assert.deepEqual(state.prompts, ['prompt-0', 'prompt-1']);
+    assert.equal(state.dynamicTools[0].name, 'get_state');
+    const log = fs.readFileSync(requestsFile, 'utf8').trim().split('\n').map(JSON.parse);
+    const threads = log.filter(r => /^thread\/(start|resume)$/.test(r.method));
+    assert.deepEqual(threads.map(r => r.method), ['thread/start', 'thread/resume']);
+    assert.equal(threads[0].params.ephemeral, false);
+    for (const { params } of threads) {
+      assert.equal(params.approvalPolicy, 'never'); assert.equal(params.sandbox, 'read-only');
+      assert.deepEqual(params.config.tools, {});
+      assert.deepEqual(params.config.mcp_servers, { 'unsafe-browser': { enabled: false }, 'unsafe-shell': { enabled: false } });
+      assert.equal(params.config.web_search, 'disabled');
+    }
+    const results = fs.readFileSync(resultsFile, 'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(results.filter(r => r.error).length, 4);
+    let error;
+    const failed = runCoachTurn({ binary: new URL('./bin/fake-codex.mjs', import.meta.url).pathname,
+      persistentSession: true, resumeSessionId: 'missing', prompt: 'never sent',
+      env: { ...process.env, FAKE_CODEX_STATE_FILE: stateFile, FAKE_CODEX_REQUESTS_FILE: requestsFile },
+      onError: e => { error = e; } });
+    await failed.exited; assert.match(error, /Session not found/);
+    assert.equal(JSON.parse(fs.readFileSync(stateFile)).prompts.length, 2);
+    const after = fs.readFileSync(requestsFile, 'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(after.filter(r => r.method === 'thread/start').length, 1);
+    assert.equal(after.filter(r => r.method === 'turn/start').length, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('session persistence failure prevents starting a Codex turn', async () => {
+  const f = fake(); let error;
+  const h = runCoachTurn({ prompt: 'q', persistentSession: true, spawnFn: f.spawnFn,
+    onSessionId: async () => { throw new Error('storage failed'); }, onError: e => { error = e; } });
+  await h.exited;
+  assert.match(error, /storage failed/);
+  assert.equal(f.requests.some(r => r.method === 'turn/start'), false);
 });

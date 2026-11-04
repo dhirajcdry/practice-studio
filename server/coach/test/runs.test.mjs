@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { routes, CoachService } from '../routes.mjs';
 import { CoachRuns, RETAIN_MS } from '../runs.mjs';
 import { HttpError, sendError } from '../../http-util.mjs';
+import { problemDir } from '../../storage-layout.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'bin', 'fake-claude.mjs');
@@ -215,7 +216,7 @@ test('a browser that disconnects mid-answer does NOT stop the coach', async (t) 
   assert.equal(done.status, 'done', 'a disconnect was treated as a stop');
 
   // And the transcript has the WHOLE answer, not the half that had arrived.
-  const raw = await fsp.readFile(path.join(f.root, 'problems', 'two-sum', 'chats.jsonl'), 'utf8');
+  const raw = await fsp.readFile(path.join(problemDir(f.root, 'two-sum'), 'chats.jsonl'), 'utf8');
   const turn = JSON.parse(raw.trim().split('\n').at(-1));
   assert.match(turn.answer, /first half. second half\./);
   assert.notEqual(turn.stopped, true, 'filed as stopped, when nobody stopped anything');
@@ -275,7 +276,7 @@ test('Stop is now the only thing that ends a turn early, and it keeps what arriv
   });
   assert.equal(gone?.status, 'stopped');
 
-  const raw = await fsp.readFile(path.join(f.root, 'problems', 'two-sum', 'chats.jsonl'), 'utf8');
+  const raw = await fsp.readFile(path.join(problemDir(f.root, 'two-sum'), 'chats.jsonl'), 'utf8');
   const turn = JSON.parse(raw.trim().split('\n').at(-1));
   assert.equal(turn.stopped, true, 'a real stop IS a stop, and says so');
   assert.ok(turn.answer.length > 0, 'the half you got is the half worth keeping');

@@ -2,6 +2,7 @@ import { submissionPresentation, firstDifference } from './submission-presentati
 import { lineDiff } from './line-diff.js';
 import { createSubmissions } from './submissions.js';
 import { submissionFixtures } from './submission-fixtures.js';
+import { submitViaConnector } from './leetcode-bridge.js';
 // Self-tests for the two pieces of code that handle untrusted input.
 // Open web/tests.html in a browser; the headline turns green when everything passes.
 // This lives in its own module file on purpose: the payloads below contain literal
@@ -742,9 +743,9 @@ check('a judge timeout is not a verdict and still links to the submission it gav
 })());
 check('a judge timeout offers no retry — the first submission is still live',
   subRendered(shapeSubmitResult({ ok: false, kind: 'judge_timeout' }, 'two-sum')).querySelector('.act') === null);
-check('a submission already in flight is not dressed up as a failure', (() => {
+check('an active connector request does not claim the code reached LeetCode', (() => {
   const s = shapeSubmitResult({ ok: false, kind: 'in_flight' }, 'two-sum');
-  return s.tone === '' && s.retry === false && /nothing was duplicated/i.test(s.message);
+  return s.tone === '' && s.retry === false && /does not confirm that LeetCode received it/i.test(s.message) && /this press sent nothing/i.test(s.message);
 })());
 check('a rate limit never offers a retry button either',
   subRendered(shapeSubmitResult({ ok: false, kind: 'rate_limited' }, 'two-sum')).querySelector('.act') === null);
@@ -1037,11 +1038,11 @@ check('chat tools hide and close their popover, then return on Chat', (() => {
   setChatToolsVisible(...nodes, true);
   return hidden && !nodes[0].hidden && !nodes[1].hidden && nodes[2].hidden;
 })());
-check('idle state has neither text nor dot; meaningful states show both', (() => {
+check('idle and duplicate thinking states are hidden; other active states show both', (() => {
   const label = document.createElement('span'), dot = document.createElement('span');
   return ['', 'Ready', 'Not available', 'Thinking', 'Asking', 'Listening', 'Transcribing', 'Attempt in progress', 'Stopping'].every((text, index) => {
     setCoachState(label, dot, text);
-    return index < 3 ? label.hidden && dot.hidden && !label.textContent
+    return index < 4 ? label.hidden && dot.hidden && !label.textContent
       : !label.hidden && !dot.hidden && label.textContent === text;
   });
 })());
@@ -1096,6 +1097,25 @@ check('short expected and actual outputs highlight their differing characters', 
   return [...panel.root.querySelectorAll('.failure-comparison mark')]
     .map(mark => mark.textContent).join(',') === '2,3';
 })());
+
+/* ---------------- connector bridge: a stale bridge after an extension reload ---------------- */
+group('Connector bridge');
+async function bridged(answers) {
+  const fake = (event) => {
+    if (event.data?.source !== 'studio-page') return;
+    for (const [ms, result] of answers) {
+      setTimeout(() => window.postMessage({ source: 'studio-connector', id: event.data.id, result }, location.origin), ms);
+    }
+  };
+  window.addEventListener('message', fake);
+  try { return await submitViaConnector({ slug: 'car-fleet', code: 'pass' }); }
+  finally { window.removeEventListener('message', fake); }
+}
+const goneAnswer = { ok: false, code: 'CONNECTOR_GONE', submissionState: 'not_sent', message: 'reloaded' };
+const liveAnswer = { ok: true, submissionId: 7, check: { state: 'SUCCESS' } };
+check('a live bridge answering after a stale one wins', (await bridged([[0, goneAnswer], [200, liveAnswer]])).submissionId === 7);
+check('a stale bridge alone still reports that nothing was sent',
+  (await bridged([[0, goneAnswer]])).code === 'CONNECTOR_GONE');
 
 const headline = document.getElementById('headline');
 headline.textContent = fail === 0 ? `All ${pass} tests pass` : `${fail} of ${pass + fail} tests FAILED`;

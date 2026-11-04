@@ -279,7 +279,7 @@ function caseRow(shapedCase, index, forceOpen) {
 }
 
 function block({ tone = '', head, lines = [], traceback = null, actions = [] }) {
-  return el('div', { class: 'state ' + tone }, [
+  return el('div', { class: 'state ui-inset ui-inset--roomy ' + tone }, [
     el('h3', { text: head }),
     ...lines.filter(Boolean).map(line => el('p', { text: line })),
     traceback ? el('pre', { class: 'rr-trace', text: traceback }) : null,
@@ -492,13 +492,14 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
       const out = el('div', { class: 'rr-tutorbody' });
       renderRunResult(out, shaped);
       replace(body, [
-        el('div', { class: 'rr-tutor' }, [
-          el('span', { class: 'rr-tutor-mark', text: 'Run by your tutor' }),
-          el('span', { class: 'rr-tutor-what', text: 'your saved solution.py · not counted as your run' }),
-          el('span', { class: 'spacer' }),
+        el('div', { class: 'rr-tutor ui-inset ui-cluster' }, [
+          el('div', { class: 'rr-tutor-copy ui-cluster-content ui-stack' }, [
+            el('span', { class: 'rr-tutor-mark', text: 'Run by your tutor' }),
+            el('span', { class: 'rr-tutor-what', text: 'Your saved solution.py · not counted as your run' }),
+          ]),
           last
             ? el('button', {
-              class: 'ws-mini', type: 'button', text: 'Show your last run',
+              class: 'btn btn--secondary btn--sm', type: 'button', text: 'Show your last run',
               onclick: () => renderRunResult(body, last, { onRerun: run }),
             })
             : null,

@@ -1,6 +1,6 @@
 // Pure interview accounting. Times are active milliseconds since the wall-clock start.
 export const PHASES = Object.freeze(['clarify', 'approach', 'code', 'test', 'followup']);
-export function newState({ slug, minutes = 45, mode = 'typed', startedAt = Date.now() }) {
+export function newState({ slug, minutes = 45, mode = 'voice', startedAt = Date.now() }) {
   if (![30, 45, 60].includes(minutes)) throw Error('Choose 30, 45, or 60 minutes.');
   if (!['typed', 'voice'].includes(mode)) throw Error('Choose Typed or Voice.');
   return { slug, minutes, mode, startedAt, pausedAt: null, pausedMs: 0, endedAt: null,

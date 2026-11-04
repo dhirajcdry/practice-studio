@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readCoachChoice, saveCoachChoice, validChoice } from '../provider.mjs';
+import { readCoachChoice, saveCoachChoice, validChoice, runProviderTurn } from '../provider.mjs';
 import { readCoachMemory, withConversation } from '../provider-context.mjs';
 import { buildArgs } from '../claude-cli.mjs';
 import { CoachSessionStore } from '../sessions.mjs';
@@ -39,6 +39,31 @@ test('Claude model flag preserves permission restrictions', () => {
   assert.ok(args.includes('--strict-mcp-config'));
   assert.equal(args[args.indexOf('--permission-mode') + 1], 'manual');
   assert.ok(!args.includes('--dangerously-skip-permissions'));
+});
+test('Claude receives nonempty post-tool completion guidance without losing live output', async t => {
+  const root = await workspace(t), argsFile = path.join(root, 'args.json');
+  let answer = '', done = false;
+  const errors = [];
+  const turn = runProviderTurn({
+    root, choice: { provider: 'claude', model: 'opus' },
+    binary: new URL('./bin/fake-claude.mjs', import.meta.url).pathname,
+    prompt: 'Give feedback.', systemPrompt: 'Keep feedback grounded.',
+    env: { ...process.env, FAKE_CLAUDE_MODE: 'tool-echo', FAKE_CLAUDE_ARGS_FILE: argsFile },
+    onToken: text => { answer += text; }, onDone: () => { done = true; },
+    onError: error => errors.push(error),
+  });
+  await turn.exited;
+  assert.deepEqual(errors, []); assert.equal(done, true);
+  const args = JSON.parse(await fs.readFile(argsFile, 'utf8'));
+  const system = args[args.indexOf('--system-prompt') + 1];
+  assert.match(system, /Keep feedback grounded/);
+  assert.match(system, /Every assistant text block is immediately shown/);
+  assert.match(system, /After a tool returns, finish with nonempty user-visible text/);
+  assert.match(system, /Your previous response had no visible output/);
+  assert.match(system, /without repeating or paraphrasing the answer/);
+  assert.match(system, /If a tool failed, briefly report the failure instead/);
+  assert.match(system, /If no answer has been delivered yet, provide the answer normally/);
+  assert.equal(answer, 'Yes, size matters. Each package is small, medium or large.');
 });
 test('provider metadata is additive and legacy chat/session records remain readable', async t => {
   const root = await workspace(t), store = new CoachSessionStore({ root });

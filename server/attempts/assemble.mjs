@@ -29,6 +29,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { problemDir } from '../storage-layout.mjs';
 
 /** Speech is captured in 120s chunks; anything under this is a fragment, not a pause. */
 export const CHUNK_SECONDS = 120;
@@ -87,7 +88,7 @@ export function msFromSnapshotName(name) {
 
 /** Read every sitting on one clock; attempts can span navigation and idle gaps. */
 export async function readProblemSessionEvents(root, slug) {
-  const dir = path.join(root, 'problems', slug, 'sessions');
+  const dir = path.join(problemDir(root, slug), 'sessions');
   const events = [];
   for (const name of (await listDir(dir)).filter((n) => n.endsWith('.jsonl'))) {
     events.push(...await readJsonl(path.join(dir, name)));
@@ -105,7 +106,7 @@ export async function readProblemSessionEvents(root, slug) {
  * weaker claim than an identifier.
  */
 export async function gatherAttempt({ root, slug, attemptId }) {
-  const dir = path.join(root, 'problems', slug);
+  const dir = problemDir(root, slug);
   const all = await readProblemSessionEvents(root, slug);
   const started = all.find((e) => e.type === 'attempt_started' && e.data?.attemptId === attemptId);
   if (!started) return null;
@@ -175,7 +176,7 @@ export async function gatherAttempt({ root, slug, attemptId }) {
 
 /** Every attempt this problem has a start event for, oldest first. */
 export async function listAttempts(root, slug) {
-  const dir = path.join(root, 'problems', slug, 'sessions');
+  const dir = path.join(problemDir(root, slug), 'sessions');
   const ids = [];
   for (const name of (await listDir(dir)).filter((n) => n.endsWith('.jsonl'))) {
     for (const event of await readJsonl(path.join(dir, name))) {
