@@ -11,8 +11,8 @@
 // Three rules shape the code below.
 //
 //   1. **One submission per explicit press.** No retry loop, no auto-retry after
-//      a rate limit, no shortcut that could fire it by accident, nothing
-//      automatic on load. `submit()` is only ever called from a click.
+//      a rate limit, nothing automatic on load. `submit()` is only ever called
+//      from a click or ⌘↵ in the workspace (editor.js, check-submit-keys.mjs).
 //   2. **The judge's own words.** A non-accepted verdict is printed verbatim —
 //      its status string, its last executed input, its expected and actual
 //      output, its compile or runtime error. Nothing here paraphrases a verdict
@@ -648,7 +648,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
     });
   }
 
-  /** The only path that submits. Called from a click, never from anything else. */
+  /** The only path that submits. Called from a click or ⌘↵ in the workspace, nothing else. */
   async function submit() {
     if (busy) return;
     const mismatch = targetOf(getTarget()) === 'neetcode' ? getMismatch() : null;

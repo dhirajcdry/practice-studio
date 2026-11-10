@@ -131,6 +131,10 @@ for a problem, open it while online to cache its statement and starter code, the
 your solution and press **Run**. Local results cover the cases shown; they are separate
 from an accepted LeetCode submission.
 
+Choose **Amazon interview** in Problem explorer or Roadmap for the 18-question
+[practice collection](docs/AMAZON-INTERVIEW.md): 17 reported-prompt mappings plus
+Game of Life, added for personal practice. Source links and variation notes stay with each item.
+
 | Optional piece | Setup |
 | --- | --- |
 | AI coach and system-design interviewer | Install and sign in to the Claude Code CLI; `claude` must be on your `PATH`. Coaching uses its configured online service. |
@@ -199,6 +203,10 @@ Use **Coach model** in the coach header or **Settings → Coach** to choose Code
 or Claude Code. The choice also applies to system-design interviews and persists in
 your local workspace. Codex defaults to Astra (`gpt-6-astra`) and uses `codex login`
 with ChatGPT; Claude uses its own CLI sign-in. Each provider's limits still apply.
+For models that advertise reasoning levels, choose the model, then choose its
+thinking level in the same compact picker. Choices come from the installed catalog
+and persist for future turns. **Model default** clears the override; Back or Escape
+cancel without saving.
 Codex preserves chat history and reads supplied notes; automatic note edits are
 currently available only through Claude. No API key is required for the Codex path.
 

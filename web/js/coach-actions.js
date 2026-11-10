@@ -27,6 +27,7 @@ import { icon } from './ui/icon.js';
 
 /** The studio tools, by their bare names. MCP delivers them as `mcp__studio__<name>`. */
 export const STUDIO_TOOLS = Object.freeze([
+  'start_notes_session', 'notes_session_status',
   'read_coaching_instructions', 'update_coaching_instructions',
   'read_memory', 'update_memory', 'edit_board', 'get_submissions', 'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
   'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note', 'get_recall_evidence', 'save_recall_note',
@@ -117,7 +118,8 @@ export function receiptSummary(action) {
     case 'clear_marks': return 'Cleared its marks';
     case 'edit_code': return args.why ? `Edited your code: ${args.why}` : 'Edited your code';
     case 'open_panel': return `Opened the ${args.panel === 'article' ? 'article' : 'solution'}`;
-    case 'save_note': return 'Saved a note';
+    case 'save_note': return 'Updated tutor memory';
+    case 'update_memory': return 'Updated tutor memory';
     case 'get_submissions': return 'Read your submissions';
     case 'get_state': return 'Looked at your cases and runs';
     default: return String(action?.tool || 'Did something');

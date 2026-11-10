@@ -150,6 +150,10 @@ test('the prompt states what the coach may and may not write', async () => {
   assert.ok(prompt.includes('problems/two-sum/NOTES.md'));
   assert.ok(prompt.includes('no background model turn follows your answer'));
   assert.ok(prompt.includes('Do not write or edit any file'));
+  const toolPrompt = buildPrompt({ context, message: 'make notes', tools: true }).prompt;
+  assert.ok(toolPrompt.includes('start_notes_session / notes_session_status'));
+  assert.ok(toolPrompt.includes('private coaching observations and memory, not learner study documents'));
+  assert.ok(!toolPrompt.includes('get_recall_evidence / save_recall_note'));
   for (const old of ['Read it before you answer', 'Files you may write this turn', 'update your memory as usual']) assert.ok(!prompt.includes(old));
   for (const forbidden of ['`meta.json`', '`index.json`', '`solution.py`', '`sessions/`']) {
     assert.ok(prompt.includes(forbidden), `prompt does not forbid ${forbidden}`);

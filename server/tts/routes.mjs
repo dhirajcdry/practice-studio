@@ -24,8 +24,10 @@ export function createTtsRoutes(worker = ttsWorker) {
       try { body = JSON.parse(Buffer.concat(chunks)); } catch { throw new HttpError(400, 'BAD_REQUEST', 'Expected JSON.'); }
       if (!body || typeof body.text !== 'string') throw new HttpError(400, 'BAD_REQUEST', 'text must be a string.');
       const text = body.text.trim();
-      if (!text || text.length > 500 || /[\r\n]/.test(text) || /[.!?]\s+\S/.test(text.replace(/\b(?:e\.g|i\.e|Mr|Mrs|Dr)\./g, ''))) {
-        throw new HttpError(400, 'BAD_REQUEST', 'Provide one sentence of up to 500 characters.');
+      // A bounded phrase can include a short opener and the following sentence.
+      // Rejecting that grouping would silently switch the client to system speech.
+      if (!text || text.length > 500 || /[\r\n]/.test(text)) {
+        throw new HttpError(400, 'BAD_REQUEST', 'Provide a single-line speech phrase of up to 500 characters.');
       }
       const voice = body.voice ?? 'af_heart', speed = body.speed ?? 1;
       if (typeof voice !== 'string' || !/^[ab][fm]_[a-z]+$/.test(voice)) throw new HttpError(400, 'BAD_REQUEST', 'Unknown English voice.');

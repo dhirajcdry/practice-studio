@@ -52,12 +52,13 @@ function stablePrefix(text, final) {
 }
 
 /** One instance per reply. cancel() also cancels its speaker; finish() is idempotent. */
-export function createSpeechStream(speaker, { delayMs = 320, minWords = 5, maxChars = 400,
-  setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+// Each request becomes a separate WAV. Wait for a complete sentence so a timer
+// cannot cut its delivery in half; join tiny openers to the following sentence.
+// Only unusually long text needs a bounded clause/word split before completion.
+export function createSpeechStream(speaker, { maxChars = 400 } = {}) {
   const limit = Math.max(40, Math.min(500, maxChars));
-  let source = '', consumed = 0, timer = null, closed = false;
-  function clear() { if (timer !== null) clearTimer(timer); timer = null; }
-  function flush(final = false, timed = false) {
+  let source = '', consumed = 0, closed = false;
+  function flush(final = false) {
     // Keep the last raw word until its delimiter arrives: it could still become a
     // URL, an abbreviation, or just the first half of a longer word.
     const safe = stablePrefix(final ? source : source.replace(/\S+$/, ''), final);
@@ -66,21 +67,31 @@ export function createSpeechStream(speaker, { delayMs = 320, minWords = 5, maxCh
     const emit = n => {
       const piece = tail.slice(0, n).trim();
       consumed += n; tail = tail.slice(n);
-      if (piece) speaker.say(piece);
+      // This is already a bounded speech phrase. Splitting it again at punctuation
+      // would undo the grouping of short openers such as "Good question."
+      if (piece) speaker.say(piece, { splitSentences: false });
     };
     while (tail.trim()) {
-      const sentence = splitForSpeech(tail + ' ').ready[0];
-      if (sentence && sentence.length <= limit) {
-        emit(tail.indexOf(sentence) + sentence.length); continue;
+      const sentences = splitForSpeech(tail + ' ').ready;
+      let sentenceEnd = 0;
+      for (const sentence of sentences) {
+        const end = tail.indexOf(sentence, sentenceEnd) + sentence.length;
+        if (end > limit) break;
+        sentenceEnd = end;
+        if (tail.slice(0, end).trim().split(/\s+/).length >= 4) break;
+      }
+      if (sentenceEnd && (tail.slice(0, sentenceEnd).trim().split(/\s+/).length >= 4
+        || (final && !tail.slice(sentenceEnd).trim()))) {
+        emit(sentenceEnd); continue;
       }
       if (tail.length > limit) {
         const window = tail.slice(0, limit + 1);
         const clause = [...window.matchAll(/[,;:]\s+/g)].at(-1);
-        let cut = clause && window.slice(0, clause.index).trim().split(/\s+/).length >= minWords ? clause.index + 1 : window.lastIndexOf(' ');
+        let cut = clause && clause.index >= limit / 2 ? clause.index + 1 : window.lastIndexOf(' ');
         if (cut <= 0) cut = limit;
         emit(cut); continue;
       }
-      if (final || (timed && tail.trim().split(/\s+/).length >= minWords)) emit(tail.length);
+      if (final) emit(tail.length);
       break;
     }
   }
@@ -88,10 +99,8 @@ export function createSpeechStream(speaker, { delayMs = 320, minWords = 5, maxCh
     push(delta) {
       if (closed) return;
       source += String(delta ?? ''); flush();
-      // Do not restart the latency budget on every arriving token.
-      if (timer === null) timer = setTimer(() => { timer = null; if (!closed) flush(false, true); }, delayMs);
     },
-    finish() { if (closed) return; clear(); flush(true); closed = true; },
-    cancel() { closed = true; clear(); speaker.cancel(); },
+    finish() { if (closed) return; flush(true); closed = true; },
+    cancel() { closed = true; speaker.cancel(); },
   };
 }

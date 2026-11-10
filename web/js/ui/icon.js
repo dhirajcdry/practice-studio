@@ -6,6 +6,7 @@ const PATHS = {
   pause: 'M9 5v14 M15 5v14',
   play: 'M7 5v14l12-7L7 5Z',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z M5 11a7 7 0 0 0 14 0 M12 18v3',
+  'mic-off': 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z M5 11a7 7 0 0 0 14 0 M12 18v3 M4 4l16 16',
   keyboard: 'M3 7h18v10H3z M7 11h.01 M11 11h.01 M15 11h.01 M8 14h8',
   back: 'M15 6l-6 6 6 6',
   chevron: 'M6 9l6 6 6-6',

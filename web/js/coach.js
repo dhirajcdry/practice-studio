@@ -1,4 +1,5 @@
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
+import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { activeInterview } from './interview.js';
 import { createInterviews } from './interviews.js';
 import { readSidebar, saveSidebar } from './sidebar-state.js';
@@ -108,7 +109,8 @@ const STUDIO_TOOL_LINES = {
   get_state: 'Looked at your cases and runs',
   add_case: 'Added a case', update_case: 'Changed a case', remove_case: 'Removed a case',
   run_code: 'Ran your code', mark_lines: 'Marked lines', clear_marks: 'Cleared its marks',
-  edit_code: 'Edited your code', open_panel: 'Opened a reference panel', save_note: 'Saved a note',
+  edit_code: 'Edited your code', open_panel: 'Opened a reference panel', save_note: 'Updated tutor memory',
+  read_memory: 'Read tutor memory', update_memory: 'Updated tutor memory',
 };
 
 /** "Read" + "problems/two-sum/NOTES.md" → one quiet line, never a wall of JSON. */
@@ -204,7 +206,7 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
   const why = status === 'failed' ? String(action.message || '').trim() : '';
   const row = el('div', { class: `cmsg-receipt ui-inset ui-inset--compact ui-cluster is-${status}`, 'data-tool': tool }, [
     el('span', { class: 'cr-glyph', 'aria-hidden': 'true', text: receiptGlyph(tool) }),
-    action.url && /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(action.url)
+    action.url && (/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(action.url) || tool === 'start_notes_session' && /^https:\/\/[a-z0-9.-]+\.ts\.net(?::\d+)?\//i.test(action.url))
       ? el('a', { class: 'cr-text', text: summary, href: action.url, target: '_blank', rel: 'noopener noreferrer' })
       : el('span', { class: 'cr-text', text: summary }),
     status === 'pending' ? el('span', { class: 'cr-state', text: 'working…' }) : null,
@@ -220,6 +222,21 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
     why ? el('div', { class: 'cr-why', text: why }) : null,
     ui.error ? el('div', { class: 'cr-why', text: ui.error }) : null,
   ]);
+  if (tool === 'start_notes_session' && action.writerSessionId) {
+    const refresh = async () => {
+      if (!row.isConnected) return;
+      try {
+        const response = await fetch(`/api/coach/writer/${encodeURIComponent(action.writerSessionId)}`);
+        if (response.ok) {
+          const result = await response.json();
+          row.querySelector('.cr-text').textContent = result.stage ? `Writer · ${result.stage}` : 'Open Writer session';
+          if (['done','error','stopped','interrupted','failed'].includes(result.status)) return;
+        }
+      } catch { /* Retain the link; no new work is started by status reads. */ }
+      setTimeout(refresh, 15000);
+    };
+    setTimeout(refresh, 1000);
+  }
   if (tool === 'save_recall_note' && action.revisionId && !action.url) {
     const refresh = async () => {
       if (!row.isConnected) return;
@@ -943,7 +960,13 @@ export function createCoachPanel(entry) {
   // exactly as it would in the editor. This is where that map stops.
   root.addEventListener('keydown', (event) => {
     event.stopPropagation();
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); submit(); return; }
+    // Interviews and submissions remain inside this root, alongside a hidden Chat
+    // composer. Only a gesture in the visible Chat composer can send its draft.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === 'Enter'
+      && selectedTab === 'chat' && !composer.hidden && composer.contains(event.target) && !hasOpenOverlay()) {
+      if (claimActionKey(event)) submit();
+      return;
+    }
     if (event.key === 'Escape' && !pastChats.hidden) {
       closeHistory();
       event.preventDefault();

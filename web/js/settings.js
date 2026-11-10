@@ -7,10 +7,11 @@ import { openContextInspector } from './context-inspector.js';
 import { el, replace } from './dom.js';
 import { openCoachingInstructions } from './coaching-instructions.js';
 import { createSpeaker } from './speech.js';
-import { NATURAL_VOICES, voicePreferences, saveVoicePreferences } from './speech-preferences.js';
+import { NATURAL_VOICES, voicePreferences, saveVoicePreferences, autoSendEnabled, saveAutoSend } from './speech-preferences.js';
 import { CHORDS } from './shortcuts.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { createSelect } from './ui/select.js';
+import { REPORT_DIFFICULTIES, reportDifficultyLabel } from './interview-format.js';
 
 const STORE_KEY = 'studio.settings.v1';
 
@@ -151,6 +152,52 @@ function keyRow(keys, what) {
   ]);
 }
 
+async function reportDifficultyRequest(options) {
+  const response = await fetch('/api/report/difficulty', { ...options, signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw Error(`Report difficulty request failed: ${response.status}`);
+  const { difficulty } = await response.json();
+  if (!reportDifficultyLabel(difficulty)) throw Error('Unknown report difficulty');
+  return difficulty;
+}
+
+// Settled before a reopened panel reads, so it can't show the value being replaced.
+let difficultySave = Promise.resolve();
+
+/** Reports are written on the server, so this choice lives there, not in localStorage. */
+function createReportDifficultyControl() {
+  let selected = null, loaded = false, saving = false;
+  const notice = el('div', { class: 'coach-model-notice set-notice', role: 'status', hidden: true });
+  const say = (text) => { notice.textContent = text; notice.hidden = !text; };
+  const buttons = REPORT_DIFFICULTIES.map(({ id, label }) => el('button', {
+    type: 'button', text: label, disabled: true, 'aria-pressed': 'false', dataset: { difficulty: id },
+    onclick: () => { void choose(id); },
+  }));
+  const seg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Report difficulty', 'aria-busy': 'true' }, buttons);
+  // The buttons stay mounted so keyboard focus survives a save.
+  const paint = () => {
+    seg.setAttribute('aria-busy', String(!loaded || saving));
+    for (const button of buttons) {
+      button.disabled = !loaded;
+      button.setAttribute('aria-pressed', String(button.dataset.difficulty === selected));
+    }
+  };
+  async function choose(id) {
+    if (!loaded || saving || id === selected) return;
+    const previous = selected;
+    selected = id; saving = true; say(''); paint();
+    const save = reportDifficultyRequest({ method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ difficulty: id }) });
+    difficultySave = save.catch(() => {});
+    try { selected = await save; } catch {
+      selected = previous;
+      say(`Could not save. Reports will still use ${reportDifficultyLabel(previous)}.`);
+    }
+    saving = false; paint();
+  }
+  difficultySave.then(() => reportDifficultyRequest({})).then((difficulty) => { selected = difficulty; loaded = true; paint(); })
+    .catch(() => { say('Could not load the report difficulty. Reopen Settings to retry.'); });
+  return { seg, notice };
+}
+
 let voicePreview = null;
 let coachPicker = null;
 let panel = null;
@@ -240,9 +287,16 @@ export function openSettings() {
     el('label', { class: 'set-row' }, [el('span', { class: 'set-rowname', text: 'Speech output' }), voiceEngine]),
     el('div', { class: 'set-row' }, [voicePicker, preview]),
     el('label', { class: 'set-row' }, [el('span', { class: 'set-rowname', text: 'Speed' }), voiceSpeed, speedValue]),
+    el('label', { class: 'set-row' }, [
+      el('span', { class: 'set-rowname', text: 'Send when I pause' }),
+      el('span', { class: 'spacer' }),
+      el('input', { type: 'checkbox', class: 'set-check', 'aria-label': 'Send when I pause',
+        ...(autoSendEnabled() ? { checked: 'checked' } : {}), onchange: event => saveAutoSend(event.target.checked) }),
+    ]),
     el('p', { class: 'set-cardblurb', text: 'Natural voices run on this Mac. If unavailable, the system voice is used.' }),
   ]);
   coachPicker = createCoachModelPicker();
+  const reportDifficulty = createReportDifficultyControl();
   panel = el('aside', { class: 'settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings' }, [
     el('div', { class: 'set-head' }, [
       el('span', { class: 'mono dim', text: 'Settings' }),
@@ -257,6 +311,8 @@ export function openSettings() {
       el('p', { class: 'set-cardblurb', text: 'Applies to new replies across all three disciplines. Each provider uses its own sign-in and limits. Coaches maintain notes through shared Studio tools.' }),
       el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
       el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
+      el('div', { class: 'mono dim set-label', text: 'Report difficulty' }), reportDifficulty.seg, reportDifficulty.notice,
+      el('p', { class: 'set-cardblurb', text: "Used when a mock's report is written. Beginner grades a step below the Amazon SDE II bar while you're learning; Amazon SDE II grades at the full bar. Saved reports keep the difficulty they were graded at." }),
       voiceSection,
       el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
       el('div', { class: 'mono dim set-label', text: 'Theme' }),

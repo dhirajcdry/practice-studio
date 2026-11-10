@@ -1,3 +1,4 @@
+import { createMockTimeControls, mockTimeReading } from './ui/mock-time.js';
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
 import { bindBoardTools, showWorkspaceAction } from './workspace-tools.js';
 import { loadExcalidraw } from './whiteboard.js';
@@ -29,6 +30,8 @@ import { createInterviewMode } from './interview-mode.js';
 // instead of quietly charging you for the night.
 
 import { el, replace } from './dom.js';
+import { conversationText, setConversationText, appendConversationText } from './ui/conversation.js';
+import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { installPaneResizer } from './ui/split-pane.js';
 import { openReport } from './interview-report.js';
 import { streamInterviewRequest } from './interview-transport.js';
@@ -36,11 +39,11 @@ import { onSettingsChange } from './settings.js';
 import { createSelect } from './ui/select.js';
 import { when } from './history.js';
 import { createSpeechStream } from './speech-stream.js';
-import { createVoicePanel } from './ui/voice-panel.js';
+import { createVoicePanel, answerModeSwitch, micToggle, paintMicToggle, replayButton, interviewerSilentNote } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
 import { createSpeaker, turnDecision, speechSupported } from './speech.js';
 import { designDraftNotice } from './design-draft.js';
-import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft } from './drafts.js';
+import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft, remainingDraft } from './drafts.js';
 
 const PHASES = [
   ['requirements', 'Requirements'],
@@ -55,6 +58,8 @@ const PHASES = [
 const PHASE_LABELS = new Map(PHASES);
 
 /** Read one SSE turn, calling back as tokens arrive. Mirrors the coach's stream. */
+const STEP_IN_AFTER_MS = 60000, STEP_IN_COOLDOWN_MS = 120000;
+
 async function streamPost(url, body, { onToken, onEvent }) {
   return streamInterviewRequest(url, body, (name, payload) => {
     if (name === 'token') onToken(payload.text ?? '');
@@ -118,6 +123,7 @@ function replayTurns(turns, entry, log) {
       continue;
     }
     if (turn.said) entry('a', turn.said);
+    if (['interviewer_silent', 'suppressed_filler'].includes(turn.kind) && turn.requestId && log) log.append(interviewerSilentNote());
     if (turn.asked) entry('q', turn.asked);
   }
 }
@@ -281,7 +287,7 @@ function mountReview(host, data, { onBack }) {
   const entry = (kind, text) => {
     log.append(el('div', { class: `dz-entry dz-${kind}` }, [
       el('span', { class: 'mono dz-who', text: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief' }),
-      el('div', { class: 'dz-body', text }),
+      conversationText(text, { className: 'dz-body', user: kind === 'a' }),
     ]));
   };
 
@@ -401,7 +407,15 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   /* ---- the transcript column ---- */
 
   const log = el('div', { class: 'dz-log ui-pane-scroll ui-inset', tabindex: '0', 'aria-label': 'Interview transcript' });
-  const clock = el('span', { class: 'mono dz-clock', text: '00:00' });
+  let pausedElapsed = 0;
+  const clock = el('span', { class: 'mono dz-clock' });
+  const timeControls = createMockTimeControls({ clock, extend: async change => {
+    const result = await callJson('/api/design/extend', { interviewId, ...change });
+    if (!destroyed) { minutes = result.state.minutes; paintClock(); }
+  }, onChange: () => { if (!destroyed) { paintDraft(); if (!timeControls.saving) void modeControl.flush(); } } });
+  function paintTimeControls() {
+    timeControls.update({ disabled: !interviewId || busy || timeControls.saving || draining || modeControl.saving || changingPause || finishing, hidden: debriefed });
+  }
   const pauseButton = el('button', { class: 'dz-pause', type: 'button', text: 'Pause',
     title: 'Pause the timer and microphone without ending your interview', disabled: true, onclick: () => togglePause() });
   const phaseBar = el('div', { class: 'dz-phases', role: 'group', 'aria-label': 'Interview phase' }, PHASES.map(([id, label]) =>
@@ -423,7 +437,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     class: 'dz-input', rows: '3', placeholder: 'Explain your approach, assumptions, and trade-offs…',
     'aria-label': 'Your answer',
     onkeydown: (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); answer(); }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.altKey && !hasOpenOverlay() && claimActionKey(e)) answer();
     },
   });
   let pendingRequest = null;
@@ -439,52 +453,34 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   const micSlot = el('span', { class: 'dz-mic' });
   const status = el('div', { class: 'dz-status mono', role: 'status', text: '' });
 
-  // The switch. Always visible, because the moment you want it is the moment voice
-  // has just mangled a term and you need to type the correction — hunting for a
-  // control then is worse than one control that is always there.
-  const modeSwitch = el('div', { class: 'dz-modes', role: 'radiogroup', 'aria-label': 'How you answer' }, [
-    ['type', 'Type'], ['voice', 'Voice'],
-  ].map(([id, label]) => el('button', {
-    class: 'dz-mode', type: 'button', role: 'radio', dataset: { mode: id },
-    'aria-checked': String(id === 'type'), tabindex: id === 'type' ? '0' : '-1', text: label,
-    onkeydown: (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const next = event.key === 'Home' ? 'type' : event.key === 'End' ? 'voice' : id === 'type' ? 'voice' : 'type';
-      const button = modeSwitch.querySelector(`[data-mode="${next}"]`);
-      if (!button.disabled) { setMode(next); button.focus(); }
-    },
-    onclick: () => setMode(id),
-  })));
+  // Always a click away, because the moment you want it is the moment voice has
+  // just mangled a term. For a single word, clicking the words is quicker still.
+  const typeLink = answerModeSwitch('type', setMode);
+  const voiceLink = answerModeSwitch('voice', setMode);
 
-  // Interrupting has to be deliberate: the microphone is shut while it talks, so it
-  // cannot hear you cut in. One key is the honest substitute for talking over someone.
+  // Speaking cuts playback immediately; the button and Escape remain alternatives.
   const skipButton = el('button', {
-    class: 'dz-skip', type: 'button', hidden: true, text: 'Interrupt',
+    class: 'btn btn--secondary btn--sm', type: 'button', hidden: true, text: 'Interrupt · Esc',
     title: 'Stop the interviewer and start answering (Esc)',
     onclick: () => interrupt(),
   });
 
   /** What voice mode shows instead of a text box: state, and your words as they land. */
-  let captureState = 'idle', partialWords = '', speechInterrupted = false;
-  const voiceView = createVoicePanel({ onEdit: () => setMode('type'), onReplay: text => { pendingDraft = Boolean(input.value.trim()) || Boolean(voice?.isBusy()); closeMic(); speaker?.say(text); } });
+  let captureState = 'idle', partialWords = '', speechInterrupted = false, replyFailed = false;
+  let candidateLoud = false, phrasesPending = 0, lastActivity = Date.now(), lastStepIn = 0;
+  const voiceView = createVoicePanel({ onEdit: () => setMode('type') });
+  const replayReply = text => {
+    if (busy || speaker?.speaking) return;
+    speaker?.say(text);
+  };
   let pendingDraft = Boolean(input.value.trim());
-  const draftTail = el('span', { class: 'dz-draft-tail' });
-  const draftSend = el('button', { class: 'dz-send', type: 'button', text: 'Send', onclick: () => answer() });
-  const draftNotice = el('div', { class: 'dz-draft dz-cut mono', hidden: true }, [
-    draftTail, draftSend,
-    el('button', { class: 'dz-skip', type: 'button', text: 'Edit', onclick: () => setMode('type') }),
-  ]);
-  function paintDraft() {
-    const notice = designDraftNotice({ text: input.value, pending: pendingDraft, mode });
-    draftNotice.hidden = !notice.visible;
-    draftTail.textContent = notice.tail;
-    draftTail.title = input.value.trim();
-    micSlot.hidden = isVoice() && !draftNotice.hidden;
-    // The mic is held shut until the recovered answer is sent or edited, so going quiet sends nothing.
-    voiceView.update({state: captureState, draft: input.value, partial: partialWords, busy, sending: draining, paused});
-    draftSend.disabled = busy || draining || modeControl.saving || paused || changingPause;
-  }
+  let micMuted = false;
+  const micButton = micToggle(() => {
+    if (voice?.isRecording?.()) { micMuted = true; closeMic(); }
+    else { micMuted = false; openMic(); }
+    paintVoice();
+  });
+  function paintDraft() { paintVoice(); paintTimeControls(); }
   let writingDraft = false;
   const unwatchDraft = interviewId ? watchDraft('design:' + interviewId, text => {
     if (writingDraft) return;
@@ -493,64 +489,61 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     if (pendingDraft && isVoice()) closeMic();
     paintDraft();
   }) : () => {};
-  const sendVoice = el('button', {class:'btn btn--primary btn--sm',type:'button',text:'Send',onclick:()=>answer()});
-  const voicePanel = el('div', { class: 'dz-voice', hidden: true }, [
-    voiceView.root,
-    draftNotice,
-    el('div', { class: 'dz-vrow' }, [
-      skipButton,
-      el('span', { class: 'spacer' }),
-      sendVoice,
-    ]),
-  ]);
+  const sendVoice = composerSend(el('button', { class: 'dz-voice-send', type: 'button', onclick: () => answer() }));
+  const voicePanel = el('div', { class: 'dz-voice', hidden: true }, [voiceView.root]);
+  voiceView.setControls({ lead: [micButton], actions: [skipButton, typeLink, sendVoice] });
   const typePanel = el('div', { class: 'dz-type' }, input);
   const typeActions = el('div', { class: 'dz-actions' }, [micSlot, status, sendButton]);
 
-  function paintVoice(label, tone = '') {
-    voiceView.update({state: captureState, draft: input.value, partial: partialWords, busy, sending: draining, paused});
-    sendVoice.hidden = !input.value.trim() || pendingDraft || Boolean(speaker?.speaking);
-    sendVoice.disabled = busy || draining || paused || modeControl.pending;
+  function paintVoice() {
+    // The microphone is held shut until a recovered answer is sent or edited, so going quiet sends nothing.
+    const held = designDraftNotice({ text: input.value, pending: pendingDraft, mode }).visible;
+    const speaking = Boolean(speaker?.speaking);
+    voiceView.update({state: captureState, draft: input.value, partial: partialWords, busy, sending: draining, paused, held: held || (replyFailed && Boolean(input.value.trim()))});
+    sendVoice.hidden = speaking || !(input.value.trim() || partialWords);
+    sendVoice.disabled = busy || timeControls.saving || draining || paused || changingPause || modeControl.saving || modeControl.pending;
+    typeLink.hidden = speaking;
+    micButton.disabled = held || !voice || draining || paused || changingPause || modeControl.pending || captureState === 'working';
+    paintMicToggle(micButton, captureState === 'recording');
   }
 
   function setMode(next) { if (!debriefed && !destroyed && !finishing) modeControl.select(next === 'voice' ? 'voice' : 'typed'); }
   function applyMode(next) {
     mode = next === 'voice' ? 'voice' : 'type';
-    for (const b of modeSwitch.querySelectorAll('.dz-mode')) {
-      b.setAttribute('aria-checked', String(b.dataset.mode === mode));
-      b.tabIndex = b.dataset.mode === mode ? 0 : -1;
-    }
+    view.dataset.mode = mode;
+    composer.querySelector('.ui-composer-footer').hidden = isVoice();
     typePanel.hidden = isVoice(); typeActions.hidden = isVoice(); voicePanel.hidden = !isVoice(); inputSize.resize();
+    micMuted = false;
     modeDrain = Boolean(voice?.isBusy());
     pendingDraft = pendingDraft || Boolean(input.value.trim()) || modeDrain;
     voice?.stop(); speechInterrupted = true; replySpeech?.cancel(); speaker?.cancel();
     paintDraft();
-    if (isVoice()) { voicePanel.append(micSlot); paintVoice(pendingDraft ? 'Unsent answer — send or edit' : 'Microphone off'); }
+    if (isVoice()) { voicePanel.append(micSlot); paintVoice(); }
     else { typeActions.prepend(micSlot); say(''); input.focus(); }
   }
   const modeStatus = el('span', { class: 'dim', role: 'status', hidden: true });
   const modeRetry = el('button', { class: 'btn btn--quiet', text: 'Retry saving mode', hidden: true, onclick: () => modeControl.retry() });
   const modeControl = createInterviewMode({ initial: resumed ? resumed.mode || 'typed' : answerMode,
-    ready: () => Boolean(interviewId) && !busy && !draining && !destroyed && !debriefed && !changingPause,
+    ready: () => Boolean(interviewId) && !busy && !timeControls.saving && !draining && !destroyed && !debriefed && !changingPause,
     save: mode => callJson('/api/design/mode', { interviewId, mode }),
     onSelect: applyMode,
     onStatus: state => {
       modeStatus.hidden = !state.pending; modeStatus.textContent = state.error ? 'Mode changed here; saving failed.' : 'Saving answer mode…';
       modeRetry.hidden = !state.error;
       paintDraft();
-      sendButton.disabled = busy || draining || state.saving || paused || changingPause;
-      doneButton.disabled = busy || draining || state.saving || paused || changingPause || !interviewId;
+      sendButton.disabled = busy || timeControls.saving || draining || state.saving || paused || changingPause;
+      doneButton.disabled = busy || timeControls.saving || draining || state.saving || paused || changingPause || !interviewId;
       if (!state.pending) openMic();
     },
   });
 
   function interrupt() {
-    speechInterrupted = true; replySpeech?.cancel(); speaker?.cancel();
+    micMuted = false; speechInterrupted = true; replySpeech?.cancel(); speaker?.cancel();
     openMic();
   }
 
   function openMic() {
-    if (!isVoice() || !interviewId || modeControl.pending || destroyed || busy || draining || debriefed || paused || changingPause || designDraftNotice({ text: input.value, pending: pendingDraft, mode }).blocksMic) return;
-    if (speaker?.speaking) return;
+    if (micMuted || !isVoice() || !interviewId || modeControl.pending || destroyed || draining || finishing || debriefed || paused || changingPause || designDraftNotice({ text: input.value, pending: pendingDraft, mode }).blocksMic) return;
     void speaker?.prepare();
     try { voice?.start?.(); } catch { /* the button still works */ }
   }
@@ -558,15 +551,17 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   function closeMic() {
     try { if (voice?.isRecording?.()) voice.stop(); } catch { /* noop */ }
   }
-  async function drainMic() {
-    draining = true; closeMic(); paintDraft(); sendButton.disabled = true;
+  async function drainMic({ keepListening = false } = {}) {
+    draining = true; if (!keepListening) closeMic(); paintDraft(); sendButton.disabled = true;
     try {
+      if (keepListening) { await voice?.flush(); return !destroyed; }
       const deadline = Date.now() + 65000;
       while (voice?.isBusy() && !destroyed && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
       if (voice?.isBusy()) { say('Still transcribing your last words. Send again when they appear.'); return false; }
       if (voice?.hasTranscriptionError()) { say('Retry or discard the failed audio before sending.'); return false; }
       return !destroyed;
-    } finally { draining = false; if (!destroyed) { paintDraft(); sendButton.disabled = busy || paused; } }
+    } catch (error) { say(error.message); return false; }
+    finally { draining = false; if (!destroyed) { paintDraft(); sendButton.disabled = busy || paused; } }
   }
   const doneButton = el('button', {
     class: 'dz-done', type: 'button', text: 'Done — debrief me',
@@ -577,9 +572,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
 
   /** One entry in the transcript. Returns the node so tokens can stream into it. */
   function entry(kind, text = '') {
-    const body = el('div', { class: 'dz-body', text });
+    const body = conversationText(text, { className: 'dz-body', user: kind === 'a' });
     const node = el('div', { class: `dz-entry dz-${kind}` }, [
-      el('span', { class: 'mono dz-who', text: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief' }),
+      el('span', { class: 'mono dz-who' }, [kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief', kind === 'q' ? replayButton(() => body.dataset.markdown, replayReply) : null]),
       body,
     ]);
     log.append(node);
@@ -589,18 +584,22 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
 
   /* ---- turns ---- */
 
-  async function runTurn(url, body, { kind = 'q' } = {}) {
-    if (busy || modeControl.saving || destroyed || debriefed || paused || changingPause) return false;
+  async function runTurn(url, body, { kind = 'q', idle = false } = {}) {
+    if (busy || timeControls.saving || modeControl.saving || destroyed || debriefed || paused || changingPause) return false;
     busy = true; speechInterrupted = false; replySpeech = createSpeechStream(speaker);
+    if (!idle) replyFailed = false;
     paintDraft();
     pauseButton.disabled = true;
     practise.disabled = true;
     sendButton.disabled = true;
     doneButton.disabled = true;
-    say('thinking…');
-    if (isVoice()) paintVoice('Thinking…', 'think');
-    const target = entry(kind);
-    let cut = false;
+    if (!idle) say('thinking…');
+    if (isVoice() && !idle) paintVoice('Thinking…', 'think');
+    // An answer may be met with silence, so its bubble waits for words to put in it.
+    const answering = url === '/api/design/turn';
+    let target = answering ? null : entry(kind), silent = false;
+    const reply = () => (target ??= entry(kind));
+    let cut = false, draftConsumed = false;
     let succeeded = false;
     let failed = false;
     try {
@@ -608,8 +607,11 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
         onToken: (text) => {
           if (destroyed) return;
           const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
-          target.textContent = kind === 'd' ? 'Writing your report…' : target.textContent + text;
+          if (kind === 'd') setConversationText(reply(), 'Writing your report…');
+          else appendConversationText(reply(), text);
           if (follow) log.scrollTop = log.scrollHeight;
+          // A reply to earlier words is shown, not spoken over the candidate's new ones.
+          if (answering && !speechInterrupted && (candidateLoud || input.value.trim())) interrupt();
           if (!isVoice() || kind === 'd' || speechInterrupted) return;
           // Speak each sentence as it completes. Waiting for the whole question would
           // add its entire generation time to the silence before the interviewer talks.
@@ -624,13 +626,19 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
             startedAt = Date.parse(payload.startedAt) || Date.now();
             tickClock();
           } else if (name === 'accepted') {
-            voiceView.sent(body.said);
-            if (input.value.trim() === body.said) {
-              input.value = ''; inputSize.resize(); clearDraft('design:' + interviewId); pendingDraft = false; paintDraft();
+            lastActivity = Date.now();
+            if (body.said && !draftConsumed) {
+              draftConsumed = true;
+              input.value = remainingDraft(input.value, body.said); inputSize.resize();
+              writingDraft = true;
+              try { if (input.value) saveDraft('design:' + interviewId, input.value); else clearDraft('design:' + interviewId); }
+              finally { writingDraft = false; }
+              pendingDraft = false; paintDraft();
             }
+            if (answering) openMic();
           } else if (name === 'done') {
-            succeeded = !payload.broke && !payload.stoppedReason;
-            if (kind === 'd' && succeeded) target.textContent = 'Report ready.';
+            succeeded = !payload.broke && !payload.stoppedReason; silent = Boolean(payload.silent);
+            if (kind === 'd' && succeeded) setConversationText(reply(), 'Report ready.');
           } else if (name === 'phase' && PHASE_LABELS.has(payload.phase)) {
             phase = payload.phase; paintPhases();
           } else if (name === 'broke-character') {
@@ -639,32 +647,37 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
             cut = true;
           } else if (name === 'error') {
             failed = true;
-            target.textContent = payload.message;
-            target.closest('.dz-entry')?.classList.add('dz-err');
+            setConversationText(reply(), payload.message);
+            reply().closest('.dz-entry')?.classList.add('dz-err');
           }
         },
       });
       if (cut) {
         const note = el('div', { class: 'dz-cut mono' },
-          target.textContent.trim()
+          reply().textContent.trim()
             ? 'The interviewer started writing your answer, so the turn was cut there. The question above stands.'
             : 'The interviewer started writing your answer, so the turn was cut. Say something and it will ask again.');
-        target.after(note);
+        reply().after(note);
       }
       if (!succeeded && !failed) {
         failed = true;
-        target.closest('.dz-entry')?.classList.add('dz-err');
-        target.textContent += '\nThe connection ended before this turn finished. Your interview is still open.';
+        reply().closest('.dz-entry')?.classList.add('dz-err');
+        appendConversationText(reply(), '\n\nThe connection ended before this turn finished. Your interview is still open.');
       }
-      if (!target.textContent.trim() && !cut) target.textContent = 'No response was received.';
-      if (kind !== 'd' && succeeded) voiceView.reply(target.textContent);
+      if (!silent && !idle && !reply().textContent.trim() && !cut) setConversationText(reply(), 'No response was received.');
+      if (silent && !idle && !destroyed) {
+        const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        log.append(interviewerSilentNote({ live: true }));
+        if (follow) log.scrollTop = log.scrollHeight;
+      }
       if (!destroyed && !speechInterrupted && isVoice() && kind !== 'd') replySpeech.finish();
     } catch (error) {
       replySpeech?.cancel();
       failed = true;
-      target.textContent = error.message;
-      target.closest('.dz-entry')?.classList.add('dz-err');
+      setConversationText(reply(), error.message);
+      reply().closest('.dz-entry')?.classList.add('dz-err');
     } finally {
+      replyFailed = failed;
       busy = false;
       paintDraft();
       sendButton.disabled = false;
@@ -674,12 +687,10 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       void modeControl.flush();
       if (pauseWhenIdle) { pauseWhenIdle = false; if (!paused && !destroyed) togglePause(); }
       say(isVoice() ? (speaker?.speaking ? 'speaking…' : 'listening…') : '');
-      // If it is still talking the speaker's own state change reopens the microphone;
-      // if it never spoke, nothing else will.
-      if (isVoice() && kind !== 'd' && !speaker?.speaking) openMic();
+      if (isVoice() && kind !== 'd') openMic();
     }
     if (succeeded && !failed && body.requestId === pendingRequest?.requestId) rememberRequest(null);
-    if (failed && !destroyed) target.after(el('button', { class: 'btn btn--quiet', text: 'Retry response', onclick: async event => {
+    if (failed && !destroyed) reply().after(el('button', { class: 'btn btn--quiet', text: 'Retry response', onclick: async event => {
       event.currentTarget.disabled = true;
       if (kind === 'd') await finish(); else await runTurn(url, body, { kind });
     } }));
@@ -687,11 +698,10 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   }
 
   async function answer() {
-    if (!interviewId || busy || draining || modeControl.saving || debriefed || destroyed || paused || changingPause) return;
-    if (!(await drainMic())) return;
+    if (!interviewId || busy || timeControls.saving || draining || modeControl.saving || debriefed || destroyed || paused || changingPause) return;
+    if (!(await drainMic({ keepListening: true }))) return;
     await modeControl.flush();
     const said = input.value.trim();
-    if (/^(?:done|i['’]?m done)[.!]?$/i.test(said)) { await finish(); return; }
     const request = pendingRequest?.said === said ? pendingRequest : { said, requestId: crypto.randomUUID() };
     if (said && request !== pendingRequest) entry('a', said);
     rememberRequest(request);
@@ -701,7 +711,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   }
 
   async function finish() {
-    if (!interviewId || busy || draining || modeControl.saving || debriefed || destroyed || paused || changingPause) return;
+    if (!interviewId || busy || timeControls.saving || draining || modeControl.saving || debriefed || destroyed || paused || changingPause) return;
     if (!(await drainMic())) return;
     await modeControl.flush();
     const said = input.value.trim();
@@ -715,6 +725,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     const saved = await callJson(`/api/design/${interviewId}`);
     if (!saved.debriefed) { say('The report did not finish. You can retry.'); return; }
     debriefed = true;
+    view.classList.add('is-complete');
     closeMic();
     speaker?.cancel();
     view.querySelector('.dz-compose').hidden = true;
@@ -725,7 +736,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     doneButton.disabled = false;
     doneButton.onclick = () => showDesignReport(interviewId, log).catch(error => say(error.message));
     await showDesignReport(interviewId, log).catch(error => say(error.message));
-    pauseButton.hidden = true;
+    pauseButton.hidden = true; paintTimeControls();
     if (clockTimer) clearInterval(clockTimer);
   }
 
@@ -735,22 +746,21 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     pauseButton.setAttribute('aria-label', paused ? 'Resume interview' : 'Pause interview');
     pauseButton.setAttribute('aria-pressed', String(paused));
     clock.classList.toggle('paused', paused);
-    clock.title = paused ? 'Interview paused — time away is not counted' : 'Active interview time';
+    paintClock();
     input.disabled = paused;
     sendButton.disabled = paused || busy;
     doneButton.disabled = paused || busy;
-    modeSwitch.querySelectorAll('button').forEach(button => {
-      button.disabled = paused || (button.dataset.mode === 'voice' && (!speechSupported() || !voice));
-    });
+    typeLink.disabled = paused;
+    voiceLink.disabled = paused || !speechSupported() || !voice;
     phaseBar.querySelectorAll('button').forEach(button => { button.disabled = paused; });
     if (voice) voice.root.hidden = paused;
     api?.updateScene({ appState: { viewModeEnabled: paused } });
     say(paused ? 'Paused' : '');
-    if (isVoice() && paused) paintVoice('Paused');
+    if (isVoice()) paintVoice();
   }
 
   async function togglePause() {
-    if (!interviewId || busy || changingPause || destroyed || debriefed) return;
+    if (!interviewId || busy || timeControls.saving || changingPause || destroyed || debriefed) return;
     changingPause = true;
     pauseButton.disabled = true;
     closeMic(); replySpeech?.cancel(); speaker?.cancel();
@@ -758,16 +768,16 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       if (paused) {
         const result = await callJson('/api/design/resume', { interviewId });
         startedAt = Date.parse(result.startedAt);
+        minutes = result.minutes;
         paused = false;
       } else {
         const result = await callJson('/api/design/pause', { interviewId });
         paused = true;
-        const seconds = Math.floor(result.spentMs / 1000);
-        clock.textContent = `${String(Math.floor(seconds / 60)).padStart(2,'0')}:${String(seconds % 60).padStart(2,'0')}`;
+        pausedElapsed = result.spentMs;
       }
       if (!destroyed) paintPaused();
     } catch (error) { say(`Could not ${paused ? 'resume' : 'pause'}: ${error.message}`); }
-    finally { changingPause = false; pauseButton.disabled = false; }
+    finally { changingPause = false; pauseButton.disabled = false; paintTimeControls(); }
     if (!paused) openMic();
   }
 
@@ -780,21 +790,34 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('pagehide', onPageHide);
 
-  let deadlineAttempted = false;
+  // Total quiet sends no turn, so offer the interviewer the chance a real one would have.
+  // Coding mocks get the same offer from the idle tick; it may still choose silence.
+  function offerStepIn() {
+    const now = Date.now();
+    if (busy || timeControls.saving || draining || replyFailed || debriefed || !interviewId || changingPause || modeControl.pending || modeControl.saving || speaker?.speaking || candidateLoud || phrasesPending > 0 || input.value.trim()) return;
+    if (now - lastActivity < STEP_IN_AFTER_MS || now - lastStepIn < STEP_IN_COOLDOWN_MS) return;
+    lastStepIn = now;
+    void runTurn('/api/design/turn', { interviewId, said: '', phase, elements, mode: mode === 'type' ? 'typed' : 'voice' }, { idle: true });
+  }
+  function paintClock() {
+    const reading = mockTimeReading(minutes, paused ? pausedElapsed : startedAt ? Math.max(0, Date.now() - startedAt) : 0);
+    clock.textContent = reading.text;
+    timeControls.root.querySelector('button').setAttribute('aria-label', `${reading.text} ${reading.label}. Add time`);
+    clock.classList.toggle('over', reading.remaining <= 0);
+  }
   function tickClock() {
+    paintClock(); paintTimeControls();
     if (clockTimer) clearInterval(clockTimer);
     clockTimer = setInterval(() => {
       if (destroyed || !startedAt || paused) return;
-      const s = Math.floor((Date.now() - startedAt) / 1000);
-      clock.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-      clock.classList.toggle('over', s > minutes * 60);
-      if (s >= minutes * 60 && !deadlineAttempted && !busy && !debriefed) { deadlineAttempted = true; finish().catch(error => say(error.message)); }
+      paintClock();
+      offerStepIn();
     }, 1000);
   }
 
   /** The canvas changed. A cheap write, never a turn. */
   function onSceneChange(next) {
-    elements = next;
+    elements = next; lastActivity = Date.now();
     if (!interviewId || debriefed) return;
     clearTimeout(sceneTimer);
     // Excalidraw fires this on every pointer move; one write per quiet second is plenty,
@@ -823,13 +846,14 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     } catch (error) { button.disabled = false; modeStatus.hidden = false; modeStatus.textContent = error.message; }
   } });
 
+  const composer = createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [voiceLink], trailing: [typeActions], notices: [modeStatus, modeRetry] });
   const view = el('div', { class: 'dz-view ui-workspace' }, [
     el('div', { class: 'dz-bar' }, [
       el('button', { class: 'dz-back linkbtn', type: 'button', text: '← Interviews',
         title: 'Leave this interview open and go back — the clock stops', onclick: () => onBack() }),
       el('span', { class: 'mono dz-title', text: 'System design' }),
       el('span', { class: 'mono dim', text: level }),
-      clock,
+      timeControls.root,
       pauseButton,
       practise,
       el('span', { class: 'spacer' }),
@@ -844,7 +868,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
         ]),
         phaseBar,
         log,
-        createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [modeSwitch], trailing: [typeActions], notices: [modeStatus, modeRetry] }),
+        composer,
       ]),
     ]),
   ]);
@@ -852,7 +876,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
 
   const disposeSplit = installPaneResizer(view.querySelector('.dz-split'), { storageKey: 'studio.workspace-split.design.v1', label: 'Whiteboard and interviewer' });
   const onKey = (e) => {
-    if (e.key === 'Escape' && speaker?.speaking) { e.preventDefault(); interrupt(); }
+    if (e.key === 'Escape' && speaker?.speaking && !hasOpenOverlay() && claimActionKey(e)) interrupt();
   };
   window.addEventListener('keydown', onKey);
 
@@ -868,29 +892,22 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     onPlayback: value => voiceView.playback(value),
     onStateChange: (speaking) => {
       skipButton.hidden = !speaking;
-      if (speaking) {
-        // Shut the microphone while it talks. Echo cancellation helps, but a loop where
-        // the interviewer transcribes its own question as your answer is not a risk
-        // worth taking for the sake of shouting over it.
-        closeMic();
-        say('speaking…');
-      } else if (isVoice() && !busy) {
-        openMic();
-        say('listening…');
-      }
+      openMic();
+      say(speaking ? 'speaking…' : isVoice() ? 'listening…' : '');
+      paintVoice();
     },
   });
 
   try {
     voice = createVoiceControl({
+      reportEmptyTake: false, maxTakeMs: 60 * 60000,
       onSettled: () => { if (modeDrain) { modeDrain = false; pendingDraft = Boolean(input.value.trim()); if (!destroyed) { paintDraft(); openMic(); } } },
       getSlug: () => '',
       logTakes: false,
       onState: (state) => {
         captureState = state;
         if (!isVoice() || destroyed) return;
-        const labels = { opening: 'Allow microphone access…', recording: 'Listening…', working: 'Transcribing…', idle: 'Microphone off' };
-        paintVoice(labels[state] || 'Microphone off', state === 'recording' ? 'listen' : '');
+        paintVoice();
       },
       onPreview: text => { partialWords = text; if (!destroyed) paintVoice(); },
       onTranscript: (text) => {
@@ -903,25 +920,29 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
         writingDraft = true;
         try { if (interviewId) saveDraft('design:' + interviewId, input.value); }
         finally { writingDraft = false; }
+        if (isVoice() && (speaker?.speaking || (busy && !speechInterrupted))) interrupt();
         // Preserve the explicit-send barrier while the final voice phrase drains.
         paintDraft();
         // In voice mode there is no text box on screen, so this is the only way to see
         // that the transcriber is keeping up with you.
-        if (isVoice()) paintVoice(speaker?.speaking ? 'Speaking…' : 'Listening…');
+        if (isVoice()) paintVoice();
       },
       // Going quiet is what ends a turn. The analyser already computes this signal for
       // cutting phrases; a turn just has a much longer fuse. See speech.js.
       onLevel: value => {
         voiceView.level(value); const {sinceLoud,pending} = value;
-        if (!voiceView.automatic || voice.hasTranscriptionError() || !isVoice() || modeControl.pending || destroyed || pendingDraft) return;
+        candidateLoud = Boolean(value.loud); phrasesPending = pending || 0;
+        if (candidateLoud) lastActivity = Date.now();
+        if (isVoice() && !destroyed && !paused && candidateLoud && (speaker?.speaking || (busy && !speechInterrupted))) interrupt();
+        if (!voiceView.automatic || replyFailed || voice.hasTranscriptionError() || !isVoice() || modeControl.pending || destroyed || pendingDraft) return;
         const decision = turnDecision({
           sinceLoud,
           chars: input.value.trim().length,
           speaking: Boolean(speaker?.speaking),
-          busy: busy || draining,
+          busy: busy || timeControls.saving || draining,
           pending,
         });
-        if (decision === 'send') { closeMic(); answer(); }
+        if (decision === 'send') answer();
       },
     });
     micSlot.append(voice.root);
@@ -931,14 +952,14 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   // Voice mode needs a mouth and an ear. Without either it is offered and then fails
   // silently, which is worse than not offering it.
   if (!speechSupported() || !voice) {
-    const button = modeSwitch.querySelector('[data-mode="voice"]');
+    const button = voiceLink;
     button.disabled = true;
     button.title = !voice
       ? 'This browser cannot record audio, so voice mode is unavailable.'
       : 'This browser has no speech synthesis, so the interviewer cannot talk.';
     const reason = el('p', { id: 'voice-unavailable', class: 'dim', text: button.title });
     button.setAttribute('aria-describedby', reason.id);
-    modeSwitch.after(reason);
+    voiceLink.after(reason);
   }
 
   applyMode(modeControl.value);
@@ -973,7 +994,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     if (resumed) {
       // Everything that was said, back in the log, before the candidate is invited to
       // add to it. The clock is already shifted by the server, so it reads as time spent.
-      replayTurns(resumed.turns, (kind, text) => { if (kind === 'a') voiceView.sent(text); else if (kind === 'q') voiceView.reply(text); return entry(kind,text); }, log);
+      replayTurns(resumed.turns, (kind, text) => entry(kind, text), log);
       if (resumed.rebuilt) {
         // Said plainly: the model that answers next did not ask these questions. It is
         // reading the transcript above, same as the candidate can, not remembering it.
@@ -1003,7 +1024,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       if (destroyed) return;
       destroyed = true;
       disposeSplit();
-      inputSize.dispose(); unwatchDraft();
+      inputSize.dispose(); unwatchDraft(); timeControls.dispose();
       clearTimeout(sceneTimer);
       if (clockTimer) clearInterval(clockTimer);
       if (turnTimer) clearInterval(turnTimer);

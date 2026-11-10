@@ -80,8 +80,8 @@ async function withServer({ fetchQuestionImpl, cacheDir, webDir = null } = {}, r
   }
 }
 
-test('boot-time counts: 250 problems, 18 patterns, no "JavaScript" pattern', () => {
-  assert.equal(catalog.problems.length, 250);
+test('boot-time counts: 262 problems including Amazon overlay, 18 NC patterns', () => {
+  assert.equal(catalog.problems.length, 262);
   assert.equal(catalog.patterns.length, 18);
   assert.equal(catalog.patterns.includes('JavaScript'), false);
   // The pattern does exist in the full 973-problem bundle; it is absent from the 250.
@@ -97,7 +97,7 @@ test('GET /api/health', async () => {
     assert.equal(status, 200);
     assert.equal(res.headers.get('content-type'), 'application/json; charset=utf-8');
     assert.equal(json.ok, true);
-    assert.equal(json.problemCount, 250);
+    assert.equal(json.problemCount, 262);
     assert.equal(json.patternCount, 18);
     assert.equal(json.solutionsCommit, '9907b7fed441fa55083c0751e208b7197101dbba');
     assert.ok(typeof json.catalogSource === 'string');
@@ -108,28 +108,19 @@ test('GET /api/problems returns the contract shape', async () => {
   await withServer({}, async ({ call }) => {
     const { status, json } = await call('/api/problems');
     assert.equal(status, 200);
-    assert.equal(json.problems.length, 250);
+    assert.equal(json.problems.length, 262);
     assert.equal(json.patterns.length, 18);
     const twoSum = json.problems.find((p) => p.slug === 'two-sum');
     assert.deepEqual(Object.keys(twoSum).sort(), [
-      'difficulty',
-      'hasArticle',
-      'hasPythonSolution',
-      'isPro',
-      'lists',
-      'neetcodeSlug',
-      'number',
-      'pattern',
-      'slug',
-      'title',
-      'youtubeVideoId',
+      'difficulty', 'hasArticle', 'hasPythonSolution', 'isPro', 'leetcodePremium',
+      'lists', 'neetcodeSlug', 'number', 'pattern', 'slug', 'tags', 'title', 'youtubeVideoId',
     ]);
     assert.equal(twoSum.number, 1);
     assert.equal(twoSum.pattern, 'Arrays & Hashing');
-    assert.deepEqual(Object.keys(twoSum.lists).sort(), ['blind75', 'neetcode150', 'neetcode250']);
+    assert.deepEqual(Object.keys(twoSum.lists).sort(), ['amazon-interview', 'blind75', 'neetcode150', 'neetcode250']);
     assert.equal(twoSum.lists.neetcode250, true);
     assert.equal(twoSum.hasPythonSolution, true);
-    assert.ok(json.problems.every((p) => p.lists.neetcode250 === true));
+    assert.equal(json.problems.filter((p) => p.lists.neetcode250 === true).length, 250);
     // The internal lookup key must not leak onto the wire.
     assert.equal('solutionCodeStem' in JSON.parse(JSON.stringify(twoSum)), false);
   });

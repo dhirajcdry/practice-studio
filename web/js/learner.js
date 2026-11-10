@@ -1,4 +1,5 @@
 import { el, replace } from './dom.js';
+import { signalLabel, reportDifficultyLabel } from './interview-format.js';
 export function createLearnerSummary(discipline) {
   let disposed = false;
   const summary = el('summary', { text: 'Your learning context' });
@@ -17,7 +18,7 @@ export function createLearnerSummary(discipline) {
     replace(content, [
       el('p', { text: `Target: ${target}. This is your practice goal, not an assessment of your current ability.` }),
       el('p', { class: 'dim', text: `${practicedCount} practiced problem${practicedCount === 1 ? '' : 's'} in this track. ${assessments.length ? `${assessments.length} recent assessment${assessments.length === 1 ? ' informs' : 's inform'} the interviewer.` : 'No recorded assessments yet; the first mock will establish evidence.'}` }),
-      rated ? el('p', { text: `Latest recorded model assessment: ${rated.signal} against the ${rated.targetLevel} bar.${rated.summary ? ' ' + rated.summary : ''}` }) : null,
+      rated ? el('p', { text: `Latest recorded model assessment: ${signalLabel(rated.signal, rated.reportDifficulty)}${rated.reportDifficulty === 'beginner' ? '' : ` against the ${reportDifficultyLabel(rated.reportDifficulty) || rated.targetLevel} bar`}.${rated.summary ? ' ' + rated.summary : ''}` }) : null,
       weaknesses.length ? el('p', { text: 'Recent areas to revisit: ' + weaknesses.map(x => x.name).join(', ') + '.' }) : null,
       strengths.length ? el('p', { text: 'Recent strengths: ' + strengths.map(x => x.name).join(', ') + '.' }) : null,
       el('p', { class: 'dim', text: 'New mocks use prior feedback and saved notes across problems. Each mock is graded on its own evidence.' }),

@@ -1,7 +1,9 @@
+import { checkMockTime } from './mock-time-fixture.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Real browser wiring, fake interviewer, synthetic cached statement, scratch home.
 // No mic and no actual judge submission; verdicts enter through the same event API.
 import { checkSidebar } from './check-sidebar.mjs';
+import { checkMockVoice } from './mock-voice-fixture.mjs';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -49,7 +51,7 @@ try {
   });
   for (const stream of [server.stdout, server.stderr]) stream.on('data', data => { logs = (logs + data).slice(-4000); });
   await until(async () => (await fetch(origin + '/api/health')).ok, 'server');
-  chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [...(process.env.STUDIO_CHECK_REVIEW === '1' ? [] : ['--headless=new']), '--disable-background-networking', '--no-first-run', '--no-default-browser-check', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
+  chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [...(process.env.STUDIO_CHECK_HEADED === '1' ? [] : ['--headless=new']), '--disable-background-networking', '--no-first-run', '--no-default-browser-check', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
   await until(async () => (await fetch(debug + '/json/list')).ok, 'Chrome');
   const tab = (await (await fetch(debug + '/json/list')).json()).find(item => item.type === 'page');
   socket = new WebSocket(tab.webSocketDebuggerUrl);
@@ -66,7 +68,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.enable'); await send('Runtime.enable'); await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
   // Reject capture rather than fabricating audio. Typed mode remains fully usable.
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); } });" });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); }, configurable: true });" });
   await send('Page.navigate', { url: origin + '/#/p/two-sum' });
   await until(() => evaluate("return !!document.querySelector('.coach-tabs') && !!document.querySelector('.ws-host');"), 'problem');
   // Keep playback deterministic while exercising real fetches and the fake server helper.
@@ -95,8 +97,27 @@ try {
   await evaluate('window.checkSpeaker.dispose();');
   await evaluate("(await import('/js/coach.js')).setOpen(true); [...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Interviews').click(); document.querySelector('.interview-back')?.click();");
   await until(() => evaluate("return !!document.querySelector('.ci-setup');"), 'start choices');
-  await evaluate("document.querySelector('.ci-setup [aria-label^=\"Answer mode\"]').click(); [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n=>n.textContent.trim()==='Typed').click(); document.querySelector('.ci-setup form').requestSubmit();");
+  // The page is already open, but a missing statement must fail before voice capture.
+  const statementFile = path.join(home, 'cache', 'leetcode', 'two-sum.json');
+  const statementRecord = await fs.readFile(statementFile, 'utf8');
+  const withoutStatement = JSON.parse(statementRecord);
+  withoutStatement.question.content = null;
+  await fs.writeFile(statementFile, JSON.stringify(withoutStatement));
+  await evaluate("window.micAttempts = 0; document.querySelector('.ci-setup form').requestSubmit();");
+  await until(() => evaluate("return document.querySelector('.ci-notice')?.textContent.includes('cached statement') && [...document.querySelectorAll('.ci-panel button')].some(b=>b.textContent === 'Retry start' && !b.hidden);"), 'missing statement recovery');
+  assert.equal(await evaluate('return window.micAttempts;'), 0, 'failed startup must never request the microphone');
+  assert.equal(await evaluate("return document.querySelector('.ci-state').textContent;"), 'Interview not started');
+  assert.equal(await evaluate("return document.querySelector('.ci-clock').textContent;"), '45:00');
+  assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.interviewId;"), '');
+  if (process.env.STUDIO_CHECK_STARTUP_SHOT) {
+    const shot = await send('Page.captureScreenshot', { format: 'png' });
+    await fs.writeFile(process.env.STUDIO_CHECK_STARTUP_SHOT, Buffer.from(shot.data, 'base64'));
+  }
+  await fs.writeFile(statementFile, statementRecord);
+  await evaluate("[...document.querySelectorAll('.ci-panel button')].find(b=>b.textContent === 'Retry start').click();");
   await until(() => evaluate("return document.querySelector('.ci-log')?.textContent.includes('Find two numbers') && !document.querySelector('.ci-send').disabled;"), 'opening');
+  await evaluate("document.querySelector('.ci-composer .ui-mode-switch[data-mode=typed]').click();");
+  await until(() => evaluate("return document.querySelector('.ci-panel')?.dataset.mode === 'typed' && !document.querySelector('.ci-send').disabled;"), 'typing after recovered start');
   const dock = await evaluate("const v=document.querySelector('.interviews-view').getBoundingClientRect(),c=document.querySelector('.ci-composer').getBoundingClientRect();return {gap:v.bottom-c.bottom,bottom:c.bottom,viewport:v.bottom};");
   assert.ok(dock.gap>=-1 && dock.gap<=32, 'Short interviews keep the composer at the bottom: '+JSON.stringify(dock));
 
@@ -110,8 +131,34 @@ try {
   assert.equal(await evaluate("return document.querySelectorAll('.ci-candidate').length;"), 0, 'noise must not appear in transcript');
   const noiseRecord = await fs.readFile(path.join(problemDir(home,'two-sum'), 'interviews', identity.id, 'turns.jsonl'), 'utf8');
   assert.ok(noiseRecord.includes('skipped_noise'), 'noise retained as a separate audit event');
-  await evaluate("const input = document.querySelector('.ci-input'); input.value = 'I will use a map.'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();");
+  // A nested interview composer must never also send the hidden Chat draft.
+  // Block unexpected chat requests here even though the scratch provider is fake.
+  await evaluate(`
+    const draft = document.querySelector('.coach-compose .coach-input');
+    draft.value = 'Unsent private chat draft'; draft.dispatchEvent(new Event('input'));
+    window.accidentalChatRequests = 0;
+    const fetchBeforeKeys = window.fetch;
+    window.fetch = (...args) => {
+      if (String(args[0]) === '/api/coach/message' && args[1]?.method === 'POST') {
+        window.accidentalChatRequests++;
+        return Promise.resolve(new Response(JSON.stringify({error:'Unexpected chat send'}), {status:503}));
+      }
+      return fetchBeforeKeys(...args);
+    };
+    const input = document.querySelector('.ci-input'); input.value = 'I will use a map.';
+    input.dispatchEvent(new Event('input')); input.focus();
+  `);
+  await send('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, modifiers:4 });
+  await send('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, modifiers:4 });
   await until(() => evaluate("return document.querySelector('.ci-log')?.textContent.includes('What will you keep');"), 'reply');
+  assert.equal(await evaluate('return window.accidentalChatRequests'), 0, 'interview shortcut must not send hidden Chat');
+  assert.equal(await evaluate("return document.querySelector('.coach-compose .coach-input').value"), 'Unsent private chat draft', 'hidden draft preserved');
+  // Ctrl+Enter on the Interviews tab itself must not submit that hidden draft either.
+  await evaluate("document.querySelector('.coach-tabs [aria-selected=true]').focus()");
+  await send('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, modifiers:2 });
+  await send('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, modifiers:2 });
+  assert.equal(await evaluate('return window.accidentalChatRequests'), 0, 'sidebar tab does not send hidden Chat');
+  await evaluate("const draft=document.querySelector('.coach-compose .coach-input'); draft.value=''; draft.dispatchEvent(new Event('input'))");
   // A deliberately long incremental reply exercises real layout growth while
   // speech is enabled, without calling a model or real audio service.
   await until(() => evaluate("return !document.querySelector('.ci-send').disabled;"), 'ready to stream');
@@ -172,7 +219,8 @@ try {
       return Promise.resolve(new Response(new ReadableStream({ async start(controller) {
         const emit = (name, data) => controller.enqueue(encoder.encode('event: ' + name + '\ndata: ' + JSON.stringify(data) + '\n\n'));
         emit('accepted', {});
-        for (let i=0; i<50; i++) { emit('token', {text:'A continued response. '}); window.modeChunks++; await new Promise(resolve=>setTimeout(resolve,40)); }
+        const chunks=['Check '+String.fromCharCode(96)+'get_', 'balance'+String.fromCharCode(96)+' and **available', ' funds**.\n\n', '- Reject expired holds.\n', '- Preserve ownership.\n\n'];
+        for (let i=0; i<50; i++) { emit('token', {text:chunks[i%chunks.length]}); window.modeChunks++; await new Promise(resolve=>setTimeout(resolve,40)); }
         emit('done', {state:{mode:'voice'}}); window.fetch = previousFetch; controller.close();
       } }), {headers:{'Content-Type':'text/event-stream'}}));
     };
@@ -180,11 +228,12 @@ try {
   `);
   await until(() => evaluate('return window.modeChunks > 2 && window.modeChunks < 50;'), 'mode test streaming');
   const switchIdentity = await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1'));");
-  await evaluate("document.querySelector('.ci-composer [aria-label^=\"Answer mode:\"]').click(); [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n=>n.textContent.trim()==='Voice').click();");
+  await evaluate("document.querySelector('.ci-composer .ui-mode-switch[data-mode=voice]').click();");
   assert.ok(await evaluate("return document.querySelector('.ci-typed').hidden && !document.querySelector('.ci-voice').hidden && window.modeChunks<50;"), 'voice switch takes effect during reply');
-  await evaluate("document.querySelector('.ci-composer [aria-label^=\"Answer mode:\"]').click(); [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n=>n.textContent.trim()==='Typed').click(); const input=document.querySelector('.ci-input'); input.value='Unsent next thought'; input.dispatchEvent(new Event('input'));");
+  await evaluate("document.querySelector('.ci-composer .ui-mode-switch[data-mode=typed]').click(); const input=document.querySelector('.ci-input'); input.value='Unsent next thought'; input.dispatchEvent(new Event('input'));");
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'typed');
   await until(() => evaluate("return window.modeChunks===50 && document.querySelector('.ci-mode-status').hidden && !document.querySelector('.ci-send').disabled;"), 'mode persisted after stream');
+  assert.ok(await evaluate("const reply=[...document.querySelectorAll('.ci-entry:not(.ci-candidate) .ci-text')].at(-1);return reply.querySelector('code')?.textContent==='get_balance' && reply.querySelector('strong')?.textContent==='available funds' && reply.querySelectorAll('li').length===20 && reply.dataset.markdown.includes('`get_balance`');"), 'split Markdown tokens render as code, emphasis and lists without losing the raw reply');
   assert.equal(await evaluate("return document.querySelector('.ci-input').value;"), 'Unsent next thought');
   const switched = await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1'));");
   assert.equal(switched.id, switchIdentity.id); assert.equal(switched.startedAt, switchIdentity.startedAt); assert.equal(switched.mode, 'typed');
@@ -262,6 +311,19 @@ try {
   const report = await evaluate("return document.querySelector('.rp-sheet').textContent;");
   for (const section of ['Lean hire', 'Problem solving', 'Coding', 'Communication', 'Testing', 'What went well', 'What to improve', 'Practise next']) assert.ok(report.includes(section), section);
   assert.equal(await evaluate("return document.querySelectorAll('.rp-dim').length;"), 4, 'four scored dimensions');
+  assert.equal(await evaluate("return document.querySelector('.rp-graded')?.textContent;"), 'Graded at Beginner', 'the report says which difficulty graded it');
+  assert.equal(await evaluate("return document.querySelector('.rp-signal').textContent;"), 'Lean hire', 'the report signal itself stays the raw signal');
+  // An older record has no difficulty, so nothing is claimed about it.
+  const graded = await evaluate(`
+    const { renderReport } = await import('/js/interview-report.js');
+    const saved = await (await fetch('/api/interview/two-sum/' + document.querySelector('.ci-panel').dataset.interviewId)).json();
+    const label = reportDifficulty => {
+      const body = renderReport({ title: 'Two Sum', record: { ...saved, reportDifficulty }, report: saved.report });
+      return body.querySelector('.rp-graded')?.textContent ?? null;
+    };
+    return { old: label(undefined), amazon: label('amazon-sde-2'), unknown: label('nonsense') };
+  `);
+  assert.deepEqual(graded, { old: null, amazon: 'Graded at Amazon SDE II', unknown: null }, 'report label by difficulty');
   assert.equal(await evaluate("return document.querySelector('.rp-quote')?.textContent;"), 'I will use a map.', 'a verified quote is shown as a quote');
   // Follow-up questions: the weakest area is offered first, answers stream in and persist.
   assert.ok(await evaluate("return !!document.querySelector('.rp-ask-starter');"), 'report offers follow-up questions');
@@ -290,12 +352,77 @@ try {
   await evaluate("document.querySelector('.rp-sheet[open] .icon-btn[aria-label=\"Close report\"]').click();");
   await until(() => evaluate("return !document.querySelector('.rp-sheet[open]');"), 'report closes');
   assert.equal(await evaluate("return document.querySelectorAll('.ci-mini-dim').length;"), 4, 'sidebar summary');
+  assert.deepEqual(await evaluate("const c = document.querySelector('.ci-score-hero .ui-badge'); return { text: c.textContent, success: c.classList.contains('ui-badge--success') };"), { text: 'Lean hire (Beginner)', success: true }, 'sidebar chip names the difficulty and keeps the raw tone');
   assert.equal(await evaluate("return !!document.querySelector('.ci-log');"), true, 'closing the report leaves the transcript in the sidebar');
   const debrief = await evaluate("return document.querySelector('.ci-feedback').textContent;");
   await evaluate("window.sidebarBefore = document.querySelector('.coach'); [...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Chat').click();");
   assert.equal(await evaluate("return document.querySelector('.coach') === window.sidebarBefore;"), true, 'tab switching preserves the sidebar');
   await evaluate("[...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Interviews').click();");
   assert.equal(await evaluate("return document.querySelector('.ci-feedback').textContent;"), debrief, 'switching tabs retains feedback');
+  // Report difficulty lives on the server. Real routes against the scratch home.
+  const difficultyOnServer = async () => (await (await fetch(origin + '/api/report/difficulty')).json()).difficulty;
+  const difficultySeg = "document.querySelector('.settings .set-seg[aria-label=\"Report difficulty\"]')";
+  const difficultyButtons = `[...${difficultySeg}.querySelectorAll('button')].map(b => ({ text: b.textContent, pressed: b.getAttribute('aria-pressed'), disabled: b.disabled }))`;
+  const difficultyLoaded = () => until(() => evaluate(`return ${difficultySeg}?.getAttribute('aria-busy') === 'false';`), 'report difficulty loaded');
+  assert.equal(await difficultyOnServer(), 'beginner', 'difficulty defaults to Beginner');
+  // Held read: nothing is shown as selected, and nothing can be clicked, until the server answers.
+  await evaluate(`
+    window.fetchBeforeDifficulty = window.fetch;
+    window.releaseDifficulty = null;
+    const gate = new Promise(resolve => { window.releaseDifficulty = resolve; });
+    window.fetch = async (...args) => { if (args[0] === '/api/report/difficulty') await gate; return window.fetchBeforeDifficulty(...args); };
+    (await import('/js/settings.js')).openSettings();
+  `);
+  await until(() => evaluate(`return !!${difficultySeg};`), 'report difficulty control');
+  assert.deepEqual(await evaluate(`return ${difficultyButtons};`), [
+    { text: 'Beginner', pressed: 'false', disabled: true }, { text: 'Amazon SDE II', pressed: 'false', disabled: true },
+  ], 'no selection is painted while loading');
+  await evaluate('window.releaseDifficulty(); window.fetch = window.fetchBeforeDifficulty;');
+  await difficultyLoaded();
+  assert.deepEqual(await evaluate(`return ${difficultyButtons};`), [
+    { text: 'Beginner', pressed: 'true', disabled: false }, { text: 'Amazon SDE II', pressed: 'false', disabled: false },
+  ], 'both options render with the saved one selected');
+  // No overflow in the Settings panel, in any theme, at desktop and phone widths.
+  const themeNow = await evaluate("return (await import('/js/settings.js')).getSettings().theme;");
+  for (const width of [1440, 390]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    for (const theme of await evaluate("return (await import('/js/settings.js')).THEMES.map(t => t.id);")) {
+      const box = await evaluate(`
+        (await import('/js/settings.js')).setSetting('theme', ${JSON.stringify(theme)});
+        await new Promise(requestAnimationFrame);
+        const body = document.querySelector('.set-body'), seg = ${difficultySeg}, b = body.getBoundingClientRect(), s = seg.getBoundingClientRect();
+        const heights = [...seg.children].map(n => n.getBoundingClientRect().height);
+        // Compare, not absolute: other Settings rows have their own overflow in some themes.
+        const notice = document.querySelector('.settings .set-notice'), blurb = notice.nextElementSibling;
+        const scrollWith = body.scrollWidth; seg.style.display = 'none'; blurb.style.display = 'none'; const scrollWithout = body.scrollWidth; seg.style.display = ''; blurb.style.display = '';
+        return { width: ${width}, theme: ${JSON.stringify(theme)}, inside: s.left >= b.left && s.right <= b.right && blurb.getBoundingClientRect().right <= b.right, noBodyOverflow: scrollWith === scrollWithout, noSegOverflow: seg.scrollWidth <= seg.clientWidth, oneRow: new Set([...seg.children].map(n => n.getBoundingClientRect().top)).size === 1, sameHeight: Math.max(...heights) - Math.min(...heights) <= .5 };
+      `);
+      assert.deepEqual(box, { width, theme, inside: true, noBodyOverflow: true, noSegOverflow: true, oneRow: true, sameHeight: true }, 'report difficulty fits the Settings panel');
+    }
+  }
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await evaluate(`(await import('/js/settings.js')).setSetting('theme', ${JSON.stringify(themeNow)});`);
+  // A failed save reverts, says so, and changes nothing on the server.
+  await evaluate(`
+    window.fetch = (...args) => args[0] === '/api/report/difficulty' && args[1]?.method === 'PUT'
+      ? Promise.resolve(new Response(JSON.stringify({ error: { message: 'Fixture unavailable' } }), { status: 503 })) : window.fetchBeforeDifficulty(...args);
+    ${difficultySeg}.querySelector('[data-difficulty="amazon-sde-2"]').click();
+  `);
+  await until(() => evaluate("const n = document.querySelector('.settings .set-notice'); return !n.hidden && n.textContent.includes('Could not save');"), 'failed save is reported');
+  await difficultyLoaded();
+  assert.deepEqual((await evaluate(`return ${difficultyButtons};`)).map(b => b.pressed), ['true', 'false'], 'a failed save reverts the selection');
+  assert.equal(await difficultyOnServer(), 'beginner', 'a failed save changes nothing');
+  await evaluate('window.fetch = window.fetchBeforeDifficulty;');
+  // A real save clears the error and persists on the server across reopening.
+  await evaluate(`${difficultySeg}.querySelector('[data-difficulty="amazon-sde-2"]').click();`);
+  await until(async () => await difficultyOnServer() === 'amazon-sde-2', 'click saves the difficulty');
+  await difficultyLoaded();
+  assert.equal(await evaluate("return document.querySelector('.settings .set-notice').hidden;"), true, 'a successful save clears the error');
+  await evaluate("(await import('/js/settings.js')).closeSettings(); (await import('/js/settings.js')).openSettings();");
+  await difficultyLoaded();
+  assert.deepEqual((await evaluate(`return ${difficultyButtons};`)).map(b => b.pressed), ['false', 'true'], 'the choice persists across reopening');
+  await evaluate("(await import('/js/settings.js')).closeSettings();");
+  assert.ok(!/difficulty/i.test(await evaluate("return localStorage.getItem('studio.settings.v1') || '';")), 'report difficulty never enters localStorage settings');
   // Simulate a reload before the browser received the final completion event.
   // The server has the debrief, but local storage still claims this interview is live.
   await evaluate(`localStorage.setItem('studio.interview.active.v1', ${JSON.stringify(JSON.stringify(identity))});`);
@@ -362,6 +489,11 @@ try {
   await evaluate("[...document.querySelectorAll('.ci-panel button')].find(n => n.textContent === 'Retry reply').click();");
   await until(() => evaluate("return document.querySelector('.ci-panel')?.dataset.debriefed === 'true';"), 'retried second debrief');
   assert.equal(await evaluate("return document.querySelectorAll('.interview-row').length;"), 2, 'past interviews remain listed');
+  // The list keeps each interview's own difficulty: the setting changed between these two.
+  const rowBadge = id => `document.querySelector('.interview-row[data-interview-id="${id}"] .interview-status')`;
+  await until(() => evaluate(`return ${rowBadge(identity.id)}?.textContent === 'Lean hire (Beginner)' && ${rowBadge(secondId)}?.textContent === 'Lean hire';`), 'list labels by difficulty');
+  assert.ok(await evaluate(`return ${rowBadge(identity.id)}.classList.contains('ui-badge--success') && ${rowBadge(secondId)}.classList.contains('ui-badge--success');`), 'list tone stays on the raw signal');
+  assert.equal(await evaluate("return document.querySelector('.ci-score-hero .ui-badge').textContent;"), 'Lean hire', 'no suffix at Amazon SDE II');
   // History is an accordion, and inspecting it is read-only.
   const callsBeforeHistory = await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8');
   await evaluate(`document.querySelector('.interview-back')?.click(); document.querySelector('.interview-row[data-interview-id="${identity.id}"] .interview-row-summary').click();`);
@@ -394,6 +526,21 @@ try {
   // The list itself, not just an open interview: four cards, one of them paused.
   await evaluate("document.querySelector('.interview-back').click();");
   await until(() => evaluate("return !document.querySelector('.interviews-overview').hidden;"), 'interview list shown');
+  // The longest label must fit its row beside the date, even in a narrow sidebar.
+  const rowFit = await evaluate(`
+    const view = document.querySelector('.interviews-view'), badge = ${rowBadge(identity.id)}, top = badge.closest('.interview-row-top'), title = top.querySelector('strong');
+    const saved = { text: badge.textContent, width: view.style.width };
+    const measure = width => {
+      view.style.width = width; badge.textContent = 'Strong hire (Beginner)';
+      const b = badge.getBoundingClientRect(), t = title.getBoundingClientRect(), r = top.getBoundingClientRect();
+      return { insideRow: b.right <= r.right + .5 && b.left >= r.left - .5, clearOfDate: b.left >= t.right - .5 || b.top >= t.bottom - .5, viewWidth: view.getBoundingClientRect().width };
+    };
+    const results = [measure(''), measure('280px')];
+    view.style.width = saved.width; badge.textContent = saved.text;
+    return results;
+  `);
+  console.log('Report difficulty list row', JSON.stringify(rowFit));
+  for (const row of rowFit) assert.ok(row.insideRow && row.clearOfDate, 'list label fits its row: ' + JSON.stringify(row));
   await checkSidebar(expression => evaluate('return ' + expression));
 
   await evaluate("[...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Chat').click();");
@@ -410,7 +557,7 @@ try {
     document.querySelector('.ci-setup form').requestSubmit();
   `);
   await until(() => evaluate('return !!window.pendingInterviewSpeech;'), 'voice playback');
-  assert.equal(await evaluate("return [...document.querySelectorAll('.ci-voice button')].filter(n => !n.closest('[hidden]') && n.getClientRects().length).map(n => n.textContent).join('|');"), 'Interrupt · Esc', 'speaking exposes one relevant action');
+  assert.ok(await evaluate("const mic=document.querySelector('.ci-voice .voice-mic');return !mic.hidden && mic.getClientRects().length>0 && [...document.querySelectorAll('.ci-voice button')].some(n=>n.textContent==='Interrupt · Esc'&&!n.hidden);"), 'speaking keeps microphone and interrupt controls available');
   assert.equal(await evaluate("return document.querySelector('.ci-voice').textContent.includes('Hold Esc');"), false, 'no permanent interrupt instruction');
   await evaluate("[...document.querySelectorAll('.ci-voice button')].find(n => n.textContent === 'Interrupt · Esc').click();");
   await until(() => evaluate("return !document.querySelector('.ci-voice .vc-status').hidden && document.querySelector('.ci-voice .voice-state').textContent === 'Microphone off';"), 'microphone failure stays inline');
@@ -420,7 +567,7 @@ try {
   await setVoiceDraft('Sort by position, then count fleets from the front.');
   await until(() => evaluate("const b = document.querySelector('.ci-send-now'); return !b.hidden && b.getClientRects().length > 0 && !b.disabled;"), 'voice draft offers Send');
   const sendRow = await evaluate(`const centre = n => { const r = n.getBoundingClientRect(); return r.top + r.height / 2; };
-    const send = document.querySelector('.ci-send-now'), mic = [...document.querySelectorAll('.ci-voice button')].find(n => n.textContent === 'Enable microphone');
+    const send = document.querySelector('.ci-send-now'), mic = document.querySelector('.ci-voice .voice-mic');
     const panel = document.querySelector('.ci-voice').getBoundingClientRect();
     return { aligned: Math.abs(centre(send) - centre(mic)) <= 1, inside: send.getBoundingClientRect().right <= panel.right + 0.5 };`);
   assert.deepEqual(sendRow, { aligned: true, inside: true }, 'Send sits on the microphone row, inside the panel');
@@ -432,6 +579,9 @@ try {
   }
   await setVoiceDraft('');
   await until(() => evaluate("return document.querySelector('.ci-send-now').hidden;"), 'Send hides with nothing to send');
+  const barHeight = await evaluate("document.querySelector('.ci-voice .vc-status').hidden = true; return document.querySelector('.ci-composer').getBoundingClientRect().height;");
+  assert.ok(barHeight <= 72, `an idle voice bar stays one line: ${barHeight}px`);
+  console.log('idle voice bar', barHeight);
   await checkSidebar(expression => evaluate('return ' + expression));
   const beforeEmptyFinish = await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8');
   await evaluate("document.querySelector('.ci-finish').click();");
@@ -440,6 +590,57 @@ try {
   assert.equal(await evaluate("return document.querySelectorAll('.ci-mini-dim, .ci-dimension, .ci-open-report').length;"), 0, 'empty interview has no ratings or report button');
   await send('Page.reload', { ignoreCache: true });
   await until(() => evaluate("return document.querySelector('.ci-feedback')?.textContent.includes('No report was generated');"), 'empty completion survives reload');
+  // Deliberate silence: the microphone stays open while the reply is decided, and no
+  // bubble, spoken line or failure notice follows. Capture and ASR are browser fakes.
+  await evaluate(`
+    window.openingCaptures=0;window.openingStops=0;window.openingLevel=0;
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {window.openingCaptures++;return { getTracks: () => [{ stop() {window.openingStops++;}, addEventListener() {} }] };}, configurable: true });
+    window.MediaRecorder = class extends EventTarget { constructor() { super(); this.mimeType = 'audio/webm'; } start() {} requestData() { const e = new Event('dataavailable'); e.data = new Blob(['x']); this.dispatchEvent(e); } stop() { queueMicrotask(() => { this.requestData(); this.dispatchEvent(new Event('stop')); }); } static isTypeSupported() { return true; } };
+    window.AudioContext = class { constructor() { this.state = 'running'; } createMediaStreamSource() { return { connect() {} }; } createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData(a) { a.fill(window.openingLevel); } }; } close() {} };
+    const beforeVoiceFetch=window.fetch;
+    window.fetch=(...args)=>String(args[0]).includes('/api/asr')?Promise.resolve(new Response(JSON.stringify({text:''}),{headers:{'content-type':'application/json'}})):beforeVoiceFetch(...args);
+    window.speechSynthesis.speak = utterance => { window.pendingInterviewSpeech = utterance; utterance.onstart?.(); };
+    window.pendingInterviewSpeech = null;
+    [...document.querySelectorAll('.coach-tab')].find(n => n.textContent === 'Interviews')?.click();
+    document.querySelector('.interview-back')?.click();
+  `);
+  await until(() => evaluate("return !!document.querySelector('.ci-setup form');"), 'setup for silent mock');
+  await evaluate(`document.querySelector('.ci-setup [aria-label^="Answer mode"]')?.click();
+    [...document.querySelectorAll('.ui-menu-item')].find(n => n.textContent.includes('Voice'))?.click();
+    document.querySelector('.ci-setup form').requestSubmit();`);
+  await until(() => evaluate('return !!window.pendingInterviewSpeech;'), 'silent mock opening');
+  await until(() => evaluate("return window.openingCaptures === 1 && document.querySelector('.ci-voice .voice-panel').dataset.capture === 'recording';"), 'microphone stays ready during opening question');
+  await evaluate('window.openingLevel=.08;'); await sleep(450); await evaluate('window.openingLevel=0;');
+  const micState = "document.querySelector('.ci-voice .voice-state').textContent";
+  await until(() => evaluate(`return ${micState} === 'Listening';`), 'speech interrupts the opening question');
+  assert.deepEqual(await evaluate('return {captures:window.openingCaptures,stops:window.openingStops};'), {captures:1,stops:0}, 'opening interruption reuses the same physical microphone');
+  const silentId = (await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1')); ")).id;
+  const silentFile = path.join(problemDir(home, 'two-sum'), 'interviews', silentId, 'turns.jsonl');
+  const bubbles = "document.querySelectorAll('.ci-log .ci-entry:not(.ci-candidate)').length";
+  const bubblesBefore = await evaluate(`return ${bubbles};`);
+  await evaluate("window.pendingInterviewSpeech = null; const input = document.querySelector('.ci-input'); input.value = 'Hmm, I am still thinking aloud about the furthest layer.'; input.dispatchEvent(new Event('input'));");
+  await until(() => evaluate("const b = document.querySelector('.ci-send-now'); return !b.hidden && !b.disabled;"), 'silent turn can send');
+  await evaluate("document.querySelector('.ci-send-now').click();");
+  await until(async () => (await fs.readFile(silentFile, 'utf8')).includes('still thinking aloud'), 'candidate words saved');
+  await until(() => evaluate(`return ${micState} === 'Listening';`), 'mic reopens while the reply is decided');
+  assert.ok(!(await fs.readFile(silentFile, 'utf8')).includes('interviewer_silent'), 'mic was open before the silent reply finished');
+  await until(async () => (await fs.readFile(silentFile, 'utf8')).includes('interviewer_silent'), 'silent reply recorded');
+  await sleep(300);
+  assert.equal(await evaluate(`return ${bubbles};`), bubblesBefore, 'silence adds no interviewer bubble');
+  assert.equal(await evaluate("return document.querySelectorAll('.ci-log .interviewer-silent').length;"), 1, 'silence is shown as received');
+  assert.equal(await evaluate('return window.pendingInterviewSpeech;'), null, 'silence speaks nothing');
+  assert.equal(await evaluate(`return ${micState};`), 'Listening', 'still listening after silence');
+  assert.deepEqual(await evaluate('return {captures:window.openingCaptures,stops:window.openingStops};'), {captures:1,stops:0}, 'submitting and receiving a silent reply never closes capture');
+  assert.equal(await evaluate("return document.querySelector('.ci-log').textContent.includes('[[');"), false, 'no control tag leaks');
+  await send('Page.reload', { ignoreCache: true });
+  await until(() => evaluate("return document.querySelector('.ci-log')?.textContent.includes('still thinking aloud');"), 'silent turn survives reload');
+  assert.equal(await evaluate("return /did not finish/.test(document.body.textContent);"), false, 'silence is not reported as a failed reply');
+  await until(() => evaluate("return document.querySelectorAll('.ci-log .interviewer-silent').length === 1;"), 'the silent note survives reload');
+  console.log('Mock continuous voice', await evaluate(`return (${checkMockVoice.toString()})('coding');`));
+  const extended = await evaluate(`const id=document.querySelector('.ci-panel').dataset.interviewId; return (${checkMockTime.toString()})('coding', '/api/interview/two-sum/'+id);`);
+  console.log('Mock time controls', extended);
+  await send('Page.reload', { ignoreCache: true });
+  await until(() => evaluate(`return JSON.parse(localStorage.getItem('studio.interview.active.v1'))?.minutes === ${extended.extended} && !!document.querySelector('.ci-panel');`), 'extended budget survives reload');
   console.log('Interview browser check passed: opening, turn, verdict, draft/reload, loading isolation, stale completion recovery, restart, debrief, controls, coach restoration.');
   if (process.env.STUDIO_CHECK_REVIEW === '1') {
     console.log('Scratch browser ready for manual review. Press Enter to clean up.');

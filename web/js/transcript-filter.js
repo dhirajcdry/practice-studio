@@ -17,7 +17,9 @@ export function filterTranscript(text) {
 
 export function isFillerReply(text) {
   const words = normalized(text);
-  return !words || /^(?:(?:mm hm|mm hmm|mhm|m hmm|uh huh|sure|okay|ok|all right|alright|take your time|go ahead|i see|got it|understood)(?: |$))+$/.test(words);
+  // "Okay, go ahead" agrees a plan with the candidate; it is an answer, not filler.
+  if (/^(?:(?:okay|ok|sure|all right|alright) )?go ahead$/.test(words)) return false;
+  return !words || /^(?:(?:mm hm|mm hmm|mhm|m hmm|uh huh|sure|okay|ok|all right|alright|take your time|go ahead|i see|got it|understood|no rush|and|keep going|keep thinking|keep thinking out loud|keep thinking aloud|noted|recorded)(?: |$))+$/.test(words);
 }
 
 // Require sustained audible speech, not just the peak of a key press. RMS alone

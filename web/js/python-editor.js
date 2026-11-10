@@ -1,6 +1,7 @@
 // One Python editor for coding, LLD interviews and untimed practice. Workspaces
 // own saving/running; this module owns editing, preferences and lifecycle.
 import { el } from './dom.js';
+import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { getSettings, isDark, onSettingsChange } from './settings.js';
 import { attachTypingFx } from './typing-fx.js';
 import { attachTypingReveal } from './typing-reveal.js';
@@ -477,12 +478,15 @@ export function mountPythonEditor(host, initial = '', options = {}) {
   // outer app shortcuts from executing the same Run/Save twice. Find/undo/folding
   // remain Monaco's native commands; no global shortcuts consume typed letters.
   function onKey(event) {
-    const meta = event.metaKey || event.ctrlKey;
+    // Find/replace, quick input, and other Monaco widgets own their keys. Being
+    // somewhere inside the editor host is not enough intent to run or submit code.
+    if (hasOpenOverlay() || !current.hasFocus()) return;
+    const meta = (event.metaKey || event.ctrlKey) && !event.altKey;
     const action = meta && event.key === 'Enter' ? onSubmit
       : meta && event.key === "'" ? onRun
       : meta && event.key.toLowerCase() === 's' ? onSave
       : event.key === 'Escape' && (current.kind === 'textarea' || !host.querySelector('.find-widget.visible')) ? onEscape : null;
-    if (action) { event.preventDefault(); event.stopPropagation(); action(); }
+    if (action && claimActionKey(event)) action();
   }
   const stopKey = event => event.stopPropagation();
   host.addEventListener('keydown', onKey, true); host.addEventListener('keydown', stopKey);

@@ -1,5 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { remainingDraft } from '../../web/js/drafts.js';
+
+test('acceptance consumes only the sent prefix and preserves a new utterance or manual edit', () => {
+  assert.equal(remainingDraft('First answer.', 'First answer.'), '');
+  assert.equal(remainingDraft('First answer. Wait, I want to change that.', 'First answer.'), 'Wait, I want to change that.');
+  assert.equal(remainingDraft('  First answer.\nActually, use a lock.', 'First answer.'), 'Actually, use a lock.');
+  assert.equal(remainingDraft('First answer. First answer.', 'First answer.'), 'First answer.');
+  assert.equal(remainingDraft('I edited the answer.', 'First answer.'), 'I edited the answer.');
+  assert.equal(remainingDraft('A lock', 'A'), 'lock');
+  assert.equal(remainingDraft('Atomic', 'A'), 'Atomic');
+});
 
 test('conversation drafts round trip, isolate slugs, and clear', async () => {
   const data = new Map();

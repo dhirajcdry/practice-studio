@@ -32,9 +32,10 @@ import { readJsonBody, requireString } from './http.mjs';
 import { SseStream } from './sse.mjs';
 import { SessionLog, CoachSessionStore, EVENT_TYPES, isKnownEventType } from './sessions.mjs';
 import { gatherContext, buildPrompt } from './context.mjs';
+import { writerSessionStatus } from '../writer-handoff.mjs';
 import { readRecallState } from '../recall/sync.mjs';
 import { appendTurn, readThreads, readTurns } from './transcript.mjs';
-import { readCoachChoice, runProviderTurn, providerRoutes } from './provider.mjs';
+import { readCoachChoice, runProviderTurn, providerRoutes, coachSystemPrompt } from './provider.mjs';
 import { conversationTurns } from './provider-context.mjs';
 import { buildConversation } from './native-sessions.mjs';
 import { upkeepQueue } from './upkeep.mjs';
@@ -305,7 +306,7 @@ export async function handleCoachMessage(req, res, ctx) {
     await new Promise((resolve) => {
       started = Date.now();
       child = runProviderTurn({
-        systemPrompt:'You are a Socratic Python interview-practice tutor. Start from the learner’s current reasoning and the supplied evidence. Answer the question asked; prefer a focused question or the smallest useful explanation. Give fuller explanations or code when requested. Connect relevant prior lessons without assuming an old weakness persists. Keep voice replies concise. Maintain useful, specific learning notes through Studio tools; correct stale observations and preserve uncertainty. Never invent runs, outcomes, or file changes.',
+        systemPrompt: coachSystemPrompt(review),
         choice,
         root: svc.root,
         prompt:conversation.bootstrapPrompt, conversation,
@@ -537,6 +538,10 @@ export async function handleHistory(req, res, ctx) {
 }
 
 export const routes = {
+  'GET /api/coach/writer/:id': async (_req, res, ctx) => {
+    const result = await writerSessionStatus(ctx.homeRoot, ctx.params.id);
+    res.setHeader('Content-Type','application/json'); res.end(JSON.stringify(result));
+  },
   'GET /api/coach/recall/:id': async (_req, res, ctx) => {
     const { outbox } = await readRecallState(serviceFor(ctx).root);
     const item = outbox.items.find(item => item.payload.revisionId === ctx.params.id);

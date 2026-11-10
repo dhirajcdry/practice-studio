@@ -250,5 +250,8 @@ export function renderMarkdown(markdown) {
     if (buf.length) out.append(el('p', {}, inline(buf.join(' '))));
   }
 
+  // Let the visual audit catch a consumer that parses Markdown but omits its
+  // typography surface. The fragment itself cannot carry a styling contract.
+  for (const block of out.children) block.dataset.markdownBlock = '';
   return out;
 }

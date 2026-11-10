@@ -20,9 +20,21 @@ export function ratingTone(value = '') {
   return /^(strong|solid|.*hire$)/i.test(value) && !/no hire/i.test(value) ? 'success'
     : /^(mixed|lean no)/i.test(value) ? 'warn' : /^(weak|no hire)/i.test(value) ? 'danger' : 'neutral';
 }
+export const REPORT_DIFFICULTIES = [
+  { id: 'beginner', label: 'Beginner' },
+  { id: 'amazon-sde-2', label: 'Amazon SDE II' },
+];
+/** The name of a saved report's difficulty; '' for an older report that has none. */
+export function reportDifficultyLabel(difficulty) {
+  return REPORT_DIFFICULTIES.find(option => option.id === difficulty)?.label || '';
+}
+/** A signal as display text. Display only: tone and logic stay on the raw signal. */
+export function signalLabel(signal, difficulty) {
+  return signal && difficulty === 'beginner' ? `${signal} (Beginner)` : signal;
+}
 export function interviewOutcome(record) {
   if (record.completionReason === 'no-response') return { label: 'No response', tone: 'neutral' };
-  if (record.debriefed) return { label: record.hireSignal || 'Completed', tone: ratingTone(record.hireSignal) };
+  if (record.debriefed) return { label: signalLabel(record.hireSignal, record.reportDifficulty) || 'Completed', tone: ratingTone(record.hireSignal) };
   if (record.endedAt || record.needsAttention) return { label: 'Needs feedback', tone: 'warn' };
   if (record.pausedAt || record.status === 'paused') return { label: 'Paused', tone: 'neutral' };
   return { label: 'In progress', tone: 'accent' };

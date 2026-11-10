@@ -64,7 +64,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.enable'); await send('Runtime.enable'); await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
   // Reject capture rather than fabricating audio. Typed mode remains fully usable.
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); } });" });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); }, configurable: true });" });
   await send('Page.navigate', { url: origin + '/#/lld' });
   await until(() => evaluate("return document.querySelectorAll('.lld-scenario').length === 3;"), 'LLD library');
   assert.equal(await evaluate("return document.querySelectorAll('.ci-start').length;"), 1, 'one primary action starts an adaptive mock');
@@ -103,9 +103,7 @@ try {
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), '', 'candidate starts with blank Python');
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'voice', 'sample mock also defaults to voice');
   async function answerMode(value) {
-    await evaluate("document.querySelector('.ci-composer [aria-label^=\"Answer mode:\"]').click();");
-    await sleep(1200); // A live clock/status repaint must not dismiss the open mode menu.
-    await evaluate(`const item = [...document.querySelectorAll('.ui-menu:not([hidden]) [role=menuitemradio]')].find(n=>n.textContent.trim()===${JSON.stringify(value === 'voice' ? 'Voice' : 'Typed')}); if (!item) throw Error('Mode option missing'); item.click();`);
+    await evaluate(`document.querySelector('.ci-composer .ui-mode-switch[data-mode=${value}]').click();`);
     await until(() => evaluate(`return document.querySelector('.ci-panel').dataset.mode===${JSON.stringify(value)} && document.querySelector('.ci-mode-status').hidden;`), 'saved answer mode');
   }
   await answerMode('typed');
@@ -166,18 +164,49 @@ try {
   assert.ok(await evaluate("return !!document.querySelector('.dz-setup [aria-label=\"Answer mode: Voice\"]') && !!document.querySelector('[aria-label=\"System design problem: Choose for me · unseen\"]');"));
   await evaluate("document.querySelector('.dz-setup .ci-start').click();");
   await until(() => evaluate("return document.querySelector('.dz-log')?.textContent.includes('Design a museum ticket reservation system.');"), 'adaptive system design opening');
-  assert.ok(await evaluate("return document.querySelector('.dz-mode[data-mode=voice]').getAttribute('aria-checked')==='true';"));
-  await evaluate("document.querySelector('.dz-mode[data-mode=type]').click();");
-  await until(() => evaluate("return document.querySelector('.dz-mode[data-mode=type]').getAttribute('aria-checked')==='true';"), 'design typed switch');
+  assert.ok(await evaluate("return document.querySelector('.dz-view').dataset.mode==='voice';"));
+  await evaluate("document.querySelector('.dz-compose .ui-mode-switch[data-mode=type]').click();");
+  await until(() => evaluate("return document.querySelector('.dz-view').dataset.mode==='type';"), 'design typed switch');
   const designRecord = (await (await fetch(origin + '/api/design')).json()).interviews[0];
   await until(async () => (await (await fetch(origin + '/api/design/' + designRecord.id)).json()).mode === 'typed', 'design mode saved');
   const designIdentity = await (await fetch(origin + '/api/design/' + designRecord.id)).json();
   await evaluate("document.querySelector('.dz-back').click();");
   await until(() => evaluate("return [...document.querySelectorAll('.dzl-go')].some(n=>n.textContent==='Resume');"), 'design history');
   await evaluate("[...document.querySelectorAll('.dzl-go')].find(n=>n.textContent==='Resume').click();");
-  await until(() => evaluate("return document.querySelector('.dz-mode[data-mode=type]')?.getAttribute('aria-checked')==='true';"), 'resumed typed design');
+  await until(() => evaluate("return document.querySelector('.dz-view')?.dataset.mode==='type';"), 'resumed typed design');
   const designResumed = await (await fetch(origin + '/api/design/' + designRecord.id)).json();
   assert.equal(designResumed.id, designIdentity.id);
+  // Silence in a design mock: no empty bubble and no failure, the microphone stays open
+  // while the reply is decided, and total quiet offers the interviewer one chance to speak.
+  const designEntries = "document.querySelectorAll('.dz-log .dz-entry.dz-q').length";
+  const designRows = async () => (await (await fetch(origin + '/api/design/' + designRecord.id)).json()).turns;
+  const qBefore = await evaluate(`return ${designEntries};`);
+  await evaluate(`
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => ({ getTracks: () => [{ stop() {}, addEventListener() {} }] }), configurable: true });
+    window.MediaRecorder = class extends EventTarget { constructor() { super(); this.mimeType = 'audio/webm'; } start() {} requestData() { const e = new Event('dataavailable'); e.data = new Blob(['x']); this.dispatchEvent(e); } stop() { queueMicrotask(() => { this.requestData(); this.dispatchEvent(new Event('stop')); }); } static isTypeSupported() { return true; } };
+    window.AudioContext = class { constructor() { this.state = 'running'; } createMediaStreamSource() { return { connect() {} }; } createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData(a) { a.fill(0); } }; } close() {} };
+    document.querySelector('.dz-compose .ui-mode-switch[data-mode=voice]').click();
+  `);
+  const designMic = "document.querySelector('.voice-panel .voice-state')?.textContent";
+  await until(() => evaluate(`return ${designMic} === 'Listening';`), 'design mic open');
+  await evaluate("const input = document.querySelector('.dz-compose textarea'); input.value = 'Hmm, I am still thinking aloud about the cache.'; input.dispatchEvent(new Event('input'));");
+  await until(() => evaluate("const b = document.querySelector('.dz-voice-send'); return b && !b.hidden && !b.disabled;"), 'design voice draft can send');
+  await evaluate("document.querySelector('.dz-voice-send').click();");
+  await until(async () => (await designRows()).some(t => t.kind === 'candidate' && t.said?.includes('still thinking aloud')), 'design words saved');
+  await until(() => evaluate(`return ${designMic} === 'Listening';`), 'design mic reopens while deciding');
+  assert.ok(!(await designRows()).some(t => t.kind === 'interviewer_silent'), 'design mic opened before the silent reply finished');
+  assert.equal(await evaluate(`return ${designEntries};`), qBefore, 'no empty bubble while deciding');
+  await until(async () => (await designRows()).some(t => t.kind === 'interviewer_silent'), 'design silence recorded');
+  await sleep(300);
+  assert.equal(await evaluate(`return ${designEntries};`), qBefore, 'silence adds no interviewer bubble');
+  assert.equal(await evaluate("return document.querySelectorAll('.dz-log .interviewer-silent').length;"), 1, 'silence is shown as received');
+  assert.equal(await evaluate("return /No response was received|\\[\\[|connection ended/.test(document.querySelector('.dz-log').textContent);"), false, 'silence is not a failure');
+  assert.equal(await evaluate(`return ${designMic};`), 'Listening', 'design still listening after silence');
+  await evaluate("const real = Date.now.bind(Date); Date.now = () => real() + 65000;");
+  await until(() => evaluate(`return ${designEntries} === ${qBefore + 1};`), 'quiet offers the interviewer a chance to step in');
+  await sleep(1500);
+  assert.equal(await evaluate(`return ${designEntries};`), qBefore + 1, 'the step-in offer has a cooldown');
+  assert.equal(await evaluate("return document.querySelectorAll('.dz-log .interviewer-silent').length;"), 1, 'a step-in offer never claims to have heard anything');
   console.log('Interview browser check passed: adaptive LLD/system-design starts, voice defaults, live mode switching/draft preservation/resume, card selection at 1440/390px, Python execution/persistence, reports.');
 } catch (error) {
   try { console.error('Browser state:', await evaluate("return {hash:location.hash, text:document.body.innerText.slice(-1800)};")); } catch {}

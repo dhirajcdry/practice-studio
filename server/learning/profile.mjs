@@ -81,7 +81,7 @@ export async function readLearnerProfile(root, { discipline, excludeInterviewId,
     if (d !== 'coding') remember(completed, d, identity, source, date);
     const j = report.judgement;
     assessments.push({ id, ...identity, discipline: d, date, targetLevel: state.targetLevel || state.level || null, source,
-      assessmentKind: 'model judgement', evidenceStatus: j ? 'recorded' : 'no structured assessment',
+      ...(state.reportDifficulty ? { reportDifficulty: state.reportDifficulty } : {}), assessmentKind: 'model judgement', evidenceStatus: j ? 'recorded' : 'no structured assessment',
       signal: j?.signal || null, summary: j?.summary || null, dimensions: j?.dimensions || [], technicalErrors: j?.technicalErrors || [],
       missingConsiderations: j?.missingConsiderations || [], discoveries: j?.discoveries || [],
       strengths: j?.strengths || [], improvements: j?.improvements || [], practice: j?.practice || [] });

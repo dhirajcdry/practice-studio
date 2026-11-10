@@ -28,7 +28,24 @@
   --phase-rule:2px solid var(--hair-10);
   --tab-selected-shadow:var(--tab-active-indicator),var(--tab-active-shadow);
   --chart-marker-border:2px solid var(--card);
+  --conversation-text-size:14px;
+  --conversation-line-height:1.6;
+  --conversation-measure:68ch;
 }
+/* Conversation prose has one reading rhythm in mocks and practice. Whitespace
+   belongs to parsed blocks, not the model's trailing newline tokens. */
+.rich.ui-conversation-text{font:400 var(--conversation-text-size)/var(--conversation-line-height) var(--ui);color:var(--ink);white-space:normal;overflow-wrap:anywhere;min-width:0;max-width:min(100%,var(--conversation-measure));margin:0}
+.ui-conversation-text>p,.ui-conversation-text>:is(ul,ol,pre,blockquote,table){margin:0 0 var(--space-2)}
+.ui-conversation-text>:last-child{margin-bottom:0}
+.ui-conversation-text>:is(h1,h2,h3,h4,h5,h6){font:600 var(--conversation-text-size)/var(--line-md) var(--ui);letter-spacing:0;margin:var(--space-4) 0 var(--space-2)}
+.ui-conversation-text>:first-child{margin-top:0}
+.ui-conversation-text :is(ul,ol){padding-inline-start:var(--space-5);margin-inline:0}
+.ui-conversation-text li{margin-block:var(--space-1)}
+.ui-conversation-text li>:is(ul,ol){margin-block:var(--space-1) 0}
+.ui-conversation-text pre{max-width:100%;overflow:auto;font:var(--text-sm)/var(--line-md) var(--mono);white-space:pre;padding:var(--space-3)}
+.ui-conversation-text table{display:block;max-width:100%;overflow:auto;font-size:inherit}
+.ui-conversation-text .user-text{white-space:pre-wrap}
+.rich.ui-conversation-text--user{width:fit-content;padding:var(--space-2) var(--space-3);background:var(--hair-06);border-radius:var(--r-sm)}
 /* Shared controls inherit theme geometry and color. */
 :root,body{--radius-sm:var(--r-sm);--radius-md:var(--r-md);--radius-lg:var(--r-lg,var(--r-md));--shadow-pop:var(--shadow-lift,var(--shadow));--control-sm:var(--control-h-sm,28px);--control-md:var(--control-h,34px);--status-success-ink:var(--easy);--status-success-bg:var(--easy-soft);--status-warn-ink:var(--med);--status-warn-bg:var(--med-soft);--status-danger-ink:var(--hard);--status-danger-bg:var(--hard-soft);--status-accent-ink:var(--accent);--status-accent-bg:var(--accent-soft)}
 body .btn,body .ui-select-button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:var(--control-sm);min-height:var(--control-sm);padding:0 var(--space-3);border:var(--control-border);border-radius:var(--tab-radius);background:var(--card);color:var(--ink);font:500 var(--text-sm)/var(--line-sm) var(--ui);cursor:pointer;white-space:nowrap}

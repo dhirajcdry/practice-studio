@@ -30,7 +30,8 @@ let pass = 0, fail = 0;
 const html = frag => { const d = document.createElement('div'); d.append(frag); return d.innerHTML; };
 const plain = frag => { const d = document.createElement('div'); d.append(frag); return d.textContent; };
 const san = s => html(sanitizeHtml(s));
-const md = s => html(renderMarkdown(s));
+// Structural assertions ignore audit metadata; the separate check below verifies it.
+const md = s => html(renderMarkdown(s)).replaceAll(' data-markdown-block=""', '');
 
 function group(name) {
   const row = document.createElement('div');
@@ -130,6 +131,9 @@ check('inline $math$ becomes a code span', md('cost $O(n^2)$ here').includes('<c
 
 /* ---------------- markdown: structure ---------------- */
 group('Markdown — structure');
+check('Markdown blocks expose the typography audit contract',
+  [...renderMarkdown('## Heading\n\nParagraph\n\n- Item').children].every(node => node.hasAttribute('data-markdown-block')));
+
 check('heading renders one level down', md('## Intuition').startsWith('<h3>'), md('## Intuition'));
 check('bold and italic', md('**b** and *i*') === '<p><strong>b</strong> and <em>i</em></p>', md('**b** and *i*'));
 check('unordered list', md('- a\n- b') === '<ul><li>a</li><li>b</li></ul>', md('- a\n- b'));

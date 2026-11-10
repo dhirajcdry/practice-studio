@@ -19,6 +19,7 @@ import { contextPacket } from '../coach/context-packet.mjs';
 import { buildConversation } from '../coach/native-sessions.mjs';
 import { handoffRecords, selectRecords, evidenceRecords } from '../coach/context-policy.mjs';
 import { parseReport, buildReport } from './report.mjs';
+import { readReportDifficulty } from './report-difficulty.mjs';
 import { createTagStripper } from './narration.mjs';
 import { InterviewStore, validate } from './store.mjs';
 import { writeInterviewDoc } from './render.mjs';
@@ -27,6 +28,7 @@ import { filterTranscript, isFillerReply } from '../../web/js/transcript-filter.
 import { scenario as lldScenario } from '../lld/scenarios.mjs';
 import { problemDir, listProblemSlugs, disciplineForSlug } from '../storage-layout.mjs';
 import { contextReader } from '../coach/context-policy.mjs';
+import { readCachedProblem } from '../coach/problem-cache.mjs';
 
 export class InterviewService {
   constructor({ root = HOME_ROOT, binary = process.env.STUDIO_COACH_BINARY, run = runProviderTurn } = {}) {
@@ -51,6 +53,31 @@ function publicState(state, busy = false) {
   const needsAttention = !busy && Boolean(latest && ['accepted', 'failed'].includes(latest.status) && (!latestCompleted || generation.lastIndexOf(latest) > generation.lastIndexOf(latestCompleted)));
   return { ...rest, status: state.debriefed ? 'completed' : state.pausedAt !== null ? 'paused' : needsAttention ? 'needs_attention' : 'in_progress', needsAttention, lastRequestStatus: latest?.status || null };
 }
+function extensionMinutes(body) {
+  if (!Number.isInteger(body.minutes) || body.minutes < 1 || body.minutes > 240) throw new HttpError(400, 'BAD_REQUEST', 'Minutes must be a positive integer from 1 to 240.');
+  if (typeof body.requestId !== 'string' || !/^[\w-]{1,100}$/.test(body.requestId)) throw new HttpError(400, 'BAD_REQUEST', 'A valid request identity is required.');
+}
+async function extend(req, res, ctx) {
+  const body = await readJsonBody(req); extensionMinutes(body); validate(body.slug, body.interviewId);
+  const svc = service(ctx), key = keyOf(body.slug, body.interviewId), slot = reserve(svc, key);
+  try {
+    const state = await svc.store.readState(body.slug, body.interviewId);
+    if (!state) throw new HttpError(404, 'NOT_FOUND', 'Interview not found.');
+    const prior = state.requests?.[body.requestId];
+    if (prior) {
+      if (prior.kind !== 'time_extended' || prior.minutes !== body.minutes) throw new HttpError(409, 'REQUEST_REUSED', 'This request identity was already used for another action.');
+      return sendJson(res, 200, { duplicate: true, state: publicState(state) });
+    }
+    if (state.debriefed || state.endedAt !== null) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
+    state.originalMinutes ??= state.minutes;
+    state.minutes += body.minutes;
+    state.requests ??= {};
+    state.requests[body.requestId] = { status: 'completed', kind: 'time_extended', minutes: body.minutes };
+    await record(svc, state, body.interviewId, { kind: 'time_extended', minutes: body.minutes, requestId: body.requestId });
+    await persist(svc, state, body.interviewId);
+    return sendJson(res, 200, { state: publicState(state) });
+  } finally { slot.release(); }
+}
 function reserve(svc, key) {
   if (svc.live.has(key)) throw new HttpError(409, 'BUSY', 'The interviewer is still finishing a turn.');
   let resolve;
@@ -60,18 +87,22 @@ function reserve(svc, key) {
   svc.live.set(key, slot);
   return slot;
 }
-async function readStatement(root, slug) {
-  try {
-    const cached = JSON.parse(await fs.readFile(path.join(root, 'cache', 'leetcode', `${slug}.json`), 'utf8'));
-    const question = cached.question || cached.data?.question || cached;
-    const content = cached.content || {};
-    const description = question.content || content.descriptionHtml || cached.descriptionHtml;
-    if (typeof description !== 'string' || !description.trim()) throw new HttpError(409, 'NO_STATEMENT', 'This problem has no cached statement for the interviewer.');
-    return `${question.title || content.title || slug}\n${description}`;
-  } catch (error) {
-    if (error.code === 'ENOENT') throw new HttpError(409, 'NO_STATEMENT', 'Open a problem with a cached statement before starting an interview.');
-    throw error;
+async function readStatement(root, slug, ctx) {
+  // Opening the page may still be filling the cache. Join that existing work;
+  // interview/coach turns must not start their own fetches or retry loops.
+  const pending = ctx?.leetcode?.inFlight?.get(slug);
+  if (pending) {
+    try { await pending; } catch { /* A usable cached copy may still exist. */ }
   }
+  const cached = await readCachedProblem({ root, slug, leetcode: ctx?.leetcode,
+    catalogEntry: ctx?.catalog?.get(slug) });
+  // statementHtml includes cached Premium/NeetCode definitions. descriptionHtml
+  // can instead contain runner-only examples, which are not the full statement.
+  const description = cached?.statementHtml;
+  if (typeof description !== 'string' || !description.trim()) {
+    throw new HttpError(409, 'NO_STATEMENT', 'The full cached statement is not available for this problem yet. Open the problem and wait for its description to load, then retry starting the interview. If it is Premium, its statement must be available first.');
+  }
+  return `${cached.title || slug}\n${description}`;
 }
 function validBody(body) {
   if (body.said !== undefined && (typeof body.said !== 'string' || body.said.length > 80000)) throw new HttpError(400, 'BAD_REQUEST', 'Answer is too long.');
@@ -131,6 +162,9 @@ async function generate(svc, state, id, body, kind, slot, stream) {
   const learningNotes = '';
   // Past performance reaches the debrief only; the live interviewer judges what it sees.
   const debriefing = kind === 'debrief';
+  // Done and retry both land here. A failed attempt left no report, so a retry reads the
+  // current setting; a finished interview can never generate again, which freezes it.
+  if (debriefing) state.reportDifficulty = await readReportDifficulty(svc.root);
   const learner = debriefing ? learnerContext(await readLearnerProfile(svc.root, { excludeInterviewId: id,discipline:state.discipline||'coding' }),{discipline:state.discipline||'coding',slug:state.slug,query:body.said}) : null;
   const agentMemory = debriefing ? await readAgentMemory(svc.root, state.slug,{query:body.said}) : null;
   const sessionRecords=()=>svc.store.readTurns(state.slug,id);
@@ -160,12 +194,14 @@ async function generate(svc, state, id, body, kind, slot, stream) {
   const message = debriefing ? debriefPrompt(state, [], Date.now(), {includeEvidence:false}) : turnPrompt(state, {
     kind, said:body.said || '', code:body.code ?? state.lastCode, full:true, includeWorkspace:false, includeScenario:false,
   });
+  // The notice is in this prompt now; a later turn must not repeat it.
+  if (kind !== 'debrief' && state.minutes * 60000 - elapsed(state) <= 120000) state.warningGiven = true;
   const nativeConversation = buildConversation({key:debriefing ? reviewConversationKey(state.slug,id) : `interview:${state.slug}:${id}`,
     requestId:body.requestId,message,context:currentContext,
     bootstrap:{instructions:debriefing ? '' : LIVE_MOCK_POLICY,sessionTools:!debriefing,
       sections:debriefing ? [] : [['Full saved interview record',handoffRecords(evidenceRecords(turns.filter(t => !body.requestId || t.requestId !== body.requestId)),{query:body.said||''})]]}});
   const prompt = nativeConversation.bootstrapPrompt;
-  let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', buffered = '', child, finished = false, sessionId = null;
+  let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', buffered = '', child, finished = false, sessionId = null, silent = false;
   const emit = text => {
     if (!text) return;
     buffered += text;
@@ -184,7 +220,14 @@ async function generate(svc, state, id, body, kind, slot, stream) {
       if (!failure && !stopped && kind !== 'debrief') {
         const clean = filterTranscript(buffered);
         if (clean && !isFillerReply(clean)) { asked = buffered; stream.token(asked); }
-        else if (buffered.trim()) await record(svc, state, id, { kind: 'suppressed_filler', raw: buffered, requestId: body.requestId, provider: choice.provider, model: choice.model });
+        else if (buffered.trim()) await record(svc, state, id, { kind: 'suppressed_filler', replyKind: kind, raw: buffered, requestId: body.requestId, provider: choice.provider, model: choice.model });
+        else if (tags.tagged) {
+          // Only control tags: the interviewer chose to say nothing. The candidate's
+          // words remain unanswered in the record, and the phase can still move.
+          if (tags.phase) advance(state, tags.phase);
+          await record(svc, state, id, { kind: 'interviewer_silent', replyKind: kind, requestId: body.requestId, provider: choice.provider, model: choice.model });
+        }
+        silent = !asked && Boolean(buffered.trim() || tags.tagged);
       } else if (!failure && !stopped) { asked = buffered; }
       // Short replies wait for filler classification. Even when the provider
       // fails, retain and show the guarded text instead of losing its evidence.
@@ -229,14 +272,14 @@ async function generate(svc, state, id, body, kind, slot, stream) {
       if (failure) stream.error(failure);
       else {
         stream.send('phase', { phase: state.phase });
-        stream.send('done', { state: publicState(state), asked, stopped }); stream.end();
+        stream.send('done', { state: publicState(state), asked, stopped, silent }); stream.end();
       }
     } catch (error) { stream.error(`The interview could not be saved: ${error.message}`); throw error; }
     finally { slot.release(); }
   };
   slot.stop = async () => { child?.kill(); await finish({ stopped: true }); await stoppedProviderExit(child); };
   const launch = () => {
-    const system = debriefing ? reviewSystemPrompt() : state.discipline === 'lld' ? lldSystemPrompt(state) : systemPrompt();
+    const system = debriefing ? reviewSystemPrompt() : state.discipline === 'lld' ? lldSystemPrompt(state) : systemPrompt(state);
     child = svc.run({ choice, root: svc.root, discipline:state.discipline||'coding', binary: svc.binary, tools: '', ...agentTools.options,
       systemPrompt: system, coachingMode: kind === 'debrief' ? 'review' : 'mock',
       prompt,
@@ -286,10 +329,12 @@ async function start(req, res, ctx) {
       if (!state.scenario) throw new HttpError(404, 'NOT_FOUND', 'Unknown LLD scenario.');
       state.title = state.scenario.title;
       state.statement = `${state.title}\n${state.scenario.statement}`;
-    } else state.statement = await readStatement(svc.root, body.slug);
+    } else state.statement = await readStatement(svc.root, body.slug, ctx);
     const choice = await readCoachChoice(svc.root, svc);
     state.coachProvider = choice.provider; state.coachModel = choice.model; state.coachReasoningEffort = choice.reasoningEffort || null;
     if (body.fresh) await pauseOtherInterviews(svc, body.slug, null);
+    // Waiting for an already-opened problem is preparation, not interview time.
+    state.startedAt = state.lastSpeechAt = state.lastTypingAt = Date.now();
     const id = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     if (body.requestId) state.requests[body.requestId] = { status: 'accepted', kind: 'opening', said: '' };
     await svc.store.create(body.slug, id, state);
@@ -319,7 +364,6 @@ async function action(req, res, ctx, kind) {
   try {
     const state = await svc.store.readState(body.slug, id);
     if (!state) throw new HttpError(404, 'NOT_FOUND', 'Interview not found.');
-    if (state.discipline === 'lld' && kind === 'turn' && /^(?:done|i(?:'m| am) done)[.!]?$/i.test(String(body.said || '').trim())) kind = 'debrief';
     const existing = body.requestId && state.requests[body.requestId];
     const retrying = kind === 'retry';
     if (retrying) {
@@ -529,6 +573,7 @@ export const interviewRoutes = {
   'POST /api/interview/resume': (q, r, c) => action(q, r, c, 'resume'),
   'POST /api/interview/stop': stop,
   'POST /api/interview/retry': (q, r, c) => action(q, r, c, 'retry'),
+  'POST /api/interview/extend': extend,
   'POST /api/interview/ask': ask,
   'GET /api/interview': list,
   'GET /api/interview/:slug/:id': get,

@@ -34,6 +34,10 @@ Delegation: bounded native workers handled the shared-context draft, coding rout
 migration and documentation; parent reviewed, corrected and integrated the implementation.
 Fresh concise handoffs, shared checkout, no real tutor or TTS model calls.
 
+## 2026-11-04 — Writer owns study-note authoring
+
+Natural requests to create notes, handouts, or expand an insight route through Writer with bounded learning context and relevant tutor evidence. Drafts, brainstorming, ordinary explanations, and private coaching memory remain in Studio; Studycraft authoring is retired from the normal tutor flow. Existing Studycraft storage, outbox, and legacy receipts are preserved for compatibility and recovery.
+
 ## 2026-11-01 — Persistent native conversations
 
 **Authorization:** Dhiraj requested one Claude Code/Codex conversation per Studio session,
@@ -180,3 +184,87 @@ disable switch was found; this mitigation cannot guarantee model behavior.
 Delegation: one GPT-6 Astra expert consult traced the exact session and implemented
 the provider guidance with fake-CLI tests. The main agent implemented operation-owned
 UI errors and real-browser failure/recovery checks. Raw learner evidence is preserved.
+
+## 2026-11-04 — Continuous voice capture and speech interruption
+
+Keep the same microphone and meter active through submission, model generation and
+playback. `voice.flush()` waits for the current phrase boundary without releasing the
+device. Qualified learner speech cancels current and queued audio immediately; the
+written turn finishes, and new words remain a draft until it can be sent. Consume a
+submitted draft prefix once on acceptance, preserving speech added in flight. Explicit
+mute, mode exit and session/navigation boundaries still release the microphone.
+Quiet frames calibrate background noise; sustained speech must never raise its own
+detection threshold into silence. Failed replies hold automatic sending and idle turns
+until an explicit action, without losing the new draft.
+
+The shared bar keeps its microphone control and transcript visible during playback.
+Browser echo cancellation is enabled. Natural TTS already uses a persistent model;
+larger timed phrases reduce the tiny WAV boundaries that can cause audible breaks.
+See [UI.md](../docs/UI.md#voice-conversation).
+
+Delegation: one economy worker inspected persistent TTS and adjusted streaming phrase
+size with unit coverage, then updated the practice browser regression. The main agent
+implemented continuous capture, draft preservation, mock-screen checks and integration.
+
+## 2026-11-04 — Learner-controlled mock completion
+
+Mock timers now show overtime rather than requesting a debrief at the deadline.
+Only the explicit finish action completes the mock; “done” in conversation stays
+an answer. A shared header control adds 15, 20, or custom minutes through idempotent
+server writes. Original budgets and extensions are preserved without extra model calls,
+and native role prompts keep the original budget while context carries updates.
+Coding/LLD and design retain their existing session stores and pause semantics.
+A bounded economy_worker implemented server routes and route regressions; the main
+session integrated the shared UI, serialization and browser verification.
+
+## 2026-11-04 — Compact clocks and bounded practice tracking
+
+Following the voice-bar refactor, the mock clock itself now opens time choices.
+Custom entry and save errors stay in its popover; success closes it. The header
+never grows an inline form or keeps a success message.
+
+Practice timers now start explicitly and pause on hiding, leaving, and reopening.
+A server-owned 30-second lease, renewed every 10 seconds only for the same live run,
+bounds tracking after browser failure. Late heartbeats cannot restart paused clocks.
+Existing totals are preserved; the two running practice clocks were paused through
+the server API, and all five saved practice sessions verified stopped. An economy
+worker drafted the timer changes; the main session corrected renewal and teardown
+races and verified server, browser, and light/dark visual checks.
+
+## 2026-11-05 — Stop abandoned practice after 12 hours
+
+Every uninterrupted practice timer run now stops at 12 hours. The server caps
+lease renewal and elapsed time at that boundary, so an open tab cannot extend it
+forever. Explicit Resume starts a new run; previously saved totals stay intact.
+The cutoff never calls a coach or generates a debrief. This needs no new UI or
+background sweeper: the existing timer reads and heartbeat transitions enforce it.
+
+## 2026-11-05 — Keep short speech openers in one clip
+
+The ten-word timed-fragment minimum did not cover complete two- or three-word
+sentences. An opener such as "Good question." could still start its own WAV, followed
+by a synthesis/playback gap. Group short sentence openers with their continuation;
+standalone short replies still release on the latency timer or completion. Preserve
+that grouping through the speaker and the local endpoint, whose single-line,
+500-character cap remains intact. The endpoint accepts adjacent sentences within
+that cap instead of rejecting the batch and causing a system-voice fallback.
+
+Do not report preparation for an already-prefetched clip. Real synthesis waits still
+show preparation. Regression coverage exercises the stream, actual synthesis request
+boundaries, the persistent fake helper, and the real browser/route wiring. No real
+speech model runs in these checks. This change was implemented in the main session.
+
+## 2026-11-05 — Speak complete sentences instead of timed fragments
+
+Prefer steady narration over beginning an unfinished sentence slightly earlier. The
+420 ms / ten-word rule could still split ordinary sentences into separate WAVs, so
+remove timed flushing altogether. Dispatch complete sentences as they arrive, keeping
+short openers with the next sentence; completion releases standalone short replies
+and unpunctuated endings. Keep the 400-character streaming bound (within the endpoint's
+500-character cap) for unusually long sentences, preferring a substantial clause and
+then a word boundary. The existing next-clip prefetch and immediate cancellation remain.
+
+Regression checks pause token delivery mid-sentence beyond the old timeout, require
+one complete first clip through the real browser and fake TTS endpoint, and preserve
+every word across bounded long-text chunks. Main-session implementation; no delegation
+or real speech model was needed.

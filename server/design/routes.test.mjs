@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { routes, DesignService } from './routes.mjs';
 import { DesignStore } from './store.mjs';
 import { conversationDir } from '../coach/native-sessions.mjs';
+import { saveReportDifficulty } from '../interview/report-difficulty.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'test', 'fake-claude.mjs');
@@ -377,6 +378,43 @@ test('a debriefed interview is a record, not something to reopen', async () => {
   } finally { await close(); }
 });
 
+test('manual extension persists across reload, is idempotent, and serializes with pause', async () => {
+  const root = await workspace();
+  const { origin, svc, close } = await serve(root, { reply: CLEAN });
+  try {
+    const started = await readStream(await post(origin, '/api/design/start', { minutes: 30 }));
+    const id = started.events.find(e => e.name === 'interview').payload.id;
+    const extension = post(origin, '/api/design/extend', { interviewId: id, minutes: 15, requestId: 'extend-1' });
+    const pause = post(origin, '/api/design/pause', { interviewId: id });
+    const responses = await Promise.all([extension, pause]);
+    assert.ok(responses.every(r => r.ok));
+    let state = await svc.store.readState(id);
+    assert.equal(state.minutes, 45); assert.equal(state.originalMinutes, 30); assert.ok(state.pausedAt);
+    const duplicate = await (await post(origin, '/api/design/extend', { interviewId: id, minutes: 15, requestId: 'extend-1' })).json();
+    assert.equal(duplicate.duplicate, true); assert.equal(duplicate.state.minutes, 45);
+    const reloaded = new DesignService({ root, binary: FAKE, log: { warn() {} } });
+    state = await reloaded.store.readState(id); assert.equal(state.minutes, 45); assert.equal(state.originalMinutes, 30);
+    const mismatch = await post(origin, '/api/design/extend', { interviewId: id, minutes: 20, requestId: 'extend-1' });
+    assert.equal(mismatch.status, 409);
+    for (const minutes of [0, -1, 241, 1.5, '5']) {
+      const bad = await post(origin, '/api/design/extend', { interviewId: id, minutes, requestId: `bad-${String(minutes)}` });
+      assert.equal(bad.status, 400);
+    }
+  } finally { await close(); }
+});
+
+test('design extension rejects a debriefed interview', async () => {
+  const root = await workspace();
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    const started = await readStream(await post(origin, '/api/design/start', {}));
+    const id = started.events.find(e => e.name === 'interview').payload.id;
+    await readStream(await post(origin, '/api/design/done', { interviewId: id }));
+    const response = await post(origin, '/api/design/extend', { interviewId: id, minutes: 5, requestId: 'after' });
+    assert.equal(response.status, 409);
+  } finally { await close(); }
+});
+
 test('every interview is listed, newest last, with enough to choose between them', async () => {
   const root = await workspace();
   const { origin, close } = await serve(root, { reply: 'Design a rate limiter.' });
@@ -465,4 +503,132 @@ test('disconnect and pause keep the full in-flight question and paused clock on 
     await close();
     await fsp.rm(root, { recursive: true, force: true });
   }
+});
+
+test('a tags-only answer is silence: no words, the phase moves, and the record says so', async () => {
+  const root = await workspace();
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    const start = await readStream(await post(origin, '/api/design/start', { level: 'L4' }));
+    const id = start.events.find((e) => e.name === 'interview').payload.id;
+    process.env.STUDIO_FAKE_REPLY = '[[phase: estimates]]';
+    const body = { interviewId: id, said: 'Hmm, thinking about the mapping table.', requestId: 'silent-design-1' };
+    const turn = await readStream(await post(origin, '/api/design/turn', body));
+    assert.equal(turn.text, '');
+    assert.equal(turn.events.find((e) => e.name === 'phase').payload.phase, 'estimates');
+    const store = new DesignStore({ root });
+    assert.equal((await store.readState(id)).phase, 'estimates');
+    const rows = await store.readTurns(id);
+    assert.ok(rows.some((t) => t.kind === 'candidate' && t.said === body.said));
+    assert.equal(rows.at(-1).kind, 'interviewer_silent');
+    const replay = await readStream(await post(origin, '/api/design/turn', body));
+    assert.equal(replay.events.find((e) => e.name === 'done').payload.replayed, true);
+    assert.equal((await store.readTurns(id)).filter((t) => t.requestId === body.requestId && t.kind === 'interviewer_silent').length, 1);
+  } finally { delete process.env.STUDIO_FAKE_REPLY; await close(); }
+});
+
+test('filler is never shown or spoken, while a real question still streams', async () => {
+  const root = await workspace();
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    const start = await readStream(await post(origin, '/api/design/start', { level: 'L4' }));
+    const id = start.events.find((e) => e.name === 'interview').payload.id;
+    process.env.STUDIO_FAKE_REPLY = 'Take your time and keep thinking out loud. [[phase: estimates]]';
+    const filler = await readStream(await post(origin, '/api/design/turn', { interviewId: id, said: 'I am stuck on this.', requestId: 'filler-design-1' }));
+    assert.equal(filler.text.trim(), '');
+    const store = new DesignStore({ root });
+    const row = (await store.readTurns(id)).at(-1);
+    assert.equal(row.kind, 'suppressed_filler'); assert.match(row.raw, /Take your time/);
+    assert.notEqual((await store.readState(id)).phase, 'estimates');
+    process.env.STUDIO_FAKE_REPLY = 'Okay. How many reads per second? Say it in numbers. [[phase: estimates]]';
+    const raw = await (await post(origin, '/api/design/turn', { interviewId: id, said: 'A cache.', requestId: 'real-design-1' })).text();
+    const tokens = raw.split('\n\n').filter((block) => block.startsWith('event: token')).map((block) => JSON.parse(block.split('data: ')[1]).text);
+    assert.match(tokens.join(''), /^Okay\. How many reads per second\? Say it in numbers\./);
+    assert.ok(tokens.length > 1, 'the question should stream after its first sentence');
+  } finally { delete process.env.STUDIO_FAKE_REPLY; await close(); }
+});
+
+test('an empty reply with no phase tag is not silence, so it is never reported as a choice', async () => {
+  const root = await workspace();
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    const start = await readStream(await post(origin, '/api/design/start', { level: 'L4' }));
+    const id = start.events.find((e) => e.name === 'interview').payload.id;
+    process.env.STUDIO_FAKE_REPLY = '';
+    const turn = await readStream(await post(origin, '/api/design/turn', { interviewId: id, said: 'A cache.', requestId: 'empty-design-1' }));
+    assert.equal(turn.events.find((e) => e.name === 'done').payload.silent, false);
+    assert.ok(!(await new DesignStore({ root }).readTurns(id)).some((t) => t.kind === 'interviewer_silent'));
+  } finally { delete process.env.STUDIO_FAKE_REPLY; await close(); }
+});
+
+test('the design debrief is graded at the saved difficulty, which is frozen on the record', async () => {
+  const root = await workspace();
+  const promptFile = path.join(root, 'last-prompt.txt');
+  process.env.STUDIO_FAKE_PROMPT_FILE = promptFile;
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    await saveReportDifficulty(root, 'amazon-sde-2');
+    const { events } = await readStream(await post(origin, '/api/design/start', { level: 'L4' }));
+    const id = events.find((e) => e.name === 'interview').payload.id;
+    process.env.STUDIO_FAKE_REPLY = JSON.stringify({ signal: 'Hire', headline: 'Sound design.' });
+    await readStream(await post(origin, '/api/design/done', { interviewId: id, said: 'A queue.' }));
+    const prompt = await fsp.readFile(promptFile, 'utf8');
+    assert.ok(prompt.includes('Amazon SDE II (L5)'));
+    assert.ok(!prompt.includes('DIFFICULTY: Beginner'));
+
+    await saveReportDifficulty(root, 'beginner');
+    const store = new DesignStore({ root });
+    assert.equal((await store.readState(id)).reportDifficulty, 'amazon-sde-2', 'a later change never regrades');
+    const got = await (await fetch(`${origin}/api/design/${id}`)).json();
+    assert.equal(got.reportDifficulty, 'amazon-sde-2');
+    assert.equal(got.report.difficulty, 'amazon-sde-2');
+    const { interviews } = await (await fetch(`${origin}/api/design`)).json();
+    assert.equal(interviews.find((x) => x.id === id).reportDifficulty, 'amazon-sde-2');
+    const doc = await fsp.readFile(path.join(store.dir(id), 'interview.md'), 'utf8');
+    assert.match(doc, /\*\*Report graded at\*\* Amazon SDE II difficulty/);
+    assert.match(doc, /\*\*Hire\*\* · Amazon SDE II difficulty — Sound design\./);
+
+    const followup = await readStream(await post(origin, '/api/design/ask', { interviewId: id, requestId: 'design-why-1', question: 'Why that rating?' }));
+    assert.ok(followup.events.some((e) => e.name === 'done'));
+    assert.match(await fsp.readFile(promptFile, 'utf8'), /"difficulty":\s*"amazon-sde-2"/);
+  } finally { delete process.env.STUDIO_FAKE_REPLY; delete process.env.STUDIO_FAKE_PROMPT_FILE; await close(); }
+});
+
+test('with nothing saved a design debrief is Beginner, and a failed one leaves no difficulty behind', async () => {
+  const root = await workspace();
+  const promptFile = path.join(root, 'last-prompt.txt');
+  process.env.STUDIO_FAKE_PROMPT_FILE = promptFile;
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    const { events } = await readStream(await post(origin, '/api/design/start', {}));
+    const id = events.find((e) => e.name === 'interview').payload.id;
+    const store = new DesignStore({ root });
+    process.env.STUDIO_FAKE_REPLY = '';
+    await readStream(await post(origin, '/api/design/done', { interviewId: id, said: 'A queue.' }));
+    assert.ok(!(await store.readState(id)).debriefed);
+    assert.equal((await store.readState(id)).reportDifficulty, undefined);
+
+    process.env.STUDIO_FAKE_REPLY = JSON.stringify({ signal: 'Hire' });
+    await readStream(await post(origin, '/api/design/done', { interviewId: id }));
+    assert.match(await fsp.readFile(promptFile, 'utf8'), /DIFFICULTY: Beginner/);
+    assert.equal((await store.readState(id)).reportDifficulty, 'beginner');
+  } finally { delete process.env.STUDIO_FAKE_REPLY; delete process.env.STUDIO_FAKE_PROMPT_FILE; await close(); }
+});
+
+test('a design record from before the setting still opens with no difficulty', async () => {
+  const root = await workspace();
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    const { events } = await readStream(await post(origin, '/api/design/start', {}));
+    const id = events.find((e) => e.name === 'interview').payload.id;
+    process.env.STUDIO_FAKE_REPLY = JSON.stringify({ signal: 'Hire', headline: 'Sound design.' });
+    await readStream(await post(origin, '/api/design/done', { interviewId: id }));
+    const store = new DesignStore({ root }), state = await store.readState(id);
+    delete state.reportDifficulty;
+    await store.writeState(id, state);
+    const got = await (await fetch(`${origin}/api/design/${id}`)).json();
+    assert.equal(Object.hasOwn(got, 'reportDifficulty'), false);
+    assert.equal(got.report.judgement.signal, 'Hire');
+    assert.equal(Object.hasOwn(got.report, 'difficulty'), false);
+  } finally { delete process.env.STUDIO_FAKE_REPLY; await close(); }
 });

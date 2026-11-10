@@ -28,6 +28,7 @@ import { neetcodeMismatch } from './neetcode-shape.js';
 import { celebrate } from './celebrate.js';
 import { onChord, chordLabel } from './shortcuts.js';
 import { icon } from './ui/icon.js';
+import { claimActionKey, hasOpenOverlay, isTextEntry } from './keyboard.js';
 
 const SAVE_DEBOUNCE_MS = 900;
 const DRAFT_DEBOUNCE_MS = 300;
@@ -432,10 +433,11 @@ export function mountWorkspace(entry, options = {}) {
 
   /* ---- submit ---- */
 
-  // Reached from the Submit button or ⌘↵, and from nothing else — no timer, no retry
-  // path, no batching. That is what keeps "one submission per explicit user action"
-  // true rather than aspirational; a keystroke he pressed is an explicit action, a
-  // second attempt fired by the app on his behalf would not be.
+  // Reached from the Submit button or ⌘↵ in the workspace, and from nothing else — no
+  // timer, no retry path, no batching. That is what keeps "one submission per explicit
+  // user action" true rather than aspirational; a keystroke he aimed at the code is an
+  // explicit action, one aimed at another box or a second attempt fired by the app is not.
+  // scripts/check-submit-keys.mjs holds the ⌘↵ boundary.
   function doSubmit() {
     if (!contentReady || !editor || judge.isBusy()) return;
     // Premium problems are submitted on NeetCode through the Studio Connector, in the
@@ -569,11 +571,12 @@ export function mountWorkspace(entry, options = {}) {
   // Escape can hand the keyboard back by moving focus to the toolbar.
   root.addEventListener('keydown', (event) => {
     if (host.contains(event.target)) event.stopPropagation();
-    const meta = event.metaKey || event.ctrlKey;
+    if (hasOpenOverlay() || isTextEntry(event.target)) return;
+    const meta = (event.metaKey || event.ctrlKey) && !event.altKey;
     // ⌘↵ submits, ⌘' runs. ⌘⇧↵ stays a submit alias so the old binding still works.
-    if (meta && event.key === 'Enter') { event.preventDefault(); doSubmit(); return; }
-    if (meta && event.key === "'") { event.preventDefault(); doRun(); return; }
-    if (meta && (event.key === 's' || event.key === 'S')) { event.preventDefault(); flushNow(); return; }
+    if (meta && event.key === 'Enter') { if (claimActionKey(event)) doSubmit(); return; }
+    if (meta && event.key === "'") { if (claimActionKey(event)) doRun(); return; }
+    if (meta && (event.key === 's' || event.key === 'S')) { if (claimActionKey(event)) flushNow(); return; }
     if (event.key === 'Escape' && editor && editor.hasFocus()) {
       event.preventDefault();
       editor.blur();
@@ -583,12 +586,18 @@ export function mountWorkspace(entry, options = {}) {
 
   function onDocumentKey(event) {
     if (disposed || !document.body.contains(root)) return;
-    if (host.contains(document.activeElement)) return;
+    // Inside the workspace, the listener above has already acted.
+    if (root.contains(event.target)) return;
+    // ⌘↵ sends code to a real judge, and this workspace stays mounted under the report,
+    // Settings and the reference drawer. So only with nothing focused or from the
+    // statement beside the code: every other box on the page has its own ⌘↵.
+    if (hasOpenOverlay() || isTextEntry(event.target) || event.altKey) return;
+    if (event.target !== document.body && !event.target.closest?.('.pcol')) return;
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      event.preventDefault(); doSubmit(); return;
+      if (claimActionKey(event)) doSubmit(); return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key === "'") {
-      event.preventDefault(); doRun(); return;
+      if (claimActionKey(event)) doRun(); return;
     }
     // No bare letters here any more. `f` and `p` toggled panes only while the cursor
     // happened to be nowhere, and typed themselves the rest of the time; both moved to

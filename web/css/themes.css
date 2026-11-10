@@ -617,7 +617,7 @@ body.theme-terminal.is-dark :is(h1,h2,h3,.wordmark){text-shadow:0 0 8px rgba(var
 body.theme-terminal .tag,body.theme-terminal .ptoggle{background:transparent;border:1px dashed currentColor}
 body.theme-terminal.ws-wide .ws>.ws-bar .ws-submit{color:var(--ink)}
 body.theme-terminal .cmsg-who::before{content:"# ";color:var(--accent)}
-body.theme-terminal :is(.cmsg.you .cmsg-body,.ci-candidate .ci-text)::before{content:"> ";color:var(--accent)}
+body.theme-terminal .cmsg.you .cmsg-body::before{content:"> ";color:var(--accent)}
 body.theme-terminal .cmsg.reply .cmsg-body{font-size:12px;line-height:1.8}
 body.theme-terminal .coach-input{caret-color:var(--accent)}
 

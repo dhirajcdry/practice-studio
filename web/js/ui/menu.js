@@ -31,8 +31,9 @@ export function createMenu({ anchor, label, items = [], groups = [], onSelect = 
     flat = []; buttons = [];
     const option = item => {
       const index = flat.length; flat.push(item);
-      const button = el('button', { class: 'ui-menu-item', type: 'button', role: radio ? 'menuitemradio' : 'menuitem', tabindex: '-1', disabled: item.disabled,
-        ...(radio ? { 'aria-checked': String(Boolean(item.checked)) } : {}),
+      const role = item.role || (radio ? 'menuitemradio' : 'menuitem');
+      const button = el('button', { class: 'ui-menu-item', type: 'button', role, tabindex: '-1', disabled: item.disabled,
+        ...(role === 'menuitemradio' ? { 'aria-checked': String(Boolean(item.checked)) } : {}),
         onclick: () => { if (item.disabled) return; close(true); onSelect(item); },
         onfocus: () => { active = index; },
       }, [item.icon ? el('span', { class: 'ui-menu-icon', text: item.icon, 'aria-hidden': 'true' }) : null,
@@ -41,7 +42,7 @@ export function createMenu({ anchor, label, items = [], groups = [], onSelect = 
       buttons.push(button); return button;
     };
     replace(root, data.groups.length ? data.groups.map(group => el('div', { role: 'group', 'aria-label': group.label }, [
-      el('div', { class: 'ui-menu-heading', text: group.label }), ...(group.options || group.items || []).map(option),
+      group.label ? el('div', { class: 'ui-menu-heading', text: group.label }) : null, ...(group.options || group.items || []).map(option),
     ])) : data.items.map(option));
   }
   function close(restore = true) {

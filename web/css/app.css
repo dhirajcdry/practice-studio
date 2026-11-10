@@ -919,10 +919,11 @@ body.coach-open .coach-launch{display:none}
 
 /* ---- composer ---- */
 .coach-identity-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.coach-model-picker{min-width:0;display:flex;flex-direction:column;gap:4px}
+.coach-model-picker{min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 .coach-model-select{max-width:100%;min-width:0}
 .coach-model-picker.is-compact{max-width:220px;flex:0 1 auto}
 .coach-model-notice{font-size:12px;color:var(--hard);overflow-wrap:anywhere}
+.coach-effort-select{min-width:0;max-width:100%}
 .coach-model-notice[hidden]{display:none}
 .coach-input{
   width:100%;resize:none;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);
@@ -1307,6 +1308,7 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
 .set-card[aria-pressed="true"]{border-color:var(--ink);background:rgba(var(--ink-rgb),.03)}
 .set-cardname{margin-top:9px;color:var(--ink)}
 .set-cardblurb{font-size:12.5px;line-height:1.5;color:var(--ink-50);margin-top:3px}
+.set-notice{margin-top:var(--space-1)}
 
 
 .set-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--hair-06)}
@@ -1539,8 +1541,8 @@ body[class] :is(.vc-talk,.coach-model-picker select,.catalog-modes button,.catal
 .rr-casehead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
 /* Rows choose one size for both primary and secondary actions. */
 body[class] .tc-foot :is(.ws-mini,.ws-run){height:var(--control-h-sm);min-height:var(--control-h-sm);padding-block:0}
-body[class] :is(.dz-done,.dz-send,.dzl-new,.dzl-go,.dz-pause,.dz-mode,.dz-phase){height:var(--control-h);min-height:var(--control-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
-body[class] :is(.dz-phase,.dz-mode):focus-visible{outline-offset:-2px}
+body[class] :is(.dz-done,.dz-send,.dzl-new,.dzl-go,.dz-pause,.dz-phase){height:var(--control-h);min-height:var(--control-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
+body[class] .dz-phase:focus-visible{outline-offset:-2px}
 .dz-phase:disabled{opacity:.45;cursor:not-allowed}
 /* The list mount owns the bleed space, so the scrolling log never gains overflow. */
 

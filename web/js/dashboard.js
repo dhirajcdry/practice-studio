@@ -238,7 +238,6 @@ function statsSection(stats) {
   return el('div', { class: 'dash-stats', role: 'list' }, [
     statCell({
       value: totals.accepted,
-      suffix: `/ ${lists.neetcode250.total}`,
       label: 'Solved',
       dim: totals.accepted === 0,
     }),

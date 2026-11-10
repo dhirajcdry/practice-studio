@@ -5,6 +5,7 @@ export function fixtureReport(quote = 'I will use a map.') {
     signal: 'Lean hire',
     headline: 'Found the linear idea quickly but tested only after a hint.',
     summary: 'You moved from brute force to a single pass on your own and explained the invariant clearly. Testing came late and only after prompting, and the edge case of a zero at the start was missed until the run failed.',
+    moveUp: 'Proposing the single-element and leading-zero cases before the first run would have made this a Hire.',
     dimensions: [
       { name: 'Problem solving', rating: 'Strong', summary: 'Reached the greedy invariant without help.', evidence: [{ at: '00:30', quote, note: 'States the invariant before coding.' }] },
       { name: 'Coding', rating: 'Solid', summary: 'Clean single loop; one off-by-one fixed after a run.', evidence: [{ at: '06:10', quote: '', note: 'Fixed the loop bound after the failing run at 05:40.' }] },

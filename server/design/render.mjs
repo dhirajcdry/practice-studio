@@ -18,7 +18,7 @@ import { DesignStore } from './store.mjs';
 import { sceneToGraph, renderGraph, diffGraphs, describeDiff } from './graph.mjs';
 import { PHASES } from './interview.mjs';
 import { buildDesignReport } from './report.mjs';
-import { reportMarkdown } from '../interview/report.mjs';
+import { reportMarkdown, reportDifficultyLabel } from '../interview/report.mjs';
 
 const labelOf = (id) => PHASES.find((p) => p.id === id)?.label ?? id;
 
@@ -58,6 +58,7 @@ export function renderInterview(interview) {
   out.push(`# ${title}`, '');
   out.push(`- **When** ${startMs ? new Date(startMs).toLocaleString() : 'unknown'}`);
   out.push(`- **Bar** ${state.level}`);
+  if (reportDifficultyLabel(state.reportDifficulty)) out.push(`- **Report graded at** ${reportDifficultyLabel(state.reportDifficulty)}`);
   if (state.endedAt && startMs) {
     out.push(`- **Took** ${Math.round((state.endedAt - state.startedAt) / 60000)} minutes of ${state.minutes}`);
   }
@@ -100,6 +101,12 @@ export function renderInterview(interview) {
     const t = event.turn;
     if (t.kind === 'tool_action') {
       if (actions.get(t.action.id) === t) out.push(`### ${at(t)} · Agent action`, '', `${t.action.status === 'done' ? 'Applied' : 'Not confirmed'}: ${t.action.summary}`, '', t.action.message || '', '');
+      continue;
+    }
+    // Silence is a choice the interviewer made, not a question that went missing.
+    if (t.kind === 'interviewer_silent' || t.kind === 'suppressed_filler') {
+      if (String(t.said ?? '').trim()) out.push(`### \`${at(t.at)}\`  ·  ${labelOf(t.phase ?? state.phase)}`, '', `**A** ${String(t.said).trim()}`, '');
+      out.push('*The interviewer stayed silent.*', '');
       continue;
     }
     out.push(`### \`${at(t.at)}\`  ·  ${labelOf(t.phase ?? state.phase)}`, '');

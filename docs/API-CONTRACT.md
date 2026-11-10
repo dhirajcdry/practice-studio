@@ -7,8 +7,9 @@ Server: Node 23, `node:http`, no framework, **binds 127.0.0.1 only**, port **417
 
 ## Scope decisions (settled, do not revisit)
 
-- **NeetCode 250 only.** Filter `catalog.json` to `lists.neetcode250 === true`. The other
-  723 problems are not shown in Phase 1.
+- **NeetCode 250 plus curated collections.** The default catalog includes the 250
+  NeetCode curriculum and the curated `amazon-interview` collection. Collection membership
+  is exposed through `lists`; NeetCode coverage/statistics remain based on `neetcode250`.
 - **Drop `pattern === "JavaScript"`** — 30 non-DSA language exercises. They are not in the
   250 anyway; assert this rather than assuming it.
 - **Python only.** No language switcher.
@@ -26,7 +27,7 @@ Every request is checked for a loopback `Origin`/`Host`; anything else gets 403.
 ---
 
 ### `GET /api/health`
-`200 { ok: true, problemCount: 250, patternCount: 18, catalogSource, solutionsCommit }`
+`200 { ok: true, problemCount: 262, patternCount: 18, catalogSource, solutionsCommit }`
 
 ---
 
@@ -42,8 +43,11 @@ server-side search. Filtering and sorting are the client's job.
     "title": "Two Sum",                 // bundle title; /api/problems/:slug has the real one
     "pattern": "Arrays & Hashing",
     "difficulty": "Easy",
-    "lists": { "blind75": true, "neetcode150": true, "neetcode250": true },
+    "lists": { "blind75": true, "neetcode150": true, "neetcode250": true, "amazon-interview": false },
+    "tags": [],
+    "interviewPrep": null,
     "isPro": false,
+    "leetcodePremium": false,
     "hasPythonSolution": true,
     "hasArticle": true,
     "youtubeVideoId": "KLlXCFG5TnA"     // nullable
@@ -110,6 +114,14 @@ Articles are keyed by **slug only** upstream, with no number prefix — a differ
 space from solutions. `404 ARTICLE_NOT_AVAILABLE` when absent.
 
 ---
+
+## Local speech output
+
+`POST /api/tts` accepts `{ text, voice?, speed? }` and returns `audio/wav`. Text is a
+single-line speech phrase of at most 500 characters; it may contain adjacent sentences
+so a short opener and its continuation can play as one clip. The request-body cap remains
+8 KiB. Voice and speed validation are unchanged. Synthesis uses the persistent local
+helper, with no text or audio written to the interview record by this endpoint.
 
 ## Untrusted content — non-negotiable
 

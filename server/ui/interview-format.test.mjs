@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { elapsedInterview, interviewDuration, relativeInterviewDate, interviewOutcome, debriefSections, recordedPhaseTimes } from '../../web/js/interview-format.js';
+import { elapsedInterview, interviewDuration, relativeInterviewDate, interviewOutcome, debriefSections, recordedPhaseTimes, reportDifficultyLabel, signalLabel } from '../../web/js/interview-format.js';
 test('duration counts active time and reports missing starts honestly', () => {
   assert.equal(interviewDuration({}), 'Not started');
   assert.equal(interviewDuration({ startedAt: 1000, endedAt: 1100 }), 'Less than a minute');
@@ -20,6 +20,20 @@ test('outcomes never manufacture a hire signal', () => {
   assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'No hire' }), { label: 'No hire', tone: 'danger' });
   assert.equal(interviewOutcome({ endedAt: 4 }).label, 'Needs feedback');
   assert.equal(interviewOutcome({ pausedAt: 4 }).label, 'Paused');
+});
+test('a Beginner-graded signal says so, and its tone stays on the raw signal', () => {
+  assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire', reportDifficulty: 'beginner' }), { label: 'Hire (Beginner)', tone: 'success' });
+  assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'No hire', reportDifficulty: 'beginner' }), { label: 'No hire (Beginner)', tone: 'danger' });
+  assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire', reportDifficulty: 'amazon-sde-2' }), { label: 'Hire', tone: 'success' });
+  assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire' }), { label: 'Hire', tone: 'success' });
+  assert.deepEqual(interviewOutcome({ debriefed: true, reportDifficulty: 'beginner' }), { label: 'Completed', tone: 'neutral' });
+  assert.equal(signalLabel(null, 'beginner'), null);
+});
+test('report difficulty names are known values only', () => {
+  assert.equal(reportDifficultyLabel('beginner'), 'Beginner');
+  assert.equal(reportDifficultyLabel('amazon-sde-2'), 'Amazon SDE II');
+  assert.equal(reportDifficultyLabel(undefined), '');
+  assert.equal(reportDifficultyLabel('nonsense'), '');
 });
 test('scorecards preserve unknown and unstructured feedback', () => {
   assert.deepEqual(debriefSections('Intro\n## Coding\nMixed — No evidence recorded.\n## Custom\nKeep this.'), [

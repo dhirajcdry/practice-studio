@@ -256,6 +256,8 @@ export function renderProblem(entry, context) {
   // narrowest one is worth printing.
   const tags = el('div', { class: 'ptags' }, [
     el('span', { class: 'tag pattern', text: entry.pattern, title: 'Pattern' }),
+    entry.interviewPrep ? el('span', { class: 'tag quiet', text: 'amazon-interview' }) : null,
+    entry.leetcodePremium ? el('span', { class: 'tag quiet', text: 'LeetCode Premium' }) : null,
     entry.lists.blind75
       ? el('span', { class: 'tag', text: 'Blind 75' })
       : entry.lists.neetcode150
@@ -287,8 +289,8 @@ export function renderProblem(entry, context) {
       el('span', { class: 'plinks' }, [
         entry.youtubeVideoId ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
           href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`, text: 'Video ↗' }) : null,
-        el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
-          href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug || entry.slug)}`, text: 'NeetCode ↗' }),
+        entry.neetcodeSlug ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
+          href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug)}`, text: 'NeetCode ↗' }) : null,
         el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
           href: `https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, text: 'LeetCode ↗' }),
       ]),
@@ -307,7 +309,7 @@ export function renderProblem(entry, context) {
   const contentPromise = loadProblem(entry.slug, entry);
   view.append(workspaceRail());
   view.append(el('div', { class: 'pbody with-workspace' }, [
-    el('div', { class: 'pcol' }, [hero, descCard]),
+    el('div', { class: 'pcol' }, [hero, interviewPrepCard(entry), descCard]),
     mountWorkspace(entry, { contentPromise }),
     mountCoach(entry),
   ]));
@@ -318,6 +320,32 @@ export function renderProblem(entry, context) {
   });
 
   return view;
+}
+
+function interviewPrepCard(entry) {
+  const prep = entry.interviewPrep;
+  if (!prep) return null;
+  if (prep.origin === 'personal') {
+    return el('section', { class: 'card', 'aria-label': 'Personal practice selection' },
+      el('details', { class: 'desc rich', dataset: { interviewPrep: prep.id } }, [
+        el('summary', { text: `${prep.id} · Added by you · Personal practice` }),
+        el('p', { text: prep.reportedPrompt }),
+        el('p', { text: prep.caveat }),
+        el('p', {}, ['Problem source: ', ...prep.sources.map(source =>
+          el('a', { href: source.url, target: '_blank', rel: 'noopener noreferrer', text: `${source.id} ` }))]),
+      ]));
+  }
+  return el('section', { class: 'card', 'aria-label': 'Amazon interview preparation' },
+    el('details', { class: 'desc rich', dataset: { interviewPrep: prep.id } }, [
+      el('summary', { text: `${prep.id} · ${prep.priority} · ${prep.match}` }),
+      el('p', { text: prep.reportedPrompt }),
+      el('p', {}, [el('strong', { text: 'Mapping caveat: ' }), prep.caveat]),
+      el('p', {}, [el('strong', { text: 'Practice: ' }), prep.practice]),
+      el('p', { text: `Reported round: ${prep.round}. Source assessment: ${prep.authenticity}.` }),
+      el('p', {}, ['Candidate report sources: ', ...prep.sources.map(source =>
+        el('a', { href: source.url, target: '_blank', rel: 'noopener noreferrer', text: `${source.id} ` }))]),
+      el('p', { text: 'Candidate reports supplied for preparation, not verified transcripts or predictions. Practice extensions are suggested exercises. LeetCode mappings checked November 3, 2026.' }),
+    ]));
 }
 
 function panelToggle(entry, kind, label, key, available) {

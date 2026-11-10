@@ -3,6 +3,16 @@ export const DRAFT_PREFIX = 'studio.coach.draft.v1:';
 
 const listeners = new Map();
 const memory = new Map();
+
+// Capture can append a new utterance before the previous request is accepted.
+// Consume that request's prefix once; preserve any newer words or manual edit.
+export function remainingDraft(current, sent) {
+  const text = String(current ?? '').trim(), prefix = String(sent ?? '').trim();
+  if (!prefix) return current;
+  if (text === prefix) return '';
+  if (text.startsWith(prefix) && /^\s/.test(text.slice(prefix.length))) return text.slice(prefix.length).trimStart();
+  return current;
+}
 export function watchDraft(slug, listener) {
   if (!listeners.has(slug)) listeners.set(slug, new Set());
   listeners.get(slug).add(listener);

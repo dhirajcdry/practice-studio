@@ -26,6 +26,13 @@ export function visualLint() {
   const onScreen = (rect) => rect.width > 0 && rect.height > 0
     && rect.right > 0 && rect.bottom > 0 && rect.left < vw && rect.top < vh;
 
+  // Parsing Markdown does not style it. Check every rendered consumer, including
+  // saved feedback that is not part of the live conversation component.
+  for (const block of document.querySelectorAll('[data-markdown-block]')) {
+    if (visible(block) && !block.closest('.rich'))
+      out.push({kind:'markdown-surface',where:name(block),detail:'Markdown bypasses the shared typography surface'});
+  }
+
   // Shared content contracts: every adopted surface gets these checks in every
   // visual state, not only in a screenshot-specific assertion.
   for (const node of document.querySelectorAll('.ui-inset')) {
@@ -259,7 +266,8 @@ export function visualLint() {
   // Input can grow or scroll; the send/mode rail must always remain reachable.
   for (const composer of document.querySelectorAll('.ui-composer')) {
     if (!visible(composer)) continue;
-    const box = composer.getBoundingClientRect(), footer = composer.querySelector('.ui-composer-footer')?.getBoundingClientRect();
+    const rail = composer.querySelector('.ui-composer-footer');
+    const box = composer.getBoundingClientRect(), footer = rail && visible(rail) ? rail.getBoundingClientRect() : null;
     if (footer && (footer.left < box.left - 1 || footer.right > box.right + 1 || footer.bottom > box.bottom + 1))
       out.push({ kind: 'composer-controls', where: name(composer), detail: 'Input growth clips the control rail' });
     if (composer.scrollWidth > composer.clientWidth + 1)

@@ -14,6 +14,7 @@ export async function createWorkspaceTools({ root, slug, target = null, req, str
   const svc = serviceFor({ homeRoot: root });
   let names = kind === 'coding' ? ['get_state','edit_code','mark_lines','clear_marks','run_code','add_case','update_case','remove_case','get_submissions','save_note','read_memory','update_memory'] : kind === 'board' ? ['get_state','edit_board','save_note','read_memory','update_memory'] : kind === 'review' ? [...(getState ? ['get_state'] : []),'save_note','read_memory','update_memory'] : ['get_state','edit_code','mark_lines','clear_marks','save_note','read_memory','update_memory', ...(runCode ? ['run_code'] : [])];
   names.push('read_context','search_context','read_coaching_instructions','update_coaching_instructions');
+  if (!liveMock) names.push('start_notes_session','notes_session_status');
   if (liveMock) names = names.filter(name => !PAST_RECORD_TOOLS.includes(name));
   if(sessionContext)names.push('record_session');
   if(setProblem)names.push('set_practice_problem');

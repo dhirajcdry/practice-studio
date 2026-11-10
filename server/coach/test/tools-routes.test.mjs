@@ -198,27 +198,31 @@ test('the memory upkeep step is never given studio tools', async () => {
   assert.equal(opts.toolSession, undefined);
 });
 
-for (const provider of ['claude', 'codex']) test(`${provider}: ordinary recall request uses tools and preserves conversation`, async t => {
-  const oldToken = process.env.STUDYCRAFT_RECALL_TOKEN;
+for (const provider of ['claude', 'codex']) test(`${provider}: study-note handoff queues Writer context and preserves conversation`, async t => {
+  const oldUrl = process.env.STUDIO_WRITER_URL;
   const oldBinary = process.env.STUDIO_CODEX_BINARY;
-  process.env.STUDYCRAFT_RECALL_TOKEN = '';
+  process.env.STUDIO_WRITER_URL = 'http://127.0.0.1:49999';
   process.env.STUDIO_CODEX_BINARY = FAKE_CODEX;
   t.after(() => {
-    if (oldToken === undefined) delete process.env.STUDYCRAFT_RECALL_TOKEN; else process.env.STUDYCRAFT_RECALL_TOKEN = oldToken;
+    if (oldUrl === undefined) delete process.env.STUDIO_WRITER_URL; else process.env.STUDIO_WRITER_URL = oldUrl;
     if (oldBinary === undefined) delete process.env.STUDIO_CODEX_BINARY; else process.env.STUDIO_CODEX_BINARY = oldBinary;
   });
-  const calls = JSON.stringify([
-    { tool: 'get_recall_evidence', arguments: { patternId: 'hashing-complement' } },
-    { tool: 'save_recall_note', arguments: { patternId: 'hashing-complement', title: 'Hashing: complement',
-      body: 'Look up first.', intuition: 'Keep previous values.', recall: 'Why look up first?',
-      trap: 'No trap recorded.', failingCase: 'No failing case recorded.' } },
-  ]);
+  const calls = JSON.stringify([{ tool: 'start_notes_session', arguments: {
+    title: 'Complement lookups', message: 'Make study notes and explore related interview patterns.',
+    context: 'The learner understands looking up before insertion.' } }]);
   const f = await fixture(t, { provider, env: { FAKE_CLAUDE_MODE: 'tools', FAKE_CLAUDE_TOOL_CALLS: calls, FAKE_CODEX_TOOL_CALLS: calls } });
   const events = await stream(await fetch(f.base + '/api/coach/message', { method: 'POST',
-    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'two-sum', message: 'Make recall notes around this pattern and save them' }) }));
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'two-sum', message: 'Make notes around this insight' }) }));
   assert.equal(events.at(-1).event, 'done');
-  assert.equal(events.find(e => e.event === 'action' && e.data.tool === 'save_recall_note').data.summary, 'Pending sync');
+  const receipt = events.find(e => e.event === 'action' && e.data.tool === 'start_notes_session').data;
+  assert.equal(receipt.summary, 'Writer notes session queued');
+  assert.equal(receipt.url, `http://127.0.0.1:49999/?session=${receipt.writerSessionId}`);
+  const queued = JSON.parse(await fsp.readFile(path.join(f.root, 'context', 'writer-outbox', `${receipt.writerSessionId}.json`), 'utf8'));
+  assert.equal(queued.body.context, 'The learner understands looking up before insertion.');
+  assert.match(queued.body.source.conversationId, /^coding:two-sum:/);
+  await assert.rejects(fsp.access(path.join(f.root, 'recall')), { code: 'ENOENT' });
   const turns = await readTurns({ root: f.root, slug: 'two-sum' });
   assert.equal(turns.at(-1).kind, 'question');
+  assert.equal(turns.at(-1).actions[0].writerSessionId, receipt.writerSessionId);
   assert.ok((await f.coach.coachSessions.read('two-sum'))?.sessionId);
 });

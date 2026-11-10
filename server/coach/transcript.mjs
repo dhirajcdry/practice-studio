@@ -51,6 +51,7 @@ export async function appendTurn({ root, slug, turn, log = console }) {
     ...(Array.isArray(turn.actions) && turn.actions.length
       ? { actions: turn.actions.slice(0, 60).map((a) => ({
         ...(typeof a.url === 'string' ? { url: a.url.slice(0, 2000) } : {}),
+        ...(typeof a.writerSessionId === 'string' ? { writerSessionId: a.writerSessionId.slice(0,36) } : {}),
         ...(typeof a.revisionId === 'string' ? { revisionId: a.revisionId.slice(0, 100) } : {}),
         id: String(a.id ?? ''), tool: String(a.tool ?? ''), summary: String(a.summary ?? '').slice(0, 300), ok: a.ok === true,
       })) }

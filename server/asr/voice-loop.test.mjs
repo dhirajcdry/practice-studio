@@ -9,11 +9,12 @@ function fixture(){
  const loop=createVoiceLoop({capture,speaker,canListen:()=>!busy});
  return {loop,speaker,set busy(v){busy=v;loop.sync();},set error(v){error=v;},set deny(v){deny=v;},get starts(){return starts},get warmed(){return warmed},get state(){return state},settle(){state='idle';loop.sync();}};
 }
-test('voice joins once, waits for reply and audio, then listens again without another gesture',async()=>{
+test('voice joins once and keeps the same microphone throughout playback',async()=>{
  const h=fixture();h.loop.start();await tick();assert.equal(h.state,'recording');assert.equal(h.warmed,1);
+ h.speaker.speaking=true;h.loop.sync();await tick();assert.equal(h.state,'recording');assert.equal(h.starts,1);
+ h.speaker.speaking=false;h.loop.sync();await tick();assert.equal(h.starts,1);assert.equal(h.state,'recording');
  h.busy=true;await tick();assert.equal(h.state,'working');h.settle();await tick();assert.equal(h.starts,1);
- h.speaker.speaking=true;h.busy=false;await tick();assert.equal(h.starts,1);
- h.speaker.speaking=false;h.loop.sync();await tick();assert.equal(h.starts,2);assert.equal(h.state,'recording');
+ h.speaker.speaking=true;h.busy=false;await tick();assert.equal(h.starts,2);assert.equal(h.state,'recording');
  h.loop.dispose();
 });
 test('explicit pause and disposal prevent automatic reopening',async()=>{

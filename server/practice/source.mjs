@@ -60,7 +60,7 @@ export async function resolvePracticeSource(root, { discipline, slug, source }) 
     report = buildDesignReport(state, turns);
   } else throw bad('Choose an LLD or system design discipline.');
   const provenance = { discipline, slug, interviewId, title, startedAt: state.startedAt ?? null,
-    completed: Boolean(state.debriefed || state.endedAt), targetLevel: state.targetLevel || state.level || null, capturedAt: new Date().toISOString() };
+    completed: Boolean(state.debriefed || state.endedAt), targetLevel: state.targetLevel || state.level || null, ...(state.reportDifficulty ? { reportDifficulty: state.reportDifficulty } : {}), capturedAt: new Date().toISOString() };
   // Keep conversational evidence once. Code buffers, provider chunks and all prior
   // canvas snapshots remain in the original record rather than multiplying per fork.
   const conversation = turns.filter(t => t.said || t.asked).map(({ kind, elapsedMs, phase, said, asked }) => ({ kind, elapsedMs, phase, said, asked }));

@@ -1,4 +1,4 @@
-// Isolated browser check: fake providers, fake Studycraft, never ports 4173/4317.
+// Historical Studycraft receipts survive retirement of tutor authoring. Scratch data and fake delivery only.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -8,6 +8,8 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { workspace } from '../server/coach/test/tools-fixture.mjs';
 import { flushRecall, readRecallState } from '../server/recall/sync.mjs';
+import { saveRecallNote } from '../server/recall/index.mjs';
+import { appendTurn } from '../server/coach/transcript.mjs';
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const origin = 'http://127.0.0.1:4196', debugPort = 9366;
@@ -28,8 +30,6 @@ const studycraft = http.createServer(async (req, res) => {
 });
 const note = { patternId: 'hashing-complement', title: 'Hashing: complement', body: 'Look up before insertion.',
   intuition: 'Remember previous values.', recall: 'Why look up first?', trap: 'No trap recorded.', failingCase: 'No failing case recorded.' };
-const tools = body => JSON.stringify([{ tool: 'get_recall_evidence', arguments: { patternId: note.patternId } },
-  { tool: 'save_recall_note', arguments: { ...note, body } }]);
 async function until(read, label) {
   for (let attempt = 0; attempt < 100; attempt++) {
     const result = await read();
@@ -82,13 +82,20 @@ async function connectBrowser() {
 try {
   await new Promise((resolve, reject) => { studycraft.once('error', reject); studycraft.listen(0, '127.0.0.1', resolve); });
   const endpoint = `http://127.0.0.1:${studycraft.address().port}/api/recall/import`;
-  await fsp.writeFile(path.join(fixture.root, 'coach-settings.json'), JSON.stringify({ provider: 'claude', model: 'default' }));
+  process.env.STUDYCRAFT_RECALL_URL = endpoint;
+  process.env.STUDYCRAFT_RECALL_TOKEN = '';
+  const actions = [];
+  for (const body of ['Original historical lesson.', 'Historical revision.']) {
+    const saved = await saveRecallNote({ root: fixture.root, slug: 'two-sum', ...note, body });
+    actions.push({ id: `recall-${actions.length}`, tool: 'save_recall_note', summary: 'Pending sync', ok: true, revisionId: saved.revisionId });
+  }
+  await appendTurn({ root: fixture.root, slug: 'two-sum', turn: { sessionId: 'historical-recall', kind: 'question',
+    ask: 'Save this pattern to Studycraft.', answer: 'Queued the recall notes.', actions } });
   server = spawn(process.execPath, ['server/index.mjs'], { cwd: ROOT, env: {
     ...process.env, STUDIO_HOME: fixture.root, STUDIO_PORT: '4196', STUDIO_MIRROR_DIR: '',
-    STUDYCRAFT_RECALL_URL: endpoint, STUDYCRAFT_RECALL_TOKEN: 'fake-recall-token',
+    STUDYCRAFT_RECALL_URL: endpoint, STUDYCRAFT_RECALL_TOKEN: '',
     STUDIO_COACH_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-claude.mjs'),
     STUDIO_CODEX_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-codex.mjs'),
-    FAKE_CLAUDE_MODE: 'tools', FAKE_CLAUDE_TOOL_CALLS: tools('Claude lesson.'), FAKE_CODEX_TOOL_CALLS: tools('Codex revision.'),
   }, stdio: ['ignore', 'ignore', 'pipe'] });
   let logs = ''; server.stderr.on('data', data => { logs = (logs + data).slice(-3000); });
   await until(async () => { if (server.exitCode !== null) throw Error(logs); try { return (await fetch(origin + '/api/health')).ok; } catch { return false; } }, 'scratch server');
@@ -102,17 +109,15 @@ try {
   assert.equal(await evaluate(`document.querySelector('.coach-recall')`), null);
   const geometry = await evaluate(`(() => { const b = document.querySelector('.coach-compose textarea').getBoundingClientRect(); const c = document.querySelector('.coach-compose').getBoundingClientRect(); return {width:b.width,height:b.height,left:b.left,right:b.right,parentLeft:c.left,parentRight:c.right}; })()`);
   assert.ok(geometry.height >= 24 && geometry.width > 80 && geometry.left >= geometry.parentLeft && geometry.right <= geometry.parentRight);
-  const ask = async message => evaluate(`(() => { const input = document.querySelector('.coach-compose textarea'); input.value = ${JSON.stringify(message)}; input.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.coach-send').click(); })()`);
-  await ask('Create notes about complement lookups and save them to Studycraft.');
-  await wait(`document.querySelector('[data-tool="save_recall_note"] a')?.textContent === 'Saved to Studycraft ↗'`);
-  await wait(`!document.querySelector('.coach-send').disabled`);
+  await wait(`document.querySelector('.recent-chat')`);
+  await evaluate(`document.querySelector('.recent-chat').click()`);
+  await wait(`document.querySelectorAll('[data-tool="save_recall_note"]').length === 2`);
+  assert.equal(await evaluate(`[...document.querySelectorAll('[data-tool="save_recall_note"]')].every(n => n.textContent.includes('Pending sync'))`), true);
+  process.env.STUDYCRAFT_RECALL_TOKEN = 'fake-recall-token';
   offline = true;
-  await fsp.writeFile(path.join(fixture.root, 'coach-settings.json'), JSON.stringify({ provider: 'codex', model: 'gpt-6-astra' }));
-  await ask('Add why lookup comes before insertion to those notes and save them.');
-  await wait(`[...document.querySelectorAll('[data-tool="save_recall_note"]')].some(n => n.textContent.includes('Pending sync'))`);
-  await wait(`!document.querySelector('.coach-send').disabled`);
+  await flushRecall(fixture.root, { force: true });
+  assert.ok((await readRecallState(fixture.root)).outbox.items.every(i => i.status === 'pending'));
   offline = false;
-  process.env.STUDYCRAFT_RECALL_URL = endpoint; process.env.STUDYCRAFT_RECALL_TOKEN = 'fake-recall-token';
   await flushRecall(fixture.root, { force: true });
   const state = await readRecallState(fixture.root);
   assert.equal(state.outbox.items.length, 2); assert.ok(state.outbox.items.every(i => i.status === 'saved'));
@@ -131,7 +136,7 @@ try {
       await fsp.writeFile(path.join(process.env.STUDIO_RECALL_SCREENSHOTS, `recall-${mode}.png`), Buffer.from(screenshot.data, 'base64'));
     }
   }
-  console.log('ok — conversational notes, both fake providers, saved/pending receipts, retry without generation, reload, measured bounds');
+  console.log('ok — historical Studycraft data and pending receipts preserved, offline retry, saved links on reload, no generation');
 } finally {
   socket?.close();
   for (const child of [chrome, server]) if (child && child.exitCode === null && !child.signalCode) {

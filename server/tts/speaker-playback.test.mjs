@@ -153,3 +153,57 @@ test('prepare only checks availability and shares it with the first utterance', 
   assert.deepEqual(calls, ['/api/tts/status', '/api/tts']);
   speaker.dispose();
 });
+
+test('streamed short opener and continuation stay together through actual synthesis requests', async () => {
+  const originalFetch = globalThis.fetch, requests = [];
+  globalThis.fetch = async (url, options) => url.endsWith('/status')
+    ? { ok: true, json: async () => ({available:true}) }
+    : { ok: true, blob: async () => { requests.push(JSON.parse(options.body).text); return new Blob(['audio']); } };
+  const speaker = speech.createSpeaker({preferences:()=>({engine:'natural',speed:1})});
+  const {createSpeechStream} = await import('../../web/js/speech-stream.js');
+  const stream = createSpeechStream(speaker);
+  try {
+    stream.push('Good question. ');
+    stream.push('Let us consider two callers reserving the same room. ');
+    stream.finish();
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(requests, ['Good question. Let us consider two callers reserving the same room.']);
+  } finally { stream.cancel(); speaker.dispose(); globalThis.fetch = originalFetch; }
+});
+
+test('prefetched clips do not flash preparing again, but an unfinished clip does', async () => {
+  const originalAudio = window.Audio, originalFetch = globalThis.fetch;
+  let audio, finishSecond;
+  window.Audio = class {
+    constructor() { audio = this; }
+    play() { return Promise.resolve(); }
+    pause() {}
+    removeAttribute() { this.src = ''; }
+  };
+  const tick = () => new Promise(resolve=>setImmediate(resolve));
+  try {
+    for (const delayed of [false, true]) {
+      let requests = 0;
+      globalThis.fetch = async url => url.endsWith('/status')
+        ? {ok:true,json:async()=>({available:true})}
+        : {ok:true,blob:async()=>{
+          if (++requests === 2 && delayed) await new Promise(resolve=>{finishSecond=resolve;});
+          return new Blob(['audio']);
+        }};
+      const phases = [], speaker = speech.createSpeaker({preferences:()=>({engine:'natural',speed:1}),onPlayback:s=>phases.push(s.phase)});
+      try {
+        speaker.say('This is the first question. This is the second question.'); await tick();
+        assert.equal(requests, 2, 'the second clip is prepared while the first plays');
+        assert.deepEqual(phases, ['preparing','speaking']);
+        audio.onended(); await tick();
+        if (delayed) {
+          assert.equal(phases.at(-1), 'preparing', 'a real synthesis wait remains visible');
+          finishSecond(); await tick();
+        }
+        audio.onended(); await tick();
+        assert.deepEqual(phases, delayed ? ['preparing','speaking','preparing','speaking','idle']
+          : ['preparing','speaking','speaking','idle']);
+      } finally { speaker.dispose(); finishSecond?.(); }
+    }
+  } finally { window.Audio = originalAudio; globalThis.fetch = originalFetch; }
+});

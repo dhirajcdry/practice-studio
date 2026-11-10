@@ -17,13 +17,16 @@ const selected = {
   curveball: 'Two customers reserve the last place at the same time.',
   rationale: 'Practise state ownership and validation at the requested target level; use recorded evidence where available.',
 };
+// Only the current words count; a later handoff replays this phrase as history.
+const silent = /Candidate said[^\n]*\n<[^>]+>\n[^\n]*still thinking aloud/i.test(prompt);
+if (silent) await new Promise(resolve => setTimeout(resolve, 1500));
 const asked = selection ? JSON.stringify(selected)
   : debrief ? (process.env.FAKE_INTERVIEW_LEGACY_DEBRIEF ? '## Hire signal\nLean hire — The approach was clear.' : fixtureReport())
-  : review ? 'Try these cases:\n\n- `[3,3], 6` → `[0,1]`: a repeated value.\n- `[-1,-2], -3` → `[0,1]`: negatives.\n\nAt 5:40 the failing run was the moment to ask.'
-  : prompt.includes('The problem for this interview is:') ? (prompt.match(/The problem for this interview is: ([^\n]+)/)?.[1] || 'Design a museum ticket reservation system.')
+  : review ? 'Try these cases:\n\n- `[3,3], 6` → `[0,1]`: a repeated value.\n- `[-1,-2], -3` → `[0,1]`: negatives.\n\nAt 5:40 the failing run was the moment to ask.'  : prompt.includes('The problem for this interview is:') ? (prompt.match(/The problem for this interview is: ([^\n]+)/)?.[1] || 'Design a museum ticket reservation system.')
   : prompt.includes('State the problem in one or two sentences') ? 'Find two numbers that sum to the target. Read the problem and talk me through your approach. [[phase: approach]]'
-    : prompt.includes('A safe interjection is due') ? 'It passed. What is the time complexity? [[phase: followup]]'
-      : 'What will you keep in the map? [[phase: code]]';
+    : prompt.includes('You may step in now') ? 'It passed. What is the time complexity? [[phase: followup]]'
+      : silent ? '[[phase: approach]]'
+        : 'What will you keep in the map? [[phase: code]]';
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
 emit({ type: 'system', subtype: 'init', session_id: session });
 for (const text of asked.match(/.{1,9}|\n/g) || []) {

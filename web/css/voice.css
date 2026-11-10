@@ -1,28 +1,26 @@
-/* Voice is one content-sized surface; controls never cover transcript text. */
-.voice-panel{display:flex;flex-direction:column;gap:var(--space-2);min-width:0;font:var(--text-sm)/var(--line-md) var(--ui)}
-.voice-topline,.voice-bottomline{display:flex;align-items:center;gap:var(--space-2);min-width:0;flex-wrap:wrap}
-.voice-state{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
-.voice-duration,.voice-transcript-label,.voice-hint{font-size:var(--text-xs);color:var(--ink-60)}
-.voice-hint{flex:1 1 140px;line-height:var(--line-md)}
+/* Voice is one content-sized surface: one bar, then your words once you have some. */
+.voice-panel{display:flex;flex-direction:column;gap:var(--space-1);min-width:0;font:var(--text-sm)/var(--line-md) var(--ui)}
+.voice-bar{display:flex;align-items:center;gap:var(--space-2);min-width:0;min-height:var(--control-md);flex-wrap:wrap}
+.voice-lead:empty,.voice-actions:empty,.voice-duration:empty,.voice-hint:empty{display:none}
+.voice-lead{display:flex;flex:none}
+.voice-actions{display:flex;align-items:center;gap:var(--space-1);margin-left:auto;flex:none}
+.voice-state,.voice-hint{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.voice-hint{font-variant-numeric:tabular-nums}
+.voice-duration{font-size:var(--text-xs);color:var(--ink-60)}
 .voice-wave{display:flex;align-items:center;gap:2px;height:var(--control-sm);width:48px;color:var(--ink-35);flex:none}
 .voice-wave i{display:block;width:2px;height:18px;border-radius:var(--radius-sm);background:currentColor;transform:scaleY(var(--voice-level,.08));transition:transform 100ms linear}
 .voice-panel[data-state=recording] .voice-wave{color:var(--easy)}
 .voice-panel[data-state=preparing] .voice-wave,.voice-panel[data-state=speaking] .voice-wave{color:var(--accent)}
-.voice-panel:not([data-state=recording]) .voice-wave i{transform:scaleY(.12)}
-.voice-draft{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
+.voice-panel:not([data-capture=recording]) .voice-wave i{transform:scaleY(.12)}
 .voice-transcript{min-height:var(--space-6);max-height:min(96px,15dvh);overflow:auto;overscroll-behavior:contain;white-space:pre-wrap;overflow-wrap:anywhere;font:var(--text-md)/var(--line-lg) var(--ui);padding:var(--space-1) 0;background:transparent;border:0;border-radius:0}
-.voice-transcript.is-empty::before{content:attr(data-placeholder);color:var(--ink-50);font-size:var(--text-sm)}
+.voice-transcript.is-editable{cursor:text}
 .voice-partial{color:var(--accent);}
-.voice-caption{min-width:0}
-.voice-caption-text{margin:var(--space-1) 0 0;max-height:72px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:var(--text-md)/var(--line-lg) var(--ui)}
-.voice-sent{font-size:var(--text-xs);color:var(--ink-60)}
-.voice-sent summary{cursor:pointer;line-height:var(--line-lg)}
-.voice-sent p{margin:var(--space-2) 0 0;max-height:80px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font-size:var(--text-sm)}
-.voice-draft[hidden],.voice-bottomline[hidden]{display:none}
-.voice-topline .btn{margin-left:auto;font-size:var(--text-xs);color:var(--ink-60)}
-.voice-topline .voice-duration+.btn{margin-left:0}
-.voice-bottomline:has(.voice-hint:empty) .voice-hint{display:none}
-.voice-sent{border-top:var(--row-rule);padding-top:var(--space-1)}
+.voice-caption{margin:0;color:var(--ink-60);overflow-wrap:anywhere}
+.voice-mic[data-mic=off]:not(:disabled){color:var(--hard)}
+.voice-replay{width:var(--space-5);height:var(--space-5);min-height:0;margin-block:calc(var(--space-1) * -1);opacity:0}
+:is(.ci-entry,.dz-entry,.pr-exchange):hover .voice-replay,.voice-replay:focus-visible{opacity:1}
+.ci-panel.is-complete .voice-replay,.dz-view.is-complete .voice-replay{display:none}
 .voice-control--external-preview .vc-preview,.voice-control--external-preview .vc-rec{display:none}
-.voice-panel[hidden]{display:none}
+.voice-panel[hidden],.voice-panel [hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.voice-wave i{transition:none}}
+.interviewer-silent{margin:0 0 var(--space-5);font-size:var(--text-sm);font-style:italic}

@@ -425,7 +425,9 @@ export async function buildStats({ root, catalog = null, now = new Date() }) {
   const patternTotals = new Map();
   for (const name of catalogPatterns) patternTotals.set(name, 0);
   const listTotals = { blind75: 0, neetcode150: 0, neetcode250: 0 };
-  for (const problem of catalogProblems) {
+  // Curriculum pattern denominators remain the NeetCode 250; curated overlays are
+  // selectable collections, not additional curriculum coverage.
+  for (const problem of catalogProblems.filter((p) => p.lists?.neetcode250 === true)) {
     if (problem.pattern) {
       patternTotals.set(problem.pattern, (patternTotals.get(problem.pattern) ?? 0) + 1);
     }
@@ -486,7 +488,8 @@ export async function buildStats({ root, catalog = null, now = new Date() }) {
     if (status === 'notes-only') totals.notesOnly += 1;
     if (counted) totals.attempted += 1;
 
-    if (entry) {
+    const inCurriculum = entry?.lists?.neetcode250 === true;
+    if (entry && inCurriculum) {
       const bucket = patternBuckets.get(entry.pattern) ?? emptyBucket();
       if (!patternBuckets.has(entry.pattern)) patternBuckets.set(entry.pattern, bucket);
       if (counted) bucket.attempted += 1;

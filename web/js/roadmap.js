@@ -1,4 +1,5 @@
 import {el, replace} from './dom.js';
+import {LIST_FILTERS} from './browse.js';
 import {progressFor, summarizeProgress} from './catalog-progress.js';
 import {createSelect} from './ui/select.js';
 
@@ -44,7 +45,7 @@ export function renderRoadmap(data,state,handlers) {
   el('div',{class:'roadmap-switch'},[el('button',{type:'button',class:'roadmap-mode',text:'Explorer',onclick:()=>handlers.onCatalogMode('explorer')}),el('button',{type:'button',class:'roadmap-mode active','aria-current':'page',text:'Roadmap'})]),
  ]));
  const chips=el('div',{class:'roadmap-chips'},[
-  ...[['neetcode250','NeetCode 250'],['neetcode150','NeetCode 150'],['blind75','Blind 75']].map(([id,label])=>el('button',{type:'button',class:'chip','aria-pressed':String(state.list===id),text:label,onclick:()=>handlers.onList(id)})),
+  ...LIST_FILTERS.map(({id,label})=>el('button',{type:'button',class:'chip','aria-pressed':String(state.list===id),text:label,onclick:()=>handlers.onList(id)})),
   el('label',{class:'roadmap-level'},['Level ',createSelect({label:'Problem difficulty',value:state.difficulty,options:['all','Easy','Medium','Hard'].map(level=>[level,level==='all'?'All levels':level]),onChange:e=>handlers.onDifficulty(e.target.value)})]),
  ]);root.append(chips);
  if(state.query)root.append(el('p',{class:'roadmap-query'},[`Matching “${state.query}”`,el('button',{type:'button',text:'Clear filters',onclick:handlers.onClear})]));

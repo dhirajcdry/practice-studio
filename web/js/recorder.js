@@ -15,6 +15,7 @@
 // timestamps to line speech up against what was happening in the editor.
 
 import { el } from './dom.js';
+import { claimActionKey, hasOpenOverlay, isTextEntry } from './keyboard.js';
 import { transcribeAudio, logSessionEvent } from './api.js';
 import { readAttempt, saveAttempt, resumeDecision } from './attempt-state.js';
 
@@ -440,13 +441,12 @@ export function installRecorder(getSlug, { getTitle, onAttemptStart, onAttemptEn
   // it meant the page could not be force-refreshed while a problem was open. A shortcut
   // this app invents must never sit on one the browser already owns.
   const onKey = (event) => {
-    if (event.metaKey || event.ctrlKey || !event.altKey) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || !event.altKey || hasOpenOverlay()) return;
     if (event.code !== 'KeyR') return;              // code, not key: Alt-R types "®" on macOS
     const node = document.activeElement;
-    if (node && (/^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName) || node.isContentEditable)) return;
+    if (isTextEntry(node)) return;
     if (!active.isLive() && !getSlug()) return;
-    event.preventDefault();
-    active.requestAction();
+    if (claimActionKey(event)) active.requestAction();
   };
   document.addEventListener('keydown', onKey);
 

@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readCoachChoice, saveCoachChoice, validChoice, runProviderTurn } from '../provider.mjs';
+import { readCoachChoice, saveCoachChoice, validChoice, runProviderTurn, withCoachingGuidance, coachSystemPrompt, PRACTICE_PARTNER } from '../provider.mjs';
+
+test('coding practice gives no unasked hints, and a finished attempt is taught openly', () => {
+  assert.match(PRACTICE_PARTNER, /Do not volunteer hints/);
+  assert.match(PRACTICE_PARTNER, /explicitly ask for a hint, the bugs, an explanation, code or a solution, give exactly that/);
+  assert.ok(coachSystemPrompt(false).includes(PRACTICE_PARTNER));
+  assert.ok(!coachSystemPrompt(true).includes(PRACTICE_PARTNER));
+  assert.match(coachSystemPrompt(true), /Teach openly/);
+});
 import { readCoachMemory, withConversation } from '../provider-context.mjs';
 import { buildArgs } from '../claude-cli.mjs';
 import { CoachSessionStore } from '../sessions.mjs';
@@ -120,4 +128,23 @@ test('Claude memory includes local journals and only repeats changed versions pe
   assert.equal(design.memory[0].text, 'design history');
   design.remember('design-session');
   assert.match((await prepareClaudeMemory(root, null, 'design-session', { designId: 'test' })).memory[0].text, /unchanged/);
+});
+
+test('mock turns get no web research, no rule upkeep, and a silent Claude completion', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-mock-policy-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const guided = await withCoachingGuidance({ root, conversation: {}, coachingMode: 'mock', systemPrompt: 'Interviewer.' });
+  assert.match(guided.systemPrompt, /Do not change coaching instructions during a mock/);
+  assert.doesNotMatch(guided.systemPrompt, /on your own initiative/);
+  const practice = await withCoachingGuidance({ root, conversation: {}, coachingMode: 'practice', systemPrompt: 'Coach.' });
+  assert.match(practice.systemPrompt, /on your own initiative/);
+  let seen;
+  const binary = path.join(root, 'fake-claude.sh');
+  await fs.writeFile(binary, '#!/bin/sh\nprintf "%s\\n" "$@" > "$0.args"\nexit 0\n'); await fs.chmod(binary, 0o755);
+  const turn = runProviderTurn({ choice: { provider: 'claude', model: 'default' }, binary, root, coachingMode: 'mock', systemPrompt: 'Interviewer.', tools: '', prompt: 'x', onDone() {}, onError(e) { seen = e; } });
+  await turn.exited;
+  const args = await fs.readFile(`${binary}.args`, 'utf8');
+  assert.doesNotMatch(args, /WebSearch,WebFetch|Native web search|LIVE DELIVERY/);
+  assert.match(args, /end with only the phase tag/);
+  void seen;
 });

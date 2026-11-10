@@ -66,7 +66,7 @@ export function describeMicError(error) {
     case 'SecurityError':
       return {
         head: 'Microphone blocked',
-        body: 'This page was refused access to the microphone. Allow it for 127.0.0.1 in your browser’s site settings, then press Speak again. Nothing was recorded.',
+        body: 'This page was refused access to the microphone. Allow it for 127.0.0.1 in your browser’s site settings, then try the microphone again. Nothing was recorded.',
       };
     case 'NotFoundError':
     case 'OverconstrainedError':
@@ -183,7 +183,7 @@ function micGlyph() {
  * @param {(text:string, meta:object) => void} options.onTranscript  called only on a real transcript
  * @param {(text:string) => void} [options.onPreview]  provisional text, empty when cleared
  * @param {(state:string) => void} [options.onState]  'idle' | 'opening' | 'recording' | 'working'
- * @returns {{root:HTMLElement, isRecording:() => boolean, stop:() => void, dispose:() => void}}
+ * @returns {{root:HTMLElement, isRecording:() => boolean, flush:() => Promise<void>, stop:() => void, dispose:() => void}}
  */
 export function createVoiceControl({
   getSlug, onTranscript, onPreview, onState = () => {}, logTakes = true, onLevel = () => {},
@@ -316,6 +316,33 @@ export function createVoiceControl({
   let currentSequence = null;
   const provisional = new Map();
   const finalized = new Set();
+  const flushes = new Set();
+
+  function settleFlushes() {
+    for (const wait of flushes) {
+      const error = disposed || wait.generation !== takeGeneration
+        ? 'Recording changed before your last words were ready.'
+        : takeError ? 'Some recorded words need retrying. Retry or discard the failed audio before sending.' : '';
+      if (!error && nextToEmit <= wait.through) continue;
+      flushes.delete(wait); clearTimeout(wait.timer);
+      if (error) wait.reject(Error(error)); else wait.resolve();
+    }
+  }
+
+  // Finish only the phrases captured so far. The physical microphone, meter and
+  // next phrase stay live while ASR finishes, the model replies and audio plays.
+  function flush() {
+    return new Promise((resolve, reject) => {
+      const wait = { through: seq - 1, generation: takeGeneration, resolve, reject };
+      wait.timer = setTimeout(() => {
+        flushes.delete(wait);
+        reject(Error('Still transcribing your last words. Try again when they appear.'));
+      }, 65000);
+      flushes.add(wait);
+      cutPhrase();
+      settleFlushes();
+    });
+  }
 
   function paintPreview() {
     const text = [...provisional].sort(([a], [b]) => a - b).map(([, value]) => value).filter(Boolean).join(' ');
@@ -372,10 +399,10 @@ export function createVoiceControl({
       if (state !== 'recording' || !recorder) return;
       const now = Date.now();
       const rms = level();
-      // The floor drifts down toward the quietest thing heard, so a noisy room does not
-      // read as continuous speech and a silent one does not need a magic constant.
-      noiseFloor = rms < noiseFloor ? rms : noiseFloor * 0.995 + rms * 0.005;
       const loud = rms > Math.max(SPEECH_RMS, noiseFloor * 3);
+      // Learn the room from quiet frames, never from the speech we're capturing.
+      // Otherwise a long answer raises its own threshold until it looks like silence.
+      if (!loud) noiseFloor = rms < noiseFloor ? rms : noiseFloor * 0.995 + rms * 0.005;
       if (loud) {
         lastLoudAt = now;
         voicedMs += 100; currentVoicedMs += 100; energy += rms * rms * 100;
@@ -509,6 +536,7 @@ export function createVoiceControl({
     if (failed) {
       failedPhrases.set(mine, {blob,mimeType,ms,reason}); held.set(mine, {failed:true}); takeError = true;
       showRecovery();
+      settleFlushes();
     } else {
       provisional.set(mine, text); paintPreview();
       failedPhrases.delete(mine); takeError = failedPhrases.size > 0; emitInOrder(mine, text, ms);
@@ -535,6 +563,7 @@ export function createVoiceControl({
         onTranscript(entry.text.trim(), { mode, durationSeconds: Math.round(entry.ms / 1000), live: true });
       }
     }
+    settleFlushes();
   }
 
   /** The take is over and nothing is still in flight: close the books. */
@@ -569,6 +598,7 @@ export function createVoiceControl({
     }
     wantRecording = true;
     takeGeneration += 1;
+    settleFlushes();
     note('', '', '');
     clearPreview();
     setState('opening');
@@ -701,6 +731,7 @@ export function createVoiceControl({
     hasTranscriptionError: () => takeError,
     currentMode: () => mode,
     stop,
+    flush,
     retry,
     discardFailed,
     dispose({ finish = false } = {}) {
@@ -718,6 +749,7 @@ export function createVoiceControl({
       if (!finish) { try { recorder?.stop(); } catch { /* noop */ } }
       recorder = null;
       releaseMicrophone();
+      settleFlushes();
       window.removeEventListener('blur', release);
       // Keep the navigation guard until a finishing disposal has drained all
       // outstanding transcription promises. `settle()` removes it at idle.

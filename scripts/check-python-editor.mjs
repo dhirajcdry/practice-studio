@@ -197,6 +197,7 @@ try {
   await evaluate("location.hash='#/lld'"); await until(()=>evaluate("return !!document.querySelector('.lld-record button')"),'history branch action');
   await evaluate("document.querySelector('.lld-record button').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-source-link')"),'branch from history');
+  await until(()=>evaluate("return !!document.querySelector('.pr-editor .monaco-editor') && document.querySelector('.pr-save').textContent==='Saved'"),'history branch saved before navigation');
 
   // A fresh page with a failed loader exercises the real fallback in both modes.
   await send('Network.enable'); await send('Network.setCacheDisabled', {cacheDisabled:true});

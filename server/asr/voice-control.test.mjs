@@ -66,6 +66,62 @@ test('live preview appears before pause; final phrase is inserted only once', as
   h.voice.dispose();
 });
 
+test('flushing an answer transcribes it without closing capture or losing the next phrase', async () => {
+  const h = harness(); await h.voice.start(); await h.advance(1100);
+  await h.voice.flush();
+  assert.deepEqual(h.emitted, ['Hello world']);
+  assert.equal(h.voice.isRecording(), true);
+  assert.equal(h.stopped(), 0, 'sending an answer must not release the device');
+  await h.advance(1100); await h.voice.flush();
+  assert.deepEqual(h.emitted, ['Hello world', 'Hello world']);
+  assert.equal(h.stopped(), 0);
+  h.voice.stop(); await h.flush(); h.voice.dispose();
+  assert.equal(h.stopped(), 1);
+});
+
+test('continuous speech is not relearned as background noise across phrase boundaries', async () => {
+  let loud = true;
+  const h = harness({signal: () => loud ? .08 : 0});
+  await h.voice.start(); await h.advance(26000);
+  loud = false; await h.advance(1000);
+  assert.equal(h.requests.filter(request => !request.opts.preview).length, 3,
+    'two full phrases and the final tail must all reach ASR');
+  assert.equal(h.emitted.length, 3);
+  assert.equal(h.stopped(), 0);
+  h.voice.stop(); await h.flush(); h.voice.dispose();
+});
+
+test('a flush waits for its own final ASR result while a new utterance stays live', async () => {
+  const finals = [];
+  const h = harness({ result: opts => opts.preview ? {ok:true,text:'Preview'} : new Promise(resolve => finals.push(resolve)) });
+  await h.voice.start(); await h.advance(1100);
+  let ready = false;
+  const first = h.voice.flush().then(() => { ready = true; }); await h.flush();
+  assert.equal(ready, false);
+  await h.advance(1100);
+  const second = h.voice.flush(); await h.flush();
+  assert.equal(finals.length, 2);
+  finals[0]({ok:true,text:'The first answer'}); await first;
+  assert.deepEqual(h.emitted, ['The first answer']);
+  assert.equal(h.voice.isRecording(), true);
+  finals[1]({ok:true,text:'A new interruption'}); await second;
+  assert.deepEqual(h.emitted, ['The first answer', 'A new interruption']);
+  assert.equal(h.stopped(), 0);
+  h.voice.stop(); await h.flush(); h.voice.dispose();
+});
+
+test('flush rejects failed transcription and keeps the audio for explicit retry', async () => {
+  let failed = true;
+  const h = harness({result: () => failed ? {ok:false,kind:'offline',message:'Offline'} : {ok:true,text:'Recovered words'}});
+  await h.voice.start(); await h.advance(1100);
+  await assert.rejects(h.voice.flush(), /Retry or discard/);
+  assert.equal(h.voice.hasTranscriptionError(), true);
+  assert.deepEqual(h.emitted, []);
+  failed = false; await h.voice.retry(); await h.flush();
+  assert.deepEqual(h.emitted, ['Recovered words']);
+  h.voice.dispose();
+});
+
 test('missing audio meter releases the microphone without transcribing unchecked audio', async () => {
   const h = harness({ meter: false }); await h.voice.start(); await h.advance(3100);
   assert.deepEqual(h.emitted, []);

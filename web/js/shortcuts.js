@@ -21,6 +21,8 @@
 // Matching is on `event.code`, the physical key, not `event.key`: a chord read through
 // `key` breaks under a non-US layout and under any modifier that rewrites the character.
 
+import { claimActionKey, hasOpenOverlay } from './keyboard.js';
+
 export const CHORDS = [
   { id: 'problem', code: 'KeyB', label: '⌘B', what: 'the problem statement' },
   { id: 'results', code: 'KeyJ', label: '⌘J', what: 'the run panel' },
@@ -49,14 +51,12 @@ export function chordLabel(id) {
 document.addEventListener('keydown', (event) => {
   // These pane chords belong only to the coding workspace. A module-level
   // registration (coach) can outlive its screen; it must not consume board keys.
-  if (!/^#\/p\//.test(location.hash) || event.defaultPrevented || event.isComposing) return;
+  if (!/^#\/p\//.test(location.hash) || hasOpenOverlay()) return;
   if (!(event.metaKey || event.ctrlKey)) return;
   if (event.altKey || event.shiftKey) return;      // ⌘⇧B and ⌘⌥J belong to the browser
   const chord = CHORDS.find((c) => c.code === event.code);
   if (!chord) return;
   const fn = handlers.get(chord.id);
   if (!fn) return;
-  event.preventDefault();
-  event.stopPropagation();
-  fn();
+  if (claimActionKey(event)) fn();
 }, { capture: true });

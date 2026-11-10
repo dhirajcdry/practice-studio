@@ -6,6 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { checkModelPicker } from './check-model-picker.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-composer-'));
@@ -54,8 +55,7 @@ async function checkPractice(route, name) {
   await evaluate("document.querySelector('.pr-launch button.btn').click()");
   await until(() => evaluate("return !!document.querySelector('.ui-composer')"), `${name} composer`);
   await evaluate(`
-    document.querySelector('.pr-compose [aria-label^="Answer mode:"]').click();
-    [...document.querySelectorAll('[role=menuitemradio]')].find(n => n.textContent.trim() === 'Typed').click();
+    document.querySelector('.pr-compose .ui-mode-switch[data-mode=typed]').click();
   `);
   await until(() => evaluate(`return !document.querySelector('.pr-typed').hidden
     && !document.querySelector('.coach-model-select button')?.disabled`), `${name} typed`);
@@ -152,6 +152,7 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source:
     "Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{throw new DOMException('No mic','NotAllowedError')}})" });
   await checkPractice('/#/lld','lld');await checkPractice('/#/design','design');
+  await checkModelPicker(evaluate, until);
   console.log('ok — composer density, growth/contraction, keyboard send, reading position and narrow containment');
 } finally {
   socket?.close();

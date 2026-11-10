@@ -127,12 +127,8 @@ export async function runVisualAudit({ origin, target, output }) {
     assert: `for(const outer of document.querySelectorAll('.tutor-note')){const body=outer.querySelector('.tutor-note-body'),text=outer.querySelector('.tutor-note-text');const a=outer.getBoundingClientRect(),b=body.getBoundingClientRect(),t=text.getBoundingClientRect();if(b.bottom>a.bottom+1||t.bottom>b.bottom+1||body.scrollWidth>body.clientWidth+1)throw Error('Tutor note overflows its reserved space');}`,
   };  const practiceMode = label => `{
     const draft=document.querySelector('.pr-typed textarea');draft.value='';draft.dispatchEvent(new Event('input'));
-    const picker=need('.pr-compose [aria-label^="Answer mode:"]');
-    if(picker.getAttribute('aria-label')!=='Answer mode: ${label}'){
-      picker.click();
-      const option=[...document.querySelectorAll('[role="menuitemradio"]')].find(n=>n.querySelector('.ui-menu-label')?.textContent==='${label}');
-      if(!option)throw Error('Missing practice mode ${label}');option.click();await sleep(80);
-    }
+    const modeSwitch=document.querySelector('.pr-compose .ui-mode-switch[data-mode="${label === 'Voice' ? 'voice' : 'typed'}"]');
+    if(modeSwitch&&!modeSwitch.hidden){modeSwitch.click();await sleep(80);}
   }`;
   const contextFixture = `
     const prompt='## Problem\\nDesign booking.\\n## Current work\\n'+Array.from({length:90},(_,i)=>'line '+i+': candidate evidence').join('\\n');
@@ -150,16 +146,22 @@ export async function runVisualAudit({ origin, target, output }) {
   const voiceFixture = (state, extra = '') => ({
     url:'/#/lld/practice/lld-locker/visual-practice-lld', ready:'.pr-coach .pr-answer',
     setup: `${practiceMode('Voice')}
-      const {createVoicePanel}=await import('/js/ui/voice-panel.js');
-      const panel=createVoicePanel({onEdit:()=>{},onReplay:()=>{},role:'Coach'});
+      const {createVoicePanel,answerModeSwitch,micToggle,paintMicToggle}=await import('/js/ui/voice-panel.js');
+      const panel=createVoicePanel({onEdit:()=>{},role:'Coach'});
+      const fixtureMic=micToggle(()=>{});paintMicToggle(fixtureMic,'${state}'==='recording');
+      panel.setControls({lead:[fixtureMic],actions:[answerModeSwitch('typed',()=>{})]});
       const host=need('.pr-voice');host.replaceChildren(panel.root);
       panel.update({state:'${state}',draft:'I would check that the reservation belongs to the caller before changing it.',partial:'Then validate the time range'});
       panel.level({level:.65,elapsedMs:19200,sinceLoud:200,pending:0});
       ${extra}
+      if(['preparing','speaking'].includes(panel.root.dataset.state)){
+        const interrupt=document.createElement('button');interrupt.className='btn btn--secondary btn--sm';interrupt.textContent='Interrupt · Esc';
+        panel.setControls({lead:[fixtureMic],actions:[interrupt]});
+      }
       panel.root.scrollIntoView({block:'nearest'});`,
     assert:`const panel=need('.voice-panel').getBoundingClientRect(), node=document.querySelector('.voice-transcript');
       if(visible(node)){const draft=node.getBoundingClientRect();if(draft.height>145||draft.left<panel.left||draft.right>panel.right+1)throw Error('Voice draft is not contained');}
-      else need('.voice-caption');
+      else need('.voice-state');
       if(document.scrollingElement.scrollWidth>innerWidth+1)throw Error('Voice caused horizontal overflow');`,
   });
   const practiceSaveFailure = width => ({
@@ -173,32 +175,109 @@ export async function runVisualAudit({ origin, target, output }) {
       const notice=need('.pr-work-error').getBoundingClientRect(),work=need('.pr-work').getBoundingClientRect();
       if(notice.left<work.left||notice.right>work.right+1||document.documentElement.scrollWidth>innerWidth)throw Error('Save error overflows workspace');`,
   });
+  const modelEffort = {
+    url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .coach-model-select button:not(:disabled)',
+    setup: `${practiceMode('Typed')}
+      for(let i=0;i<100&&document.querySelector('.pr-coach .coach-model-select button')?.disabled;i++)await sleep(50);
+      await sleep(50);
+      const original = window.fetch;
+      window.fetch = (url, options) => String(url) === '/api/coach/models'
+        ? Promise.resolve(new Response(JSON.stringify({selected:{provider:'codex',model:'astra',reasoningEffort:'xhigh'},providers:[
+          {id:'codex',label:'Codex',models:[{id:'astra',label:'GPT-6 Astra',reasoningEfforts:['low','medium','high','xhigh','max','ultra']}]}
+        ]}),{headers:{'content-type':'application/json'}})) : original(url, options);
+      const {createCoachModelPicker} = await import('/js/coach-model.js');
+      const picker = createCoachModelPicker({compact:true});
+      need('.pr-coach .coach-model-picker').replaceWith(picker.root);
+      for(let i=0;i<100&&!picker.root.querySelector('.coach-model-select button')?.textContent.includes('Extra high');i++)await sleep(50);
+      need('.pr-coach .coach-model-select button:not(:disabled)');
+      need('.pr-coach').scrollIntoView({block:'center'});
+      await document.fonts.ready;await sleep(150);`,
+    assert: `for(const b of need('.pr-coach .coach-model-picker').querySelectorAll('button')) {
+      if(!visible(b))continue;const r=b.getBoundingClientRect();
+      if(r.left<0||r.right>innerWidth+1)throw Error('Model or effort control overflows');
+    }
+    if(!need('.pr-coach .coach-model-select button').textContent.includes('Extra high'))throw Error('Selected effort missing');`,
+  };
+  const conversationAssertions = `
+    const bodies=[...document.querySelectorAll('.ui-conversation-text')];
+    if(!bodies.some(n=>n.querySelector('code')?.textContent==='get_balance') || !bodies.some(n=>n.querySelector('strong')))throw Error('Reply Markdown is visible as plain text');
+    for(const body of bodies){
+      const style=getComputedStyle(body),box=body.getBoundingClientRect();
+      if(parseFloat(style.fontSize)>14.1 || parseFloat(style.lineHeight)>23)throw Error('Transcript type is too large');
+      const last=body.lastElementChild;if(last && box.bottom-last.getBoundingClientRect().bottom>13)throw Error('Trailing blank lines create a transcript gap');
+      if(body.scrollWidth>body.clientWidth+1)throw Error('Conversation body overflows');
+    }
+    const entries=[...document.querySelectorAll('.ci-entry,.dz-entry')];
+    for(let i=1;i<entries.length;i++)if(entries[i].getBoundingClientRect().top-entries[i-1].getBoundingClientRect().bottom>20)throw Error('Transcript turn gap is too large');
+  `;
+  const feedbackAssertions = `
+    const body=need('.pr-feedback .ui-conversation-text'), log=need('.pr-thread');
+    const heads=[...body.querySelectorAll('h2,h3')];
+    if(heads.length<4 || !body.querySelector('ol') || !body.querySelector('pre') || !body.querySelector('table'))throw Error('Feedback fixture is incomplete');
+    for(const heading of heads.slice(1)) {
+      const previous=heading.previousElementSibling;
+      if(heading.getBoundingClientRect().top-previous.getBoundingClientRect().bottom<15)throw Error('Feedback sections lack breathing room');
+    }
+    for(const list of body.querySelectorAll('ul,ol')) {
+      if(parseFloat(getComputedStyle(list).paddingInlineStart)<20)throw Error('Feedback bullets escape their reading inset');
+      if(list.getBoundingClientRect().top-list.previousElementSibling.getBoundingClientRect().bottom<7)throw Error('Feedback list runs into preceding paragraph');
+    }
+    if(body.scrollWidth>body.clientWidth+1 || document.documentElement.scrollWidth>innerWidth)throw Error('Feedback overflows');
+    const rect=log.getBoundingClientRect(),header=need('.pr-coach-head').getBoundingClientRect();
+    if(rect.top-header.bottom<7)throw Error('Scrolled text touches the fixed coach header');
+    const pane=need('.pr-coach').getBoundingClientRect();
+    if(rect.left-pane.left<15 || pane.right-rect.right<15)throw Error('Reading viewport lacks exterior side gutters');
+    if(!log.matches(':focus-visible') || parseFloat(getComputedStyle(log).outlineWidth)<1)throw Error('Keyboard reading focus is missing');
+    if(parseFloat(getComputedStyle(log).outlineOffset)<0)throw Error('Keyboard focus paints over scrolled text');
+    if(parseFloat(getComputedStyle(body).fontSize)>14.1)throw Error('Feedback bypasses conversation typography');
+  `;
+  const feedbackState = (width, scrolled=false) => ({
+    url:'/#/lld/practice/lld-locker/visual-branch-lld', width, height:900, ready:'.pr-feedback', keyboardFocus:'.pr-thread',
+    setup:`need('.pr-problem').open=true;need('.pr-coach').scrollIntoView({block:'center'});const log=need('.pr-thread');log.scrollTop=${scrolled ? 240 : 0};log.focus({preventScroll:true});`,
+    assert:feedbackAssertions + (scrolled ? `if(need('.pr-thread').scrollTop<200)throw Error('Feedback did not scroll');` : ''),
+  });
+  const mockTimeSetup = `for(let i=0;i<100&&document.querySelector('.mock-add-time')?.disabled;i++)await sleep(50);need('.ci-clock').textContent='+03:00';need('.mock-add-time').click();`;
+  const mockCustomSetup = `${mockTimeSetup} [...document.querySelectorAll('.ui-menu-item')].find(n=>n.textContent.includes('Custom')).click();`;
   const states = {
+    mockTimeMenu: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.ci-panel', setup: mockTimeSetup, assert: `need('.ui-menu-item');` },
+    mockTimeCustom: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.ci-panel', setup: mockCustomSetup, assert: `if(!visible(need('.mock-time-input')))throw Error('Custom minutes hidden');` },
+    mockTimeCustomNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.ci-panel', setup: `need('.lld-interviewer').scrollIntoView({block:'center'}); ${mockCustomSetup}`, assert: `const r=need('.mock-time-custom').getBoundingClientRect();if(r.right>innerWidth||r.left<0)throw Error('Custom minutes overflow');` },
+
+    conversationLLD: { url: '/#/lld/lld-locker/1760000000000-00000011', width: 1440, height: 900, ready: '.ci-text code', assert: conversationAssertions },
+    conversationLLDNarrow: { url: '/#/lld/lld-locker/1760000000000-00000011', width: 390, ready: '.ci-text code', setup: `for(let i=0;i<100&&!document.querySelector('.ci-text code');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'center'});`, assert: conversationAssertions },
+    conversationDesign: { url: '/#/design/2026-11-04T12-00-00-000Z', width: 1440, height: 900, ready: '.dz-body code', assert: conversationAssertions },
+    conversationDesignNarrow: { url: '/#/design/2026-11-04T12-00-00-000Z', width: 390, ready: '.dz-body code', setup: `for(let i=0;i<100&&!document.querySelector('.dz-body code');i++)await sleep(50);need('.dz-side').scrollIntoView({block:'center'});`, assert: conversationAssertions },
+    modelEffort,
+    modelEffortNarrow: {...modelEffort,width:390},
+    modelEffortMenu: {...modelEffort,width:390,setup:modelEffort.setup+`need('.pr-coach .coach-model-select button').click();need('[role="menu"]:not([hidden]) [role="menuitemradio"]').click();`,ready:'[role="menu"][aria-label$="thinking level"]:not([hidden])',assert:modelEffort.assert+`const option=need('[role="menu"]:not([hidden]) [role="menuitemradio"]');if(option.disabled||!option.textContent.includes('Model default'))throw Error('Model default is unavailable');`},
     practiceSaveFailure: practiceSaveFailure(1440),
     practiceSaveFailureNarrow: practiceSaveFailure(390),
     voiceListening:voiceFixture('recording'),
     voiceListeningNarrow:{...voiceFixture('recording'),width:390},
-    voiceLongAnswer:voiceFixture('recording', `panel.update({draft:'We must validate ownership before mutating the reservation. '.repeat(80)});panel.sent('My previous answer was captured exactly as I spoke it. '.repeat(20));panel.root.querySelector('details').open=true;`),
-    voicePreparing:voiceFixture('idle', `panel.update({draft:'',partial:'',busy:true});panel.playback({phase:'preparing',text:'What happens if two callers try to book the same room?',engine:'natural'});`),
-    voiceSpeaking:voiceFixture('idle', `panel.update({draft:'',partial:''});panel.playback({phase:'speaking',text:'What happens if two callers try to book the same room?',engine:'natural'});`),
-    voiceSystemFallback:voiceFixture('idle', `panel.update({draft:'',partial:''});panel.playback({phase:'speaking',text:'Which operation needs to be atomic?',engine:'system'});`),
-    voicePlaybackError:voiceFixture('idle', `panel.update({draft:'',partial:''});panel.reply('Which operation needs to be atomic?');panel.playback({phase:'error',message:'The reply is still in the conversation. Try replaying it.'});`),
-    voiceManual:voiceFixture('recording', `if(panel.automatic)panel.root.querySelector('[aria-pressed]').click();`),
+    voiceLongAnswer:voiceFixture('recording', `panel.update({draft:'We must validate ownership before mutating the reservation. '.repeat(80)});`),
+    voiceAnswerHeld:voiceFixture('recording', `panel.update({held:true,partial:''});panel.level({level:.1,sinceLoud:4000,pending:0});`),
+    voicePreparing:voiceFixture('recording', `panel.update({draft:'',partial:'',busy:true});panel.playback({phase:'preparing',text:'What happens if two callers try to book the same room?',engine:'natural'});`),
+    voiceSpeaking:voiceFixture('recording', `panel.update({draft:'',partial:''});panel.playback({phase:'speaking',text:'What happens if two callers try to book the same room?',engine:'natural'});`),
+    voiceSpeakingNarrow:{...voiceFixture('recording', `panel.playback({phase:'speaking',text:'Which operation needs to be atomic?',engine:'natural'});`),width:390},
+    voiceSystemFallback:voiceFixture('recording', `panel.update({draft:'',partial:''});panel.playback({phase:'speaking',text:'Which operation needs to be atomic?',engine:'system'});`),
+    voicePlaybackError:voiceFixture('idle', `panel.update({draft:'',partial:''});panel.playback({phase:'error',message:'The reply is still in the conversation. Try replaying it.'});`),
     pythonEditorEdges: editorEdges,
     pythonEditorEdgesNarrow: {...editorEdges,width:390},
     tutorMarks,
     tutorMarksNarrow: {...tutorMarks,width:390},
     lldBranchReport: { url: '/#/lld/lld-locker/1760000000000-00000010', ready: '.rp-sheet[open]', setup: `for(let i=0;i<100&&!document.querySelector('.ci-open-report');i++)await sleep(50);need('.ci-open-report').click();` },
     lldBranchReportNarrow: { url: '/#/lld/lld-locker/1760000000000-00000010', width:390, ready: '.rp-sheet[open]', setup: `for(let i=0;i<100&&!document.querySelector('.ci-open-report');i++)await sleep(50);need('.ci-open-report').click();` },
-    practiceBranch: { url: '/#/lld/practice/lld-locker/visual-branch-lld', ready: '.pr-source-link', setup: `for(let i=0;i<100&&!document.querySelector('.pr-feedback');i++)await sleep(50);need('.pr-problem').open=true;` },
-    practiceBranchNarrow: { url: '/#/lld/practice/lld-locker/visual-branch-lld', width:390, ready: '.pr-source-link', setup: `for(let i=0;i<100&&!document.querySelector('.pr-feedback');i++)await sleep(50);need('.pr-problem').open=true;` },
+    practiceBranch: feedbackState(1440),
+    practiceBranchNarrow: feedbackState(390),
+    practiceBranchScrolled: feedbackState(1440,true),
+    practiceBranchScrolledNarrow: feedbackState(390,true),
     agentActions: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'done',summary:'Updated LLD memory with the observed invariant and the next verification exercise.'},{replay:true});showWorkspaceAction(log,{id:'visual-run',tool:'run_code',status:'done',summary:'Ran Python (coach run)',result:{exitCode:0,stdout:'reservation trace '.repeat(40)}},{replay:true});log.lastElementChild.querySelector('details').open=true;log.scrollTop=log.scrollHeight;` },
     agentActionsNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:390, ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'failed',summary:'Update learner memory',message:'The saved note changed. Read it again before replacing this passage.'},{replay:true});need('.pr-coach').scrollIntoView({block:'center'});log.scrollTop=log.scrollHeight;` },
     practiceLongDraft: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:1024, height:650, ready: '.pr-coach .pr-answer', setup: `${practiceMode('Typed')} const input=need('.pr-typed textarea'); input.value='A concrete trace through reservation ownership, validation and cancellation. '.repeat(80);input.dispatchEvent(new Event('input'));`, assert: `const c=need('.ui-composer').getBoundingClientRect(),t=need('.pr-thread').getBoundingClientRect();if(c.height>280||t.height<80)throw Error('Long draft consumes conversation');` },
     practiceVoice: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: practiceMode('Voice'), assert: `if(visible(document.querySelector('.pr-typed')))throw Error('Voice exposes typed input');` },
-    practiceLLD: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: practiceMode('Typed') },
-    practiceLLDNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width: 390, ready: '.pr-coach .pr-answer', setup: `${practiceMode('Typed')} for(let i=0;i<100&&!document.querySelector('.pr-coach');i++)await sleep(50);need('.pr-coach').scrollIntoView({block:'center'});` },
-    practiceDesign: { url: '/#/design/practice/design-url-shortener/visual-practice-design', ready: '.pr-board .excalidraw' },
+    practiceLLD: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: practiceMode('Typed'), assert: conversationAssertions },
+    practiceLLDNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width: 390, ready: '.pr-coach .pr-answer', setup: `${practiceMode('Typed')} for(let i=0;i<100&&!document.querySelector('.pr-coach');i++)await sleep(50);need('.pr-coach').scrollIntoView({block:'center'});`, assert: conversationAssertions },
+    practiceDesign: { url: '/#/design/practice/design-url-shortener/visual-practice-design', ready: '.pr-board .excalidraw', assert: conversationAssertions },
     practiceSplitWide: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width: 1440, height: 900, ready: '.pr-coach .pr-answer', setup: `const d=need('.ui-pane-divider,.split.split-col');d.focus();for(let i=0;i<3;i++)d.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await sleep(120);`, assert: `if(need('.ui-pane-divider,.split.split-col').hidden)throw Error('Wide practice divider hidden');if(document.documentElement.scrollWidth>innerWidth)throw Error('Wide practice overflows');` },
     practiceSplitNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width: 390, height: 844, ready: '.pr-coach .pr-answer', setup: `await sleep(80);`, assert: `const d=document.querySelector('.ui-pane-divider,.split.split-col');if(d&&!d.hidden)throw Error('Narrow practice divider visible');if(document.documentElement.scrollWidth>innerWidth)throw Error('Narrow practice overflows');` },
     practiceDesignSplitWide: { url: '/#/design/practice/design-url-shortener/visual-practice-design', width: 1440, height: 900, ready: '.pr-board .excalidraw', setup: `const d=need('.ui-pane-divider,.split.split-col');d.focus();d.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));await sleep(120);`, assert: `if(need('.ui-pane-divider,.split.split-col').hidden)throw Error('Wide design divider hidden');if(document.documentElement.scrollWidth>innerWidth)throw Error('Wide design overflows');` },
@@ -211,12 +290,12 @@ export async function runVisualAudit({ origin, target, output }) {
     lldContextNarrow: { url: '/#/lld', width: 390, setup: `need('.learner-context summary').click();`, ready: '.learner-context > div:not([hidden])', assert: `if (!need('.learner-context').open) throw Error('Learning context did not expand');` },
     lldSelected: lldSelection,
     lldSelectedNarrow: { ...lldSelection, width: 390 },
-    lldLongDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1024, height: 650, setup: `for(let i=0;i<100 && !document.querySelector('.ci-composer button[aria-label^="Answer mode:"]:not(:disabled)');i++) await sleep(50); const log=need('.ci-log'); for(let i=0;i<20;i++){const p=document.createElement('p');p.textContent='Interviewer: How does reservation ownership prevent conflicting updates?';log.append(p);} log.scrollTop=log.scrollHeight;`, ready: '.ci-contained .ci-log' },
+    lldLongDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1024, height: 650, setup: `for(let i=0;i<100 && !document.querySelector('.ci-composer .ui-mode-switch:not(:disabled)');i++) await sleep(50); const log=need('.ci-log'); for(let i=0;i<20;i++){const p=document.createElement('p');p.textContent='Interviewer: How does reservation ownership prevent conflicting updates?';log.append(p);} log.scrollTop=log.scrollHeight;`, ready: '.ci-contained .ci-log' },
     lldDocumentNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.lld-workspace .ci-panel', setup: `for(let i=0;i<100 && !document.querySelector('.ci-panel');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'center'});` },
     lldDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.lld-workspace .ci-panel' },
     reference: { url: problem, setup: `need('[data-panel="solution"]').click();`, ready: '.drawer.show .drawer-resize', assert: `need('.scrim.show'); if (getComputedStyle(need('.scrim')).backdropFilter !== 'blur(5px)') throw Error('Reference blur missing');` },
     interviewLive: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-panel[data-mode="typed"] .ci-input', assert: `need('.ci-phases');` },
-    interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-state');` },
+    interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-voice .voice-state');` },
     interviewNoResponse: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/1760000000000-00000003')) { const data = await response.json(); data.completionReason = 'no-response'; data.report = null; delete data.hireSignal; data.turns = data.turns.filter(t => t.kind === 'opening'); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; (await import('/js/interview.js')).openInterviewRecord('jump-game', '1760000000000-00000003');`, ready: '.ci-empty-session', assert: `if (document.querySelector('.ci-open-report,.ci-mini-dim')) throw Error('Empty interview displays a report');` },
     interviewDebrief: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003');`, ready: '.ci-panel[data-debriefed="true"] .ci-score-hero', assert: `
       if (document.querySelectorAll('.ci-mini-dim').length !== 4) throw Error('Missing dimensions'); need('.ci-open-report'); need('.ci-transcript');
@@ -252,6 +331,18 @@ export async function runVisualAudit({ origin, target, output }) {
     coachPicture: { url: problem, setup: `${coach} const picture=(await import('/js/coach-image.js')).renderImageCard(JSON.stringify({prompt:'An interval merging diagram',alt:'How overlapping intervals combine'})); need('.coach-log').append(picture);`, ready: '.pic-offer' },
     coachIllustration: { url: problem, setup: `${coach} const viz=(await import('/js/viz.js')).drawViz({type:'array',title:'Walking the array',values:[2,3,1,1,4],frames:[{note:'Start at the first index.'},{note:'Track the furthest reachable index.'}]}); need('.coach-log').append(viz);`, ready: '.viz-stepper' },
     catalog: { url: '/#/', ready: '.catalog' },
+    amazonCatalog: { url: '/#/', setup: `clickText('.seg-opt', 'Amazon interview'); need('.filterbar').scrollIntoView({block:'start'});`, ready: '.catalog', assert: `
+      const rows = [...document.querySelectorAll('.prow')];
+      if (rows.length !== 17 || new Set(rows.map(row => row.dataset.slug)).size !== 17) throw Error('Amazon collection must contain 17 unique problems');
+      if (!need('.countpill').textContent.includes('17')) throw Error('Incorrect Amazon collection count');` },
+    amazonCatalogNarrow: { url: '/#/', width: 390, setup: `clickText('.seg-opt', 'Amazon interview'); need('.filterbar').scrollIntoView({block:'start'});`, ready: '.catalog' },
+    amazonProblem: { url: '/#/p/time-based-key-value-store', setup: `need('[data-interview-prep]').open = true;`, ready: '[data-interview-prep]', assert: `
+      if (!need('[data-interview-prep]').textContent.includes('strictly increasing')) throw Error('Missing timestamp variation caveat');
+      if (!need('.ptags').textContent.includes('amazon-interview')) throw Error('Missing Amazon tag');` },
+    amazonProblemNarrow: { url: '/#/p/time-based-key-value-store', width: 390, setup: `need('[data-interview-prep]').open = true; need('[data-interview-prep]').scrollIntoView({block:'start'});`, ready: '[data-interview-prep]' },
+    amazonRoadmap: { url: '/#/roadmap', setup: `clickText('.chip', 'Amazon interview');`, ready: '.roadmap', assert: `
+      const counts = [...document.querySelectorAll('.node-meta')].map(node => parseInt(node.textContent, 10));
+      if (counts.reduce((a,b) => a+b, 0) !== 17) throw Error('Roadmap must include all 17 Amazon problems');` },
     roadmap: { url: '/#/roadmap', ready: '.roadmap' },
     progress: { url: '/#/progress', ready: '.dash-card' },
     design: { url: '/#/design', ready: '.dzl-list' },
@@ -327,7 +418,7 @@ export async function runVisualAudit({ origin, target, output }) {
           await send('Page.navigate', { url: 'about:blank' });
           await until("location.href === 'about:blank' && document.readyState === 'complete'", 'blank page');
           await send('Page.navigate', { url: `${origin}${config.url}` });
-          await until("document.readyState === 'complete' && document.querySelector('.catalog,.ws-bar,.roadmap,.dash-card,.dzl-list,.lld-view,.pr-view')", 'view');
+          await until("document.readyState === 'complete' && document.querySelector('.catalog,.ws-bar,.roadmap,.dash-card,.dzl-list,.dz-view,.lld-view,.pr-view')", 'view');
           await evaluate(`const settings = await import('/js/settings.js');
             settings.setSetting('theme', ${JSON.stringify(theme)}); settings.setSetting('mode', ${JSON.stringify(mode)});
             settings.setSetting('motion', false); settings.setSetting('celebrations', false);`);
@@ -337,6 +428,12 @@ export async function runVisualAudit({ origin, target, output }) {
           if (config.setup) await evaluate(config.setup);
           await until(`(() => { const n = document.querySelector(${JSON.stringify(config.ready)}); return n && n.getClientRects().length && !n.closest('[hidden]') && getComputedStyle(n).visibility !== 'hidden'; })()`, config.ready);
           await evaluate('await document.fonts.ready; await sleep(250);');
+          if (config.keyboardFocus) {
+            const scrollTop = await evaluate(`return need(${JSON.stringify(config.keyboardFocus)}).scrollTop;`);
+            await send('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+            await send('Input.dispatchKeyEvent', {type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+            await evaluate(`const reading=need(${JSON.stringify(config.keyboardFocus)});reading.focus({preventScroll:true});reading.scrollTop=${scrollTop};`);
+          }
           if (config.assert) await evaluate(config.assert);
           if (['chat', 'subsList', 'interviewDebrief', 'interviewLive'].includes(state)) {
             await checkSidebar(expression => evaluate('return ' + expression));

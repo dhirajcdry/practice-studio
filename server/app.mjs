@@ -13,6 +13,7 @@ import { routes as statsRoutes } from './stats/routes.mjs';
 import { routes as asrRoutes } from './asr/routes.mjs';
 import { routes as judgeRoutes } from './judge/routes.mjs';
 import { interviewRoutes } from './interview/routes.mjs';
+import { reportDifficultyRoutes } from './interview/report-difficulty.mjs';
 import { routes as lldRoutes } from './lld/routes.mjs';
 import { routes as designRoutes } from './design/routes.mjs';
 import { scheduleMirror } from './mirror/daily.mjs';
@@ -34,6 +35,7 @@ const MODULE_ROUTES = {
   ...judgeRoutes,
   ...designRoutes,
   ...interviewRoutes,
+  ...reportDifficultyRoutes,
   ...lldRoutes,
   ...ttsRoutes,
   ...practiceRoutes,
@@ -241,14 +243,14 @@ export function createApp({ catalog, solutions, leetcode, site, log = console, h
         throw new HttpError(400, 'BAD_REQUEST', 'That problem address could not be understood.');
       }
       if (!isSafeSlug(slug)) {
-        throw new HttpError(404, 'PROBLEM_NOT_FOUND', 'That problem is not in the NeetCode 250.');
+        throw new HttpError(404, 'PROBLEM_NOT_FOUND', 'That problem is not in the Studio catalog.');
       }
       const entry = catalog.get(slug);
       if (!entry) {
         throw new HttpError(
           404,
           'PROBLEM_NOT_FOUND',
-          `"${slug}" is not in the NeetCode 250, which is the only list this phase shows.`,
+          `"${slug}" is not in the Studio catalog.`,
         );
       }
 

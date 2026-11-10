@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { unifiedDiff } from './diff.mjs';
 import { queryTerms } from './context-search.mjs';
+import { reportDifficultyLabel } from '../interview/report.mjs';
 
 export const CONTEXT_POLICY = 'studio-context-v2';
 export const CONTEXT_GUIDE = `Studio supplies a selected view of its saved record. Coverage and omitted counts are explicit. Missing from this view does not mean it never happened. Use read_context to retrieve omitted evidence before judging an earlier decision, quoting it, or claiming something was never discussed. Current work is supplied separately and is authoritative. Memory and earlier model assessments are hypotheses, not evidence of unaided performance. Preserve corrections and distinguish learner work from assistance.`;
@@ -81,7 +82,7 @@ export function contextReader(resources) {
 export function focusedProfile(profile, { discipline='coding', slug, query='', selection=false }={}) {
   const assessments=(profile.assessments||[]).filter(a=>a.discipline===discipline);
   assessments.sort((a,b)=>Number(b.slug===slug)-Number(a.slug===slug));
-  const mapped=assessments.map(a=>({slug:a.slug,date:a.date,source:a.source,targetLevel:a.targetLevel,assessmentKind:a.assessmentKind,
+  const mapped=assessments.map(a=>({slug:a.slug,date:a.date,source:a.source,targetLevel:a.targetLevel,...(a.reportDifficulty?{gradedAt:reportDifficultyLabel(a.reportDifficulty)}:{}),assessmentKind:a.assessmentKind,
     signal:a.signal,summary:excerpt(a.summary,800,query),
     dimensions:(a.dimensions||[]).map(d=>({name:d.name,rating:d.rating,summary:excerpt(d.summary,350,query),evidence:(d.evidence||[]).slice(0,1)})),
     technicalErrors:(a.technicalErrors||[]).slice(0,4),improvements:(a.improvements||[]).slice(0,3)}));

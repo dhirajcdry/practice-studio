@@ -1,4 +1,5 @@
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
+import { claimActionKey } from './keyboard.js';
 import { showWorkspaceAction } from './workspace-tools.js';
 import { saveLearningNote } from './learning.js';
 // The full interview report: a sheet over the workspace. Facts come from the server's
@@ -9,7 +10,7 @@ import { icon } from './ui/icon.js';
 import { dialogHeader } from './ui/headers.js';
 import { highlightPython } from './highlight.js';
 import { formatClock } from './recorder.js';
-import { ratingTone, relativeInterviewDate } from './interview-format.js';
+import { ratingTone, relativeInterviewDate, reportDifficultyLabel } from './interview-format.js';
 import { renderMarkdown } from './markdown.js';
 import { readDraft, saveDraft, clearDraft } from './drafts.js';
 import { installDrawerResizer } from './resize.js';
@@ -136,9 +137,11 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
   };
   const runsFailed = facts.runs.filter(r => !r.passed).length;
   const verdict = facts.verdicts.at(-1);
+  const difficulty = reportDifficultyLabel(record.reportDifficulty);
   const hero = el('header', { class: 'rp-hero', dataset: { tone: j.signal ? ratingTone(j.signal) : 'neutral' } }, [
     el('div', { class: 'rp-eyebrow' }, `Mock interview · ${title} · ${relativeInterviewDate(record.startedAt)}`),
     el('h2', { class: 'rp-signal', text: j.signal || 'No signal recorded' }),
+    difficulty ? el('p', { class: 'rp-graded', text: `Graded at ${difficulty}` }) : null,
     signalScale(j.signal),
     el('p', { class: 'rp-note', text: 'Practice assessment · model judgments should be checked against the recorded evidence.' }),
     j.headline ? el('p', { class: 'rp-headline', text: j.headline }) : null,
@@ -165,6 +168,7 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
     written,
     j.dimensions.length ? section('Scorecard', el('div', { class: 'rp-dims' }, j.dimensions.map(d => dimensionCard(d, jump, onAsk)))) : null,
     ...[['Hard technical errors', j.technicalErrors], ['Missing considerations', j.missingConsiderations], ['Self-caught vs interviewer-surfaced', j.discoveries]].filter(([, items]) => items?.length).map(([title, items]) => section(title, el('ul', { class: 'rp-list' }, items.map(text => el('li', { text }))))),
+    j.moveUp ? section('What would move this up a level', el('p', { class: 'rp-summary', text: j.moveUp })) : null,
     lists,
     record.discipline === 'design' ? null : codeSection(facts, j.code, record.discipline),
     practice,
@@ -217,7 +221,9 @@ function createFollowups({ id, judgement, load, send, learningSlug = null, disci
   input.value = readDraft(draftKey)?.text || '';
   input.addEventListener('input', () => { saveDraft(draftKey, input.value); autosize(); paint(); });
   input.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); ask(input.value); }
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey) {
+      if (claimActionKey(event)) ask(input.value);
+    }
   });
   function autosize() { inputSize.resize(); }
   const atBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight <= 24;

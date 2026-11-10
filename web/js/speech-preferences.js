@@ -5,6 +5,13 @@ export const NATURAL_VOICES = [
   ['bf_emma', 'Emma · British'], ['bm_george', 'George · British'],
 ];
 const KEY = 'studio.voice.v1';
+const AUTO_SEND_KEY = 'studio.voice.autoSend';
+export function autoSendEnabled() {
+  try { return localStorage.getItem(AUTO_SEND_KEY) !== 'false'; } catch { return true; }
+}
+export function saveAutoSend(enabled) {
+  try { localStorage.setItem(AUTO_SEND_KEY, String(enabled)); } catch { /* this browser cannot remember */ }
+}
 export function voicePreferences() {
   let value = {};
   try { value = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { /* defaults */ }

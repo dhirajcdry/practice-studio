@@ -47,12 +47,9 @@
    That is the overlapping-messages bug the coach panel already hit once, and
    server/test/css-rules.test.mjs exists to stop it coming back. */
 .dz-log{padding:12px 14px}
-.dz-entry + .dz-entry{margin-top:14px}
-.dz-entry{display:flex;flex-direction:column;gap:4px}
-.dz-who{color:var(--ink-35);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.dz-body{line-height:1.62;white-space:pre-wrap;overflow-wrap:anywhere}
-.dz-a .dz-body{color:var(--ink-70)}
-.dz-d .dz-body{font-size:14px}
+.dz-entry + .dz-entry{margin-top:var(--space-4)}
+.dz-entry{display:flex;flex-direction:column;gap:var(--space-1)}
+.dz-who{color:var(--ink-70);font:500 var(--text-xs)/var(--line-md) var(--ui);letter-spacing:0;text-transform:none}
 .dz-err .dz-body{color:var(--hard)}
 /* The cut is stated, never hidden. See server/design/narration.mjs. */
 .dz-cut{
@@ -69,7 +66,7 @@
 .dz-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 /* The two switches in the compose row read as the same kind of control as everything
    else on this screen; unstyled they came out as wrapped serif text mid-row. */
-.dz-hands,.dz-skip{
+.dz-hands{
   padding:5px 10px;border:1px solid var(--hair-20);border-radius:999px;
   color:var(--ink-50);white-space:nowrap;
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
@@ -77,7 +74,6 @@
 .dz-hands[aria-pressed="true"]{color:var(--ink-70)}
 .dz-hands.off{opacity:.55}
 .dz-hands:disabled{opacity:.4;cursor:default}
-.dz-skip:hover{border-color:var(--ink);color:var(--ink)}
 .dz-status{color:var(--ink-35);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dz-send{
   padding:7px 16px;border-radius:999px;background:var(--solid-bg);color:var(--solid-fg);border:1px solid var(--solid-edge);
@@ -127,16 +123,8 @@
 }
 
 /* ---- how you answer: two modes, not one row of four controls ---- */
-/* Typed is a text box you submit. Voice is a conversation where going quiet IS the
-   submit — so voice mode has no Send button and no text box, because showing either
-   would misdescribe what the thing actually does. */
-.dz-modes{display:flex;gap:2px;padding:2px;margin-bottom:9px;border:1px solid var(--hair-20);border-radius:999px;width:max-content}
-.dz-mode{
-  padding:5px 14px;border-radius:999px;color:var(--ink-50);border:0;background:none;cursor:pointer;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.dz-mode[aria-checked="true"]{background:var(--solid-bg);color:var(--solid-fg)}
-.dz-mode:disabled{opacity:.35;cursor:not-allowed}
+/* Voice mode reuses the shared voice bar; this button belongs to typed dictation. */
+.dz-voice .vc-talk{display:none}
 
 .dz-voice{display:block}
 .dz-vstate{display:flex;align-items:center;gap:8px;color:var(--ink-50);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -147,13 +135,7 @@
 /* Your words as they are transcribed. Block flow, never a scrolling flex column. */
 .dz-vheard{min-height:44px;margin:8px 0 6px;line-height:1.55;color:var(--ink-70);overflow-wrap:anywhere}
 .dz-vheard.empty::before{content:'Listening — just start talking.';color:var(--ink-35)}
-.dz-vrow{display:flex;align-items:center;gap:8px}
 .dz-vhint{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.dz-skip{
-  padding:5px 12px;border:1px solid var(--hair-20);border-radius:999px;background:var(--card);color:var(--ink-70);cursor:pointer;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.dz-skip:hover{border-color:var(--ink);color:var(--ink)}
 
 /* A working room: generous board, legible conversation, anchored answer controls. */
 .dz-view{min-height:0;gap:8px;font-family:var(--ui)}
@@ -175,24 +157,13 @@
 .dz-phase[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
 .dz-phase:hover:not(:disabled){border-color:var(--hair-20)}
 .dz-log{min-height:100px;padding:18px;overscroll-behavior:contain;scrollbar-gutter:stable}
-.dz-entry{gap:7px;padding:0 0 18px;border-bottom:1px solid var(--hair-10)}
-.dz-entry + .dz-entry{margin-top:18px}
-.dz-entry:last-child{border-bottom:0}
-.dz-who{font:600 10px/1.4 var(--mono);color:var(--ink-50);letter-spacing:.08em}
-.dz-q .dz-who{color:var(--accent)}
-.dz-body{font:14px/1.7 var(--ui);color:var(--ink);white-space:pre-wrap}
-.dz-a{padding:12px 14px;background:var(--surface-inset,var(--canvas));border:1px solid var(--hair-10);border-radius:var(--r-md)}
-.dz-a .dz-body{color:var(--ink-70)}
 .dz-d{border-left:3px solid var(--accent);padding-left:14px}
-.dz-mode[aria-checked="true"]{box-shadow:0 1px 3px rgba(var(--ink-rgb),.1)}
 .dz-input::placeholder{color:var(--ink-50)}
 .dz-status{font:11px/1.5 var(--ui);letter-spacing:0;color:var(--ink-70)}
 .dz-vstate{font:500 12px/1.5 var(--ui);letter-spacing:0;color:var(--ink-70)}
 .dz-vheard{max-height:130px;overflow-y:auto;min-height:38px;font-size:13px}
 .dz-vheard.empty::before{content:'Your words appear here as they are transcribed.';color:var(--ink-50)}
 .dz-vhint{font:11px/1.5 var(--ui);letter-spacing:0}
-.dz-vrow{justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
-.dz-skip{font:500 12px var(--ui);letter-spacing:0;text-transform:none;min-height:34px;border-radius:var(--r-sm)}
 .dz-mic{display:block;max-width:100%}
 .dz-view button:focus-visible,.dzl button:focus-visible,.dzl select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .dz-view button:disabled{cursor:not-allowed}
@@ -234,9 +205,3 @@
 .dz-pause:disabled{opacity:.45}
 .dz-input:disabled{opacity:.6;resize:none}
 
-.dz-draft{display:flex;align-items:center;gap:8px;min-width:0}
-.dz-draft[hidden]{display:none}
-.dz-draft-tail{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dz-compose .dz-modes{display:flex;flex-wrap:wrap;width:auto;margin:0;padding:0;border:0;background:transparent;gap:var(--space-1)}
-body[class] .dz-compose .dz-mode{height:32px;min-height:32px;padding:0 var(--space-2);border:0;box-shadow:none;font:500 var(--text-xs)/var(--line-md) var(--ui);border-radius:var(--tab-radius);color:var(--ink-50);background:transparent}
-body[class] .dz-compose .dz-mode[aria-checked=true]{background:var(--row-hover-bg);color:var(--ink)}

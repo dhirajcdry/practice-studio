@@ -33,6 +33,13 @@ code, boards and provider-owned files are not deleted.
 
 ## Context and caching
 
+Coding interview startup uses the coach's shared cached-problem reader, including
+cached Premium statements and NeetCode problem definitions. It waits for an existing
+page-open content request without starting another fetch. The full statement is saved
+with the interview before generation; subsequent turns use that snapshot. Missing
+content prevents session creation and microphone capture, leaves the clock unstarted,
+and offers an explicit Retry start after the problem description becomes available.
+
 Bootstrap includes the saved conversation, current work, problem, selected learner
 history, memory and source-linked session decisions exactly once. Ordinary-sized conversations are
 included completely. Exceptionally large handoffs select within 100,000 characters,

@@ -1,4 +1,4 @@
-// The browse screen: 250 problems grouped by the 18 NeetCode patterns, in the
+// The browse screen: curated collections grouped by the 18 NeetCode patterns, in the
 // server's curriculum order. All filtering is client side — the whole list arrives
 // at boot, so nothing here ever touches the network.
 
@@ -11,6 +11,7 @@ export const LIST_FILTERS = [
   { id: 'neetcode250', label: 'NeetCode 250' },
   { id: 'neetcode150', label: 'NeetCode 150' },
   { id: 'blind75', label: 'Blind 75' },
+  { id: 'amazon-interview', label: 'Amazon interview' },
 ];
 export const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
 
@@ -19,7 +20,10 @@ function matches(problem, needle) {
   if (!needle) return true;
   return problem.title.toLowerCase().includes(needle)
     || problem.pattern.toLowerCase().includes(needle)
-    || String(problem.number) === needle;
+    || String(problem.number) === needle
+    || (problem.tags || []).some(tag => tag.includes(needle))
+    || [problem.interviewPrep?.id, problem.interviewPrep?.reportedPrompt]
+      .some(value => value?.toLowerCase().includes(needle));
 }
 
 /** Group the filtered problems by pattern, preserving the server's pattern order. */
@@ -389,6 +393,9 @@ export function renderBrowse(data, state, handlers) {
   layout.append(sidebar, content);
   view.append(layout);
   content.append(el('div', {class:'catalog-path'}, [el('span',{text:listLabel}), el('span',{text:'/'}),el('strong',{text:state.pattern || 'All patterns'})]), controls);
+  if (state.list === 'amazon-interview') {
+    content.append(el('p', { class: 'sub', text: 'Reported-problem mappings and your personal practice additions. Open a problem for its source and context. Candidate reports are not verified transcripts or predictions.' }));
+  }
 
   if (shown === 0) {
     content.append(el('section', { class: 'card' }, el('div', { class: 'emptynote' }, [

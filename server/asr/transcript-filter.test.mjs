@@ -22,6 +22,6 @@ test('audio requires duration, sustained signal, and energy together', () => {
 });
 
 test('only filler replies are suppressed, not questions following acknowledgements', () => {
-  for (const text of ['Mm-hm.', 'Sure, take your time.', 'Okay.', 'Mm-hmm. Go ahead.', '']) assert.equal(isFillerReply(text), true, text);
-  for (const text of ['Sure. What is the complexity?', 'What will you keep in the map?', 'It passed. What is the time complexity?']) assert.equal(isFillerReply(text), false, text);
+  for (const text of ['Mm-hm.', 'Sure, take your time.', 'Okay.', 'Mm-hmm. Go ahead.', 'Take your time and keep thinking out loud.', 'Recorded.', '']) assert.equal(isFillerReply(text), true, text);
+  for (const text of ['Sure. What is the complexity?', 'What will you keep in the map?', 'It passed. What is the time complexity?', 'Okay, go ahead.', 'Go ahead.', 'Okay, go ahead with that.']) assert.equal(isFillerReply(text), false, text);
 });

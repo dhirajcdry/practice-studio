@@ -64,6 +64,32 @@ test('fake CLI start → turn → safe verdict → cooldown → debrief, raw rec
   assert.equal(detail.report.facts.candidateTurns, 1);
   assert.match(doc, /### Problem solving — Strong/, 'interview.md renders the report, not raw JSON');
 });
+test('two-minute notice reaches the provider on only one consecutive candidate turn', async t => {
+  const { root, interview, call } = await fixture(t);
+  const promptLog = path.join(root, 'prompts.jsonl');
+  const previousPromptLog = process.env.FAKE_INTERVIEW_PROMPT;
+  process.env.FAKE_INTERVIEW_PROMPT = promptLog;
+  t.after(() => { if (previousPromptLog === undefined) delete process.env.FAKE_INTERVIEW_PROMPT; else process.env.FAKE_INTERVIEW_PROMPT = previousPromptLog; });
+  const opening = await call('POST /api/interview/start', { slug: 'meeting-room-booking', discipline: 'lld', minutes: 30, mode: 'typed' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  const body = { slug: 'lld-meeting-room-booking', interviewId: id };
+  const state = await interview.store.readState(body.slug, id);
+  state.startedAt = Date.now() - 29 * 60000;
+  await interview.store.writeState(body.slug, id, state);
+  await fs.writeFile(promptLog, '');
+
+  const first = await call('POST /api/interview/turn', { ...body, said: 'I will trace a booking.', requestId: 'notice-1' });
+  assert.ok(first.events.some(e => e.name === 'done'));
+  const stateFile = path.join(interview.store.dir(body.slug, id), 'interview.json');
+  assert.equal(JSON.parse(await fs.readFile(stateFile, 'utf8')).warningGiven, true, 'notice is persisted after the first turn');
+  const second = await call('POST /api/interview/turn', { ...body, said: 'I will check the overlapping booking next.', requestId: 'notice-2' });
+  assert.ok(second.events.some(e => e.name === 'done'));
+  const prompts = (await fs.readFile(promptLog, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0].prompt, /There are at most two minutes remaining/);
+  assert.doesNotMatch(prompts[1].prompt, /There are at most two minutes remaining/);
+  assert.equal(JSON.parse(await fs.readFile(stateFile, 'utf8')).warningGiven, true);
+});
 test('finishing without a candidate response skips debrief generation and is replayable', async t => {
   const { interview, call } = await fixture(t);
   const opening = await call('POST /api/interview/start', { slug: 'two-sum', mode: 'typed', minutes: 45 });
@@ -230,6 +256,25 @@ test('filler provider replies are suppressed while substantive split replies are
   };
   const substantive = await call('POST /api/interview/turn', { ...body, said: 'The map gives constant lookup.', requestId: 'substantive-1' });
   assert.match(substantive.output, /what is the complexity/);
+});
+
+test('a tags-only reply is deliberate silence: nothing shown, phase moves, events wait', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  const body = { slug: 'two-sum', interviewId: id };
+  const state = await interview.store.readState('two-sum', id);
+  state.pendingEvents = [{ type: 'run_result', failed: 1, elapsedMs: 12 }];
+  await interview.store.writeState('two-sum', id, state);
+  interview.run = options => { options.onToken('[[phase:'); options.onToken(' code]]'); options.onDone('silent-session', null, async () => {}); return { kill() {} }; };
+  const silent = await call('POST /api/interview/turn', { ...body, said: 'Hmm, the furthest layer from this node.', requestId: 'silent-1' });
+  assert.equal(silent.events.filter(e => e.name === 'token').length, 0);
+  assert.equal(silent.events.find(e => e.name === 'done').data.asked, '');
+  const after = await interview.store.readState('two-sum', id);
+  assert.equal(after.phase, 'code'); assert.equal(after.turns, state.turns); assert.deepEqual(after.pendingEvents, state.pendingEvents);
+  const rows = await interview.store.readTurns('two-sum', id);
+  assert.ok(rows.some(row => row.kind === 'candidate' && row.said.includes('furthest layer')));
+  assert.equal(rows.at(-1).kind, 'interviewer_silent');
 });
 
 test('failed opening retries the saved opening, and duplicate retries do not generate again', async t => {
@@ -477,4 +522,42 @@ test('a live mock gets no past performance or memory tools, and its debrief keep
   await call('POST /api/interview/done', { slug: 'two-sum', interviewId: id, requestId: 'live-history-2' });
   assert.ok(seen[0].names.includes('read_memory'));
   assert.ok(seen[0].context.includes('Agent memory') && seen[0].context.includes('Cross-problem learner history'));
+});
+
+test('manual time extension persists, is idempotent, and does not call the model', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum', mode: 'typed', minutes: 30 });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  const body = { slug: 'two-sum', interviewId: id, minutes: 15, requestId: 'extend-1' };
+  let calls = 0; const original = interview.run; interview.run = (...args) => { calls++; return original(...args); };
+  let result = await call('POST /api/interview/extend', body);
+  let payload = JSON.parse(result.output);
+  assert.equal(payload.state.minutes, 45); assert.equal(payload.state.originalMinutes, 30); assert.equal(calls, 0);
+  result = await call('POST /api/interview/extend', body); payload = JSON.parse(result.output);
+  assert.equal(payload.duplicate, true); assert.equal(payload.state.minutes, 45);
+  await assert.rejects(call('POST /api/interview/extend', { ...body, minutes: 20 }), /different extension|another action/);
+  const state = await interview.store.readState('two-sum', id);
+  state.startedAt -= 3600000; state.pausedAt = Date.now(); state.pausedMs = 0; await interview.store.writeState('two-sum', id, state);
+  result = await call('POST /api/interview/extend', { ...body, requestId: 'extend-2', minutes: 1 });
+  assert.equal(JSON.parse(result.output).state.minutes, 46);
+  assert.equal((await interview.store.readTurns('two-sum', id)).filter(t => t.kind === 'time_extended').length, 2);
+  for (const minutes of [0, -1, 241, 1.5, '5']) await assert.rejects(call('POST /api/interview/extend', { ...body, requestId: `bad-${String(minutes)}`, minutes }), /positive integer/);
+  interview.run = original;
+});
+
+test('extension rejects completed sessions and in-flight reservations; plain LLD done is a turn', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum', minutes: 30 });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  interview.live.set(`two-sum/${id}`, { completion: Promise.resolve() });
+  await assert.rejects(call('POST /api/interview/extend', { slug: 'two-sum', interviewId: id, minutes: 5, requestId: 'busy' }), /still finishing/);
+  interview.live.delete(`two-sum/${id}`);
+  await call('POST /api/interview/done', { slug: 'two-sum', interviewId: id, requestId: 'finished' });
+  await assert.rejects(call('POST /api/interview/extend', { slug: 'two-sum', interviewId: id, minutes: 5, requestId: 'after' }), /already finished|already complete/);
+
+  const lld = await call('POST /api/interview/start', { slug: 'meeting-room-booking', discipline: 'lld', minutes: 30 });
+  const lldId = lld.events.find(e => e.name === 'interview').data.id;
+  const turn = await call('POST /api/interview/turn', { slug: 'lld-meeting-room-booking', interviewId: lldId, said: 'done', requestId: 'ordinary-done' });
+  assert.ok(turn.events.some(e => e.name === 'done'));
+  assert.equal((await interview.store.readState('lld-meeting-room-booking', lldId)).debriefed, false);
 });

@@ -74,7 +74,7 @@ export const routes = {
     const root = ctx.homeRoot || HOME_ROOT, slug = ctx.params.slug;
     const records = (await learningRecords(root, slug)).map(({ id, state, report, turns }) => ({
       id, date: state.startedAt, completed: Boolean(state.debriefed),
-      signal: report?.judgement?.signal || null, headline: report?.judgement?.headline || null,
+      signal: report?.judgement?.signal || null, headline: report?.judgement?.headline || null, reportDifficulty: state.reportDifficulty,
       markdown: (report && reportMarkdown(report)) || turns.findLast(t => t.kind === 'debrief')?.asked || 'No completed debrief recorded.',
     }));
     return sendJson(res, 200, { notes: await readLearningNotes(root, slug), summary: await learningSummary(root, slug), records });

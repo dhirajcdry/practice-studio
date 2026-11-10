@@ -1,6 +1,7 @@
 // Boot, routing, persisted UI state, and the global keyboard map.
 
 import { el, replace } from './dom.js';
+import { hasOpenOverlay } from './keyboard.js';
 import { loadCatalog, api } from './api.js';
 import { progressMapFrom } from './catalog-progress.js';
 import { loadStats } from './streak.js';
@@ -324,6 +325,14 @@ function moveSelection(step) {
 
 /* --------------------------------- keyboard -------------------------------- */
 
+// Holding Enter on Submit, Reset, or Start is still one gesture. Native button
+// activation repeats too, independently of our Cmd/Ctrl shortcut handlers.
+document.addEventListener('keydown', event => {
+  if (event.repeat && event.key === 'Enter' && event.target.closest?.('button, [role="button"], input[type="submit"]')) {
+    event.preventDefault(); event.stopPropagation();
+  }
+}, { capture: true });
+
 function inTextField() {
   const node = document.activeElement;
   return node && (/^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName)
@@ -332,6 +341,12 @@ function inTextField() {
 
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.isComposing) return;
+  // Native dialogs own Escape themselves. The reference drawer is an ARIA dialog,
+  // so retain its close action without navigating the workspace behind any overlay.
+  if (hasOpenOverlay()) {
+    if (event.key === 'Escape' && isDrawerOpen()) { event.preventDefault(); closeDrawer({ instant: true }); }
+    return;
+  }
   // Catalog navigation belongs to coding routes, not every screen without a
   // coding slug. Whiteboards deliberately bubble keys to their own listeners.
   const codingRoute = currentSlug() || ['', '#/', '#/roadmap'].includes(location.hash);

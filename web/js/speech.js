@@ -15,12 +15,9 @@ import { voicePreferences } from './speech-preferences.js';
 // have actually stopped — so turnDecision sits on top of the same signal with a much
 // longer fuse.
 //
-// THE ECHO PROBLEM. An open microphone hears the interviewer. Browser echo cancellation
-// helps but is not a guarantee, and a loop where the interviewer transcribes its own
-// question as your answer would be both baffling and expensive. So the microphone is
-// held shut while it speaks and opens the instant it stops. Interrupting is therefore
-// deliberate — a key, not a shout — which is a real difference from a human interviewer
-// and is worth knowing about.
+// Voice capture stays open during playback with browser echo cancellation. Callers
+// use its qualified speech signal to cancel this reply as soon as the learner cuts in;
+// the same capture continues transcribing that utterance without reopening a device.
 
 /* ============================== pure ============================== */
 
@@ -125,8 +122,8 @@ export function speechSupported() {
  * A mouth for the interviewer.
  *
  * `say` queues a sentence. `cancel` stops immediately and empties the queue — that is
- * the interrupt. `onStateChange(speaking)` fires on every transition, and the caller
- * uses it to hold the microphone shut.
+ * the interrupt. `onStateChange(speaking)` fires on every transition for UI state;
+ * playback never owns or closes the microphone.
  */
 export function createSpeaker({ onStateChange = () => {}, onPlayback = () => {}, preferences = voicePreferences } = {}) {
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
@@ -162,7 +159,8 @@ export function createSpeaker({ onStateChange = () => {}, onPlayback = () => {},
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: item.text, voice: item.options.voice, speed: item.options.speed }),
       });
-    })().catch(() => { if (item.generation === generation) failed = true; return null; });
+    })().catch(() => { if (item.generation === generation) failed = true; return null; })
+      .then(blob => { item.audioReady = Boolean(blob); return blob; });
   }
   function systemSpeak(item) {
     if (!synth || !window.SpeechSynthesisUtterance) return Promise.reject(Error('System speech unavailable'));
@@ -217,8 +215,10 @@ export function createSpeaker({ onStateChange = () => {}, onPlayback = () => {},
       while (queue.length && token === generation && !disposed) {
         active = queue.shift();
         const item = active;
-        setPlayback('preparing', item, null);
         prepare(item);
+        // A prefetched clip is already ready. Reporting preparation here flashes
+        // the voice bar between sentences even when synthesis has finished.
+        if (!item.audioReady) setPlayback('preparing', item, null);
         if (queue[0]) prepare(queue[0]);
         const blob = await item.prepared;
         if (token !== generation || disposed) return;
@@ -266,16 +266,16 @@ export function createSpeaker({ onStateChange = () => {}, onPlayback = () => {},
       status ??= request('/api/tts/status');
       return status.catch(() => null);
     },
-    say(text) {
+    say(text, { splitSentences = true } = {}) {
       if (disposed) return;
       const clean = stripForSpeech(text);
       if (!clean) return;
-      const { ready, rest } = splitForSpeech(clean);
+      const { ready, rest } = splitSentences ? splitForSpeech(clean) : { ready: [clean], rest: '' };
       for (const sentence of [...ready, ...(rest.trim() ? [rest.trim()] : [])]) {
         const options = preferences();
         queue.push({ text: sentence, options, generation });
-        // Gate the microphone throughout preparation for either engine. Captions
-        // still use the actual playback phase, which changes only on audio start.
+        // Mark queued preparation as interruptible for either engine. Captions
+        // use the actual playback phase, which changes only on audio start.
         setSpeaking(true);
       }
       if (!running) void drain(generation);

@@ -1,17 +1,18 @@
 import { bindPythonTools, bindBoardTools, showWorkspaceAction } from './workspace-tools.js';
 // Both design disciplines share one untimed, question-led learning workspace.
 import { el, replace } from './dom.js';
+import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { workspaceHeader } from './ui/headers.js';
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
 import { createSelect } from './ui/select.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
 import { loadExcalidraw } from './whiteboard.js';
 import { getSettings, onSettingsChange } from './settings.js';
-import { renderMarkdown } from './markdown.js';
+import { conversationText, setConversationText } from './ui/conversation.js';
 import { openLearningNotes, saveLearningNote } from './learning.js';
 import { relativeInterviewDate } from './interview-format.js';
 import { streamInterviewRequest } from './interview-transport.js';
-import { createVoicePanel } from './ui/voice-panel.js';
+import { createVoicePanel, answerModeSwitch, micToggle, paintMicToggle, replayButton } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
 import { createSpeaker, turnDecision } from './speech.js';
 import { createSpeechStream } from './speech-stream.js';
@@ -69,7 +70,7 @@ export function createPracticeLauncher({ discipline, problems }) {
 
 export function initPractice(host, { slug, id }) {
   let gone = false, session, mode = 'voice', busy = false, sending = false, voiceState = 'idle', spokenThisTurn = false;
-  let code = '', elements = [], editor, boardRoot, boardApi, voice, speaker, picker, modelPicker, timer;
+  let code = '', elements = [], editor, boardRoot, boardApi, voice, speaker, modelPicker, timer;
   let untheme = () => {}, saveChain = Promise.resolve(), revision = 0, savedRevision = 0, following = true;
   let lastRequest = null, pendingPoll = null, unbindTools = () => {};
   let problemText, practiceTimer, disposeSplit = () => {};
@@ -88,23 +89,28 @@ export function initPractice(host, { slug, id }) {
     finally { if (!gone) retrySave.disabled = false; }
   } });
   const workError = el('div', { class: 'pr-work-error ui-cluster ui-inset ui-inset--compact', role: 'status', hidden: true }, [workErrorText, retrySave]);
-  const thread = el('div', { class: 'pr-thread ui-pane-scroll ui-inset', role: 'log', 'aria-label': 'Practice conversation', tabindex: '0' });
+  const thread = el('div', { class: 'pr-thread ui-pane-scroll', role: 'log', 'aria-label': 'Practice conversation', tabindex: '0' });
   const input = el('textarea', { class: 'coach-input', rows: '2', 'aria-label': 'Ask your practice coach', placeholder: 'Ask about your design, an edge case, or a trade-off…' });
   input.value = readDraft(draftKey)?.text || '';
   const inputSize = bindComposerInput(input);
   let partialWords = '', playbackInterrupted = false, voiceLoop, replySpeech, windowFocused = document.hasFocus();
-  const voiceView = createVoicePanel({ role: 'Coach', onEdit: () => setInputMode('typed'), onReplay: text => { voice?.stop(); speaker?.say(text); } });
+  const voiceView = createVoicePanel({ role: 'Coach', onEdit: () => setInputMode('typed') });
+  const replayReply = text => { if (busy || speaker?.speaking) return; speaker?.say(text); };
   const status = el('span', { class: 'pr-state', role: 'status' });
   const send = composerSend(el('button', { type: 'button', onclick: () => ask() }));
-  const mic = el('button', { class: 'btn btn--secondary', text: 'Start voice', onclick: () => {
+  const voiceSend = composerSend(el('button', { type: 'button', hidden: true, onclick: () => ask() }));
+  const mic = micToggle(() => {
     if (voiceLoop?.enabled) { voiceLoop.pause(); interruptReply(); }
     else { speaker?.cancel(); voiceLoop?.start(); }
-  } });
-  const interrupt = el('button', { class: 'btn btn--quiet', text: 'Interrupt', hidden: true, onclick: () => interruptReply() });
+  });
+  const interrupt = el('button', { class: 'btn btn--secondary btn--sm', text: 'Interrupt · Esc', hidden: true, onclick: () => interruptReply() });
+  const typeLink = answerModeSwitch('typed', setInputMode);
+  const voiceLink = answerModeSwitch('voice', setInputMode);
   const retry = el('button', { class: 'btn btn--secondary', text: 'Retry reply', hidden: true, onclick: () => ask(lastRequest) });
-  const actions = el('div', { class: 'pr-actions' }, [mic, interrupt, retry, send]);
+  const actions = el('div', { class: 'pr-actions' }, [retry, send]);
   const typed = el('div', { class: 'pr-typed' }, input);
   const voicePane = el('div', { class: 'pr-voice' }, [voiceView.root]);
+  voiceView.setControls({ lead: [mic], actions: [interrupt, typeLink, voiceSend] });
   const work = el('section', { class: 'pr-work card ui-editor-surface' });
   const output = el('pre', { class: 'lld-output mono', hidden: true });
   const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', title: "Run Python (⌘')", text: 'Run Python', onclick: async () => {
@@ -166,7 +172,7 @@ export function initPractice(host, { slug, id }) {
     return saveChain;
   }
   function setInputMode(next) {
-    mode = next; picker.value = next; spokenThisTurn = false; playbackInterrupted = true; replySpeech?.cancel(); speaker?.cancel();
+    mode = next; spokenThisTurn = false; playbackInterrupted = true; replySpeech?.cancel(); speaker?.cancel();
     if (mode === 'voice') voiceLoop?.start(); else voiceLoop?.pause();
     changed(); paint(); if (mode === 'typed') input.focus();
   }
@@ -175,21 +181,24 @@ export function initPractice(host, { slug, id }) {
     inputSize.resize();
     voiceView.update({state: voiceState, draft: input.value, partial: partialWords, busy, sending, paused: !voiceLoop?.enabled});
     send.disabled = busy || sending || (!input.value.trim() && !['recording','working'].includes(voiceState));
-    mic.hidden = mode !== 'voice';
+    const speaking = Boolean(speaker?.speaking);
+    voiceLink.hidden = mode === 'voice';
+    typeLink.hidden = speaking;
     mic.disabled = sending || voiceState === 'working';
-    mic.textContent = voiceLoop?.enabled ? 'Pause voice' : 'Start voice';
-    mic.setAttribute('aria-pressed', String(!!voiceLoop?.enabled));
-    interrupt.hidden = !speaker?.speaking;
+    paintMicToggle(mic, Boolean(voiceLoop?.enabled), { on: 'Pause voice', off: 'Start voice' });
+    interrupt.hidden = !speaking;
     status.textContent = speaker?.speaking ? 'Coach speaking' : busy ? 'Coach is thinking…' : voiceState === 'working' ? 'Transcribing…' : voiceState === 'recording' ? 'Listening' : 'Ready when you are';
     status.hidden = mode === 'voice' || status.textContent === 'Ready when you are';
-    send.hidden = mode === 'voice' && !(input.value.trim() || ['recording','working'].includes(voiceState));
+    send.hidden = mode === 'voice';
+    voiceSend.hidden = speaking || !(input.value.trim() || partialWords);
+    voiceSend.disabled = send.disabled;
     retry.hidden = !lastRequest || busy;
     bottom();
   }
   function bottom() { if (following) thread.scrollTop = thread.scrollHeight; }
   function exchange(question, answer = '', state = 'complete', requestId = null) {
     if (requestId && exchangeNodes.has(requestId)) return exchangeNodes.get(requestId);
-    const reply = el('div', { class: 'rich pr-answer' }, answer ? renderMarkdown(answer) : null);
+    const reply = conversationText(answer, { className: 'pr-answer' });
     const marker = el('span', { class: 'dim pr-exchange-status', text: state === 'pending' ? 'Reply in progress…' : state === 'failed' ? 'Reply incomplete' : '' });
     thread.querySelector('.pr-empty')?.remove();
     const saveNote = el('button', { class: 'btn btn--quiet btn--sm', text: 'Save to notes', onclick: async () => {
@@ -198,22 +207,18 @@ export function initPractice(host, { slug, id }) {
       catch (e) { showError(e, `note:${requestId}`); saveNote.disabled = false; }
     } });
     saveNote.hidden = !answer;
-    thread.append(el('article', { class: 'pr-exchange' }, [el('div', { class: 'pr-question' }, [el('span', { class: 'pr-who', text: 'You' }), el('p', { text: question })]),
-      el('span', { class: 'pr-who', text: 'Coach' }), reply, marker, saveNote]));
+    thread.append(el('article', { class: 'pr-exchange' }, [el('div', { class: 'pr-question' }, [el('span', { class: 'pr-who', text: 'You' }), conversationText(question, { user: true })]),
+      el('span', { class: 'pr-who' }, ['Coach', replayButton(() => reply.dataset.markdown || reply.textContent, replayReply, 'Coach')]), reply, marker, saveNote]));
     const receipts = el('div', { class: 'pr-receipts' }); reply.before(receipts);
     const ui = { reply, marker, saveNote, receipts };
     if (requestId) exchangeNodes.set(requestId, ui);
     bottom(); return ui;
   }
-  async function drain() {
-    if (!voice?.isBusy()) return;
-    voice.stop();
-    await new Promise(resolve => { const tick = setInterval(() => { if (!voice.isBusy() || gone) { clearInterval(tick); resolve(); } }, 40); });
-  }
   async function ask(retryRequest = null) {
     if (busy || sending || !session) return;
     sending = true; spokenThisTurn = false; paint(); voiceLoop?.sync();
-    await drain();
+    try { await voice?.flush(); }
+    catch (error) { sending = false; if (!gone) { showError(error); paint(); } return; }
     if (gone) { sending = false; return; }
     if (voice?.hasTranscriptionError()) { sending = false; paint(); return; }
     const question = retryRequest?.question || input.value.trim();
@@ -234,16 +239,14 @@ export function initPractice(host, { slug, id }) {
       await save();
       await streamInterviewRequest('/api/practice/ask', request, (name, value) => {
         if (gone) return;
-        if (name === 'accepted') voiceView.sent(question);
         if (name === 'action') showWorkspaceAction(ui.receipts, value);
         if (name === 'practice_topic') updateTopic(value);
-        if (name === 'token') { answer += value.text || ''; replace(ui.reply, renderMarkdown(answer)); bottom();
+        if (name === 'token') { answer += value.text || ''; setConversationText(ui.reply, answer); bottom();
           if (mode === 'voice' && !playbackInterrupted) replySpeech.push(value.text || '');
         }
-        if (name === 'done') { answer = value.answer ?? answer; replace(ui.reply, renderMarkdown(answer)); ui.reply.dataset.markdown = answer; ui.saveNote.hidden = false; }
+        if (name === 'done') { answer = value.answer ?? answer; setConversationText(ui.reply, answer); ui.saveNote.hidden = false; }
       });
       lastRequest = null; localStorage.removeItem(requestKey);
-      voiceView.reply(answer);
       if (!gone && mode === 'voice' && !playbackInterrupted) replySpeech.finish();
     } catch (e) {
       replySpeech?.cancel(); voiceLoop?.pause();
@@ -257,11 +260,13 @@ export function initPractice(host, { slug, id }) {
   }
   thread.addEventListener('scroll', () => { following = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48; });
   input.addEventListener('input', () => { saveDraft(draftKey, input.value); paint(); });
-  input.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); ask(); } });
+  input.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key === 'Enter' && !hasOpenOverlay() && claimActionKey(e)) ask();
+  });
   view.addEventListener('keydown', e => {
     // Excalidraw listens above its canvas for shape/undo shortcuts.
     if (!e.target.closest('.excalidraw')) e.stopPropagation();
-    if (e.key === 'Escape') interruptReply();
+    if (e.key === 'Escape' && !hasOpenOverlay() && claimActionKey(e)) interruptReply();
   });
   replace(host, el('p', { class: 'ui-inset', text: 'Opening practice…' }));
   (async () => {
@@ -269,7 +274,10 @@ export function initPractice(host, { slug, id }) {
       const data = await json(endpoint); if (gone) return;
       session = data.session; mode = session.mode || 'voice'; code = data.code || session.code || ''; elements = data.elements || session.elements || [];
       // Timer failures already live beside Pause/Resume and clear on its own retry.
-      practiceTimer = createPracticeTimer({ timer: session.timer, serverNow: data.serverNow, change: running => json(`${endpoint}/timer`, { running }), onError: () => {} });
+      practiceTimer = createPracticeTimer({ timer: session.timer, serverNow: data.serverNow, change: async body => {
+        const response = await fetch(`${endpoint}/timer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true });
+        const result = await response.json(); if (!response.ok) throw Error(result.error?.message || 'Timer not saved'); return result;
+      }, onError: () => {} });
       const candidateSource = data.sourceSnapshot?.source || session.source;
       const source = candidateSource && typeof candidateSource === 'object' && candidateSource.interviewId ? candidateSource : null;
       const recovered = recoverWork();
@@ -278,9 +286,6 @@ export function initPractice(host, { slug, id }) {
       if (data.exchanges.some(e => e.requestId === lastRequest?.requestId && e.status === 'complete')) { lastRequest = null; localStorage.removeItem(requestKey); }
       const interrupted = data.exchanges.findLast(e => e.status === 'pending' || e.status === 'failed');
       if (!lastRequest && interrupted) lastRequest = { slug, id, question: interrupted.question, requestId: interrupted.requestId };
-      picker = createSelect({ label: 'Answer mode', compact: true, value: mode, options: [['voice', 'Voice'], ['typed', 'Typed']], onChange: () => {
-        setInputMode(picker.value);
-      } });
       modelPicker = createCoachModelPicker({ compact: true });
       const canvas = el('div', { class: session.discipline === 'lld' ? 'lld-code pr-editor' : 'dz-canvas pr-board ui-editor-surface' });
       const editorControls = session.discipline === 'lld' ? createPythonEditorControls() : null;
@@ -290,15 +295,15 @@ export function initPractice(host, { slug, id }) {
       const statement = el('details', { class: 'pr-problem' }, [el('summary', { text: source ? 'Problem and mock feedback' : 'Problem' }), problemText]);
       if (source) {
         const feedback = data.sourceSnapshot?.feedback;
-        const feedbackNode = typeof feedback === 'string' && feedback.trim() ? renderMarkdown(feedback) : el('p', { text: 'No mock feedback was recorded.' });
-        const feedbackDetails = el('section', { class: 'pr-feedback' }, [el('h3', { text: 'Mock feedback' }), feedbackNode]);
+        const feedbackNode = conversationText(typeof feedback === 'string' && feedback.trim() ? feedback : 'No mock feedback was recorded.');
+        const feedbackDetails = el('section', { class: 'pr-feedback' }, [el('h3', { class: 'pr-feedback-label', text: 'Mock feedback' }), feedbackNode]);
         statement.append(feedbackDetails);
       }
       thread.prepend(statement);
       const coach = el('aside', { class: 'pr-coach card ui-pane', 'aria-label': 'Practice coach' }, [
         el('div', { class: 'pr-coach-head ui-toolbar' }, [el('strong', { text: 'Practice coach' }), status]), thread,
         createComposer({ className: 'pr-compose ui-pane-controls', content: [typed, voicePane],
-          leading: [picker, modelPicker.root], trailing: [actions], notices: [error] }),
+          leading: [voiceLink, modelPicker.root], trailing: [actions], notices: [error] }),
       ]);
       view.append(workspaceHeader({ title: session.title, subtitle: `${session.discipline === 'lld' ? 'Python · ' : ''}Untimed practice`, backHref: `#/${session.discipline === 'lld' ? 'lld' : 'design'}`, backLabel: session.discipline === 'lld' ? 'Low-level design' : 'System design', actions: [source ? el('a', { class: 'pr-source-link', href: source.discipline === 'lld' ? `#/lld/${encodeURIComponent(source.slug)}/${encodeURIComponent(source.interviewId)}` : `#/design/${encodeURIComponent(source.interviewId)}`, text: `From mock · ${source.startedAt || source.capturedAt ? relativeInterviewDate(source.startedAt || source.capturedAt) : 'original'}` }) : null, practiceTimer.root, el('button', { class: 'btn btn--secondary pr-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, session.title) })] }),
         el('div', { class: 'pr-split' }, [work, coach]));
@@ -308,18 +313,20 @@ export function initPractice(host, { slug, id }) {
       else for (const item of data.exchanges) {
         const ui = exchange(item.question, item.answer, item.status, item.requestId);
         for (const action of item.actions || []) showWorkspaceAction(ui.receipts, action, { replay: true });
-        voiceView.sent(item.question); if (item.answer) voiceView.reply(item.answer);
       }
       if (data.busy) { busy = true; watchPending(); }
-      speaker = createSpeaker({ onPlayback: value => voiceView.playback(value), onStateChange: active => { if (active) voice?.stop(); if (!gone) { paint(); voiceLoop?.sync(); } } });
+      speaker = createSpeaker({ onPlayback: value => voiceView.playback(value), onStateChange: () => { if (!gone) { paint(); voiceLoop?.sync(); } } });
       voice = createVoiceControl({ getSlug: () => '', logTakes: false, maxTakeMs:60*60000, reportEmptyTake:false, onSettled:()=>voiceLoop?.sync(), onPreview: text => { partialWords = text; if (!gone) paint(); }, onTranscript: text => {
         if (gone) { appendDraft(draftKey, text); return; }
-        input.value += (input.value ? ' ' : '') + text; saveDraft(draftKey, input.value); paint();
+        input.value += (input.value ? ' ' : '') + text; saveDraft(draftKey, input.value);
+        if (mode === 'voice' && (speaker.speaking || (busy && !playbackInterrupted))) interruptReply();
+        paint();
       }, onState: state => { voiceState = state; if (!gone) paint(); }, onLevel: value => {
         voiceView.level(value); const {sinceLoud,pending} = value; if(value.loud)spokenThisTurn=true;
+        if (mode === 'voice' && value.loud && (speaker.speaking || (busy && !playbackInterrupted))) interruptReply();
         if (voiceView.automatic && !voice.hasTranscriptionError() && voiceLoop?.enabled && spokenThisTurn && mode === 'voice' && turnDecision({ sinceLoud, chars: input.value.trim().length, pending, speaking: speaker.speaking, busy: busy || sending }) === 'send') ask();
       } });
-      voiceLoop = createVoiceLoop({capture:voice,speaker,canListen:()=>!gone&&mode==='voice'&&!document.hidden&&windowFocused&&!sending&&(!busy||playbackInterrupted),onChange:()=>{if(!gone)paint();}});
+      voiceLoop = createVoiceLoop({capture:voice,speaker,canListen:()=>!gone&&mode==='voice'&&!document.hidden&&windowFocused,onChange:()=>{if(!gone)paint();}});
       voicePane.append(voice.status);
       if (session.discipline === 'lld') {
         editor = mountPythonEditor(canvas, code, {
@@ -359,11 +366,10 @@ export function initPractice(host, { slug, id }) {
         for (const item of data.exchanges) {
           const ui = exchange(item.question, item.answer, item.status, item.requestId);
           for (const action of item.actions || []) showWorkspaceAction(ui.receipts, action, { replay: true });
-        voiceView.sent(item.question); if (item.answer) voiceView.reply(item.answer);
           // Recovery polls are snapshots, not deltas. Replace the visible prefix
           // while pending too; do not replay historical text through the speaker.
           if (ui.reply.dataset.markdown !== (item.answer || '')) {
-            replace(ui.reply, renderMarkdown(item.answer || '')); ui.reply.dataset.markdown = item.answer || '';
+            setConversationText(ui.reply, item.answer || '');
           }
           if (item.status !== 'pending') {
             ui.marker.textContent = item.status === 'failed' ? 'Reply incomplete. Retry when ready.' : '';
@@ -378,8 +384,10 @@ export function initPractice(host, { slug, id }) {
     }, 1200);
   }
   const beforeUnload = e => { if (revision !== savedRevision) { e.preventDefault(); e.returnValue = ''; } };
-  const visibility=()=>{if(!gone)voiceLoop?.sync();};
+  const visibility=()=>{if(!gone){ voiceLoop?.sync(); if (document.hidden) practiceTimer?.pause(); }};
   document.addEventListener('visibilitychange',visibility);
+  const pagehide = () => practiceTimer?.pause();
+  window.addEventListener('pagehide', pagehide);
   const focus=()=>{windowFocused=true;visibility();};
   const blur=()=>{windowFocused=false;visibility();};
   window.addEventListener('focus',focus); window.addEventListener('blur',blur);
@@ -388,8 +396,8 @@ export function initPractice(host, { slug, id }) {
     practiceTimer?.dispose();
     disposeSplit();
     clearTimeout(timer); clearTimeout(pendingPoll); if (revision !== savedRevision) save().catch(() => {});
-    gone = true; voiceLoop?.dispose(); replySpeech?.cancel(); document.removeEventListener('visibilitychange',visibility); window.removeEventListener('focus',focus); window.removeEventListener('blur',blur); window.removeEventListener('beforeunload', beforeUnload);
-    voice?.dispose({ finish: true }); speaker?.dispose(); picker?.dispose(); modelPicker?.dispose();
+    gone = true; voiceLoop?.dispose(); replySpeech?.cancel(); document.removeEventListener('visibilitychange',visibility); window.removeEventListener('focus',focus); window.removeEventListener('blur',blur); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('pagehide', pagehide);
+    voice?.dispose({ finish: true }); speaker?.dispose(); modelPicker?.dispose();
     inputSize.dispose(); unbindTools(); editor?.dispose(); boardRoot?.unmount(); untheme();
   } };
 }

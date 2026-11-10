@@ -4,7 +4,7 @@ import { PHASES } from './state.mjs';
 export function createTagStripper(phases = PHASES) {
   let held = '', phase = null;
   const hints = [];
-  let gap = null, curveball = false;
+  let gap = null, curveball = false, tagged = false;
   const possible = tail => {
     const compact = tail.toLowerCase().replace(/\s/g, '');
     return ['[[phase:', '[[hint:', '[[gap:', '[[curveball:'].some(opener => opener.startsWith(compact) || (compact.startsWith(opener) && !compact.includes(']]')));
@@ -13,7 +13,7 @@ export function createTagStripper(phases = PHASES) {
     push(chunk) {
       held += String(chunk ?? '');
       held = held.replace(/\[\[\s*(phase|hint|gap|curveball)\s*:\s*([a-z0-9-]+)\s*\]\]/gi, (_, kind, value) => {
-        value = value.toLowerCase();
+        value = value.toLowerCase(); tagged = true;
         if (kind.toLowerCase() === 'phase' && phases.includes(value)) phase = value;
         if (kind.toLowerCase() === 'hint' && ['nudge', 'narrow', 'explicit'].includes(value)) hints.push(value);
         if (kind.toLowerCase() === 'gap') gap = value.slice(0, 80);
@@ -27,6 +27,7 @@ export function createTagStripper(phases = PHASES) {
       return out;
     },
     flush() { const out = possible(held) ? '' : held; held = ''; return out; },
+    get tagged() { return tagged; },
     get gap() { return gap; },
     get curveball() { return curveball; },
     get phase() { return phase; },

@@ -10,6 +10,7 @@ import { newState } from '../server/interview/state.mjs';
 import { InterviewStore } from '../server/interview/store.mjs';
 import { runVisualAudit } from './visual-audit.mjs';
 import { fixtureReport } from '../server/interview/test/report-fixture.mjs';
+import { conversationTurns, formattedReply, mockFeedback } from './conversation-fixture.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -38,6 +39,7 @@ async function requireFreePort(port) {
 
 async function seed() {
   const problems = [
+    ['time-based-key-value-store', 'Time Based Key-Value Store', '981', 'lookup', [{ name: 'timestamp', type: 'integer' }], 'integer', '1', 'class Solution:\n    def lookup(self, timestamp):\n        # Synthetic visual fixture, not a TimeMap implementation.\n        return timestamp\n'],
     ['jump-game', 'Jump Game', '55', 'canJump', [{ name: 'nums', type: 'integer[]' }], 'boolean', '[2,3,1,1,4]', code],
     ['cheapest-flights-within-k-stops', 'Cheapest Flights Within K Stops', '787', 'findCheapestPrice', [
       { name: 'n', type: 'integer' }, { name: 'flights', type: 'integer[][]' },
@@ -57,6 +59,12 @@ async function seed() {
     await json(path.join(dir, 'cases.json'), { cases: [{ input, expected: slug === 'jump-game' ? 'true' : '200', source: 'custom' }] });
   }
   const store = new InterviewStore({ root: home });
+  const conversationState = { ...newState({ slug: 'lld-locker', startedAt: Date.now() - 3480000, minutes: 60 }), discipline: 'lld', targetLevel: 'L4', pausedAt: Date.now(), lastCode: '# Candidate-owned design document\n' };
+  await store.create('lld-locker', '1760000000000-00000011', conversationState);
+  for (const turn of conversationTurns) await store.append('lld-locker', '1760000000000-00000011', turn);
+  const designDir = path.join(home, 'design', '2026-11-04T12-00-00-000Z');
+  await json(path.join(designDir, 'interview.json'), { prompt: 'Payment authorization', level: 'L4', minutes: 60, phase: 'design', startedAt: Date.now() - 3480000, debriefed: true, turns: [{}, {}] });
+  await fsp.writeFile(path.join(designDir, 'turns.jsonl'), conversationTurns.map(turn => JSON.stringify({ ...turn, at: '2026-11-04T12:58:00Z' })).join('\n') + '\n');
   const lld = { ...newState({ slug: 'lld-locker', startedAt: Date.now() }), discipline: 'lld', targetLevel: 'L4', pausedAt: Date.now(), lastCode: '# Candidate-owned design document\n' };
   await store.create('lld-locker', '1760000000000-00000009', lld);
   await store.append('lld-locker', '1760000000000-00000009', { kind: 'opening', elapsedMs: 0, asked: 'Design a parcel locker system.' });
@@ -95,7 +103,7 @@ async function seed() {
     const slug = discipline === 'lld' ? 'lld-locker' : 'design-url-shortener';
     const id = `visual-practice-${discipline}`, base = path.join(problemDir(home,slug), 'practice', id);
     await json(path.join(base, 'session.json'), { id, slug, discipline, title: discipline === 'lld' ? 'Locker system' : 'URL shortener', statement: discipline === 'lld' ? 'Design a locker system.' : 'Design a URL-shortening service.', mode: 'voice', createdAt: '2026-10-30T12:00:00Z', updatedAt: '2026-10-30T12:10:00Z' });
-    await json(path.join(base, 'exchanges.json'), [{ requestId: 'fixture-question', question: 'What should I consider about concurrent reservations?', answer: 'Consider what happens when two callers observe the same available resource. Which operation must be atomic?', status: 'complete', at: '2026-10-30T12:10:00Z' }]);
+    await json(path.join(base, 'exchanges.json'), [{ requestId: 'fixture-question', question: 'What should I consider about concurrent reservations?', answer: formattedReply, status: 'complete', at: '2026-10-30T12:10:00Z' }]);
     await json(path.join(base, 'document.json'), { code: 'class Locker:\n    pass\n' });
     await json(path.join(base, 'elements.json'), []);
     await fsp.writeFile(path.join(problemDir(home,slug), 'NOTES.md'), '## Reservation ownership\n\nValidate ownership before releasing the resource.');
@@ -103,7 +111,7 @@ async function seed() {
   const branchId = 'visual-branch-lld', branchDir = path.join(problemDir(home,'lld-locker'),'practice',branchId);
   const source = {discipline:'lld',slug:'lld-locker',interviewId:'1760000000000-00000009',title:'Locker system',startedAt:Date.now()-3600000,capturedAt:new Date().toISOString(),completed:true};
   await json(path.join(branchDir,'session.json'),{id:branchId,slug:'lld-locker',discipline:'lld',title:'Locker system',statement:'Design a locker system.',mode:'typed',source,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
-  await json(path.join(branchDir,'source.json'),{source,code:'class Locker:\n    pass\n',feedback:'## Technical review\n\nCheck **ownership** before releasing a reservation.\n\n- Reject expired pickup codes.\n- Make reservation atomic.',turns:[]});
+  await json(path.join(branchDir,'source.json'),{source,code:'class Locker:\n    pass\n',feedback:mockFeedback,turns:[]});
   await json(path.join(branchDir,'document.json'),{code:'class Locker:\n    pass\n'});
   await json(path.join(branchDir,'exchanges.json'),[]);
   const dir = problemDir(home,'jump-game');

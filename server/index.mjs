@@ -25,6 +25,7 @@ import { NeetCodeContentCache } from './neetcode.mjs';
 import { StaticSite } from './static.mjs';
 import { createApp } from './app.mjs';
 import { archiveIdleConversations } from './coach/native-sessions.mjs';
+import { startWriterWorker } from './writer-handoff.mjs';
 
 export function boot({ quiet = false } = {}) {
   const solutions = loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT);
@@ -74,6 +75,8 @@ export function start() {
   server.on('close', () => clearInterval(sessionExpiry));
   const stopRecall = startRecallSync({ root: HOME_ROOT });
   server.on('close', stopRecall);
+  const stopWriter = startWriterWorker({ root: HOME_ROOT });
+  server.on('close', stopWriter);
   server.on('close', () => ttsWorker.close());
 
   server.on('clientError', (_err, socket) => {

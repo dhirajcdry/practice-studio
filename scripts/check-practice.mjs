@@ -6,6 +6,8 @@ import path from 'node:path';
 import net from 'node:net';
 import assert from 'node:assert/strict';
 import { DesignStore } from '../server/design/store.mjs';
+import { problemDir } from '../server/storage-layout.mjs';
+import { MAX_TIMER_RUN_MS } from '../server/practice/timer.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
@@ -44,8 +46,7 @@ try {
   const issues = [];
   socket.addEventListener('message', event => { const m = JSON.parse(event.data); if (m.method === 'Runtime.exceptionThrown') issues.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text); });
   async function mode(label) {
-    await evaluate("document.querySelector('.pr-compose .ui-select-button').click()");
-    await evaluate(`const option=[...document.querySelectorAll('[role=menuitemradio]')].find(n=>n.textContent.trim()===${JSON.stringify(label)}); if(!option) throw Error('mode option missing'); option.click();`);
+    await evaluate(`document.querySelector('.pr-compose .ui-mode-switch[data-mode=${label.toLowerCase()}]').click();`);
   }
   async function shot(name) { const s = await send('Page.captureScreenshot', { format: 'png' }); await fs.writeFile(`/tmp/studio-practice-${name}.png`, Buffer.from(s.data, 'base64')); }
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -90,6 +91,11 @@ try {
   assert.ok(address.includes('/practice/'));
   assert.equal(await evaluate("return document.querySelector('.pr-typed').hidden"), true, 'voice is default');
   assert.equal(await evaluate("return document.querySelectorAll('.pr-exchange').length"), 0, 'opening practice makes no model turn');
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-label').textContent"), 'Paused', 'new practice starts paused');
+  await sleep(1100);
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-value').textContent"), '00:00', 'opening practice never starts tracking');
+  await evaluate("document.querySelector('[aria-label=\"Start practice timer\"]').click()");
+  await until(() => evaluate("return !!document.querySelector('[aria-label=\"Pause practice timer\"]:not(:disabled)')"), 'explicit start');
   const initialTime = await evaluate("return document.querySelector('.pr-timer-value').textContent");
   await until(() => evaluate(`return document.querySelector('.pr-timer-value').textContent!==${JSON.stringify(initialTime)}`), 'practice timer ticks');
   await evaluate("document.querySelector('[aria-label=\"Pause practice timer\"]').click()");
@@ -108,7 +114,35 @@ try {
   assert.equal(await evaluate("return document.querySelector('.pr-timer-label').textContent"), 'Elapsed', 'failed pause does not pretend to be saved');
   await evaluate("document.querySelector('[aria-label=\"Pause practice timer\"]').click()");
   await until(() => evaluate("return document.querySelector('.pr-timer-label').textContent==='Paused' && document.querySelector('.pr-timer-error').hidden"), 'timer pause can be retried');
+  await evaluate("document.querySelector('[aria-label=\"Resume practice timer\"]').click()");
+  await until(() => evaluate("return !!document.querySelector('[aria-label=\"Pause practice timer\"]:not(:disabled)')"), 'start before hiding');
+  await evaluate("Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));");
+  await until(() => evaluate("return document.querySelector('.pr-timer-label').textContent==='Paused'"), 'hidden practice pauses');
+  await evaluate("delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));");
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-label').textContent"), 'Paused', 'showing page does not resume');
+  await evaluate("document.querySelector('[aria-label=\"Resume practice timer\"]').click()");
+  await until(() => evaluate("return !!document.querySelector('[aria-label=\"Pause practice timer\"]:not(:disabled)')"), 'start before reload');
+  await reload();
+  await until(() => evaluate("return document.querySelector('.pr-timer-label')?.textContent==='Paused'"), 'reload stops practice timer');
   assert.equal(await evaluate("const {formatPracticeTime}=await import('/js/practice-timer.js');return formatPracticeTime(3_661_000)"), '1:01:01', 'long sessions show hours');
+  // Seed a still-live scratch timer just before its hard limit. Resume reads that
+  // existing run without resetting it; the real UI must stop at the server cutoff.
+  const [, , , timedSlug, timedId] = address.split('/');
+  const timedFile = path.join(problemDir(HOME, timedSlug), 'practice', timedId, 'session.json');
+  const nearLimit = JSON.parse(await fs.readFile(timedFile));
+  const cutoff = Date.now() + 3000;
+  nearLimit.timer = { elapsedMs: 0, runningSince: cutoff - MAX_TIMER_RUN_MS, leaseUntil: cutoff + 30_000 };
+  await fs.writeFile(timedFile, JSON.stringify(nearLimit));
+  await evaluate("document.querySelector('[aria-label=\"Resume practice timer\"]').click()");
+  await until(() => evaluate("return document.querySelector('.pr-timer-label').textContent==='Elapsed'"), 'timer approaching 12 hours');
+  await until(() => evaluate("return document.querySelector('.pr-timer-label').textContent==='Paused'"), '12-hour timer cutoff');
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-value').textContent"), '12:00:00');
+  await sleep(1100);
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-value').textContent"), '12:00:00', 'abandoned timer stays stopped');
+  const stoppedAtLimit = await (await fetch(`${ORIGIN}/api/practice/${timedSlug}/${timedId}`)).json();
+  assert.equal(stoppedAtLimit.session.timer.runningSince, null);
+  assert.equal(stoppedAtLimit.session.timer.elapsedMs, MAX_TIMER_RUN_MS);
+  assert.deepEqual(stoppedAtLimit.exchanges, [], 'timer cutoff never calls the coach');
   await evaluate(`window.__practiceFetch=window.fetch;window.__failSave=true;window.fetch=(url,options)=>{
     if(window.__failSave&&options?.method==='PUT'&&String(url).startsWith('/api/practice/')){window.__failSave=false;return Promise.reject(new TypeError('Failed to fetch'));}
     return window.__practiceFetch(url,options);
@@ -148,8 +182,8 @@ try {
   await until(() => evaluate("return !!document.querySelector('.pr-answer')?.textContent.includes('second half.') && document.querySelector('.pr-state').textContent==='Ready when you are'"), 'fake answer');
   const saved = await evaluate("const p=location.hash.split('/');return await(await fetch('/api/practice/'+p[3]+'/'+p[4])).json();");
   assert.equal(saved.exchanges.length, 1); assert.equal(saved.exchanges[0].status, 'complete'); assert.equal(saved.code, 'print(42)');
-  await evaluate("document.querySelector('.pr-exchange button').click()");
-  await until(() => evaluate("return document.querySelector('.pr-exchange button').textContent==='Saved to notes'"), 'learning note saved');
+  await evaluate("[...document.querySelectorAll('.pr-exchange button')].at(-1).click()");
+  await until(() => evaluate("return [...document.querySelectorAll('.pr-exchange button')].at(-1).textContent==='Saved to notes'"), 'learning note saved');
   await reload(); await sleep(300);
   await until(() => evaluate("return !!document.querySelector('.pr-answer') && !!window.monaco?.editor.getModels().length"), 'reload practice');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), 'print(42)');
@@ -206,6 +240,8 @@ try {
   await sleep(80);
   const designAfter = await evaluate("const s=document.querySelector('.pr-split'),w=s.children[0].getBoundingClientRect().width,c=s.children[1].getBoundingClientRect().width;return {w,c}");
   assert.ok(designAfter.w < designBefore.w - 10 && designAfter.c > designBefore.c + 10, 'system-design divider reallocates space');
+  await evaluate("document.querySelector('[aria-label=\"Start practice timer\"]').click()");
+  await until(() => evaluate("return !!document.querySelector('[aria-label=\"Pause practice timer\"]:not(:disabled)')"), 'design timer explicit start');
   await evaluate("document.querySelector('[aria-label=\"Pause practice timer\"]').click()");
   await until(() => evaluate("return !!document.querySelector('[aria-label=\"Resume practice timer\"]:not(:disabled)')"), 'system-design timer pauses');
   assert.equal(await evaluate("return document.querySelectorAll('.pr-exchange').length"), 0);

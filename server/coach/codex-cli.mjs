@@ -220,8 +220,8 @@ function argSummary(args) {
   return first === null || first === undefined ? '' : String(first).replace(/\s+/g, ' ').slice(0, 120);
 }
 
-export function coachInstructions(systemPrompt, { hasTools = false, webResearch = false } = {}) {
-  return `${systemPrompt}\nYou are the Practice Studio interview coach. ${hasTools ? 'Use Studio tools for workspace actions; each action is shown to the learner. Do not claim an action happened unless its tool result says it did.' : 'Do not claim to change files or memory.'} ${webResearch ? 'Native web research is available for public sources when useful or requested.' : 'Answer from supplied context and enabled Studio tools only.'} You have no file or shell access.`;
+export function coachInstructions(systemPrompt, { hasTools = false, webResearch = false, mock = false } = {}) {
+  return `${systemPrompt}\n${mock ? '' : 'You are the Practice Studio interview coach. '}${hasTools ? 'Use Studio tools for workspace actions; each action is shown to the learner. Do not claim an action happened unless its tool result says it did.' : 'Do not claim to change files or memory.'} ${webResearch ? 'Native web research is available for public sources when useful or requested.' : 'Answer from supplied context and enabled Studio tools only.'} You have no file or shell access.`;
 }
 
 export function runCoachTurn({ prompt, systemPrompt = '', systemPromptComplete = false, model = 'gpt-6-astra', reasoningEffort = null, resumeSessionId = null, persistentSession = false,

@@ -10,6 +10,7 @@ import { buildDesignReport } from './report.mjs';
 import { askRecordedInterview } from '../interview/routes.mjs';
 import { pairFollowups, reviewSystemPrompt, reviewConversationKey, reviewTarget, reviewContextSections, reviewWorkspace } from '../interview/review.mjs';
 import { data, debriefPrompt as structuredDebrief } from '../interview/prompt.mjs';
+import { readReportDifficulty } from '../interview/report-difficulty.mjs';
 import { newState as codingState } from '../interview/state.mjs';
 // The system design interview, over HTTP.
 //
@@ -33,6 +34,7 @@ import { SseStream } from '../coach/sse.mjs';
 import { readCoachChoice, runProviderTurn, stoppedProviderExit } from '../coach/provider.mjs';
 import { readCoachMemory } from '../coach/provider-context.mjs';
 import { upkeepQueue } from '../coach/upkeep.mjs';
+import { isFillerReply } from '../../web/js/transcript-filter.js';
 import { sceneToGraph } from './graph.mjs';
 import { createNarrationFilter, salvageQuestion } from './narration.mjs';
 import {
@@ -57,6 +59,7 @@ class DesignService {
     this.live = new Map();
     this.reviewLive = new Map();
     this.startRequests = new Set();
+    this.clockWrites = new Map();
   }
 }
 
@@ -95,6 +98,10 @@ function idFrom(body, ctx) {
     throw new HttpError(400, 'BAD_REQUEST', '"interviewId" is required and must be an interview id.');
   }
   return id;
+}
+function extensionMinutes(body) {
+  if (!Number.isInteger(body.minutes) || body.minutes < 1 || body.minutes > 240) throw new HttpError(400, 'BAD_REQUEST', 'Minutes must be a positive integer from 1 to 240.');
+  if (typeof body.requestId !== 'string' || !/^[\w-]{1,100}$/.test(body.requestId)) throw new HttpError(400, 'BAD_REQUEST', 'A valid request identity is required.');
 }
 
 /**
@@ -152,6 +159,16 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
   let finished = false;
   let lastPhase = null;
   const tags = createTagStripper();
+  // A filler reply cannot be taken back once spoken, so an answer waits until its first
+  // complete sentence proves otherwise. Speech starts on that sentence anyway.
+  let held = '', released = kind !== 'turn';
+  const show = (text) => {
+    if (!text) return;
+    if (released) { stream.token(text); return; }
+    held += text;
+    const sentences = held.match(/^[\s\S]*[.?!](?=\s|$)/)?.[0];
+    if (sentences && !isFillerReply(sentences)) { released = true; stream.token(held); held = ''; }
+  };
 
   /**
    * End the turn exactly once.
@@ -174,15 +191,16 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
       // label must not cost the turn its last few words. The phase tag is held by the
       // same rule (it opens with a bracket), which is why stripping it here catches it
       // before a single character has been shown or spoken.
-      const rest = tags.push(filter.flush()) + tags.flush();
-      if (rest) stream.token(rest);
-      if (tags.phase) { lastPhase = tags.phase; stream.send('phase', { phase: tags.phase }); }
+      show(tags.push(filter.flush()) + tags.flush());
     }
+    const filler = !broke && !failure && !stoppedReason && held.trim() && isFillerReply(held) ? held : null;
+    if (held && !filler) stream.token(held);
+    if (!broke && !filler && tags.phase) { lastPhase = tags.phase; stream.send('phase', { phase: tags.phase }); }
     if (sessionId) svc.sessions.set(sessionKey, sessionId);
     const finalTags = createTagStripper();
-    const asked = (finalTags.push(broke ? (salvageQuestion(filter.text()) ?? '') : filter.text()) + finalTags.flush()).trim();
+    const asked = filler ? '' : (finalTags.push(broke ? (salvageQuestion(filter.text()) ?? '') : filter.text()) + finalTags.flush()).trim();
     try {
-      await onFinished(asked, { broke: broke || Boolean(stoppedReason), phase: lastPhase, gap: tags.gap, curveball: tags.curveball });
+      await onFinished(asked, { broke: broke || Boolean(stoppedReason), phase: lastPhase, gap: tags.gap, curveball: tags.curveball, filler, tagged: tags.tagged });
       if (!failure && !broke && !stoppedReason) await commit?.();
     } catch (err) {
       svc.log?.warn?.(`[design] ${id}: ${err.message}`);
@@ -191,7 +209,7 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
     svc.live.delete(id);
     settle();
     if (failure) stream.error(failure);
-    else { stream.send('done', { sessionId, stoppedReason, broke, asked }); stream.end(); }
+    else { stream.send('done', { sessionId, stoppedReason, broke, asked, silent: kind === 'turn' && !asked && !broke && !stoppedReason && Boolean(filler || tags.tagged) }); stream.end(); }
     timing();
   }
 
@@ -203,7 +221,7 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
     root: svc.root,
     discipline:'design', coachingMode: kind === 'debrief' ? 'review' : 'mock',
     binary: svc.binary,
-    systemPrompt:debriefing ? reviewSystemPrompt() : system || systemPrompt({level:savedState.level,minutes:savedState.minutes}), prompt,
+    systemPrompt:debriefing ? reviewSystemPrompt() : system || systemPrompt({level:savedState.level,minutes:savedState.originalMinutes || savedState.minutes}), prompt,
     conversation,
     resumeSessionId: resume,
     tools: '', ...agentTools.options,
@@ -213,7 +231,7 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
       // The phase tag rides the same pipe as speech, so it is pulled out here — before
       // a single character of it can be shown or spoken.
       const shown = tags.push(safe);
-      if (shown) stream.token(shown);
+      show(shown);
       if (tripped && !broke) {
         broke = true;
         // Said plainly rather than hidden. The candidate is about to see a turn end
@@ -311,7 +329,7 @@ async function startDesign(svc, body, res) {
   const child = await streamTurn(svc, {
     id,
     choice,
-    system: systemPrompt({ level: state.level, minutes: state.minutes }),
+    system: systemPrompt({ level: state.level, minutes: state.originalMinutes || state.minutes }),
     prompt: openingPrompt(state, { avoid }),
     kind: 'opening',
     resume: null,
@@ -357,12 +375,12 @@ async function handleTurn(req, res, ctx) {
     const history = await svc.store.readTurns(id);
     const accepted = requestId && history.find(t => t.kind === 'candidate' && t.requestId === requestId);
     if (accepted && accepted.said !== said) throw new HttpError(409, 'CONFLICT', 'This request belongs to a different answer.');
-    const completed = requestId && history.find(t => t.kind === 'turn' && t.requestId === requestId && !t.interrupted);
+    const completed = requestId && history.find(t => ['turn', 'interviewer_silent', 'suppressed_filler'].includes(t.kind) && t.requestId === requestId && !t.interrupted);
     if (completed) {
       const stream = new SseStream(res);
       stream.send('accepted', { requestId, said, replayed: true });
-      stream.token(completed.asked);
-      stream.send('done', { asked: completed.asked, replayed: true }); stream.end(); return;
+      if (completed.asked) stream.token(completed.asked);
+      stream.send('done', { asked: completed.asked ?? '', replayed: true, silent: completed.kind !== 'turn' }); stream.end(); return;
     }
     if (PHASE_IDS.includes(body.phase)) enterPhase(state, body.phase);
     if (['typed', 'voice'].includes(body.mode)) state.mode = body.mode;
@@ -381,14 +399,16 @@ async function handleTurn(req, res, ctx) {
     const stream = new SseStream(res);
     if (requestId) stream.send('accepted', { requestId, said });
     await streamTurn(svc, {
-      id, choice, prompt, message:turn.text, requestId, system: resume ? null : systemPrompt({ level: state.level, minutes: state.minutes }), resume, stream,
-      onFinished: async (asked, { phase, broke, gap, curveball } = {}) => {
+      id, choice, prompt, message:turn.text, requestId, system: resume ? null : systemPrompt({ level: state.level, minutes: state.originalMinutes || state.minutes }), resume, stream,
+      onFinished: async (asked, { phase, broke, gap, curveball, filler, tagged } = {}) => {
         rememberProvider(state, svc, id, choice);
         state.rehydrate = false;
         if (phase) enterPhase(state, phase);
         if (!broke && curveball) state.curveballDone = true;
         recordTurn(state, { said: accepted ? '' : said, asked, at: new Date().toISOString(), gap: gap ?? null });
-        await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'turn', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, ...(requestId ? { requestId, interrupted: Boolean(broke) } : { said }), asked, phase: state.phase });
+        // Tags alone mean the interviewer chose silence; the candidate's words stay on record.
+        const replyKind = filler ? 'suppressed_filler' : !asked && !broke && tagged ? 'interviewer_silent' : 'turn';
+        await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: replyKind, elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, ...(requestId ? { requestId, interrupted: Boolean(broke) } : { said }), ...(filler ? { raw: filler } : { asked }), phase: state.phase });
         const current = await svc.store.readState(id);
         for (const key of ['pausedAt', 'spentMs', 'startedAt', 'graph']) { if (current && key in current) state[key] = current[key]; }
         const durable = await svc.store.readTurns(id);
@@ -446,7 +466,9 @@ async function handleDone(req, res, ctx) {
   const savedScenes = await svc.store.readScenes(id);
   if (savedScenes.length) state.graph = sceneToGraph(savedScenes.at(-1).elements);
   const evidence = await svc.store.readTurns(id);
-  const reportState = { ...codingState({ slug: 'system-design', startedAt: state.startedAt }), statement: state.prompt, discipline: 'design', targetLevel: state.level, minutes: state.minutes, endedAt: Date.now() };
+  // Saved with the finished report below; a failed attempt saves nothing, so trying again reads the current setting.
+  state.reportDifficulty = await readReportDifficulty(svc.root);
+  const reportState = { ...codingState({ slug: 'system-design', startedAt: state.startedAt }), statement: state.prompt, discipline: 'design', targetLevel: state.level, minutes: state.minutes, endedAt: Date.now(), reportDifficulty: state.reportDifficulty };
   const turn = structuredDebrief(reportState, evidence, Date.now(), {includeEvidence:false});
   const prompt = turn; // The structured debrief already includes the timestamped record.
   const stream = new SseStream(res);
@@ -455,7 +477,7 @@ async function handleDone(req, res, ctx) {
     id,
     choice,
     prompt,
-    system: resume ? null : systemPrompt({ level: state.level, minutes: state.minutes }),
+    system: resume ? null : systemPrompt({ level: state.level, minutes: state.originalMinutes || state.minutes }),
     kind: 'debrief',
     message: turn, requestId,
     resume,
@@ -511,6 +533,7 @@ async function handleList(req, res, ctx) {
       level: state.level,
       startedAt: state.startedAt ? new Date(state.startedAt).toISOString() : null,
       debriefed: Boolean(state.debriefed),
+      reportDifficulty: state.reportDifficulty,
       turns: state.turns?.length ?? 0,
     });
   }
@@ -542,6 +565,7 @@ async function handleGet(req, res, ctx) {
     mode: state.mode || 'typed',
     startedAt: state.startedAt ? new Date(state.startedAt).toISOString() : null,
     debriefed: Boolean(state.debriefed),
+    reportDifficulty: state.reportDifficulty,
     // Resumable whenever it is unfinished. A missing CLI thread is not the end of the
     // interview — the questions and answers are all in turns.jsonl, so a fresh thread
     // can be handed the transcript and carry on. What is lost is the model's own
@@ -574,37 +598,39 @@ async function handleResume(req, res, ctx) {
   const id = idFrom(body, ctx);
   // Returning during generation waits for the recorded question, without a new turn.
   await svc.live.get(id)?.completion;
-  const state = await svc.store.readState(id);
-  if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
-  if (state.debriefed) {
-    throw new HttpError(409, 'CONFLICT', 'That interview has already been debriefed. Start a new one.');
-  }
-  const spent = state.pausedAt && Number.isFinite(state.spentMs) ? state.spentMs
-    : (state.startedAt ? (state.pausedAt ?? Date.now()) - state.startedAt : 0);
-  state.startedAt = Date.now() - spent;
-  state.pausedAt = null;
-  // No thread to resume: the next turn rebuilds one from the transcript instead of
-  // refusing. Flagged rather than done here, because it only costs anything on the
-  // turn that actually needs it.
-  if (!(await threadFor(svc, id))) state.rehydrate = true;
-  await svc.store.writeState(id, state);
-  svc.lastGraph.delete(id);   // re-show the board on the first turn back
+  return withClockWrite(svc, id, async () => {
+    const state = await svc.store.readState(id);
+    if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
+    if (state.debriefed) {
+      throw new HttpError(409, 'CONFLICT', 'That interview has already been debriefed. Start a new one.');
+    }
+    const spent = state.pausedAt && Number.isFinite(state.spentMs) ? state.spentMs
+      : (state.startedAt ? (state.pausedAt ?? Date.now()) - state.startedAt : 0);
+    state.startedAt = Date.now() - spent;
+    state.pausedAt = null;
+    // No thread to resume: the next turn rebuilds one from the transcript instead of
+    // refusing. Flagged rather than done here, because it only costs anything on the
+    // turn that actually needs it.
+    if (!(await threadFor(svc, id))) state.rehydrate = true;
+    await svc.store.writeState(id, state);
+    svc.lastGraph.delete(id);   // re-show the board on the first turn back
 
-  const scenes = await svc.store.readScenes(id);
-  return sendJson(res, 200, {
-    id,
-    prompt: state.prompt,
-    topicSlug: state.topicSlug || topicFor(state.prompt).slug,
-    level: state.level,
-    minutes: state.minutes,
-    phase: state.phase,
-    startedAt: new Date(state.startedAt).toISOString(),
-    resumed: true,
-    mode: state.mode || 'typed',
-    thread: Boolean(await threadFor(svc, id)),
-    rebuilt: Boolean(state.rehydrate),
-    turns: await svc.store.readTurns(id),
-    elements: scenes.length ? scenes[scenes.length - 1].elements : [],
+    const scenes = await svc.store.readScenes(id);
+    return sendJson(res, 200, {
+      id,
+      prompt: state.prompt,
+      topicSlug: state.topicSlug || topicFor(state.prompt).slug,
+      level: state.level,
+      minutes: state.minutes,
+      phase: state.phase,
+      startedAt: new Date(state.startedAt).toISOString(),
+      resumed: true,
+      mode: state.mode || 'typed',
+      thread: Boolean(await threadFor(svc, id)),
+      rebuilt: Boolean(state.rehydrate),
+      turns: await svc.store.readTurns(id),
+      elements: scenes.length ? scenes[scenes.length - 1].elements : [],
+    });
   });
 }
 
@@ -613,15 +639,50 @@ async function handlePause(req, res, ctx) {
   const svc = serviceFor(ctx);
   const body = await readJsonBody(req);
   const id = idFrom(body, ctx);
-  const state = await svc.store.readState(id);
-  if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
-  if (state.debriefed) throw new HttpError(409, 'CONFLICT', 'This interview is already complete.');
-  if (!state.pausedAt) {
-    state.pausedAt = Date.now();
-    state.spentMs = state.startedAt ? Math.max(0, state.pausedAt - state.startedAt) : 0;
-  }
-  await svc.store.writeState(id, state);
-  return sendJson(res, 200, { ok: true, spentMs: state.spentMs });
+  return withClockWrite(svc, id, async () => {
+    const state = await svc.store.readState(id);
+    if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
+    if (state.debriefed) throw new HttpError(409, 'CONFLICT', 'This interview is already complete.');
+    if (!state.pausedAt) {
+      state.pausedAt = Date.now();
+      state.spentMs = state.startedAt ? Math.max(0, state.pausedAt - state.startedAt) : 0;
+    }
+    await svc.store.writeState(id, state);
+    return sendJson(res, 200, { ok: true, spentMs: state.spentMs });
+  });
+}
+
+// Pause can arrive on navigation while a turn runs. Serialize clock mutations so
+// a pause/resume snapshot cannot overwrite an extension accepted at the same time.
+async function withClockWrite(svc, id, operation) {
+  const previous = svc.clockWrites.get(id) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  svc.clockWrites.set(id, current);
+  try { return await current; }
+  finally { if (svc.clockWrites.get(id) === current) svc.clockWrites.delete(id); }
+}
+
+/** POST /api/design/extend — change the advisory budget without a model turn. */
+async function handleExtend(req, res, ctx) {
+  const svc = serviceFor(ctx), body = await readJsonBody(req); extensionMinutes(body);
+  const id = idFrom(body, ctx), release = reserveTurn(svc, id);
+  try { return await withClockWrite(svc, id, async () => {
+    const state = await svc.store.readState(id);
+    if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
+    state.extensions ??= {};
+    const prior = state.extensions[body.requestId];
+    if (prior) {
+      if (prior.minutes !== body.minutes) throw new HttpError(409, 'REQUEST_REUSED', 'This request identity was already used for another extension.');
+      return sendJson(res, 200, { duplicate: true, state: { ...state } });
+    }
+    if (state.debriefed || state.endedAt != null) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
+    state.originalMinutes ??= state.minutes;
+    state.minutes += body.minutes;
+    state.extensions[body.requestId] = { minutes: body.minutes };
+    await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'time_extended', minutes: body.minutes, requestId: body.requestId });
+    await svc.store.writeState(id, state);
+    return sendJson(res, 200, { state: { ...state } });
+  }); } finally { release(); }
 }
 
 async function handleAsk(req, res, ctx) {
@@ -668,6 +729,7 @@ export const routes = {
   'POST /api/design/stop': handleStop,
   'POST /api/design/resume': handleResume,
   'POST /api/design/pause': handlePause,
+  'POST /api/design/extend': handleExtend,
   'GET /api/design': handleList,
   'GET /api/design/:id': handleGet,
 };

@@ -1,11 +1,12 @@
 # Context, storage, and provider contract
 
-Practice Studio is a local, single-server application. Canonical problem data lives at
+Practice Studio is a local, single-server application. An explicitly requested `start_notes_session` packages bounded insight/context/questions into a durable local outbox and delivers it to `STUDIO_WRITER_URL` in the background. The UUID in the Writer POST body is reused on transport retries; receipts say `queued` until Writer accepts the request, then `started`, and link to `/?session=<id>`. HTTPS tailnet URLs and loopback HTTP development URLs are accepted; credentials are never stored. Canonical problem data lives at
 `tracks/coding/problems/<slug>`, `tracks/lld/problems/<slug>`, or
 `tracks/design/problems/<slug>`. Track memory is `tracks/<discipline>/MEMORY.md` and
 legacy hand-written memory is retained in `tracks/<discipline>/LEGACY.md`.
 `shared/learner.md` holds shared coaching preferences; explicit level targets remain in
 `learner-profile.json`. Performance evidence stays in its discipline.
+Writer is the default authoring flow for learner study notes, handouts, and insight expansions. The former Studycraft authoring tool is retired from the normal tutor flow; its storage, outbox, and legacy receipts remain preserved for compatibility and recovery. Tutor memory stays separate from learner study documents.
 Catalog membership determines LeetCode identities before any prefix inference: for
 example, `design-twitter` belongs to coding. Generated system-design topics receive
 a distinct slug if their proposed name collides with a catalog problem.
@@ -136,7 +137,52 @@ WebSearch/WebFetch alongside Studio MCP tools; Codex enables live web search whi
 keeping shell, files and user MCP servers disabled. Adapters default research off for
 utility/image jobs; automatic problem preparation also opts out. No extra search API
 or billing account is introduced. Search only when useful/requested and cite sources;
-never send private learner code/history in a query. Web content is untrusted.
+never send private learner code/history in a query. Web content is untrusted. Live mocks
+(`coachingMode: 'mock'`) have no web research; their debriefs and follow-ups keep it.
+
+## Interviewer silence
+
+In every mock, a reply holding only control tags means the interviewer chose to say nothing. Studio shows and speaks nothing, records `interviewer_silent`, still applies
+the phase tag and keeps pending events. Stepping in is the model's judgment rather than a
+timer: idle ticks offer it the chance to speak and never require it. Voice mode keeps the
+microphone open while a reply is being decided and spoken. Qualified learner speech
+cancels playback and future audio from that reply; capture and transcription continue.
+The written response finishes normally, and the new utterance waits in its own draft
+until that model turn completes. Acceptance consumes only the submitted prefix once,
+preserving words added in flight. A reply that arrives after the candidate
+has started speaking again is shown but not spoken. System design replies stream live, so
+each answer waits for its first complete sentence to show it is not filler; speech starts
+on that sentence regardless. With no speech, drawing or draft for 60 seconds, the design
+page offers one such turn, at most every two minutes. An answer met with silence shows
+"Heard you. The interviewer chose to stay silent." in the transcript, live and on reload.
+
+An interviewer first understands the candidate's idea, then may give a plain go-ahead such
+as "Okay, go ahead with that." It means they may move on, not that the idea is right, so
+the filler backstop lets it through. Coding mocks ask about complexity only after that
+understanding, and only if the candidate has not said it.
+
+## Report bar and practice behaviour
+
+Reports for all three disciplines share one calibration in `debriefPrompt`: the bar is a
+candidate who would pass at the target level, each shortfall counts once, typos carry no
+weight, and steps the interview never reached are not faults. An empty session gets a null
+signal and null ratings. Practice (`PRACTICE_PARTNER`) works like an unjudged interview:
+it follows the learner, gives no unasked hints, and gives exactly what is explicitly
+requested. Attempt reviews teach openly. Saved reports are never rewritten.
+
+The global Report difficulty (`report-settings.json`, default `beginner`) is read when a
+report is generated and frozen on that interview as `reportDifficulty`, so changing it
+never regrades a finished report and follow-ups recheck ratings at the same difficulty.
+Both named difficulties grade against Amazon SDE II (L5) whatever the mock's target level:
+`amazon-sde-2` at that bar and `beginner` a step below it. Older records without the field
+keep the target-level bar above.
+
+## Past performance in mocks
+
+A live mock receives no past performance: no learner history, agent memory or saved notes, and its tools cannot
+reach them: `liveMock` removes the memory, note, submission and search tools and limits
+`read_context` to this interview's own record. Debriefs and report follow-ups keep all of
+it. Choosing which problem to practise may still use history, before the interview starts.
 
 ## Open practice
 
@@ -154,9 +200,16 @@ baseline and each queued request. Excalidraw mutates element objects in place; s
 those objects silently hides text edits from equality checks and can change a queued
 save after its revision was captured.
 
-Practice sessions persist a server-owned `timer: { elapsedMs, runningSince }` in
-their `session.json`. The count-up timer runs until explicitly paused; a null
-`runningSince` freezes the accumulated total. Timer transitions share the workspace
+Practice sessions persist a server-owned `timer: { elapsedMs, runningSince, leaseUntil }` in
+their `session.json`. The count-up timer starts only on explicit Start/Resume; a null
+`runningSince` freezes the accumulated total. New sessions begin paused; a short server lease
+lasts 30 seconds and is renewed by the visible browser every 10 seconds. Expiry
+freezes elapsed time at that boundary. A heartbeat only renews its existing live run;
+it cannot restart a stopped or expired timer. Every uninterrupted run has a hard
+12-hour cutoff, including when a visible tab keeps sending heartbeats. Leases and
+elapsed time are capped at that boundary; only explicit Resume starts another run.
+Previously saved paused totals remain intact. Hiding, leaving, and reopening pause
+tracking with a keepalive write. No automatic start is performed. Timer transitions share the workspace
 write queue, preventing code/mode/topic autosaves from restoring stale clock state.
 Repeated start/pause requests are idempotent. Timer state is not learner evidence,
 a deadline, or additional model context. Legacy records are initialized only when
@@ -170,20 +223,15 @@ with the same workspace. Topic updates never replace code, board or exchanges. P
 and mock-derived sessions cannot have their source problem overwritten by this tool.
 Opening another custom practice creates a separate identity.
 
-## Past performance in mocks
-
-A live mock receives no past performance: no learner history, agent memory or saved notes, and its tools cannot
-reach them: `liveMock` removes the memory, note, submission and search tools and limits
-`read_context` to this interview's own record. Debriefs and report follow-ups keep all of
-it. Choosing which problem to practise may still use history, before the interview starts.
-
 ## Editable coaching instructions
 
 Coaches apply durable teaching improvements directly from lasting user feedback or
 their own conversation-grounded observations. Neither path waits for review or approval;
 history and undo are optional controls, not gates. `read_coaching_instructions` and
 `update_coaching_instructions` are shared Studio tools for both providers, including
-practice, mocks and report follow-ups. They do not grant file or shell access.
+practice, mocks and report follow-ups. They do not grant file or shell access. During a
+live mock the saved rules still apply, but the interviewer changes them only when directly
+asked, and a rule limiting hints does not stop it stepping in as a real interviewer would.
 
 Instructions are distinct from learner memory: skill observations remain untrusted
 context; enabled coaching rules explicitly customize teaching defaults. Rules have a
@@ -215,3 +263,12 @@ start a new native segment with the saved conversation handoff; unrelated scope/
 changes do not. No automatic upkeep or follow-up inference is started. Utility jobs,
 including picture generation, do not receive coaching guidance. Settings → What was
 sent? exposes the exact instruction snapshot used by a request.
+
+## Mock budget extensions
+
+Mock countdowns are advisory. Expiry and an answer containing only “done” never
+request a debrief. The explicit finish endpoint remains the completion boundary.
+`POST /api/interview/extend` and `/api/design/extend` accept the session identity,
+`minutes` (an integer from 1–240) and an idempotent `requestId`. They serialize with
+model turns, preserve `originalMinutes`, increase `minutes`, and append a
+`time_extended` record without inference. Pause accounting is unchanged.

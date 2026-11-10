@@ -50,6 +50,7 @@ and use row spacing with inset content rather than stretching cards beyond their
 
 - `createSelect({ label, options | groups, value, onChange, compact })`: the only dropdown. Anchored menu, keyboard, type-ahead. Exposes `value`, `disabled`, `setOptions`, `setGroups`, `dispose`, and emits `change`.
 - `createMenu`: the anchored popover the select is built on, for action menus.
+- `createPopover`: a small nonmodal editor in the browser top layer; outside click and Escape dismiss it without expanding its toolbar anchor.
 - `createTabs` / `createBadge` (`primitives.js`): tab bars with roving focus; status chips.
 - `createActionRow({ content, trailing, onClick, className })`: clickable content rows. Uses shared row/inset geometry and grows with its content. Never apply `.btn` to a multiline content row: `.btn` deliberately has compact toolbar geometry.
 - `icon(name, size)` (`icon.js`): stroke icons in `currentColor`. Add a path there; never use Unicode glyphs (♫ ⌨ ▷ ◈) as icons.
@@ -173,27 +174,43 @@ The visual audit checks close placement and title/action overlap across themes.
 
 Conversation controls use the UI font even in themes with serif prose. Show one
 current status; additional text explains an available action, never repeats that
-status. Busy/speaking states hide unavailable microphone controls. The transcript
+status. Microphone controls remain available during replies and playback. The transcript
 remains the single scroll owner, and controls stay in normal layout flow.
+
+Mock and practice transcripts use `ui/conversation.js` and `.ui-conversation-text`:
+14px UI type, a 1.6 line height, a 68ch maximum reading width, and 16px between turns.
+Interviewer/coach replies use the safe Markdown renderer for both saved and streaming
+text. Store the original source separately from rendered DOM so split tokens, Replay,
+and Save to notes retain block boundaries. Learner prose stays literal (fenced code
+is supported), with a quiet, content-sized background. Paragraphs own their spacing;
+trailing model newlines must not create empty rows. Long code and tables scroll within
+the reply. The conversation visual states cover desktop/narrow mocks, and practice
+fixtures include headings, lists and code.
 
 ### Voice conversation
 
-`ui/voice-panel.js` is the shared listening/playback view for coding chat, coding and
-LLD mocks, design interviews, and practice. The live draft separates confirmed text
-from highlighted provisional words. Preview revisions never enter the saved answer;
-final phrases enter once, in recording order. Long drafts scroll inside the panel.
-A real microphone level history and elapsed time show capture activity. Accepted
-answers remain available under **Last sent answer**; this is server acceptance,
-not merely pressing Send.
+`ui/voice-panel.js` is the shared voice bar for coding chat, coding and LLD mocks,
+design interviews, and practice. It holds only this turn: microphone toggle, level
+meter, one status, the learner's words, and turn actions from `setControls`. It is one
+line until there are words. Session controls (clock, Pause, Finish) belong in the screen
+header; preferences belong in Settings. Do not add a control here without removing one.
 
-The learner can switch between pause-to-send and manual sending, edit the draft in
-typed mode, interrupt playback, and replay the last reply. Coding chat remains
-explicit-send dictation. Playback captions distinguish preparation from actual speech
-and identify a system-voice fallback. Interrupt cancels the rest of the current spoken
-reply even when generation continues; the written reply remains available.
-One status line reflects the active microphone or playback; a still-running reply must
-not hide that the microphone is listening after an interruption. The compact panel
-shows either the learner's live words or the spoken caption, with details on demand.
+The live draft separates confirmed text from highlighted provisional words. Preview
+revisions never enter the saved answer; final phrases enter once, in recording order.
+Long drafts scroll inside the panel. Sent answers are in the conversation above, so the
+panel does not repeat them.
+
+Clicking the words edits them in typed mode, and `answerModeSwitch` is the labelled
+Type/Voice link. Send uses the composer's arrow and appears only when there are words;
+Settings → Voice → **Send when I pause** chooses automatic or manual sending. A recovered
+answer shows **Answer not sent** and holds the microphone until it is sent or edited.
+Coding chat remains explicit-send dictation. During playback the microphone stays open,
+its toggle remains available, and live words remain visible. Qualified speech interrupts
+playback immediately; **Interrupt · Esc** is an alternative. The status distinguishes
+preparation from speech and identifies a system-voice fallback. Interrupt cancels the rest of the current spoken
+reply even when generation continues; the written reply remains available. `replayButton`
+sits on each reply and is revealed with the message. A still-running reply must not hide
+that the microphone is listening after an interruption.
 
 Preview recognition runs at most every 900 ms with the recognizer's fast options.
 Final phrases use full decoding and take priority over queued previews. Failed final
@@ -205,29 +222,45 @@ The browser warns before unloading with unfinished capture or failed audio.
 
 ### Untimed practice
 
-The workspace header includes a count-up stopwatch with Pause/Resume. It has no
-deadline and never pauses the coach or microphone. It runs until explicitly paused,
-including time away from the page; both its total and paused/running state survive
-reloads and server restarts. Existing sessions without timing start tracking on their
-first visit after this feature, with no estimate of historical time. Mock-derived
-practice starts its own clock. Shared control: `web/js/practice-timer.js`; only the
+The workspace header includes a count-up stopwatch with Start/Pause/Resume. It has no
+deadline and never pauses the coach or microphone. New and legacy sessions begin paused;
+the visible page renews a short server lease while running, and hiding/leaving the page
+pauses it. An expired lease is reopened paused, with no invented historical time. The
+accumulated total survives reloads and server restarts; reopening always pauses and
+requires an explicit Start/Resume. A heartbeat never resumes a stopped timer.
+Each uninterrupted run stops after 12 hours even if the tab remains open. Resume
+starts another run; this cutoff never generates a debrief or clears saved work.
+Mock-derived practice starts its own clock. Shared control: `web/js/practice-timer.js`; only the
 time text ticks, so the editor and conversation never re-render on a clock tick.
 
 LLD and system design share `web/js/practice.js` and `/api/practice`. Starting a
 session or editing the work never calls a model. An explicit typed question or a
-voice question (pause to send, or manual Send) includes the current
+voice question (sent on a pause, or with the Send arrow) includes the current
 Python document/board, recent runs, saved notes and learner history. Input modes
 can change without replacing the session or its conversation. Replies can be saved
 to learning notes by the learner.
 
 Starting practice in voice mode joins a continuous conversation. Reopened sessions
-offer **Start voice** once; after each reply, listening resumes without another click.
-**Pause voice**, switching to typing, leaving the tab, and microphone errors stop capture.
+start with the microphone off, and its toggle (**Start voice**) joins once. The same
+microphone and meter remain active through transcription, model replies and playback;
+`voice.flush()` finishes the answer's phrases without closing the device. Browser echo
+cancellation is enabled. A new utterance can interrupt audio before transcription finishes.
+The toggle (**Pause voice**), switching to typing, leaving the tab, and microphone errors stop capture.
 The conversation intent survives normal reply and transcription transitions. Interrupt
 allows the next question to be recorded while the previous written reply finishes.
-Pending/failed transcription blocks automatic sending. Streamed sentences and short
-stable clauses enter speech before generation finishes, with incomplete Markdown held
-back. Voice availability is warmed on joining, never by starting an unattended session.
+Pending/failed transcription blocks automatic sending. A failed model reply also holds
+automatic sending and idle turns until an explicit Send or retry. New words remain in a separate
+draft until the previous model turn finishes; server acceptance removes only the sent
+prefix once. Complete sentences enter speech before generation finishes, with incomplete
+Markdown held back. There is no timer that releases unfinished sentences. Sentences of
+four or more words start immediately; shorter openers join their continuation, or release
+on reply completion if they stand alone. Only text exceeding the 400-character chunk
+budget splits before a sentence ends, preferring a clause boundary in the latter half of
+the chunk, then a word boundary. Completion releases any final unpunctuated text.
+The speaker preserves these grouped phrases as one clip, prepares the next clip during
+playback, and does not flash a new preparation status for an already-prefetched clip.
+The local synthesis worker keeps its model loaded across requests. Voice availability
+is checked on joining, never by starting an unattended session.
 
 Sessions live under `problems/<slug>/practice/<id>/`, separately from mock evidence.
 Workspace autosaves are serialized; questions are persisted before generation;
@@ -311,6 +344,18 @@ All chat, practice, mock and report inputs use `web/js/ui/composer.js`:
 - A desktop idle practice composer has a 132px height budget. Narrow controls wrap
   without hiding model selection, mode switching, errors or the send action.
 
+Keyboard actions belong to their visible surface. Use `web/js/keyboard.js` to
+claim action keys once, respecting handled events, IME composition and key repeat.
+Global workspace, navigation and recorder shortcuts stop while a dialog or menu is
+open, even if focus falls back to the page or remains behind the overlay. Submit/Run
+keys apply to the code buffer or workspace controls, not test-case inputs or Monaco
+Find. Chat Send belongs only to its visible composer; nested interview answers must
+never send a hidden Chat draft. Held Enter on action buttons must not repeat a
+submission, confirm Reset, or start/finish another session.
+
+`check:submit-keys`, `check:shortcuts` and `check:interview` exercise these boundaries
+with simulated judges, fake providers and disposable workspaces.
+
 These choices adapt T3 Code's [composer surface](https://github.com/pingdotgg/t3code/blob/main/apps/web/src/components/chat/ComposerSurface.tsx)
 and [compact composer](https://github.com/pingdotgg/t3code/blob/main/docs/user/composer.md)
 to Studio's existing themes and independent scroll panes. `npm run check:composer`
@@ -349,3 +394,26 @@ range and note together. Dismiss affects only that note. Disposing the tutor rem
 zones, decorations and observers. `npm run check:tutor-marks` measures these behaviors
 in a scratch Chrome fixture; `tutorMarks` and `tutorMarksNarrow` cover the actual practice
 layout in the visual audit.
+
+### Mock time budgets
+
+`ui/mock-time.js` makes the mock clock itself the Add time trigger. A small popover
+contains +15 min, +20 min and Custom; the numeric editor replaces the choices inside
+that same surface. Saving closes it. Errors and Retry stay inside it; no extra form
+or success message expands the header. At zero the clock shows overtime and only
+Finish requests a debrief. This follows the voice bar’s compact, contextual controls.
+
+### Saved feedback typography
+
+Saved mock feedback in practice and inline interview debriefs use `conversationText`,
+just like coach replies. `renderMarkdown` returns an unstyled fragment; consumers
+must mount it inside a `.rich` typography surface. Its block markers let the visual
+audit reject unstyled consumers. Do not apply broad paragraph/heading rules from a
+parent disclosure: scope its statement and label rules to their direct children.
+
+The practice reading pane owns exterior side gutters and a vertical gap as well as
+vertical content padding. Padding scrolls away; exterior spacing keeps clipped text
+away from the fixed header and leaves room for the keyboard focus ring outside text.
+Branch-practice visual states measure section gaps, list indentation, horizontal
+overflow and the reading boundary with long feedback at desktop/mobile widths,
+including a focused, partially scrolled report.

@@ -175,6 +175,19 @@ test('an accepted verdict event marks the problem solved and credits its lists',
   assert.equal(stats.patterns.find((p) => p.name === 'Arrays & Hashing').accepted, 1);
 });
 
+test('accepted Amazon-only overlay work counts overall but not NC250 coverage', async () => {
+  const root = await tempRoot();
+  await writeSession(root, 'amazon-only', 's1',
+    line('2026-07-25T10:00:00.000-04:00', 'problem_opened') +
+    line('2026-07-25T10:20:04.000-04:00', 'verdict', { verdict: 'Accepted', status_code: 10 }));
+  const catalog = { ...CATALOG, problems: [...CATALOG.problems,
+    { slug: 'amazon-only', title: 'Amazon Only', pattern: 'Graphs', difficulty: 'Easy', lists: { neetcode250: false, 'amazon-interview': true } }] };
+  const stats = await buildStats({ root, catalog });
+  assert.equal(stats.totals.accepted, 1);
+  assert.equal(stats.lists.neetcode250.accepted, 0);
+  assert.equal(stats.patterns.find((p) => p.name === 'Graphs').accepted, 0);
+});
+
 test('a rejected verdict is not quietly rounded up to accepted', async () => {
   const root = await tempRoot();
   await writeSession(root, 'two-sum', 's1',

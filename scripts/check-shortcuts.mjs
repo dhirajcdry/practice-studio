@@ -127,6 +127,43 @@ try {
   }
 
   if (!failed) console.log(`shortcuts ok — ${RESERVED.length} browser-reserved combos all reach the browser`);
+  // Modal focus is not always in a control: clicking text or removing a focused
+  // node can put it on body. Capture-phase pane shortcuts must also respect it.
+  for (const overlay of ['report', 'settings']) {
+    await evaluate(`(async () => {
+      if (${JSON.stringify(overlay)} === 'report') {
+        const { openReport } = await import('/js/interview-report.js');
+        window.checkReport = openReport({ title:'Check', record:{id:'keys'},
+          report:{judgement:null,facts:{durationMs:0,phases:[],hints:[],runs:[],verdicts:[],candidateTurns:0,candidateWords:0}} });
+      } else document.querySelector('.set-settings').click();
+    })()`);
+    const results = await evaluate(`(() => {
+      const dialog = document.querySelector('dialog[open], aside.settings');
+      if (!dialog?.getClientRects().length) throw Error('overlay did not open');
+      const keys = [
+        {key:'b',code:'KeyB',metaKey:true}, {key:'j',code:'KeyJ',ctrlKey:true},
+        {key:'\\\\',code:'Backslash',metaKey:true}, {key:'®',code:'KeyR',altKey:true},
+        {key:'j',code:'KeyJ'}, {key:'/',code:'Slash'},
+        {key:'ArrowRight',code:'ArrowRight',metaKey:true},
+      ];
+      const results = [];
+      for (const target of [dialog, document.body]) for (const spec of keys) {
+        const hash = location.hash;
+        const event = new KeyboardEvent('keydown',{...spec,bubbles:true,cancelable:true});
+        target.dispatchEvent(event);
+        results.push({key:spec.code,target:target===dialog?'dialog':'body',acted:event.defaultPrevented || hash !== location.hash});
+        history.replaceState(null,'',hash);
+      }
+      return results;
+    })()`);
+    if (!results) throw Error('overlay check could not run');
+    for (const result of results) if (result.acted) {
+      failed = true; console.error(`BACKGROUND ACTION: ${overlay}, ${result.target}, ${result.key}`);
+    }
+    await evaluate(overlay === 'report' ? 'window.checkReport.close()'
+      : `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);
+  }
+  if (!failed) console.log('shortcuts ok — dialogs isolate pane, recorder and navigation keys, including lost focus');
   close();
 } catch (err) {
   failed = true;

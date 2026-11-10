@@ -11,8 +11,12 @@ Typed mode does not implicitly open a microphone. Voice mode uses the live phras
 an interview identity. They never acquire two microphones for the same interview. Voice
 phrases enter a persisted draft immediately, then `turnDecision` submits after silence and
 all pending transcriptions finish. Ending drains outstanding phrases before the debrief.
-The microphone closes during synthesized speech. Escape stops speech for the rest of that
-reply; its text still arrives. Reloading Voice mode requires Enable microphone again.
+The same microphone stays open while an answer is submitted and the interviewer speaks.
+Speaking over a reply stops its current and queued audio immediately; Escape does the same.
+Its written text still arrives, and newly spoken words wait in the draft for the next turn.
+Acceptance removes only the submitted prefix, so words captured in flight are preserved.
+Failed replies hold automatic sending until an explicit Send or retry. Reloading Voice
+mode requires turning the microphone on again.
 Untranscribed audio retains the existing browser unload guard; it cannot survive a browser
 process crash. Already transcribed words and typed drafts survive navigation/reload.
 
@@ -92,7 +96,14 @@ review questions. Every interviewer turn receives the full current document. The
 opening is the literal one-line scenario. Private clarification facts are supplied to
 the interviewer; it is instructed to answer only what was asked. Probe counts and
 curveball delivery tags are persisted, but substantive interview behavior still needs
-real-session evaluation. Say “done” or click Finish to request the debrief.
+real-session evaluation. Click Finish to request the debrief. Saying “done” stays an ordinary answer.
+
+Each turn tells the interviewer where a plan by share of time says it should be:
+requirements to 12%, classes and methods to 32%, code to 72%, a trace to 85%, then the
+change requirement. The interviewer moves the candidate on and asks for the trace itself.
+The change requirement stays private until 72% of the time, or until the trace phase, and
+is dropped in the last three minutes. A debrief treats a step the interview never asked
+for as not reached, not as a failure.
 
 LLD reports cover requirements, responsibilities, interfaces, state, correctness,
 edge cases, self-verification, extensibility and communication. Technical errors,
@@ -136,3 +147,12 @@ receipts in `mock-preparations/` make explicit retries idempotent. No interview 
 starts until preparation succeeds. Private clarification facts, curveballs and selection
 rationale stay server-side. Interview records retain a definition snapshot, so a later
 catalog change cannot alter what an existing interview was about.
+
+## Advisory mock clock
+
+Coding, LLD and system-design mocks stay open when the budget runs out. The clock
+shows overtime; only the explicit Finish / Done — debrief me action starts a debrief.
+Click the clock for 15 minutes, 20 minutes, or a custom whole number from 1–240.
+Extensions add to the existing budget (including time already spent in overtime),
+survive reloads and pauses, and do not call a model. The original budget and each
+extension remain in the saved evidence.

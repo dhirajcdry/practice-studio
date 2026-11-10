@@ -25,12 +25,21 @@ test('fake helper status, ordered queue, wav and restart after death', async t =
   const results = await Promise.all([worker.request({ text: 'Die.' }), worker.request({ text: 'Next.' })]);
   assert.equal(results[0].ok, false); assert.equal(results[1].ok, true);
 });
-test('route rejects malformed text, multiple sentences, voice and speed', async t => {
+test('route rejects malformed, multiline or oversized text, voice and speed', async t => {
   const { call } = fixture(t);
-  for (const body of [null, { text: 3 }, { text: '' }, { text: 'a'.repeat(501) }, { text: 'One. Two.' }, { text: 'Hi.', voice: 'af_unknown' }, { text: 'Hi.', speed: '1' }, { text: 'Hi.', speed: 3 }]) {
+  for (const body of [null, { text: 3 }, { text: '' }, { text: 'a'.repeat(501) }, { text: 'One.\nTwo.' }, { text: 'One.\rTwo.' }, { text: 'Hi.', voice: 'af_unknown' }, { text: 'Hi.', speed: '1' }, { text: 'Hi.', speed: 3 }]) {
     await assert.rejects(call('POST /api/tts', body));
   }
   await call('POST /api/tts', { text: 'Use e.g. 1.5 here.' });
+});
+test('a short opener and continuation synthesize together using the existing helper', async t => {
+  const {worker,call} = fixture(t);
+  await call('GET /api/tts/status');
+  const pid = worker.child.pid;
+  const response = await call('POST /api/tts', {text:'Good question. Let us consider two callers reserving the same room.'});
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['content-type'], 'audio/wav');
+  assert.equal(worker.child.pid, pid, 'a new phrase does not restart the model process');
 });
 test('missing install is unavailable without a process', async t => {
   const { worker, call } = fixture(t); worker.python = '/nonexistent/studio-python';

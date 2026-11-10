@@ -408,6 +408,7 @@ test('save_note appends a dated entry to NOTES.md', async (t) => {
   const { tools } = session(w.root);
   await tools.call('save_note', { text: 'Reaches for sorting first.' });
   await tools.call('save_note', { text: 'Second note.' });
+  assert.match(tools.actions.at(-1).summary, /^Updated tutor memory:/);
   const notes = await fsp.readFile(path.join(w.root, 'problems', 'two-sum', 'NOTES.md'), 'utf8');
   assert.match(notes, /^# two-sum\n\n### \d{4}-\d{2}-\d{2} \d{2}:\d{2} \(tutor note\)\nReaches for sorting first.\n\n### .*\nSecond note.\n$/);
 });
@@ -579,17 +580,17 @@ test('statement text keeps example blocks and caps its length', () => {
   assert.equal(statementText(null), '');
 });
 
-test('recall tools require evidence and produce a durable pending receipt', async t => {
+test('study notes use Writer and retired recall tools cannot create more pending work', async t => {
   const w = await workspace(); t.after(w.cleanup);
-  const previous = process.env.STUDYCRAFT_RECALL_TOKEN;
-  process.env.STUDYCRAFT_RECALL_TOKEN = '';
-  t.after(() => { if (previous === undefined) delete process.env.STUDYCRAFT_RECALL_TOKEN; else process.env.STUDYCRAFT_RECALL_TOKEN = previous; });
   const { tools } = session(w.root);
-  const note = { patternId: 'hashing-complement', title: 'Complement lookup', body: 'Look up before insertion.',
-    intuition: 'Keep previous values.', recall: 'Why look up first?', trap: 'No trap recorded.', failingCase: 'No failing case recorded.' };
-  assert.equal((await tools.call('save_recall_note', note)).ok, false);
-  assert.equal((await tools.call('get_recall_evidence', { patternId: note.patternId })).ok, true);
-  assert.equal((await tools.call('save_recall_note', note)).ok, true);
-  assert.equal(tools.actions.at(-1).summary, 'Pending sync');
-  assert.match(tools.actions.at(-1).revisionId, /^[a-f0-9]{64}$/);
+  assert.ok(TOOL_NAMES.includes('start_notes_session'));
+  assert.ok(TOOL_NAMES.includes('notes_session_status'));
+  for (const name of ['get_recall_evidence', 'save_recall_note']) {
+    assert.ok(!TOOL_NAMES.includes(name));
+    const result = await tools.call(name, { patternId: 'hashing-complement' });
+    assert.equal(result.ok, false);
+    assert.match(result.text, /no Studio tool/);
+  }
+  assert.equal(tools.actions.length, 0);
+  await assert.rejects(fsp.access(path.join(w.root, 'recall')), { code: 'ENOENT' });
 });

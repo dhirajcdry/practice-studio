@@ -5,14 +5,14 @@ export function createVoiceLoop({ capture, speaker, canListen = () => true, onCh
   async function reconcile() {
     queued = false;
     if (disposed) return;
-    if (!enabled || !canListen() || speaker.speaking) { capture.stop(); return; }
+    if (!enabled || !canListen()) { capture.stop(); return; }
     if (opening || capture.isBusy() || capture.hasTranscriptionError()) return;
     opening = true; const attempt = intent;
     try {
       await capture.start();
       // Permission/device errors need an explicit retry, never a hot retry loop.
       if (!capture.isBusy() && attempt === intent) enabled = false;
-      if (disposed || !enabled || !canListen() || speaker.speaking) capture.stop();
+      if (disposed || !enabled || !canListen()) capture.stop();
     } finally { opening = false; if (!disposed) { onChange(); if(attempt !== intent)sync(); } }
   }
   function sync() {

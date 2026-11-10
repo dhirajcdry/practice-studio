@@ -5,11 +5,10 @@ import { saveDraft, appendDraft, readDraft, watchDraft } from '../../web/js/draf
 
 test('a recovered voice answer requires Send or Edit; typed and empty drafts do not show a notice', () => {
   assert.deepEqual(designDraftNotice({ text: ' restored ', pending: true, mode: 'voice' }),
-    { visible: true, tail: 'restored', blocksMic: true });
+    { visible: true, blocksMic: true });
   assert.equal(designDraftNotice({ text: 'restored', pending: true }).visible, false);
   assert.equal(designDraftNotice({ text: '  ', pending: true, mode: 'voice' }).blocksMic, false);
   assert.equal(designDraftNotice({ text: 'live speech', mode: 'voice' }).visible, false);
-  assert.equal(designDraftNotice({ text: 'x'.repeat(200) + ' tail', pending: true, mode: 'voice' }).tail.length, 160);
 });
 
 test('detached design phrases append to the latest draft and notify a resumed composer', () => {

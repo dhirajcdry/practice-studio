@@ -26,6 +26,8 @@
 .rp-hero{border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg);box-shadow:var(--surface-card-shadow);padding:var(--space-5)}
 .rp-eyebrow{font-size:var(--text-xs);color:var(--ink-50);letter-spacing:.02em}
 .rp-signal{margin:var(--space-2) 0 var(--space-4);font:600 44px/1.05 var(--serif,var(--ui));letter-spacing:-.02em}
+.rp-signal:has(+ .rp-graded){margin-bottom:var(--space-1)}
+.rp-graded{margin:0 0 var(--space-4);font:500 var(--text-sm)/var(--line-md) var(--ui);color:var(--ink-70)}
 .rp-hero[data-tone=success] .rp-signal{color:var(--easy)}
 .rp-hero[data-tone=warn] .rp-signal{color:var(--med)}
 .rp-hero[data-tone=danger] .rp-signal{color:var(--hard)}

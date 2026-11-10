@@ -9,6 +9,7 @@ import { readLearnerProfile } from '../learning/profile.mjs';
 import { problemDir } from '../storage-layout.mjs';
 import { beginConversation } from '../coach/native-sessions.mjs';
 import { sceneHash } from './board-history.mjs';
+import { MAX_TIMER_RUN_MS } from './timer.mjs';
 
 function response() { let value = ''; return { writeHead() {}, write(x) { value += x; }, end(x = '') { value += x; }, json() { return JSON.parse(value); }, text: () => value }; }
 async function call(key, body, ctx, params = {}) {
@@ -40,12 +41,12 @@ test('board saves retain exact prior scenes, including when a later save clears 
   await assert.rejects(call('PUT /api/practice/:slug/:id', { elements: first }, f.ctx, session), /corrupted/);
   assert.deepEqual((await call('GET /api/practice/:slug/:id', {}, f.ctx, session)).json().elements, []);
 });
-test('practice is untimed, server-resolved, durable, and isolated from mocks', async t => {
+test('practice timer starts paused, is server-resolved, durable, and isolated from mocks', async t => {
   const f = await fixture(t);
   assert.equal(f.session.title, 'Locker system'); assert.match(f.session.statement, /locker/i);
   assert.equal(f.session.minutes, undefined);
   assert.equal(f.session.timer.elapsedMs, 0);
-  assert.ok(Number.isFinite(f.session.timer.runningSince));
+  assert.equal(f.session.timer.runningSince, null);
   const initial = (await f.record()).session.timer;
   assert.deepEqual(initial, f.session.timer);
   await call('PUT /api/practice/:slug/:id', { code: 'print(1)', mode: 'typed' }, f.ctx, f.session);
@@ -81,18 +82,49 @@ test('practice timer pause and resume is durable and does not overwrite work aut
   assert.deepEqual(first, f.session.timer);
 });
 
-test('legacy practice sessions keep their existing timer shape until explicitly started', async t => {
+test('legacy practice sessions initialize a paused timer without guessing historical time', async t => {
   const f = await fixture(t);
   const file = f.problem('practice', f.session.id, 'session.json');
   const legacy = JSON.parse(await fs.readFile(file));
   delete legacy.timer;
   await fs.writeFile(file, JSON.stringify(legacy));
   const before = await f.record();
-  assert.equal(before.session.timer, undefined);
+  assert.deepEqual(before.session.timer, { elapsedMs: 0, runningSince: null, leaseUntil: null });
   assert.ok(Number.isFinite(before.serverNow));
   const started = (await call('POST /api/practice/:slug/:id/timer', { running: true }, f.ctx, f.session)).json();
   assert.equal(started.timer.elapsedMs, 0);
   assert.ok(Number.isFinite(started.timer.runningSince));
+  assert.ok(Number.isFinite(started.timer.leaseUntil));
+});
+
+test('expired timer lease is persisted as paused and keeps only lease duration', async t => {
+  const f = await fixture(t);
+  const file = f.problem('practice', f.session.id, 'session.json');
+  const saved = JSON.parse(await fs.readFile(file));
+  saved.timer = { elapsedMs: 12, runningSince: Date.now() - 40_000, leaseUntil: Date.now() - 10_000 };
+  await fs.writeFile(file, JSON.stringify(saved));
+  const reopened = await f.record();
+  assert.equal(reopened.session.timer.runningSince, null);
+  assert.equal(reopened.session.timer.leaseUntil, null);
+  assert.equal(reopened.session.timer.elapsedMs, 30_012);
+});
+
+test('12-hour cutoff stops stale practice on list, reopen and heartbeat without a coach turn', async t => {
+  const f = await fixture(t);
+  const file = f.problem('practice', f.session.id, 'session.json');
+  const saved = JSON.parse(await fs.readFile(file));
+  const runningSince = Date.now() - MAX_TIMER_RUN_MS - 60_000;
+  saved.timer = { elapsedMs: 123, runningSince, leaseUntil: Date.now() + 30_000 };
+  const expected = { elapsedMs: 123 + MAX_TIMER_RUN_MS, runningSince: null, leaseUntil: null };
+  await fs.writeFile(file, JSON.stringify(saved));
+  assert.deepEqual((await call('GET /api/practice', {}, f.ctx)).json().sessions[0].timer, expected);
+  assert.deepEqual((await f.record()).session.timer, expected);
+  assert.deepEqual(JSON.parse(await fs.readFile(file)).timer, expected, 'reopening persists the stop');
+  await fs.writeFile(file, JSON.stringify(saved));
+  const beat = (await call('POST /api/practice/:slug/:id/timer', { heartbeat: true, runningSince }, f.ctx, f.session)).json();
+  assert.deepEqual(beat.timer, expected);
+  assert.deepEqual(JSON.parse(await fs.readFile(file)).timer, expected, 'a heartbeat persists the stop too');
+  assert.deepEqual((await f.record()).exchanges, [], 'stopping never generates a report or tutor turn');
 });
 
 test('open practice starts blank for either discipline without a model and accepts a durable learner-defined topic', async t => {
@@ -149,7 +181,7 @@ test('ask receives context, persists before execution, preserves history and pro
   const reply = await f.ask();
   assert.match(reply.text(), /event: done/); assert.equal((await before).exchanges[0].question, 'What could race here?');
   assert.equal(seen.tools, ''); assert.equal(seen.choice.model, 'opus'); assert.equal(seen.root, f.root);
-  assert.match(seen.prompt, /class Locker/); assert.match(seen.prompt, /atomic reservations/); assert.match(seen.systemPrompt, /untimed practice/);
+  assert.match(seen.prompt, /class Locker/); assert.match(seen.prompt, /atomic reservations/); assert.match(seen.systemPrompt, /untimed practice/); assert.match(seen.systemPrompt, /Do not volunteer hints/);
   await f.ask(); assert.equal(calls, 1, 'completed requests replay without a turn');
   await assert.rejects(f.ask({ question: 'Different question' }), e => e.status === 409);
   await f.ask({ requestId: 'question-two', question: 'Why?' });
@@ -317,7 +349,7 @@ test('a practice branch starts its own timer instead of copying mock elapsed tim
   }, f.ctx)).json();
   const timer = (await call('GET /api/practice/:slug/:id', {}, f.ctx, branch)).json().session.timer;
   assert.equal(timer.elapsedMs, 0);
-  assert.ok(timer.runningSince > 0);
+  assert.equal(timer.runningSince, null);
   await call('POST /api/practice/:slug/:id/timer', { running: false }, f.ctx, branch);
   const sourceInterview = JSON.parse(await fs.readFile(path.join(sourceDir, 'interview.json')));
   assert.equal(sourceInterview.startedAt, mock.state.startedAt);
@@ -420,4 +452,16 @@ test('stream checkpoints survive refresh, restart recovery, and final failure', 
   assert.equal(final[0].answer,disk[0].answer);
   assert.equal(final[0].status,'failed');
   assert.equal(final[0].liveRevision,1);
+});
+
+test('timer heartbeat cannot resume a paused session or overwrite a concurrent stop', async t => {
+  const f = await fixture(t);
+  const change = body => call('POST /api/practice/:slug/:id/timer', body, f.ctx, f.session);
+  const started = (await change({ running: true })).json().timer;
+  const beat = { heartbeat: true, runningSince: started.runningSince };
+  const renewed = (await change(beat)).json().timer;
+  assert.ok(renewed.leaseUntil >= started.leaseUntil);
+  await Promise.all([change(beat), change({ running: false })]);
+  assert.equal((await f.record()).session.timer.runningSince, null);
+  assert.equal((await change(beat)).json().timer.runningSince, null);
 });

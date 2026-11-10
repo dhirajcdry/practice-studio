@@ -152,7 +152,7 @@ test('the catalog, the search, and the solutions never needed the network', asyn
   await withOfflineServer(async ({ call, networkCalls }) => {
     const list = await call('/api/problems');
     assert.equal(list.status, 200);
-    assert.equal(list.json.problems.length, 250, 'the whole curriculum is a local file');
+    assert.equal(list.json.problems.length, 262, 'the curriculum and curated collections are local files');
 
     // The vendored solution and article are on disk too — the two panels the timed-out
     // page still offered, and correctly so.

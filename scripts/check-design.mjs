@@ -1,3 +1,4 @@
+import { checkMockTime } from './mock-time-fixture.mjs';
 // The design screen mounts, and the whiteboard is really there.
 //
 //   node scripts/check-design.mjs
@@ -18,6 +19,7 @@
 // what was already said and asks the model nothing.
 
 import { visualLint } from './visual-lint.js';
+import { checkMockVoice } from './mock-voice-fixture.mjs';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -28,8 +30,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9343;
-const SERVER_PORT = 4187;
+const SERVER_PORT = Number(process.env.STUDIO_CHECK_PORT) || 4187;
+const PORT = SERVER_PORT + 5156;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
 const HOME = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-design-home-'));
@@ -119,6 +121,9 @@ for (const entry of SEED) {
 const server = spawn(process.execPath, ['server/index.mjs'], {
   cwd: ROOT,
   env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT),
+    STUDIO_MIRROR_DIR: '',
+    STUDIO_COACH_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-claude.mjs'),
+    STUDIO_CODEX_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-codex.mjs'),
     STUDIO_TTS_PYTHON: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
     STUDIO_TTS_SCRIPT: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
     STUDIO_TTS_MODEL: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
@@ -375,8 +380,9 @@ try {
   const reading = await evaluate(
     `new Promise(r => setTimeout(() => r(document.querySelector('.dz-clock')?.textContent ?? ''), 1300))`,
   );
-  if (/^1[12]:/.test(reading)) ok(`the clock picks up at the time already spent (${reading}), not at the time away`);
-  else bad('the resumed clock is the time spent', `reads ${reading}, expected about 11:00`);
+  if (/^3[23]:/.test(reading)) ok(`the countdown excludes time away (${reading})`);
+  else bad('the resumed countdown excludes time away', `reads ${reading}, expected about 34:00 remaining`);
+  console.log('Design mock time controls', await evaluate(`(${checkMockTime.toString()})('design', '/api/design/${SEED[1].id}')`));
 
   const fontLoaded = await evaluate(`(async () => {
     for (let i = 0; i < 100; i++) {
@@ -401,11 +407,10 @@ try {
     await evaluate(`import('/js/settings.js').then(m=>m.setSetting('theme', '${theme}'))`);
     await sleep(80);
     const metrics = await evaluate(`(() => {
-      const mode=document.querySelector('.dz-modes').getBoundingClientRect();
-      const buttons=[...document.querySelectorAll('.dz-mode')].map(n=>n.getBoundingClientRect());
       const compose=document.querySelector('.dz-compose').getBoundingClientRect();
       const side=document.querySelector('.dz-side').getBoundingClientRect();
-      return {fits:buttons.every(b=>b.left>=mode.left&&b.right<=mode.right&&b.height>=32),bottom:compose.bottom<=side.bottom+1,
+      const buttons=[...document.querySelectorAll('.dz-compose .ui-mode-switch')].filter(n=>n.getClientRects().length).map(n=>n.getBoundingClientRect());
+      return {fits:buttons.length===1&&buttons.every(b=>b.left>=compose.left&&b.right<=compose.right),bottom:compose.bottom<=side.bottom+1,
         theme:document.body.classList.contains('is-dark')===Boolean(document.querySelector('.excalidraw.theme--dark'))};
     })()`);
     const spacing = await evaluate('(' + visualLint.toString() + ')().filter(x => /^(pane-|workspace-|content-inset)/.test(x.kind))');
@@ -442,11 +447,11 @@ try {
     const text = document.querySelector('.dz-input').value;
     document.querySelector('[data-mode="voice"]').click();
     await new Promise(r => setTimeout(r, 100));
-    const notice = document.querySelector('.dz-draft');
-    const visible = !notice.hidden && notice.getBoundingClientRect().height > 0;
-    const tail = notice.querySelector('.dz-draft-tail');
-    const oneLine = getComputedStyle(tail).whiteSpace === 'nowrap';
-    [...notice.querySelectorAll('button')].find(b => b.textContent === 'Edit').click();
+    const words = document.querySelector('.dz-voice .voice-transcript');
+    const sendVoice = document.querySelector('.dz-voice .dz-voice-send');
+    const visible = document.querySelector('.dz-voice .voice-state').textContent === 'Answer not sent' && words.textContent === text && words.getBoundingClientRect().height > 0 && !sendVoice.hidden;
+    const micHeld = document.querySelector('.dz-voice .voice-mic').disabled;
+    words.click();
     const edited = !document.querySelector('.dz-type').hidden && document.querySelector('.dz-input').value === text;
     document.querySelector('[data-mode="voice"]').click();
     const originalFetch = window.fetch;
@@ -454,29 +459,29 @@ try {
     window.fetch = (url, options) => String(url) === '/api/design/turn'
       ? (sent = JSON.parse(options.body).said, Promise.resolve(new Response('event: accepted\\ndata: {}\\n\\nevent: done\\ndata: {}\\n\\n', {headers:{'content-type':'text/event-stream'}})))
       : originalFetch(url, options);
-    for (let i = 0; i < 100 && notice.querySelector('.dz-send').disabled; i++) await new Promise(r => setTimeout(r, 25));
-    notice.querySelector('.dz-send').click();
+    for (let i = 0; i < 100 && sendVoice.disabled; i++) await new Promise(r => setTimeout(r, 25));
+    sendVoice.click();
     document.querySelector('[data-mode="type"]').click();
     await new Promise(r => setTimeout(r, 100));
     window.fetch = originalFetch;
     navigator.mediaDevices.getUserMedia = original;
-    return text === 'Recovered spoken answer' && visible && oneLine && edited && openings === 0 && sent === text;
+    return text === 'Recovered spoken answer' && visible && micHeld && edited && openings === 0 && sent === text;
   })()`);
-  if (draftRecovery) ok('restored voice draft shows one-line Send/Edit notice and blocks microphone until resolved');
-  else bad('restored voice draft', 'draft, notice, Send/Edit, or microphone gate failed');
+  if (draftRecovery) ok('restored voice draft stays in the words, with Send and click-to-edit, and holds the microphone');
+  else bad('restored voice draft', 'draft, status, Send/edit, or microphone gate failed');
 
   const voiceRecovery=await evaluate(`(async()=>{
     const original=navigator.mediaDevices.getUserMedia;
     navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Test permission denied','NotAllowedError');};
-    document.querySelector('[data-mode="type"]').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));
+    document.querySelector('[data-mode="voice"]').click();
     await new Promise(r=>setTimeout(r,100));
     const panel=document.querySelector('.dz-voice');
     const visible=!panel.hidden && !panel.querySelector('.vc-status').hidden && panel.querySelector('.vc-status').getBoundingClientRect().height>0;
-    document.querySelector('[data-mode="voice"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}));
+    document.querySelector('[data-mode="type"]').click();
     navigator.mediaDevices.getUserMedia=original;
-    return visible && !document.querySelector('.dz-type').hidden && document.querySelector('[data-mode="type"]').tabIndex===0;
+    return visible && !document.querySelector('.dz-type').hidden;
   })()`);
-  if(voiceRecovery)ok('keyboard mode switching exposes microphone errors and returns to typing');
+  if(voiceRecovery)ok('mode switching exposes microphone errors and returns to typing');
   else bad('voice permission recovery','hidden error or inaccessible mode controls');
 
   const liveModeSwitch=await evaluate(`(async()=>{
@@ -487,7 +492,8 @@ try {
       ?Promise.resolve(new Response(new ReadableStream({async start(controller){
         const emit=(name,data)=>controller.enqueue(encoder.encode('event: '+name+'\\ndata: '+JSON.stringify(data)+'\\n\\n'));
         emit('accepted',{});
-        for(let i=0;i<40;i++){emit('token',{text:'A streamed question. '});chunks++;await new Promise(r=>setTimeout(r,35));}
+        const parts=['Check '+String.fromCharCode(96)+'get_', 'balance'+String.fromCharCode(96)+' and **available', ' funds**.\\n\\n', '- Reject expired holds.\\n\\n'];
+        for(let i=0;i<40;i++){emit('token',{text:parts[i%parts.length]});chunks++;await new Promise(r=>setTimeout(r,35));}
         emit('done',{});controller.close();
       }}),{headers:{'content-type':'text/event-stream'}}))
       :original(url,options);
@@ -500,12 +506,18 @@ try {
       document.querySelector('[data-mode="type"]').click();
       input.value='Unsent next design thought';input.dispatchEvent(new Event('input'));
       for(let i=0;i<150 && (chunks<40 || document.querySelector('.dz-done').disabled);i++)await new Promise(r=>setTimeout(r,25));
-      const kept=voiceDuringReply && !document.querySelector('.dz-type').hidden && input.value==='Unsent next design thought' && !document.querySelector('.dz-done').disabled;
+      const reply=[...document.querySelectorAll('.dz-q .dz-body')].at(-1);
+      const formatted=reply.querySelector('code')?.textContent==='get_balance' && reply.querySelector('strong')?.textContent==='available funds' && reply.querySelectorAll('li').length===10;
+      const kept=formatted && voiceDuringReply && !document.querySelector('.dz-type').hidden && input.value==='Unsent next design thought' && !document.querySelector('.dz-done').disabled;
       input.value='';input.dispatchEvent(new Event('input'));return kept;
     } finally {window.fetch=original;}
   })()`);
   if(liveModeSwitch)ok('mode switches during a streamed reply preserve the next unsent draft and finish saving');
   else bad('live mode switching','mode, draft, or saving state did not survive streaming');
+
+  const continuousVoice = await evaluate(`(${checkMockVoice.toString()})('design')`);
+  if (continuousVoice) ok('mock continuous microphone, speech interruption, in-flight drafts and mute: ' + JSON.stringify(continuousVoice));
+  else bad('mock continuous voice', 'voice fixture did not complete');
 
   const failedDebrief=await evaluate(`(async()=>{
     for(let i=0;i<100 && document.querySelector('.dz-done').disabled;i++) await new Promise(r=>setTimeout(r,25));
@@ -516,7 +528,7 @@ try {
     document.querySelector('.dz-done').click();
     await new Promise(r=>setTimeout(r,100));
     window.fetch=original;
-    return !document.querySelector('.dz-done').disabled && !document.querySelector('.dz-compose').hidden && document.querySelector('.dz-err').textContent.includes('Test debrief unavailable');
+    return !document.querySelector('.dz-done').disabled && !document.querySelector('.dz-compose').hidden && [...document.querySelectorAll('.dz-err')].some(node=>node.textContent.includes('Test debrief unavailable'));
   })()`);
   if(failedDebrief)ok('failed debrief leaves the interview open and retryable');
   else bad('failed debrief recovery','interview was incorrectly finalized');

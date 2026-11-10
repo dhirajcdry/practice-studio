@@ -91,6 +91,7 @@ export function parseReport(text, turns = [], { dimensions: rubric = DIMENSIONS,
     signal: pick(raw.signal ?? raw.hireSignal, SIGNALS),
     headline: str(raw.headline, 200),
     summary: str(raw.summary, 600),
+    moveUp: str(raw.moveUp, 500),
     dimensions,
     strengths: list(raw.strengths, 4).map(s => str(s, 300)).filter(Boolean),
     improvements: list(raw.improvements, 4).map(s => str(s, 300)).filter(Boolean),
@@ -108,14 +109,20 @@ export function buildReport(state, turns, now = Date.now()) {
   const debrief = [...turns].reverse().find(t => t.kind === 'debrief');
   if (!state.debriefed || !debrief) return null;
   const facts = reportFacts(state, turns, now);
-  return { facts, judgement: parseReport(debrief.asked, turns, { durationMs: facts.durationMs, dimensions: state.discipline === 'lld' ? LLD_DIMENSIONS : DIMENSIONS }) };
+  return { facts, judgement: parseReport(debrief.asked, turns, { durationMs: facts.durationMs, dimensions: state.discipline === 'lld' ? LLD_DIMENSIONS : DIMENSIONS }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}) };
+}
+
+/** How a report's difficulty reads in text, so a Beginner "Hire" is never taken for an Amazon-level one. */
+export function reportDifficultyLabel(difficulty) {
+  return { beginner: 'Beginner difficulty (a step below Amazon SDE II)', 'amazon-sde-2': 'Amazon SDE II difficulty' }[difficulty] || null;
 }
 
 /** Markdown for interview.md, so the mirrored record reads well outside Studio. */
 export function reportMarkdown(report) {
   const { facts, judgement: j } = report;
   if (!j) return null;
-  const lines = [`**${j.signal || 'No signal'}**${j.headline ? ` — ${j.headline}` : ''}`, ''];
+  const difficulty = reportDifficultyLabel(report.difficulty);
+  const lines = [`**${j.signal || 'No signal'}**${difficulty ? ` · ${difficulty}` : ''}${j.headline ? ` — ${j.headline}` : ''}`, ''];
   if (j.summary) lines.push(j.summary, '');
   lines.push(Object.hasOwn(facts, 'finalBoard')
     ? `Duration ${clock(facts.durationMs)} of ${clock(facts.plannedMs)} · ${facts.finalBoard ? 'Board recorded' : 'The board was empty'} · phase durations and hint counts not recorded`
@@ -130,6 +137,7 @@ export function reportMarkdown(report) {
   for (const [title, items] of [['Hard technical errors', j.technicalErrors], ['Missing considerations', j.missingConsiderations], ['Self-caught vs interviewer-surfaced', j.discoveries]]) {
     if (items?.length) lines.push(`### ${title}`, '', ...items.map(item => `- ${item}`), '');
   }
+  if (j.moveUp) lines.push('### What would move this up a level', '', j.moveUp, '');
   if (j.strengths.length) lines.push('### What went well', '', ...j.strengths.map(s => `- ${s}`), '');
   if (j.improvements.length) lines.push('### What to improve', '', ...j.improvements.map(s => `- ${s}`), '');
   if (j.practice.length) lines.push('### Practise next', '', ...j.practice.map((p, i) => `${i + 1}. ${p.title}${p.why ? ` — ${p.why}` : ''}`), '');

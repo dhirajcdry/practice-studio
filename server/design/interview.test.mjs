@@ -124,7 +124,7 @@ test('skipping straight to the design is noticed and named', () => {
   enterPhase(s, 'design');
   const text = buildTurn(s, { now: at(15) }).text;
   assert.match(text, /never covered: core entities, API, scale estimates/);
-  assert.match(text, /nudge, do not cover it for them/);
+  assert.match(text, /do not cover it for them/);
 });
 
 test('running behind the clock is a nudge, not a jump', () => {
@@ -205,7 +205,7 @@ test('the debrief drops the character and asks for the four sections', () => {
   assert.match(text, /Drop the interviewer character/);
   assert.match(text, /strong hire \/ hire \/ lean no \/ no hire/);
   assert.match(text, /Hard technical errors/);
-  assert.match(text, /unsparing/);
+  assert.match(text, /Ignore slips that do not change the design/);
   assert.match(text, /Do not invent an exchange/);
 });
 
@@ -226,7 +226,7 @@ test('"done" routes to the debrief rather than another question', () => {
 test('a normal turn always ends by asking for one question in the interviewer voice', () => {
   const turn = buildTurn(fresh(), { now: at(3), said: 'I think we need a queue' });
   assert.equal(turn.kind, 'turn');
-  assert.match(turn.text, /Ask your next question\. One question\. Interviewer voice only\./);
+  assert.match(turn.text, /If a real interviewer would speak now, ask one question, in interviewer voice only\. Otherwise reply with only the phase tag\./);
   // …and the phase line, which is stripped before the candidate ever sees it.
   assert.match(turn.text, /End with the \[\[phase: …\]\] line\.$/);
 });
@@ -245,11 +245,9 @@ const flat = (text) => String(text).replace(/\s+/g, ' ');
 
 test('the interviewer is told its own history is on disk, and how to use it', () => {
   const p = flat(systemPrompt());
-  assert.match(p, /design\/<timestamp>\/interview\.md/);
-  assert.match(p, /DESIGN\.md/);
-  // The value is in asking harder where they have failed before, not in reciting it.
-  assert.match(p, /push harder where they have failed before/);
-  assert.match(p, /never quote a past interview at them mid-interview/);
+  // Judged on this interview alone; past records wait for the debrief.
+  assert.match(p, /no record of their past interviews or notes/);
+  assert.doesNotMatch(p, /DESIGN\.md|push harder/);
 });
 
 test('memory is written at the debrief, not during the interview', () => {

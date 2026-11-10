@@ -58,7 +58,7 @@ try {
 
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
   async function mode(value) {
-    await evaluate(`document.querySelector('.ci-composer [aria-label^="Answer mode:"]').click(); [...document.querySelectorAll('.ui-menu-item')].find(n=>n.textContent.trim()===${JSON.stringify(value)}).click();`);
+    await evaluate(`document.querySelector('.ci-composer .ui-mode-switch[data-mode=${value.toLowerCase()}]').click();`);
   }
   await mode('Typed');
   await until(()=>evaluate("return !document.querySelector('.ci-send').disabled"),'typed ready');

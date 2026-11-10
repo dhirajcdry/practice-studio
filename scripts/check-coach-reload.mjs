@@ -111,7 +111,7 @@ try {
       if (document.querySelector('.coach-log')?.textContent.includes('first half')) return 'streaming';
       await sleep(100);
     }
-    return 'nothing arrived';
+    return 'nothing arrived: '+JSON.stringify({log:document.querySelector('.coach-log')?.textContent,disabled:document.querySelector('.coach-send')?.disabled});
   })()`);
   if (asked !== 'streaming') throw new Error(`the coach never started: ${asked}`);
   ok('the coach is mid-answer');

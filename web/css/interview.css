@@ -24,10 +24,9 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-live-header{position:sticky;top:0;z-index:2;border:var(--float-border);border-radius:var(--float-radius);background:var(--card);box-shadow:var(--float-shadow)}
 .ci-live-header .ci-header{padding:0 0 var(--space-2)}
 .ci-live-header .ci-session-controls{border:0;padding:0}
-.ci-header{display:flex;align-items:center;gap:var(--space-3);padding-block:var(--space-2) var(--space-4)}
+.ci-header{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3);padding-block:var(--space-2) var(--space-4)}
 .ci-identity{display:flex;flex:1;min-width:0;flex-direction:column;gap:var(--space-1)}
 .ci-identity strong{font:600 var(--text-sm)/var(--line-md) var(--ui)}
-.ci-model{font:400 var(--text-xs)/var(--line-sm) var(--ui);color:var(--ink-50)}
 .ci-clock{font-size:var(--text-xl);letter-spacing:-.04em;line-height:var(--line-sm);font-variant-numeric:tabular-nums}
 .ci-clock[data-urgency=med]{color:var(--med)}
 .ci-clock[data-urgency=hard]{color:var(--hard)}
@@ -38,26 +37,19 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-phases li[aria-current=step]{border-top-color:var(--accent);color:var(--ink);font-weight:600}
 .ci-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-1)}
 .ci-state{display:flex;align-items:center;gap:var(--space-2);font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
-.ci-meter{display:inline-flex;width:var(--space-4);height:var(--space-2);background:var(--hair-06);border-radius:var(--radius-sm);overflow:hidden}
-.ci-meter i{width:25%;height:100%;background:var(--easy);transition:width var(--dur-hover)}
-.ci-meter.is-loud i{width:100%}
 .ci-log{padding-block:var(--space-5);overflow-wrap:anywhere;min-height:var(--space-8)}
-.ci-entry{padding:0 0 var(--space-5);margin:0}
-.ci-who{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-2);font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
+.ci-entry{padding:0;margin:0 0 var(--space-4)}
+.ci-entry:last-child{margin-bottom:0}
+.ci-who{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
 .ci-who .dim{font-weight:400}
-.ci-text{font-size:var(--text-md);line-height:var(--line-lg);white-space:pre-wrap}
-.ci-candidate .ci-text{background:var(--card);border-radius:var(--r-sm);padding:var(--space-3);border:1px solid var(--hair-10)}
+.ci-entry>.ci-text{margin-top:0}
 .ci-typed{border:0;padding:0;background:transparent}
 .ci-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);font-size:var(--text-xs)}
 .ci-notice{margin-block:var(--space-3);background:var(--med-soft);border-radius:var(--surface-card-radius);font-size:var(--text-sm);line-height:var(--line-md);border:var(--surface-card-border)}
 .ci-paused{margin-top:var(--space-3);border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg);font-size:var(--text-sm);box-shadow:var(--surface-card-shadow)}
 .ci-panel.is-paused .ci-log{opacity:.6}
-.ci-voice{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2)}
-.ci-voice-controls{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);flex-wrap:wrap}
-.ci-voice-guidance{font-size:var(--text-md);line-height:var(--line-md)}
-.ci-voice-actions{display:flex;align-items:center;gap:var(--space-2);margin-left:auto}
-.ci-live-words{font-size:var(--text-md);line-height:var(--line-lg);white-space:pre-wrap;max-height:calc(var(--space-8) * 3);overflow:auto;padding:var(--space-3);background:var(--hair-06);border-radius:var(--radius-md)}
-.ci-panel[data-mode=voice] .ci-state .ci-meter{width:var(--space-6);height:4px}
+.ci-voice{display:flex;flex-direction:column;gap:var(--space-2)}
+.ci-live-words{font-size:var(--text-md);line-height:var(--line-lg);white-space:pre-wrap;max-height:calc(var(--space-8) * 3);overflow:auto}
 .ci-voice .vc-status{padding:var(--space-2);font-size:var(--text-sm)}
 .ci-panel.is-complete .ci-live-header{display:none}
 .ci-score-hero{border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg);box-shadow:var(--surface-card-shadow);}
@@ -79,10 +71,6 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-transcript{border-top:1px solid var(--hair-10);padding-top:var(--space-4)}
 .ci-transcript>summary{font-size:var(--text-sm);cursor:pointer;color:var(--ink-70)}
 .interviews-view [hidden],.ci-panel [hidden]{display:none!important}
-@media(prefers-reduced-motion:reduce){.ci-meter i{transition:none}}
-.ci-panel[data-mode=typed] .ci-meter{width:var(--space-2);height:var(--space-2);border-radius:50%}
-.ci-panel[data-mode=typed] .ci-meter i{width:100%}
-.ci-panel.is-paused .ci-meter i{background:var(--ink-35)}
 
 .interviews-notice:not(:empty){border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg)}
 
@@ -108,18 +96,13 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-contained .ci-phases{flex-wrap:wrap}
 .ci-contained .ci-phases li{flex:1 0 auto}
 
-/* A single status, followed only by useful actions or a captured answer. */
-.ci-voice-guidance{font:var(--text-sm)/var(--line-md) var(--ui)}
-.ci-voice-controls{min-height:var(--control-sm)}
-.ci-voice-actions{flex-wrap:wrap}
 .ci-setup--featured form{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-4)}
 .ci-setup--featured .ci-setup-head{margin:0}
 .ci-setup--featured .ci-setup-title{font:600 var(--text-lg)/var(--line-md) var(--ui);margin:0}
 .ci-setup--featured .ci-setup-description{font:var(--text-sm)/var(--line-md) var(--ui);margin:0}
 .ci-setup--featured .ci-setup-options{margin:0}
-.ci-meta{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1) var(--space-3)}
-.ci-meta .ci-state{font-size:var(--text-xs);color:var(--ink-50)}
-.ci-clock-group>.dim{display:none}
+.ci-identity .ci-state{font-size:var(--text-xs);color:var(--ink-50)}
+
 /* The embedded LeetCode interview shares the sidebar scroll viewport. Only
    this variant sticks within that viewport; bounded workspaces use normal flow. */
 body[class] .ci-embedded>.ui-composer{position:sticky;bottom:var(--space-2)}
@@ -129,3 +112,14 @@ body[class] .ci-embedded>.ui-composer{position:sticky;bottom:var(--space-2)}
 .interview-detail-content{display:flex;flex-direction:column;flex:1;min-height:0}
 .ci-embedded{flex:1}
 .ci-embedded>.ci-log{flex:1 0 auto}
+
+/* One clock in the header; all budget editing stays in the floating surface. */
+.mock-time-controls{display:flex;align-items:center;flex:none}
+.mock-add-time{gap:var(--space-1)}
+.mock-add-time .ci-clock,.mock-add-time .dz-clock{font:400 var(--text-sm)/var(--line-sm) var(--mono);letter-spacing:normal}
+.mock-add-time>svg{color:var(--ink-50)}
+.mock-time-popover{min-width:12rem}
+.mock-time-custom{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2)}
+.mock-time-input{width:4em;min-width:0;height:var(--control-sm);font:inherit;color:var(--ink);background:var(--bg);border:var(--control-border);border-radius:var(--radius-sm);padding-inline:var(--space-1)}
+.mock-time-message{font-size:var(--text-sm);max-width:24ch;overflow-wrap:anywhere;padding:var(--space-2);margin:0}
+.ci-toolbar{flex-wrap:wrap}
