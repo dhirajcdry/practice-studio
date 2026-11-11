@@ -344,7 +344,16 @@ document.addEventListener('keydown', (event) => {
   // Native dialogs own Escape themselves. The reference drawer is an ARIA dialog,
   // so retain its close action without navigating the workspace behind any overlay.
   if (hasOpenOverlay()) {
-    if (event.key === 'Escape' && isDrawerOpen()) { event.preventDefault(); closeDrawer({ instant: true }); }
+    // The drawer's own keys still work while it is the only overlay: Escape closes
+    // it, `s` and `a` switch between the solution and the article.
+    if (!isDrawerOpen() || hasOpenOverlay(document.getElementById('drawer'))) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || inTextField()) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeDrawer({ instant: true }); return; }
+    const entry = bySlug.get(currentSlug());
+    if (entry && (event.key === 's' || event.key === 'a')) {
+      event.preventDefault();
+      openPanel(entry, event.key === 's' ? 'solution' : 'article', { instant: true });
+    }
     return;
   }
   // Catalog navigation belongs to coding routes, not every screen without a
@@ -352,7 +361,17 @@ document.addEventListener('keydown', (event) => {
   const codingRoute = currentSlug() || ['', '#/', '#/roadmap'].includes(location.hash);
   const searching = document.activeElement === searchEl;
   if (!codingRoute && !searching) return;
-  if (!searching && event.target.closest?.('button,a,[role="button"],[role="separator"],[role="tab"],[role="menuitemradio"],dialog')) return;
+  // A focused control keeps only the keys it uses itself: Enter/Space activate a
+  // button or link, arrows move a tab, splitter or menu item. Letters, Escape and
+  // ⌘←/→ still belong to the app; otherwise Esc out of the editor (which focuses
+  // Run) or any click on a toolbar button would silently disable every shortcut.
+  if (!searching && !event.metaKey) {
+    const target = event.target;
+    if (target.closest?.('dialog')) return;
+    if ((event.key === 'Enter' || event.key === ' ')
+      && target.closest?.('button,a,[role="button"],[role="tab"],[role="menuitemradio"]')) return;
+    if (/^Arrow/.test(event.key) && target.closest?.('[role="separator"],[role="tab"],[role="menuitemradio"]')) return;
+  }
   if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
     && (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
     if (inTextField() || isDrawerOpen()) return;

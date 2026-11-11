@@ -1,8 +1,9 @@
 // Background workspaces stay mounted under dialogs and floating menus. Focus can
 // remain behind a non-native dialog, or fall back to body after a control is removed.
-export function hasOpenOverlay() {
+// `except` lets an overlay's own handler ask whether anything *else* is open.
+export function hasOpenOverlay(except = null) {
   return [...document.querySelectorAll('dialog[open], [role="dialog"]:not([hidden]), [role="menu"]:not([hidden])')]
-    .some(node => node.getClientRects().length > 0);
+    .some(node => node !== except && node.getClientRects().length > 0);
 }
 
 export function isTextEntry(node) {
