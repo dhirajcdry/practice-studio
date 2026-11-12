@@ -69,7 +69,7 @@ or **Voice** for spoken turn-taking after voice setup.
 
 Draw the system you're describing. The next answer sends a graph of the board to the
 interviewer, which can probe missing connections and assumptions. Leave and return via
-the interview library to resume an unfinished session. Completed interviews have a
+the System design home, where an unfinished interview's row offers Open mock to resume it. Completed interviews have a
 read-only transcript and board replay.
 
 For a concrete example, see the [illustrative URL-shortener session](EXAMPLE-SESSION.md#system-design-the-board-is-evidence).

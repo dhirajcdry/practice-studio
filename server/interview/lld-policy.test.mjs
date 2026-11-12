@@ -56,6 +56,17 @@ test('an LLD debrief does not fault what the interview never asked for', () => {
   const state = { ...newState({ slug: 'lld-x' }), discipline: 'lld', scenario: {} };
   assert.match(debriefPrompt(state, [], Date.now()), /call it not reached/);
 });
+test('reports credit what was said, not only the final code', () => {
+  for (const reportDifficulty of [undefined, 'beginner']) {
+    const prompt = debriefPrompt({ ...newState({ slug: 'lld-x' }), discipline: 'lld', scenario: {}, reportDifficulty }, [], Date.now());
+    assert.match(prompt, /What the candidate said is evidence on a par with what they typed/);
+    assert.match(prompt, /interviewer said talking it through was fine.*carries no weight anywhere/);
+    assert.match(prompt, /A stub or placeholder they named, or a step they described correctly, is not one/);
+    assert.match(prompt, /find the earliest candidate turn that mentions it/);
+    assert.match(prompt, /key rules are either coded or correctly described|neither coded nor correctly described/);
+    assert.match(prompt, /never a technical error/);
+  }
+});
 test('LLD reads full latest document every turn and gates the curveball from durable state', () => {
   const state = { ...newState({ slug: 'lld-locker' }), discipline: 'lld', lastCode: 'old', turns: 1, phase: 'code', gaps: { ownership: 2 } };
   const prompt = turnPrompt(state, { code: 'class CandidateOwned:\n    pass', said: 'Please review this.' });

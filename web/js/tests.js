@@ -23,6 +23,9 @@ import {
 } from './submit.js';
 import { parseViz, drawViz, resolveFrame, buildTree, layoutFrames } from './viz.js';
 import { shapeTranscription, describeMicError, formatTake, phraseDecision, SILENCE_MS, MIN_PHRASE_MS, MAX_PHRASE_MS } from './voice.js';
+import { conversationMessage, bindConversation } from './ui/conversation.js';
+import { paintReceipt, receiptFailed } from './ui/receipt.js';
+import { composerSend } from './ui/composer.js';
 
 const out = document.getElementById('out');
 let pass = 0, fail = 0;
@@ -32,6 +35,45 @@ const plain = frag => { const d = document.createElement('div'); d.append(frag);
 const san = s => html(sanitizeHtml(s));
 // Structural assertions ignore audit metadata; the separate check below verifies it.
 const md = s => html(renderMarkdown(s)).replaceAll(' data-markdown-block=""', '');
+
+/* ---------------- shared conversation surfaces ---------------- */
+group('Shared conversation surfaces');
+const conversationHost = document.createElement('div'); conversationHost.style.width = '800px';
+const firstMessage = conversationMessage({ speaker: 'Coach', text: 'First reply' });
+const secondMessage = conversationMessage({ speaker: 'Coach', text: 'Follow-up reply' });
+conversationHost.append(firstMessage, secondMessage); document.body.append(conversationHost);
+const conversationComposer = document.createElement('div');
+conversationHost.after(conversationComposer);
+const conversationBinding = bindConversation(conversationHost, { composer: conversationComposer });
+check('conversation groups repeated speaker labels', firstMessage.querySelector('.ui-speaker')?.getClientRects().length > 0 && getComputedStyle(secondMessage.querySelector('.ui-speaker')).clipPath !== 'none');
+const learner = conversationMessage({ speaker: 'Learner', user: true, text: 'A learner answer' }); conversationHost.append(learner);
+const learnerBubble = learner.querySelector('.ui-conversation-text');
+check('learner bubble stays right and bounded', Math.abs(learnerBubble.getBoundingClientRect().right - learner.getBoundingClientRect().right) <= 1 && learnerBubble.getBoundingClientRect().width <= learner.getBoundingClientRect().width * .85 + 1);
+check('coach message stays within reading width', firstMessage.getBoundingClientRect().width <= 720);
+const receipt = paintReceipt(document.createElement('div'), { tool: 'run_code', status: 'done', output: 'exit 0' }); conversationHost.append(receipt);
+check('receipt output is closed by default', receipt.querySelector('details')?.open === false);
+receipt.querySelector('details').open = true;
+check('receipt disclosure opens', receipt.querySelector('details')?.getBoundingClientRect().height > 0);
+const failedReceipt = paintReceipt(document.createElement('div'), { tool: 'run_code', status: 'done', output: 'exit 1', failed: receiptFailed({ result: { exitCode: 1 } }) }); conversationHost.append(failedReceipt);
+check('failed receipt opens output', receiptFailed({ status: 'failed', result: {} }) && failedReceipt.querySelector('details')?.open === true);
+const sendProbe = composerSend(document.createElement('button'));
+document.body.append(sendProbe);
+check('composer send is 28px', sendProbe.getBoundingClientRect().height === 28);
+check('conversation jump starts hidden', conversationBinding.jump.hidden === true);
+conversationHost.style.height = '20px'; conversationHost.style.overflow = 'auto'; conversationHost.scrollTop = 0;
+conversationHost.append(conversationMessage({ speaker: 'Coach', text: 'New reply' })); conversationBinding.refresh();
+// Conversation mutations are coalesced into one presentation update per frame.
+await new Promise(requestAnimationFrame);
+check('conversation jump appears after unread reply', conversationBinding.jump.hidden === false);
+const composerTopWithJump = conversationComposer.getBoundingClientRect().top;
+const transcriptHeightWithJump = conversationHost.clientHeight;
+conversationBinding.jump.click();
+check('conversation jump never changes transcript or composer geometry',
+  conversationComposer.getBoundingClientRect().top === composerTopWithJump
+  && conversationHost.clientHeight === transcriptHeightWithJump
+  && conversationBinding.jump.parentElement.getBoundingClientRect().height === 0);
+check('conversation jump hides after activation', conversationBinding.jump.hidden === true);
+conversationBinding?.dispose?.(); conversationHost.remove(); conversationComposer.remove(); sendProbe.remove();
 
 function group(name) {
   const row = document.createElement('div');
@@ -966,11 +1008,13 @@ check('no stepper without frames', !drawViz(vz(everyType.array).spec).querySelec
 check('with frames: a stepper starts at step 1, and next/prev move the counter and redraw', (() => {
   const node = drawViz(vz({ type: 'array', values: [1, 2], frames: [{ active: [0], note: 'a' }, { active: [1], note: 'b' }, { note: 'c' }] }).spec);
   const count = node.querySelector('.viz-count');
-  const before = node.querySelector('svg');
+  // Button icons are SVG too; the illustration canvas must contain one drawing.
+  const canvas = node.querySelector('.viz-canvas');
+  const before = canvas.querySelector('svg');
   const first = count.textContent === 'Step 1 of 3' && node.querySelector('.viz-prev').disabled;
   node.querySelector('.viz-next').click();
   const second = count.textContent === 'Step 2 of 3' && node.querySelector('.viz-note').textContent === 'b'
-    && node.querySelector('svg') !== before && node.querySelectorAll('svg').length === 1;
+    && canvas.querySelector('svg') !== before && canvas.querySelectorAll('svg').length === 1;
   node.querySelector('.viz-prev').click();
   return first && second && count.textContent === 'Step 1 of 3' && count.getAttribute('aria-live') === 'polite';
 })());
@@ -1120,6 +1164,9 @@ const liveAnswer = { ok: true, submissionId: 7, check: { state: 'SUCCESS' } };
 check('a live bridge answering after a stale one wins', (await bridged([[0, goneAnswer], [200, liveAnswer]])).submissionId === 7);
 check('a stale bridge alone still reports that nothing was sent',
   (await bridged([[0, goneAnswer]])).code === 'CONNECTOR_GONE');
+
+const { checkReportLayout } = await import('./interview-report.test.js');
+checkReportLayout(check);
 
 const headline = document.getElementById('headline');
 headline.textContent = fail === 0 ? `All ${pass} tests pass` : `${fail} of ${pass + fail} tests FAILED`;

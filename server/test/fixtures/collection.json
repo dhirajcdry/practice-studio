@@ -1,0 +1,44 @@
+{
+  "id": "sample-collection",
+  "label": "Sample collection",
+  "checkedAt": "2026-01-01",
+  "note": "A neutral fixture for tests. Real collections live in STUDIO_HOME/collection.json, never in this repo.",
+  "problems": [
+    {
+      "id": "S01", "number": 212, "slug": "word-search-ii", "title": "Word Search II",
+      "pattern": "Tries", "difficulty": "Hard", "priority": "Start here", "match": "Practice analogue",
+      "reportedPrompt": "Find words in a letter grid.", "caveat": "Fixture caveat.", "practice": "Fixture practice.",
+      "round": "Fixture round", "authenticity": "Fixture", "sources": [{ "id": "F1", "url": "https://leetcode.com/problems/word-search-ii/" }],
+      "premium": false
+    },
+    {
+      "id": "S02", "number": 1494, "slug": "parallel-courses-ii", "title": "Parallel Courses II",
+      "pattern": "2-D Dynamic Programming", "difficulty": "Hard", "priority": "Next", "match": "Practice analogue",
+      "reportedPrompt": "Schedule courses with at most K per term.", "caveat": "Fixture caveat.", "practice": "Fixture practice.",
+      "round": "Fixture round", "authenticity": "Fixture", "sources": [{ "id": "F2", "url": "https://leetcode.com/problems/parallel-courses-ii/" }],
+      "premium": false
+    },
+    {
+      "id": "S03", "number": 981, "slug": "time-based-key-value-store", "title": "Time Based Key-Value Store",
+      "pattern": "Binary Search", "difficulty": "Medium", "priority": "Start here", "match": "Baseline + variation",
+      "reportedPrompt": "Store values by key and timestamp.", "caveat": "Fixture caveat.", "practice": "Fixture practice.",
+      "round": "Fixture round", "authenticity": "Fixture", "sources": [{ "id": "F3", "url": "https://leetcode.com/problems/time-based-key-value-store/" }],
+      "premium": false
+    },
+    {
+      "id": "S04", "number": 1429, "slug": "first-unique-number", "title": "First Unique Number",
+      "pattern": "Arrays & Hashing", "difficulty": "Medium", "priority": "Start here", "match": "Prompt match",
+      "reportedPrompt": "Return the first unique value in a stream.", "caveat": "Fixture caveat.", "practice": "Fixture practice.",
+      "round": "Fixture round", "authenticity": "Fixture", "sources": [{ "id": "F4", "url": "https://leetcode.com/problems/first-unique-number/" }],
+      "premium": true
+    },
+    {
+      "id": "P01", "origin": "personal", "number": 289, "slug": "game-of-life", "title": "Game of Life",
+      "pattern": "Math & Geometry", "difficulty": "Medium", "priority": "Added by you", "match": "Personal practice",
+      "reportedPrompt": "Personal practice selection.", "caveat": "User-selected practice question.", "practice": "Fixture practice.",
+      "round": "Not specified", "authenticity": "Personal practice selection",
+      "sources": [{ "id": "LC289", "url": "https://leetcode.com/problems/game-of-life/description/" }],
+      "premium": false
+    }
+  ]
+}

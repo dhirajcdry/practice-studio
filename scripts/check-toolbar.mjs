@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Toolbar behaviour, checked in a real browser.
 //
 //   node scripts/check-toolbar.mjs
@@ -18,42 +19,22 @@
 // This check drives the real editor, and the real editor SAVES. The first run of it typed
 // into contains-duplicate and then pressed its own Reset, writing the bare stub over a
 // working solution; the attempt snapshots got it back, which was luck. So it starts its
-// own server against a scratch workspace and cannot reach the real one. The LeetCode
-// cache is copied in read-only, so the run needs no network.
+// own server against a scratch workspace and cannot reach the real one. Synthetic cached content keeps the check offline.
 
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { startScratch, requireFreePort } from './check-scratch.mjs';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9336;
 const SERVER_PORT = 4179;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
-const HOME = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-toolbar-home-'));
-const realCache = path.join(os.homedir(), 'LeetCodeTutor', 'cache');
-if (fs.existsSync(realCache)) {
-  await fsp.cp(realCache, path.join(HOME, 'cache'), { recursive: true });
-}
-
-const server = spawn(process.execPath, ['server/index.mjs'], {
-  cwd: path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'),
-  env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT) },
-  stdio: 'ignore',
-});
-
-// Wait for it rather than guessing.
-for (let i = 0; i < 100; i += 1) {
-  try {
-    await fetch(`${ORIGIN}/api/stats`);
-    break;
-  } catch {
-    await sleep(100);
-  }
-}
+await requireFreePort(PORT);
+const { cleanup: cleanupScratch } = await startScratch(SERVER_PORT, 'contains-duplicate', {});
 
 async function cdp() {
   const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
@@ -118,7 +99,7 @@ try {
   // Scoped to the workspace's own bar: the coach panel uses `.ws-bar` too, and its
   // buttons are not part of this ordering.
   const labels = await evaluate(`
-    [...document.querySelectorAll('.ws > .ws-bar button')]
+    [...document.querySelectorAll('.ui-screen-header .ws-run, .ui-screen-header .ws-submit')]
       .filter(b => !b.hidden)
       .map(b => (b.querySelector('span')?.textContent ?? b.textContent).trim())
   `);
@@ -154,7 +135,7 @@ try {
   if (!(await collapsed())) { await chordJ(); await sleep(200); }
   if (!(await collapsed())) bad('the panel can be collapsed at all', 'it would not collapse');
 
-  await evaluate(`[...document.querySelectorAll('.ws > .ws-bar button')].find(b => b.textContent.trim().startsWith('Run')).click()`);
+  await evaluate(`[...document.querySelectorAll('.ui-screen-header .ws-run, .ui-screen-header .ws-submit')].find(b => b.textContent.trim().startsWith('Run')).click()`);
   await sleep(600);
   if (await evaluate(`document.body.classList.contains('hide-results')`)) {
     bad('pressing Run reveals the panel', 'the panel stayed collapsed — results behind a closed door');
@@ -171,7 +152,7 @@ try {
   await evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < 100; i++) {
-      const b = [...document.querySelectorAll('.ws > .ws-bar button')].find(x => x.textContent.trim() === 'Running');
+      const b = [...document.querySelectorAll('.ui-screen-header .ws-run, .ui-screen-header .ws-submit')].find(x => x.querySelector('span')?.textContent.trim() === 'Running');
       if (!b) break;
       await sleep(100);
     }
@@ -226,6 +207,44 @@ try {
   else bad('a hidden sidebar can be reopened from the file row', `visible=${openVisible} reopened=${reopened} hiddenWhenOpen=${goneWhenOpen}`);
   await evaluate(`document.querySelector('.coach-hide').click()`);
 
+  // Every public opener targets the same mounted pane and preserves its tabs.
+  for (const opener of ['rail', 'launcher', 'event', 'shortcut']) {
+    await evaluate(`document.body.classList.contains('coach-open') && document.querySelector('.coach-hide').click()`);
+    if (opener === 'shortcut') {
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: '\\', code: 'Backslash', modifiers: 4 });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: '\\', code: 'Backslash', modifiers: 4 });
+    } else await evaluate(opener === 'event' ? `window.dispatchEvent(new CustomEvent('studio:open-coach'))` :
+      opener === 'rail' ? `document.querySelector('[data-pane="coach"]').click()` : `document.querySelector('.coach-launch').click()`);
+    await sleep(100);
+    const opened = await evaluate(`(() => {
+      const panel = document.querySelector('.coach'), r = panel.getBoundingClientRect();
+      return document.body.classList.contains('coach-open') && r.width > 0 && r.height > 0
+        && [...panel.querySelectorAll('.coach-tab')].map(n=>n.textContent).join('|').match(/Chat.*Interviews.*Submissions/);
+    })()`);
+    if (opened) ok(opener + ' opens the coach pane and all three tabs');
+    else bad(opener + ' opens the coach pane');
+  }
+  await evaluate(`document.querySelector('.coach-hide').click()`);
+
+  const chromeGeometry = await evaluate(`(() => {
+    const issues = [], box = n => n.getBoundingClientRect();
+    const nav = [...document.querySelectorAll('.ui-screen-header .pnav-btn')];
+    if (nav.length !== 3 || nav.some(n => box(n).width !== 28 || n.querySelectorAll('svg').length !== 1 || n.childNodes[0].nodeType === 3)) issues.push('previous/next/shuffle must be three SVG buttons');
+    const tabs = [...document.querySelectorAll('.problem-tabs [role=tab]')];
+    if (tabs.map(n=>n.textContent.replace(/[sa]$/, '').trim()).length !== 4 || tabs.some(n=>Math.abs(box(n).top-box(tabs[0]).top)>1 || box(n).height!==38)) issues.push('problem tabs must share a 38px row');
+    const meta = document.querySelector('.editor-meta'), original = meta.style.cssText;
+    try {
+      for (const width of [220, 320, 600]) {
+        meta.style.flex = 'none'; meta.style.width = width + 'px';
+        const items = [...meta.querySelectorAll('.editor-path,.editor-cursor,.editor-wrap,.editor-open-sidebar')].filter(n=>box(n).width>0);
+        if (items.some((n,i)=>i && box(items[i-1]).right > box(n).left + 1)) issues.push('editor controls overlap at '+width);
+      }
+    } finally { meta.style.cssText = original; }
+    return issues;
+  })()`);
+  if (chromeGeometry.length) bad('workspace chrome geometry', chromeGeometry.join('; '));
+  else ok('navigation, tabs and editor controls meet the shared geometry');
+
   /* ---- 4. Reference drawer: real pointer resize, persistence and scrim ---- */
   const openReference = async () => {
     await evaluate(`(async () => {
@@ -258,9 +277,9 @@ try {
   if (Math.abs(await width() - draggedWidth + 80) > 1) throw Error('Shift-arrow did not resize reference by 80px');
   const scrim = await evaluate(`(() => {
     const n = document.querySelector('#scrim'); const css = getComputedStyle(n);
-    return !n.hidden && n.classList.contains('show') && css.backdropFilter === 'blur(5px)' && Number(css.opacity) === 1;
+    return !n.hidden && n.classList.contains('show') && css.backdropFilter === 'none' && css.backgroundColor !== 'rgba(0, 0, 0, 0)' && css.backgroundColor !== 'transparent' && Number(css.opacity) === 1;
   })()`);
-  if (!scrim) throw Error('Reference scrim is not visible with blur');
+  if (!scrim) throw Error('Reference scrim must visibly dim the background without blur');
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 20, y: 200, button: 'left', clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 20, y: 200, button: 'left', clickCount: 1 });
   await sleep(350);
@@ -270,9 +289,8 @@ try {
   close();
 } finally {
   chrome.kill();
-  server.kill();
-  await fsp.rm(HOME, { recursive: true, force: true }).catch(() => {});
-  await fsp.rm(PROFILE, { recursive: true, force: true }).catch(() => {});
+  await cleanupScratch();
+  await cleanupChrome(chrome, PROFILE);
 }
 
 if (problems.length) {

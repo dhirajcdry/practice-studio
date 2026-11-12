@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Full visual audit: disposable data, browser profile, and retained report artifacts.
 import { spawn } from 'node:child_process';
@@ -17,8 +18,10 @@ const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const home = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-visual-home-'));
 const profile = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-visual-profile-'));
 const output = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-visual-report-'));
-const origin = 'http://127.0.0.1:4181';
-const debugOrigin = 'http://127.0.0.1:9444';
+const serverPort = Number(process.env.STUDIO_VISUAL_PORT) || 4181;
+const debugPort = serverPort + 5263;
+const origin = `http://127.0.0.1:${serverPort}`;
+const debugOrigin = `http://127.0.0.1:${debugPort}`;
 const code = 'class Solution:\n    def canJump(self, nums):\n        # Try the next reachable position.\n        return True\n';
 let server, chrome;
 let serverLog = '';
@@ -39,6 +42,7 @@ async function requireFreePort(port) {
 
 async function seed() {
   const problems = [
+    ['import-sample', 'Import Sample', '900001', 'solve', [{ name: 'nums', type: 'integer[]' }], 'integer', '[1,2,3]', 'class Solution:\n    def solve(self, nums):\n        pass\n'],
     ['time-based-key-value-store', 'Time Based Key-Value Store', '981', 'lookup', [{ name: 'timestamp', type: 'integer' }], 'integer', '1', 'class Solution:\n    def lookup(self, timestamp):\n        # Synthetic visual fixture, not a TimeMap implementation.\n        return timestamp\n'],
     ['jump-game', 'Jump Game', '55', 'canJump', [{ name: 'nums', type: 'integer[]' }], 'boolean', '[2,3,1,1,4]', code],
     ['cheapest-flights-within-k-stops', 'Cheapest Flights Within K Stops', '787', 'findCheapestPrice', [
@@ -46,6 +50,8 @@ async function seed() {
       { name: 'src', type: 'integer' }, { name: 'dst', type: 'integer' }, { name: 'k', type: 'integer' },
     ], 'integer', '3\n[[0,1,100],[1,2,100],[0,2,500]]\n0\n2\n1', 'class Solution:\n    def findCheapestPrice(self, n, flights, src, dst, k):\n        return 200\n'],
   ];
+  // A neutral collection fixture; real collections are private workspace data.
+  await fsp.copyFile(path.join(ROOT, 'server', 'test', 'fixtures', 'collection.json'), path.join(home, 'collection.json'));
   for (const [slug, title, questionId, name, params, type, input, solution] of problems) {
     await json(path.join(home, 'cache', 'leetcode', `${slug}.json`), { question: {
       title, titleSlug: slug, difficulty: 'Medium', questionId,
@@ -162,20 +168,20 @@ async function stop(child) {
 
 console.log(`Visual audit screenshots and findings: ${output}`);
 try {
-  await requireFreePort(4181);
-  await requireFreePort(9444);
+  await requireFreePort(serverPort);
+  await requireFreePort(debugPort);
   await seed();
   // Missing content stays offline; the audit never sends a coach prompt.
   server = spawn(process.execPath, ['--input-type=module', '--eval',
     "globalThis.fetch = async () => { throw Error('Network disabled in visual check'); }; const m = await import('./server/index.mjs'); m.start();"], {
-    cwd: ROOT, env: { ...process.env, STUDIO_HOME: home, STUDIO_PORT: '4181', STUDIO_MIRROR_DIR: '',
+    cwd: ROOT, env: { ...process.env, STUDIO_HOME: home, STUDIO_PORT: String(serverPort), STUDIO_MIRROR_DIR: '',
       STUDIO_CODEX_BINARY: '/nonexistent/visual-check-codex' }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.on('error', error => { serverLog += error.message; });
   for (const stream of [server.stdout, server.stderr]) stream.on('data', data => { serverLog = (serverLog + data).slice(-4000); });
   await ready(async () => (await fetch(`${origin}/api/health`)).ok, server, 'scratch server');
   chrome = spawn(CHROME, ['--headless=new', '--disable-background-networking', '--no-first-run',
-    '--remote-debugging-port=9444', `--user-data-dir=${profile}`, '--window-size=1600,1000', 'about:blank'], { stdio: 'ignore' });
+    `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--window-size=1600,1000', 'about:blank'], { stdio: 'ignore' });
   chrome.on('error', error => { serverLog += error.message; });
   const target = await ready(async () => (await (await fetch(`${debugOrigin}/json`)).json()).find(tab => tab.type === 'page'), chrome, 'headless Chrome');
   const findings = await runVisualAudit({ origin, target, output });
@@ -188,6 +194,6 @@ try {
 } finally {
   await stop(chrome);
   await stop(server);
-  await fsp.rm(profile, { recursive: true, force: true });
+  await cleanupChrome(chrome, profile);
   await fsp.rm(home, { recursive: true, force: true });
 }

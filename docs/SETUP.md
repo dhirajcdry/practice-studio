@@ -118,18 +118,30 @@ For a separate practice workspace:
 STUDIO_HOME="$HOME/PracticeStudio" STUDIO_PORT=4174 npm start
 ```
 
+## Shuffle source
+
+Settings → **Shuffle picks from** chooses **Studio's problems** (the default, using
+current explorer filters) or **All of LeetCode** (algorithms across all difficulties).
+The Shuffle button and `r` use the same setting. LeetCode shuffle requires Studio
+Connector 1.3.0 or later in the same browser profile; see [Connector setup](SUBMITTING.md).
+Reload the extension in `chrome://extensions`, then reload Studio after updating.
+New shuffled problems appear in **Others**; manual imports appear in **You**.
+Existing problems open without changing their lists. A premium pick permits just
+one replacement pick; there is no prefetch or automatic retry after an error.
+
 ## Keyboard shortcuts
 
 | Keys | Action |
 | --- | --- |
 | `/` · `j` / `k` · `Enter` | Search · move through results · open |
 | `⌘←` · `⌘→` | Previous · next problem (on a problem page) |
+| `r` | Random problem (Studio's problems or LeetCode, per Settings) |
 | `⌘'` · `⌘↵` · `⌘S` | Run locally · submit to LeetCode · save |
 | `⌘B` · `⌘J` · `⌘\` | Toggle problem · results · coach |
 | `⌥R` | Start or end a coding attempt |
 | `s` · `a` | Reveal reference solution or article outside the editor |
 
-The settings panel lists shortcuts, the five themes and the light/dark setting. Reveal actions are logged so they
+The settings panel lists shortcuts, the themes and the light/dark setting. Reveal actions are logged so they
 can appear in your practice history.
 
 ## Common setup problems

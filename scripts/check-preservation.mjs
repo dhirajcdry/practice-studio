@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Navigation/reload regression checks using synthetic records, a fake coach and fake
 // audio. No learner cache, real coach turn, or running Studio server is involved.
@@ -175,5 +176,5 @@ try {
 } finally {
   ws?.close(); chrome?.kill(); server.kill();
   await fsp.rm(scratch, { recursive: true, force: true }).catch(() => {});
-  await fsp.rm(profile, { recursive: true, force: true }).catch(() => {});
+  await cleanupChrome(chrome, profile);
 }

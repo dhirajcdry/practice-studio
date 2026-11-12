@@ -534,7 +534,10 @@ export async function handleHistory(req, res, ctx) {
   const slug = slugFrom(req, ctx);
 
   const threads = await readThreads({ root: svc.root, slug }).catch(() => []);
-  return sendJson(res, 200, { slug, threads });
+  // The conversation a message continues when it names no other: the same default
+  // handleCoachMessage uses, so the page can draw what the coach will actually resume.
+  const stored = await svc.coachSessions.read(slug).catch(() => null);
+  return sendJson(res, 200, { slug, threads, currentSessionId: stored?.sessionId ?? null });
 }
 
 export const routes = {

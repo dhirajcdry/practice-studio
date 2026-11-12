@@ -89,8 +89,6 @@
 .ov-skel i.short{width:55%}
 .catalog .ov.ov-unavailable{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 24px;min-height:0}
 .ov-unavailable>*{padding:0;border:0 !important}
-.ov-retry{padding:8px 16px;border:1px solid var(--hair-20);border-radius:var(--r-sm);font:500 12px var(--ui);color:var(--accent);background:var(--card)}
-.ov-retry:hover{border-color:var(--accent)}
 
 @media(max-width:1250px){
   .catalog .ov{grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);row-gap:22px}
@@ -113,14 +111,12 @@
 
 /* ---------------- streak pill (top bar) ---------------- */
 .streakmount{display:flex;align-items:center}
-.streakpill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px 0 8px;border:1px solid var(--hair-10);border-radius:999px;background:var(--card);color:var(--ink-70);text-decoration:none;font:600 12px/1 var(--ui);font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease,box-shadow .2s ease}
+.streakpill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px 0 8px;border:1px solid var(--hair-10);border-radius:999px;background:var(--card);color:var(--ink-70);text-decoration:none;font:600 12px/1 var(--ui);font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease}
 .streakpill .flame{width:16px;height:16px}
 .streakpill:hover{border-color:var(--hair-20);color:var(--ink)}
-.streakpill.active{color:var(--ink);border-color:rgba(var(--accent-rgb),.45);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.10),0 0 16px rgba(var(--accent-rgb),.22)}
 .streakpill.active .flame{animation:flame-flicker 2.8s ease-in-out infinite;transform-origin:50% 90%}
 .streakpill.cold{color:var(--ink-50)}
 @keyframes flame-flicker{0%,100%{transform:scale(1) rotate(0)}30%{transform:scale(1.06,.97) rotate(-2deg)}60%{transform:scale(.97,1.05) rotate(1.5deg)}}
-body.theme-art .streakpill{background:color-mix(in srgb,var(--card) 70%,transparent)}
 
 @media(prefers-reduced-motion:reduce){
   .meter>i.grow,.ring-value.sweep,.catalog .ov,.streakpill.active .flame,.ov-skel i{animation:none}

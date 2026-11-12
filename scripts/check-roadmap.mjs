@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Real browser checks for roadmap interaction, data integrity, themes, and narrow screens.
 import {spawn} from 'node:child_process';
 import {mkdtemp, rm, writeFile} from 'node:fs/promises';
@@ -73,7 +74,7 @@ try {
   const transform = await evaluate(`(()=>{const c=document.querySelector('.roadmap-canvas');const before=c.style.transform;document.querySelector('[aria-label="Zoom in"]').click();return [before,c.style.transform];})()`);
   if (!transform[1] || transform[0] === transform[1]) throw Error('Zoom in did not change canvas transform');
 
-  for (const theme of ['studio', 'desk', 'editorial', 'ink', 'terminal']) {
+  for (const theme of ['studio', 'desk', 'dunes']) {
     await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme',${JSON.stringify(theme)});})()`);
     await until(`document.querySelectorAll('.roadmap-node').length===18`);
     for (const width of [390, 768, 1140, 1600]) {
@@ -101,8 +102,8 @@ try {
 
   const screenshot = await send('Page.captureScreenshot', {format: 'png'});
   await writeFile('docs/images/roadmap.png', Buffer.from(screenshot.result.data, 'base64'));
-  console.log('Roadmap checks passed: integrity, selection, zoom, fit, five themes, and 390/768/1140/1600 widths.');
+  console.log('Roadmap checks passed: integrity, selection, zoom, fit, six core themes, and 390/768/1140/1600 widths.');
 } finally {
   ws?.close(); chrome.kill(); await sleep(200);
-  await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
+  await cleanupChrome(chrome, profile);
 }

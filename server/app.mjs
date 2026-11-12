@@ -21,6 +21,7 @@ import { SessionLog, onSessionEvent } from './coach/sessions.mjs';
 import { armAttemptWriter } from './attempts/watch.mjs';
 import { routes as ttsRoutes } from './tts/routes.mjs';
 import { routes as practiceRoutes } from './practice/routes.mjs';
+import { problemImportRoutes } from './problem-import.mjs';
 
 // Modules are built independently and each exports a plain route table; the router is the
 // single place they meet. Keys are 'METHOD /path/with/:params'.
@@ -185,13 +186,17 @@ function tapRunResult(res, slug, log) {
  * @returns {(req, res) => void} a node:http request listener
  */
 export function createApp({ catalog, solutions, leetcode, site, log = console, homeRoot = HOME_ROOT }) {
+  const importRoutes = problemImportRoutes({ addedFile: `${homeRoot}/added-problems.json` });
   armMirror(catalog, log);
   async function handleApi(req, res, url) {
     const segments = url.pathname.split('/').filter(Boolean); // ['api', 'problems', ...]
 
     // Module routes first: they own the non-GET verbs, and their handlers read the
     // request body themselves, so nothing here may consume the stream before them.
-    const matched = matchModuleRoute(req.method, segments);
+    const matched = matchModuleRoute(req.method, segments) ?? (() => {
+      const key = `${req.method} ${url.pathname}`; const handler = importRoutes[key];
+      return handler ? { handler, params: {} } : null;
+    })();
     if (matched) {
       for (const value of Object.values(matched.params)) {
         if (!isSafeSlug(value)) {
@@ -232,7 +237,7 @@ export function createApp({ catalog, solutions, leetcode, site, log = console, h
     }
 
     if (segments.length === 2 && segments[1] === 'problems') {
-      return sendJson(res, 200, { problems: catalog.problems, patterns: catalog.patterns });
+      return sendJson(res, 200, { problems: catalog.problems, patterns: catalog.patterns, collection: catalog.collection ?? null });
     }
 
     if (segments.length >= 3 && segments[1] === 'problems') {

@@ -11,15 +11,12 @@
 .ci-setup-options{display:flex;align-items:center;flex-wrap:wrap;gap:0 var(--space-1);margin-top:var(--space-1);}
 .ci-setup-dot{color:var(--ink-35);font-size:var(--text-xs)}
 .ci-setup-options .coach-model-picker{min-width:0;max-width:none;flex:0 1 auto}
-body[class] .ci-setup-options .ui-select-button{height:var(--control-sm);min-height:var(--control-sm);padding:0 calc(var(--space-2) + 12px) 0 var(--space-2);border:0;background:transparent;color:var(--ink-70);font-size:var(--text-xs)}
 body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:var(--hair-06);color:var(--ink)}
 .ci-setup-options .ui-select-button::after{right:var(--space-2);width:4px;height:4px;margin-top:-3px}
 .interview-row-top{display:flex;align-items:center;gap:var(--space-2);width:100%}
 .interview-row-top strong{font:500 var(--text-sm)/var(--line-md) var(--ui)}
 .interview-status{margin-left:auto}
-.interview-row-meta{font-size:var(--text-xs);line-height:var(--line-md)}
-.interview-row-resume{background:var(--card)}
-.interview-back{margin-bottom:var(--space-3)}
+.interview-row-meta{font-size:var(--text-xs);line-height:var(--line-md)}.interview-back{margin-bottom:var(--space-3)}
 .ci-panel{display:flex;flex-direction:column;min-height:0;color:var(--ink);background:transparent}
 .ci-live-header{position:sticky;top:0;z-index:2;border:var(--float-border);border-radius:var(--float-radius);background:var(--card);box-shadow:var(--float-shadow)}
 .ci-live-header .ci-header{padding:0 0 var(--space-2)}
@@ -38,11 +35,11 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-1)}
 .ci-state{display:flex;align-items:center;gap:var(--space-2);font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
 .ci-log{padding-block:var(--space-5);overflow-wrap:anywhere;min-height:var(--space-8)}
-.ci-entry{padding:0;margin:0 0 var(--space-4)}
-.ci-entry:last-child{margin-bottom:0}
-.ci-who{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
-.ci-who .dim{font-weight:400}
-.ci-entry>.ci-text{margin-top:0}
+
+
+
+
+
 .ci-typed{border:0;padding:0;background:transparent}
 .ci-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);font-size:var(--text-xs)}
 .ci-notice{margin-block:var(--space-3);background:var(--med-soft);border-radius:var(--surface-card-radius);font-size:var(--text-sm);line-height:var(--line-md);border:var(--surface-card-border)}
@@ -59,8 +56,7 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-dimension{padding-block:var(--space-4);border-bottom:var(--row-rule);padding:var(--space-4) var(--space-3);border-radius:var(--row-radius)}
 .ci-dimension-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);font-size:var(--text-sm)}
 .ci-evidence{display:flex;align-items:baseline;gap:var(--space-2);margin-top:var(--space-2);font-size:var(--text-sm);line-height:var(--line-lg)}
-.ci-evidence p{margin:0}
-.ci-evidence-time{flex:none;color:var(--accent)}
+.ci-evidence p{margin:0}.ci-evidence-time{flex:none;}
 .ci-phase-stats,.ci-score-extra{padding-block:var(--space-4);font-size:var(--text-sm);line-height:var(--line-lg)}
 .ci-debrief h3{font:600 var(--text-sm)/var(--line-md) var(--ui);margin:0 0 var(--space-3)}
 .ci-debrief :is(ul,ol){padding-inline-start:2em;margin-block:var(--space-2)}
@@ -77,8 +73,7 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-empty-session{--content-stack-gap:var(--space-3);border:var(--surface-card-border);border-radius:var(--float-radius);background:var(--surface-card-bg);box-shadow:var(--surface-card-shadow);margin-bottom:var(--space-5)}
 .ci-empty-icon{display:grid;place-items:center;width:var(--space-8);height:var(--space-8);border-radius:var(--radius-md);background:var(--accent-soft);color:var(--accent)}
 .ci-empty-session h3{margin:0;font:600 var(--text-lg)/var(--line-md) var(--ui)}
-.ci-empty-session p{margin:0;font:400 var(--text-md)/var(--line-lg) var(--ui);color:var(--ink-70)}
-.ci-empty-session .btn{margin-top:var(--space-2)}
+.ci-empty-session p{margin:0;font:400 var(--text-md)/var(--line-lg) var(--ui);color:var(--ink-70)}.ci-empty-session .btn{margin-top:var(--space-2)}
 .ci-log:focus-visible{outline:2px solid var(--accent);outline-offset:var(--space-1);border-radius:var(--float-radius)}
 
 .ci-clock-group{display:flex;flex-direction:column;align-items:flex-end;gap:var(--space-1);flex:none}
@@ -123,3 +118,8 @@ body[class] .ci-embedded>.ui-composer{position:sticky;bottom:var(--space-2)}
 .mock-time-input{width:4em;min-width:0;height:var(--control-sm);font:inherit;color:var(--ink);background:var(--bg);border:var(--control-border);border-radius:var(--radius-sm);padding-inline:var(--space-1)}
 .mock-time-message{font-size:var(--text-sm);max-width:24ch;overflow-wrap:anywhere;padding:var(--space-2);margin:0}
 .ci-toolbar{flex-wrap:wrap}
+
+/* Inline setup pickers keep the chevron beside its label. */
+body .ci-setup-options .ui-select-button{width:auto;padding:0 10px;gap:6px}
+.ci-setup-options .ui-select-button::after{position:static;flex:none;margin:0 0 3px}
+.ci-setup-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-2);margin-left:auto}

@@ -2,13 +2,13 @@ import { bindPythonTools, bindBoardTools, showWorkspaceAction } from './workspac
 // Both design disciplines share one untimed, question-led learning workspace.
 import { el, replace } from './dom.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
-import { workspaceHeader } from './ui/headers.js';
-import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
+import { workspaceHeader, paneHeader } from './ui/headers.js';
+import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { createSelect } from './ui/select.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
-import { loadExcalidraw } from './whiteboard.js';
+import { loadExcalidraw, boardTools } from './whiteboard.js';
 import { getSettings, onSettingsChange } from './settings.js';
-import { conversationText, setConversationText } from './ui/conversation.js';
+import { conversationMessage, bindConversation, messageAction, thinkingRow, conversationText, setConversationText } from './ui/conversation.js';
 import { openLearningNotes, saveLearningNote } from './learning.js';
 import { relativeInterviewDate } from './interview-format.js';
 import { streamInterviewRequest } from './interview-transport.js';
@@ -73,6 +73,7 @@ export function initPractice(host, { slug, id }) {
   let code = '', elements = [], editor, boardRoot, boardApi, voice, speaker, modelPicker, timer;
   let untheme = () => {}, saveChain = Promise.resolve(), revision = 0, savedRevision = 0, following = true;
   let lastRequest = null, pendingPoll = null, unbindTools = () => {};
+  let conversationView;
   let problemText, practiceTimer, disposeSplit = () => {};
   const exchangeNodes = new Map();
   const endpoint = `/api/practice/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
@@ -83,14 +84,14 @@ export function initPractice(host, { slug, id }) {
   const errors = new Map();
   let saveFailure = '', draftFailure = '';
   const workErrorText = el('span', { class: 'ui-cluster-content' });
-  const retrySave = el('button', { class: 'btn btn--secondary btn--sm', type: 'button', text: 'Retry saving', onclick: async () => {
+  const retrySave = el('button', { class: 'btn btn--secondary', type: 'button', text: 'Retry saving', onclick: async () => {
     retrySave.disabled = true;
     try { await save(); } catch { /* The save owns its error and recovery state. */ }
     finally { if (!gone) retrySave.disabled = false; }
   } });
   const workError = el('div', { class: 'pr-work-error ui-cluster ui-inset ui-inset--compact', role: 'status', hidden: true }, [workErrorText, retrySave]);
   const thread = el('div', { class: 'pr-thread ui-pane-scroll', role: 'log', 'aria-label': 'Practice conversation', tabindex: '0' });
-  const input = el('textarea', { class: 'coach-input', rows: '2', 'aria-label': 'Ask your practice coach', placeholder: 'Ask about your design, an edge case, or a trade-off…' });
+  const input = el('textarea', { class: 'coach-input', rows: '2', 'aria-label': 'Ask your practice coach', placeholder: 'Ask the coach' });
   input.value = readDraft(draftKey)?.text || '';
   const inputSize = bindComposerInput(input);
   let partialWords = '', playbackInterrupted = false, voiceLoop, replySpeech, windowFocused = document.hasFocus();
@@ -103,7 +104,7 @@ export function initPractice(host, { slug, id }) {
     if (voiceLoop?.enabled) { voiceLoop.pause(); interruptReply(); }
     else { speaker?.cancel(); voiceLoop?.start(); }
   });
-  const interrupt = el('button', { class: 'btn btn--secondary btn--sm', text: 'Interrupt · Esc', hidden: true, onclick: () => interruptReply() });
+  const interrupt = el('button', { class: 'btn btn--secondary', text: 'Interrupt · Esc', hidden: true, onclick: () => interruptReply() });
   const typeLink = answerModeSwitch('typed', setInputMode);
   const voiceLink = answerModeSwitch('voice', setInputMode);
   const retry = el('button', { class: 'btn btn--secondary', text: 'Retry reply', hidden: true, onclick: () => ask(lastRequest) });
@@ -177,10 +178,12 @@ export function initPractice(host, { slug, id }) {
     changed(); paint(); if (mode === 'typed') input.focus();
   }
   function paint() {
+    if (voice) voice.root.hidden = mode !== 'typed';
+    if (modelPicker) { modelPicker.root.hidden = mode !== 'typed'; modelPicker.setBusy(busy); }
     typed.hidden = mode !== 'typed'; voicePane.hidden = mode !== 'voice';
     inputSize.resize();
     voiceView.update({state: voiceState, draft: input.value, partial: partialWords, busy, sending, paused: !voiceLoop?.enabled});
-    send.disabled = busy || sending || (!input.value.trim() && !['recording','working'].includes(voiceState));
+    send.disabled = busy || sending || !input.value.trim();
     const speaking = Boolean(speaker?.speaking);
     voiceLink.hidden = mode === 'voice';
     typeLink.hidden = speaking;
@@ -188,27 +191,31 @@ export function initPractice(host, { slug, id }) {
     paintMicToggle(mic, Boolean(voiceLoop?.enabled), { on: 'Pause voice', off: 'Start voice' });
     interrupt.hidden = !speaking;
     status.textContent = speaker?.speaking ? 'Coach speaking' : busy ? 'Coach is thinking…' : voiceState === 'working' ? 'Transcribing…' : voiceState === 'recording' ? 'Listening' : 'Ready when you are';
-    status.hidden = mode === 'voice' || status.textContent === 'Ready when you are';
+    status.hidden = mode === 'voice' || busy || status.textContent === 'Ready when you are';
     send.hidden = mode === 'voice';
     voiceSend.hidden = speaking || !(input.value.trim() || partialWords);
     voiceSend.disabled = send.disabled;
     retry.hidden = !lastRequest || busy;
     bottom();
   }
-  function bottom() { if (following) thread.scrollTop = thread.scrollHeight; }
+  function bottom() { if (following) { thread.scrollTop = thread.scrollHeight; lastThreadTop = thread.scrollTop; } }
   function exchange(question, answer = '', state = 'complete', requestId = null) {
     if (requestId && exchangeNodes.has(requestId)) return exchangeNodes.get(requestId);
     const reply = conversationText(answer, { className: 'pr-answer' });
-    const marker = el('span', { class: 'dim pr-exchange-status', text: state === 'pending' ? 'Reply in progress…' : state === 'failed' ? 'Reply incomplete' : '' });
+    const marker = el('span', { class: 'dim pr-exchange-status', text: state === 'failed' ? 'Reply incomplete' : '' });
+    if (state === 'pending' && !answer) replace(reply, thinkingRow());
     thread.querySelector('.pr-empty')?.remove();
-    const saveNote = el('button', { class: 'btn btn--quiet btn--sm', text: 'Save to notes', onclick: async () => {
+    const saveNote = el('button', { class: 'btn btn--quiet', text: 'Save to notes', onclick: async () => {
       saveNote.disabled = true;
-      try { await saveLearningNote(slug, `Question: ${question}\n\n${reply.dataset.markdown || answer}`); saveNote.textContent = 'Saved to notes'; clearError(`note:${requestId}`); }
+      try { await saveLearningNote(slug, `Question: ${question}\n\n${reply.dataset.markdown || answer}`); saveNote.setAttribute('aria-label', 'Saved to notes'); clearError(`note:${requestId}`); }
       catch (e) { showError(e, `note:${requestId}`); saveNote.disabled = false; }
     } });
     saveNote.hidden = !answer;
-    thread.append(el('article', { class: 'pr-exchange' }, [el('div', { class: 'pr-question' }, [el('span', { class: 'pr-who', text: 'You' }), conversationText(question, { user: true })]),
-      el('span', { class: 'pr-who' }, ['Coach', replayButton(() => reply.dataset.markdown || reply.textContent, replayReply, 'Coach')]), reply, marker, saveNote]));
+    messageAction(saveNote, 'report', 'Save to notes');
+    thread.append(el('article', { class: 'pr-exchange ui-message-group' }, [
+      conversationMessage({ speaker: 'You', user: true, text: question, className: 'pr-question' }),
+      conversationMessage({ speaker: 'Coach', body: reply, actions: [replayButton(() => reply.dataset.markdown || reply.textContent, replayReply, 'Coach'), saveNote] }), marker,
+    ]));
     const receipts = el('div', { class: 'pr-receipts' }); reply.before(receipts);
     const ui = { reply, marker, saveNote, receipts };
     if (requestId) exchangeNodes.set(requestId, ui);
@@ -233,7 +240,7 @@ export function initPractice(host, { slug, id }) {
     following = true;
     const ui = exchange(question, '', 'complete', request.requestId); let answer = ''; playbackInterrupted = false;
     replySpeech = createSpeechStream(speaker);
-    replace(ui.reply, []); ui.marker.textContent = ''; ui.saveNote.hidden = true;
+    replace(ui.reply, thinkingRow()); ui.marker.textContent = ''; ui.saveNote.hidden = true;
     paint();
     try {
       await save();
@@ -241,7 +248,7 @@ export function initPractice(host, { slug, id }) {
         if (gone) return;
         if (name === 'action') showWorkspaceAction(ui.receipts, value);
         if (name === 'practice_topic') updateTopic(value);
-        if (name === 'token') { answer += value.text || ''; setConversationText(ui.reply, answer); bottom();
+        if (name === 'token') { ui.reply.dataset.streaming = 'true'; answer += value.text || ''; setConversationText(ui.reply, answer); bottom();
           if (mode === 'voice' && !playbackInterrupted) replySpeech.push(value.text || '');
         }
         if (name === 'done') { answer = value.answer ?? answer; setConversationText(ui.reply, answer); ui.saveNote.hidden = false; }
@@ -249,16 +256,22 @@ export function initPractice(host, { slug, id }) {
       lastRequest = null; localStorage.removeItem(requestKey);
       if (!gone && mode === 'voice' && !playbackInterrupted) replySpeech.finish();
     } catch (e) {
+      ui.reply.querySelector('.ui-thinking')?.remove();
       replySpeech?.cancel(); voiceLoop?.pause();
       ui.marker.textContent = e.workspaceSave ? 'Question not sent. Save your work, then retry.' : 'Reply incomplete. Your question is saved.';
       if (!e.workspaceSave) showError(e);
     }
-    finally { busy = false; if (!gone) { paint(); bottom(); voiceLoop?.sync(); } }
+    finally { ui.reply.dataset.streaming = 'false'; busy = false; if (!gone) { paint(); bottom(); voiceLoop?.sync(); } }
   }
   function interruptReply() {
     playbackInterrupted = true; replySpeech?.cancel(); speaker?.cancel(); voiceLoop?.sync(); paint();
   }
-  thread.addEventListener('scroll', () => { following = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48; });
+  let lastThreadTop = 0;
+  thread.addEventListener('wheel', event => { if (event.deltaY < 0) following = false; }, { passive: true });
+  thread.addEventListener('scroll', () => {
+    following = thread.scrollHeight - thread.scrollTop - thread.clientHeight <= 1;
+    lastThreadTop = thread.scrollTop;
+  });
   input.addEventListener('input', () => { saveDraft(draftKey, input.value); paint(); });
   input.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key === 'Enter' && !hasOpenOverlay() && claimActionKey(e)) ask();
@@ -278,8 +291,7 @@ export function initPractice(host, { slug, id }) {
         const response = await fetch(`${endpoint}/timer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true });
         const result = await response.json(); if (!response.ok) throw Error(result.error?.message || 'Timer not saved'); return result;
       }, onError: () => {} });
-      const candidateSource = data.sourceSnapshot?.source || session.source;
-      const source = candidateSource && typeof candidateSource === 'object' && candidateSource.interviewId ? candidateSource : null;
+      const source = data.sourceSnapshot?.source || session.source;
       const recovered = recoverWork();
       if (recovered) { code = recovered.code ?? code; elements = recovered.elements ?? elements; mode = recovered.mode || mode; }
       try { lastRequest = JSON.parse(localStorage.getItem(requestKey) || 'null'); } catch {}
@@ -289,7 +301,11 @@ export function initPractice(host, { slug, id }) {
       modelPicker = createCoachModelPicker({ compact: true });
       const canvas = el('div', { class: session.discipline === 'lld' ? 'lld-code pr-editor' : 'dz-canvas pr-board ui-editor-surface' });
       const editorControls = session.discipline === 'lld' ? createPythonEditorControls() : null;
-      work.append(el('div', { class: 'pr-work-bar python-document-bar ui-toolbar' }, [el('div', { class: 'python-document-identity' }, [el('strong', { text: session.discipline === 'lld' ? 'design.py' : 'Whiteboard' }), saveStatus]), editorControls?.root, session.discipline === 'lld' ? run : null]), workError, canvas);
+      const boardControls = session.discipline === 'lld' ? null : boardTools(() => boardApi);
+      if (session.discipline !== 'lld') work.classList.add('has-board-tools');
+      const fileHeader = paneHeader({ title: session.discipline === 'lld' ? 'design.py' : 'Whiteboard', subtitle: saveStatus, tools: session.discipline === 'lld' ? [editorControls.root, run] : boardControls });
+      if (session.discipline === 'lld') fileHeader.classList.add('python-document-bar');
+      work.append(fileHeader, workError, canvas);
       if (session.discipline === 'lld') work.append(output);
       problemText = el('p', { text: session.statement || 'Describe any problem to your coach to get started.' });
       const statement = el('details', { class: 'pr-problem' }, [el('summary', { text: source ? 'Problem and mock feedback' : 'Problem' }), problemText]);
@@ -301,13 +317,14 @@ export function initPractice(host, { slug, id }) {
       }
       thread.prepend(statement);
       const coach = el('aside', { class: 'pr-coach card ui-pane', 'aria-label': 'Practice coach' }, [
-        el('div', { class: 'pr-coach-head ui-toolbar' }, [el('strong', { text: 'Practice coach' }), status]), thread,
+        Object.assign(paneHeader({ title: 'Practice coach', subtitle: status }), { className: 'ui-pane-header pr-coach-head' }), thread,
         createComposer({ className: 'pr-compose ui-pane-controls', content: [typed, voicePane],
           leading: [voiceLink, modelPicker.root], trailing: [actions], notices: [error] }),
       ]);
-      view.append(workspaceHeader({ title: session.title, subtitle: `${session.discipline === 'lld' ? 'Python · ' : ''}Untimed practice`, backHref: `#/${session.discipline === 'lld' ? 'lld' : 'design'}`, backLabel: session.discipline === 'lld' ? 'Low-level design' : 'System design', actions: [source ? el('a', { class: 'pr-source-link', href: source.discipline === 'lld' ? `#/lld/${encodeURIComponent(source.slug)}/${encodeURIComponent(source.interviewId)}` : `#/design/${encodeURIComponent(source.interviewId)}`, text: `From mock · ${source.startedAt || source.capturedAt ? relativeInterviewDate(source.startedAt || source.capturedAt) : 'original'}` }) : null, practiceTimer.root, el('button', { class: 'btn btn--secondary pr-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, session.title) })] }),
+      view.append(workspaceHeader({ title: session.title, subtitle: `${session.discipline === 'lld' ? 'Python · ' : ''}Untimed practice`, backHref: `#/${session.discipline === 'lld' ? 'lld' : 'design'}`, backLabel: session.discipline === 'lld' ? 'Low-level design' : 'System design', actions: [source ? el('a', { class: 'pr-source-link', href: source.discipline === 'lld' ? `#/lld/${encodeURIComponent(source.slug)}/${encodeURIComponent(source.interviewId)}` : `#/design/${encodeURIComponent(source.interviewId)}`, text: `From mock · ${source.startedAt || source.capturedAt ? relativeInterviewDate(source.startedAt || source.capturedAt) : 'original'}` }) : null, practiceTimer.root, el('button', { class: 'btn btn--quiet pr-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, session.title) })] }),
         el('div', { class: 'pr-split' }, [work, coach]));
       replace(host, view);
+      conversationView = bindConversation(thread, { composer: view.querySelector('.pr-compose'), onJump: () => { following = true; } });
       disposeSplit = installPaneResizer(view.querySelector('.pr-split'), { storageKey: `studio.workspace-split.${session.discipline}.v1`, minLeft: session.discipline === 'lld' ? 420 : 360 });
       if (!data.exchanges.length) thread.append(el('div', { class: 'pr-empty' }, [el('h2', { text: session.openEnded && !session.statement ? 'What would you like to work on?' : 'Make room to think.' }), el('p', { class: 'dim', text: session.openEnded && !session.statement ? 'Describe a question, paste its requirements, or ask for a suggestion. Your coach will keep the problem and your work here as you go.' : 'Your coach sees your work when you ask a question. Explore the problem, try an approach, and ask for help whenever you need it.' })]));
       else for (const item of data.exchanges) {
@@ -327,7 +344,7 @@ export function initPractice(host, { slug, id }) {
         if (voiceView.automatic && !voice.hasTranscriptionError() && voiceLoop?.enabled && spokenThisTurn && mode === 'voice' && turnDecision({ sinceLoud, chars: input.value.trim().length, pending, speaking: speaker.speaking, busy: busy || sending }) === 'send') ask();
       } });
       voiceLoop = createVoiceLoop({capture:voice,speaker,canListen:()=>!gone&&mode==='voice'&&!document.hidden&&windowFocused,onChange:()=>{if(!gone)paint();}});
-      voicePane.append(voice.status);
+      mountComposerDictation(view.querySelector('.pr-compose'), voice);
       if (session.discipline === 'lld') {
         editor = mountPythonEditor(canvas, code, {
           controls: editorControls, label: 'Python practice document', onChange: changed,
@@ -340,7 +357,8 @@ export function initPractice(host, { slug, id }) {
       } else {
         const ex = await loadExcalidraw(); if (gone) return;
         boardRoot = ex.createRoot(canvas);
-        boardRoot.render(ex.createElement(ex.Excalidraw, { theme: getSettings().dark ? 'dark' : 'light', excalidrawAPI: api => { boardApi = api; }, initialData: { elements: structuredClone(elements), scrollToContent: true }, onChange: next => {
+        boardRoot.render(ex.createElement(ex.Excalidraw, { theme: getSettings().dark ? 'dark' : 'light', excalidrawAPI: api => { boardApi = api; }, initialData: { elements: structuredClone(elements), scrollToContent: true }, onChange: (next, appState) => {
+          boardControls.sync(appState?.zoom?.value);
           // Keep the comparison baseline detached from the canvas's mutable objects.
           if (JSON.stringify(next) === JSON.stringify(elements)) return; elements = structuredClone(next); changed();
         }, UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, export: false } } }));
@@ -394,7 +412,7 @@ export function initPractice(host, { slug, id }) {
   window.addEventListener('beforeunload', beforeUnload);
   return { destroy() {
     practiceTimer?.dispose();
-    disposeSplit();
+    disposeSplit(); conversationView?.dispose();
     clearTimeout(timer); clearTimeout(pendingPoll); if (revision !== savedRevision) save().catch(() => {});
     gone = true; voiceLoop?.dispose(); replySpeech?.cancel(); document.removeEventListener('visibilitychange',visibility); window.removeEventListener('focus',focus); window.removeEventListener('blur',blur); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('pagehide', pagehide);
     voice?.dispose({ finish: true }); speaker?.dispose(); modelPicker?.dispose();

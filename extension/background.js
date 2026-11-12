@@ -47,6 +47,11 @@ chrome.runtime.onConnect.addListener((port) => {
     return;
   }
   port.onMessage.addListener(async (message) => {
+    if (message?.type === 'random') {
+      const result = await fetchRandom();
+      try { port.postMessage(result); } catch {}
+      return;
+    }
     if (message?.type === 'details') {
       const result = await fetchDetails(message);
       try { port.postMessage(result); } catch {}
@@ -125,7 +130,7 @@ async function submit({ slug, code, lang }) {
  * background gets frozen by the browser, and a script sent into it never comes back, so
  * being loaded is not enough.
  */
-async function leetcodeTab(slug) {
+async function leetcodeTab(slug = null) {
   const open = await chrome.tabs.query({ url: `${LEETCODE}/*` });
   const ready = open.filter((t) => !t.discarded && !t.frozen && t.status === 'complete');
   ready.sort((a, b) => Number((b.url || '').includes(`/problems/${slug}/`)) - Number((a.url || '').includes(`/problems/${slug}/`)));
@@ -133,7 +138,7 @@ async function leetcodeTab(slug) {
     if (await inTab(t.id, () => true, [], PING_MS)) return { id: t.id, created: false };
   }
 
-  const created = await chrome.tabs.create({ url: `${LEETCODE}/problems/${slug}/`, active: false });
+  const created = await chrome.tabs.create({ url: slug ? `${LEETCODE}/problems/${slug}/` : `${LEETCODE}/problemset/`, active: false });
   const loaded = await new Promise((resolve) => {
     const timer = setTimeout(() => { chrome.tabs.onUpdated.removeListener(watch); resolve(false); }, TAB_LOAD_MS);
     function watch(tabId, change) {
@@ -701,5 +706,60 @@ async function pageDetails(submissionId, csrf) {
     return { ok: true, details };
   } catch (error) {
     return { ok: false, details: null, detailsError: error.message, message: 'Submission details could not be read.' };
+  }
+}
+
+// Read-only shuffle: at most two random queries, and only premium causes a second.
+async function fetchRandom() {
+  let tab = null;
+  try {
+    const [session, csrf] = await Promise.all([
+      chrome.cookies.get({ url: LEETCODE, name: 'LEETCODE_SESSION' }),
+      chrome.cookies.get({ url: LEETCODE, name: 'csrftoken' }),
+    ]);
+    if (!session?.value || !csrf?.value) return fail('SIGNED_OUT', 'Sign in on leetcode.com in this browser profile, then shuffle again.');
+    tab = await leetcodeTab();
+    if (!tab) return fail('JUDGE_UNREACHABLE', 'A LeetCode tab could not be opened. Check your connection, then shuffle again.');
+    const read = async () => await inTab(tab.id, pageRandom, [csrf.value], LOOKUP_MS)
+      || fail('JUDGE_UNREACHABLE', 'The LeetCode tab did not answer. Shuffle again.');
+    const first = await read();
+    if (!first.ok || !first.paidOnly) return first;
+    const second = await read();
+    if (!second.ok || !second.paidOnly) return second;
+    return fail('PREMIUM_PROBLEM', 'LeetCode picked a premium problem; shuffle again.');
+  } catch {
+    return fail('CONNECTOR_ERROR', 'Studio Connector could not find a random problem. Shuffle again.');
+  } finally {
+    if (tab?.created) chrome.tabs.remove(tab.id).catch(() => {});
+  }
+}
+
+// Self-contained because Chrome serializes this function into the LeetCode tab.
+async function pageRandom(csrf) {
+  const failure = (code, message, extra = {}) => ({ ok: false, code, message, ...extra });
+  try {
+    const response = await fetch(`${location.origin}/graphql/`, {
+      method: 'POST', credentials: 'include', signal: AbortSignal.timeout(15000),
+      headers: { 'content-type': 'application/json', accept: 'application/json', 'x-csrftoken': csrf, 'x-requested-with': 'XMLHttpRequest' },
+      body: JSON.stringify({ operationName: 'randomQuestion', variables: { categorySlug: 'algorithms', filters: {} },
+        query: 'query randomQuestion($categorySlug: String, $filters: QuestionListFilterInput) { randomQuestion(categorySlug: $categorySlug, filters: $filters) { titleSlug isPaidOnly } }' }),
+    });
+    if (response.status === 429) return failure('RATE_LIMITED', 'LeetCode is rate limiting requests. Wait a minute or two, then shuffle again.');
+    const json = (response.headers.get('content-type') || '').includes('json');
+    const text = json ? '' : await response.text();
+    if (response.headers.get('cf-mitigated') === 'challenge' || /Just a moment|cf-browser-verification|cdn-cgi\/challenge/i.test(text)) {
+      return failure('JUDGE_UNREACHABLE', 'Cloudflare wants this browser to verify itself. Open leetcode.com, finish the check, then shuffle again.', { challenge: true });
+    }
+    if ([401, 403].includes(response.status) || response.url?.includes('/accounts/login')) return failure('SIGNED_OUT', 'Sign in on leetcode.com, then shuffle again.');
+    if (!response.ok || !json) return failure('JUDGE_UNREACHABLE', 'LeetCode could not return a random problem. Shuffle again.');
+    const body = await response.json();
+    const question = body.data?.randomQuestion;
+    if (body.errors?.length || !question || typeof question.titleSlug !== 'string'
+      || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(question.titleSlug) || typeof question.isPaidOnly !== 'boolean') {
+      return failure('RANDOM_RESPONSE_INVALID', 'LeetCode returned an unexpected random-question response. The Connector may need an update.');
+    }
+    return { ok: true, slug: question.titleSlug, paidOnly: question.isPaidOnly };
+  } catch {
+    return failure('JUDGE_UNREACHABLE', 'LeetCode could not be reached. Check your connection, then shuffle again.');
   }
 }

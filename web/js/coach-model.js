@@ -1,3 +1,4 @@
+import { tooltip } from './tooltip.js';
 import { el } from './dom.js';
 import { createMenu } from './ui/menu.js';
 
@@ -27,7 +28,8 @@ async function load() {
 export function createCoachModelPicker({ compact = false, onPending = () => {} } = {}) {
   let disposed = false;
   let busy = false;
-  const button = el('button', { type: 'button', class: 'ui-select-button', 'aria-label': 'Coach model', text: 'Loading models…', disabled: true });
+  const button = el('button', { type: 'button', class: 'btn btn--quiet ui-select-button', 'aria-label': 'Coach model', text: 'Loading models…', disabled: true });
+  tooltip(button, () => button.getAttribute('aria-label'));
   const select = el('div', { class: 'ui-select is-compact coach-model-select' }, button);
   const notice = el('span', { class: 'coach-model-notice', role: 'status', hidden: true });
   const root = el('div', { class: `coach-model-picker${compact ? ' is-compact' : ''}` }, [select, notice]);
@@ -84,7 +86,7 @@ export function createCoachModelPicker({ compact = false, onPending = () => {} }
     const effort = reasoningEffort ? `${effortLabel(reasoningEffort)}${efforts.includes(reasoningEffort) ? '' : ' (unavailable)'}` : efforts.length ? 'Default' : '';
     button.textContent = `${entry?.label || `${model} · unavailable`}${effort ? ` · ${effort}` : ''}`;
     button.setAttribute('aria-label', `Coach model: ${button.textContent}`);
-    button.title = button.textContent;
+    button.removeAttribute('title');
     button.disabled = busy || saving;
     menu.close(false);
     pendingModel = null;

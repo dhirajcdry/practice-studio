@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Historical Studycraft receipts survive retirement of tutor authoring. Scratch data and fake delivery only.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -143,5 +144,5 @@ try {
     await new Promise(resolve => { const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 3000); child.once('exit', () => { clearTimeout(timer); resolve(); }); child.kill(); });
   }
   await new Promise(resolve => studycraft.close(resolve));
-  await fixture.cleanup(); await fsp.rm(profile, { recursive: true, force: true });
+  await fixture.cleanup(); await cleanupChrome(chrome, profile);
 }

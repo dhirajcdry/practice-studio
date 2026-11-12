@@ -51,7 +51,7 @@ export async function renderHistory(mount, { slug, onResume, current = null, dis
   const threads = data.threads;
   function paint(all = false) {
     const rows = (all ? threads : threads.slice(0, limit)).map(thread => el('button', {
-      type: 'button', class: 'recent-chat ui-inset ui-row', disabled: disabled || thread.unavailable,
+      type: 'button', class: 'ui-action-row recent-chat ui-inset ui-row', disabled: disabled || thread.unavailable,
       onclick: () => onResume(thread),
     }, [
       el('span', { class: 'ui-row-content ui-stack' }, [
@@ -65,7 +65,7 @@ export async function renderHistory(mount, { slug, onResume, current = null, dis
       el('span', { class: 'recent-chevron ui-row-trailing ui-row-chevron', 'aria-hidden': 'true' }, [icon('chevron', 16)]),
     ]));
     replace(mount, threads.length ? [el('div', { class: 'chat-history-heading', text: heading === 'Past chats' ? `${heading} · ${threads.length}` : heading }), ...rows,
-      !all && threads.length > limit ? el('button', { class: 'ws-mini', text: `Show all (${threads.length})`, onclick: () => paint(true) }) : null] : []);
+      !all && threads.length > limit ? el('button', { class: 'btn btn--quiet ws-mini', text: `Show all (${threads.length})`, onclick: () => paint(true) }) : null] : []);
   }
   paint();
 }

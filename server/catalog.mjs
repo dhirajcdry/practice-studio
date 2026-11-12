@@ -1,12 +1,16 @@
-// NeetCode 250 in its original order, plus explicitly curated practice collections.
+// NeetCode 250 in its original order, plus an optional private practice collection.
+//
+// The collection is personal data: it lives in the learner's workspace
+// (`STUDIO_HOME/collection.json`), never in this repo. Its own `id` and `label` name it.
 //
 // The wire shape is the API contract's, which is not the bundle's shape — the bundle calls
 // them `leetcodeSlug` / `leetcodeProblemNumber`. Translate once, here.
 
 import fs from 'node:fs';
+import { registerCodingSlug } from './storage-layout.mjs';
 
 /** @returns the public per-problem object exactly as the contract specifies it. */
-function toPublic(record, store, interviewPrep = null) {
+function toPublic(record, store, collection = null, interviewPrep = null) {
   const entry = {
     slug: record.leetcodeSlug,
     neetcodeSlug: record.neetcodeSlug ?? null,
@@ -18,11 +22,11 @@ function toPublic(record, store, interviewPrep = null) {
       blind75: record.lists?.blind75 === true,
       neetcode150: record.lists?.neetcode150 === true,
       neetcode250: record.lists?.neetcode250 === true,
-      'amazon-interview': Boolean(interviewPrep),
+      ...(collection ? { [collection.id]: Boolean(interviewPrep) } : {}),
     },
     isPro: record.isPro === true,
     leetcodePremium: record.leetcodePremium === true || interviewPrep?.premium === true,
-    tags: interviewPrep ? ['amazon-interview'] : [],
+    tags: interviewPrep && collection ? [collection.id] : [],
     hasPythonSolution: false,
     hasArticle: false,
     youtubeVideoId: record.youtubeVideoId ?? null,
@@ -44,9 +48,15 @@ export class Catalog {
   /**
    * @param catalogJson the NeetCode bundle
    * @param store       the vendored-solution index
-   * @param interview  optional curated interview collection
+   * @param interview  optional private practice collection ({ id, label, problems })
    */
-  constructor(catalogJson, store, interview = null) {
+  constructor(catalogJson, store, interview = null, added = []) {
+    if (interview) checkCollection(interview);
+    const collection = interview ? {
+      id: interview.id, label: interview.label,
+      note: interview.note ?? interview.disclaimer ?? null,
+      checkedAt: interview.checkedAt ?? null,
+    } : null;
     const records = Array.isArray(catalogJson.problems) ? catalogJson.problems : [];
 
     this.allPatterns = [];
@@ -86,7 +96,7 @@ export class Catalog {
       if (emitted.has(r.leetcodeSlug)) continue;
       emitted.add(r.leetcodeSlug);
       const prep = curated.get(r.leetcodeSlug) ?? null;
-      const entry = toPublic(r, store, prep);
+      const entry = toPublic(r, store, collection, prep);
       this.problems.push(entry);
       this.bySlug.set(entry.slug, entry);
       if (r.lists?.neetcode250 === true) this.neetcode250.push(entry);
@@ -94,26 +104,66 @@ export class Catalog {
         seen.add(entry.pattern);
         this.patterns.push(entry.pattern); // first-appearance order == NeetCode's order
       }
+      if (r.lists?.added === true) entry.lists.added = true;
+      if (r.lists?.others === true) entry.lists.others = true;
     }
 
     this.source = catalogJson.source?.bundleURL ?? catalogJson.source?.site ?? null;
     this.totalRecords = records.length;
     this.interviewPrep = interview ?? null;
+    this.collection = collection;
+    for (const record of added) {
+      // Records from before source labels existed are learner-added by definition.
+      const lists = record.lists ?? {};
+      const normalized = lists.added !== true && lists.others !== true
+        ? { ...record, lists: { ...lists, added: true } } : record;
+      this.add(normalized, store);
+    }
   }
 
   get(slug) {
     return this.bySlug.get(slug) ?? null;
   }
+
+  add(record, store) {
+    registerCodingSlug(record.leetcodeSlug);
+    if (this.bySlug.has(record.leetcodeSlug)) return this.bySlug.get(record.leetcodeSlug);
+    const lists = { ...(record.lists ?? {}) };
+    if (lists.added !== true && lists.others !== true) lists.added = true;
+    const entry = toPublic({ ...record, lists }, store, this.collection ? { id: this.collection.id } : null, null);
+    if (lists.added === true) entry.lists.added = true;
+    if (lists.others === true) entry.lists.others = true;
+    this.problems.push(entry); this.bySlug.set(entry.slug, entry);
+    return entry;
+  }
 }
 
-export function loadCatalog(catalogFile, store, interviewFile = null) {
-  const json = JSON.parse(fs.readFileSync(catalogFile, 'utf8'));
-  const overlayPath = interviewFile ?? new URL('../data/amazon-interview.json', import.meta.url);
-  let interview = null;
-  try { interview = JSON.parse(fs.readFileSync(overlayPath, 'utf8')); } catch (error) {
-    if (error.code !== 'ENOENT' || interviewFile) throw error;
+const BUILT_IN_LISTS = new Set(['blind75', 'neetcode150', 'neetcode250', 'added', 'others']);
+
+function checkCollection(c) {
+  if (typeof c.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(c.id) || BUILT_IN_LISTS.has(c.id)) {
+    throw new Error(`collection id must be a lowercase slug that is not a built-in list, got ${JSON.stringify(c.id)}`);
   }
-  return new Catalog(json, store, interview);
+  if (typeof c.label !== 'string' || !c.label.trim()) throw new Error('collection needs a label');
+  if (!Array.isArray(c.problems)) throw new Error('collection needs a problems array');
+}
+
+/**
+ * @param collectionFile the private collection, or null for none. A missing file is
+ *   normal (most workspaces have none); a malformed one is an error, not silently dropped.
+ */
+export function loadCatalog(catalogFile, store, collectionFile = null, addedFile = null) {
+  const json = JSON.parse(fs.readFileSync(catalogFile, 'utf8'));
+  let interview = null;
+  if (collectionFile) {
+    try { interview = JSON.parse(fs.readFileSync(collectionFile, 'utf8')); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  let added = [];
+  if (addedFile) { try { added = JSON.parse(fs.readFileSync(addedFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+  if (!Array.isArray(added)) throw new Error('The saved problem list is malformed.');
+  return new Catalog(json, store, interview, added);
 }
 
 /**

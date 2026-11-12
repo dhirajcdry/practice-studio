@@ -469,6 +469,8 @@ export async function loadHistory(slug) {
   return {
     ok: true,
     threads: Array.isArray(result.data?.threads) ? result.data.threads : [],
+    // The conversation the next message continues unless a new chat is started.
+    currentSessionId: typeof result.data?.currentSessionId === 'string' ? result.data.currentSessionId : null,
   };
 }
 

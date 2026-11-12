@@ -1,11 +1,15 @@
+import { relativeInterviewDate } from './interview-format.js';
+import { createCoachModelPicker } from './coach-model.js';
+import { screenHeader, paneHeader } from './ui/headers.js';
+import { practiseFromMock } from './ui/button.js';
 import { createMockTimeControls, mockTimeReading } from './ui/mock-time.js';
-import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
+import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { bindBoardTools, showWorkspaceAction } from './workspace-tools.js';
-import { loadExcalidraw } from './whiteboard.js';
-import { createPracticeLauncher, initPractice, startPracticeFromMock } from './practice.js';
+import { loadExcalidraw, boardTools } from './whiteboard.js';
+import { initPractice, startPracticeFromMock } from './practice.js';
 import { openLearningNotes } from './learning.js';
-import { createLearnerSummary } from './learner.js';
 import { createInterviewSetup } from './interview.js';
+import { mountTrackHome } from './track-home.js';
 import { createInterviewMode } from './interview-mode.js';
 // The system design interview: a whiteboard, and someone asking about it.
 //
@@ -30,14 +34,14 @@ import { createInterviewMode } from './interview-mode.js';
 // instead of quietly charging you for the night.
 
 import { el, replace } from './dom.js';
-import { conversationText, setConversationText, appendConversationText } from './ui/conversation.js';
+import { conversationMessage, bindConversation, conversationSeparator, thinkingRow, conversationText, setConversationText, appendConversationText } from './ui/conversation.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { installPaneResizer } from './ui/split-pane.js';
 import { openReport } from './interview-report.js';
 import { streamInterviewRequest } from './interview-transport.js';
 import { onSettingsChange } from './settings.js';
 import { createSelect } from './ui/select.js';
-import { when } from './history.js';
+import { createBadge } from './ui/badge.js';
 import { createSpeechStream } from './speech-stream.js';
 import { createVoicePanel, answerModeSwitch, micToggle, paintMicToggle, replayButton, interviewerSilentNote } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
@@ -106,25 +110,27 @@ function countLabel(n) {
 
 /** Date · level · questions · whether it was graded. Every part of it is known, not guessed. */
 function metaOf(item) {
-  const bits = [];
-  bits.push(item.startedAt ? when(item.startedAt) : 'date not recorded');
-  if (item.level) bits.push(item.level);
-  bits.push(countLabel(item.turns));
-  bits.push(item.debriefed ? 'debriefed' : 'no debrief');
-  return bits.join('  ·  ');
+  return [item.level?.toUpperCase(), item.startedAt ? relativeInterviewDate(item.startedAt) : 'Date not recorded', countLabel(item.turns)].filter(Boolean);
 }
 
 /** Put the transcript back on screen, in the order it was said. */
-function replayTurns(turns, entry, log) {
+function replayTurns(turns, entry, log, beganAt) {
+  let lastPhase = null;
   for (const turn of turns ?? []) {
+    const start = typeof beganAt === 'number' ? beganAt : Date.parse(beganAt);
+    const elapsedMs = turn.elapsedMs ?? (Number.isFinite(start) && Number.isFinite(Date.parse(turn.at)) ? Math.max(0, Date.parse(turn.at) - start) : undefined);
+    if (log && turn.phase && turn.phase !== lastPhase) {
+      lastPhase = turn.phase;
+      log.append(conversationSeparator(PHASE_LABELS.get(lastPhase) || lastPhase, { phase: true, value: lastPhase }));
+    }
     if (turn.kind === 'tool_action') { if (log) showWorkspaceAction(log, turn.action, { replay: true }); continue; }
     if (turn.kind === 'debrief') {
       if (turn.asked) entry('d', turn.asked.trim().startsWith('{') ? 'Report ready.' : turn.asked);
       continue;
     }
-    if (turn.said) entry('a', turn.said);
+    if (turn.said) { entry('a', turn.said, elapsedMs); if (log?.lastElementChild && turn.phase) log.lastElementChild.dataset.phase = turn.phase; }
     if (['interviewer_silent', 'suppressed_filler'].includes(turn.kind) && turn.requestId && log) log.append(interviewerSilentNote());
-    if (turn.asked) entry('q', turn.asked);
+    if (turn.asked) { entry('q', turn.asked, elapsedMs); if (log?.lastElementChild && turn.phase) log.lastElementChild.dataset.phase = turn.phase; }
   }
 }
 
@@ -143,129 +149,36 @@ async function showDesignReport(id, transcript) {
 /* ---------------- the library ---------------- */
 
 /**
- * Every interview there has ever been, newest first.
- *
- * The list endpoint cannot say whether an unfinished interview can actually be picked
- * back up — that depends on a CLI thread only GET /api/design/:id knows about. So rows
- * are painted at once with "Open", which is true of every interview, and the unfinished
- * ones are upgraded to "Resume" as each detail call comes back. At no instant does a row
- * offer something that would fail.
+ * The System design home: next session, skills and problems (see track-home.js).
+ * Preset topics start from their prompt alone; a prepared problem also names its slug,
+ * which the server checks against the saved problem before the interview begins.
  */
 function mountLibrary(host, { onNew, onOpen }) {
-  let gone = false;
-
-  const list = el('div', { class: 'dzl-list' });
-  const newButton = el('button', {
-    class: 'dzl-new', type: 'button', text: 'Start a new mock', onclick: () => { setup.hidden = false; newButton.hidden = true; topicSelect.focus(); },
-  });
-  const topicSelect = createSelect({ label: 'System design problem', value: '', options: [['', 'Choose for me · unseen'], ['Design a URL-shortening service.', 'URL shortener'], ['Design a messaging service for one-to-one conversations.', 'Messaging'], ['Design a cloud file-storage service.', 'File storage'], ['Design a personalized news-feed service.', 'News feed']] });
-  const mock = createInterviewSetup({ slug: 'design-new-mock', discipline: 'design', label: 'A mock shaped by your practice', startLabel: 'Begin interview', onStart: async state => {
-    const problem = topicSelect.value ? null : (await callJson('/api/mock/prepare', { discipline: 'design', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
-    if (!gone) onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: problem?.statement || topicSelect.value, problemSlug: problem?.slug, requestId: state.startRequestId });
-  } });
-  const learner = createLearnerSummary('design');
-  const practice = createPracticeLauncher({ discipline: 'design', problems: [
-    { slug: 'design-url-shortener', title: 'URL shortener', statement: 'Design a URL-shortening service.' },
-    { slug: 'design-messaging', title: 'Messaging', statement: 'Design a messaging service for one-to-one conversations.' },
-    { slug: 'design-file-storage', title: 'File storage', statement: 'Design a cloud file-storage service.' },
-    { slug: 'design-news-feed', title: 'News feed', statement: 'Design a personalized news-feed service.' },
-  ] });
-  const setup = el('div', { class: 'dz-setup ui-stack', hidden: true }, [
-    el('h2', { text: 'Set up your interview' }),
-    el('p', { text: 'Let the interviewer choose a fresh problem using your history, or pick a specific topic.' }),
-    topicSelect, mock.root,
-    el('button', { class: 'btn btn--quiet', type: 'button', text: 'Cancel', onclick: () => { setup.hidden = true; newButton.hidden = false; newButton.focus(); } }),
-  ]);
-
-  const view = el('div', { class: 'dzl' }, [
-    el('div', { class: 'dzl-head' }, [
-      el('div', {}, [
-        el('div', { class: 'mono dzl-kicker', text: 'System design' }),
-        el('div', { class: 'dzl-lede', text: 'Your interviews, saved. Pick one up where you left it, or read one back.' }),
-      ]),
-      el('span', { class: 'spacer' }),
-      newButton,
-    ]),
-    setup, practice.root, learner.root,
-    list,
-  ]);
+  let presets = new Set();
+  const view = el('div', { class: 'dzl' });
   replace(host, view);
-
-  replace(list, el('div', { class: 'dzl-empty mono', text: 'Looking for past interviews…' }));
-
-  function row(item) {
-    const action = el('button', {
-      class: 'dzl-go', type: 'button', text: item.debriefed ? 'Open' : 'Read',
-      title: item.debriefed ? 'Read the transcript and the board' : 'Read what there is so far',
-      onclick: () => onOpen(item.id),
-    });
-    const note = el('div', { class: 'dzl-note', hidden: true });
-    const node = el('div', { class: 'dzl-row ui-inset ui-inset--roomy ui-cluster' }, [
-      el('div', { class: 'dzl-main ui-cluster-content' }, [
-        el('div', { class: 'dzl-title', text: titleOf(item) }),
-        el('div', { class: 'mono dzl-meta', text: metaOf(item) }),
-        note,
-      ]),
-      el('div', { class: 'ui-cluster' }, [item.topicSlug ? el('button', { class: 'btn btn--quiet', text: 'Learning notes', onclick: () => openLearningNotes(item.topicSlug, titleOf(item)) }) : null,
-        el('button', { class: 'btn btn--quiet', text: 'Practise from this mock', onclick: async event => {
-          const button = event.currentTarget; button.disabled = true;
-          try { await startPracticeFromMock({ discipline: 'design', slug: item.topicSlug, interviewId: item.id }); }
-          catch (error) { note.hidden = false; note.textContent = error.message; button.disabled = false; }
-        } }), action]),
-    ]);
-    return { node, action, note };
-  }
-
-  (async () => {
-    let interviews;
-    try {
-      ({ interviews } = await callJson('/api/design'));
-    } catch (error) {
-      if (gone) return;
-      replace(list, el('div', { class: 'dzl-empty' }, [
-        'The saved interviews could not be read. ', error.message,
-      ]));
-      return;
-    }
-    if (gone) return;
-
-    const items = [...(interviews ?? [])].reverse();   // the store lists oldest first
-    if (!items.length) {
-      replace(list, el('div', { class: 'dzl-empty' },
-        'No interviews yet. Choose a problem to start your first interview.'));
-      return;
-    }
-
-    const rows = items.map((item) => ({ item, ...row(item) }));
-    replace(list, rows.map((r) => r.node));
-
-    // Only the unfinished ones need asking about, and only the recent ones are plausibly
-    // still resumable — a thread the CLI forgot months ago is not worth a round trip.
-    for (const r of rows.filter((x) => !x.item.debriefed).slice(0, 20)) {
-      if (gone) return;
-      let detail;
-      try { detail = await callJson(`/api/design/${encodeURIComponent(r.item.id)}`); } catch { continue; }
-      if (gone) return;
-      if (detail.resumable) {
-        r.action.textContent = 'Resume';
-        r.action.classList.add('on');
-        r.action.title = 'Carry on from where you stopped — the clock picks up too';
-        if (detail.rebuilt) {
-          // The thread that asked these questions is gone; a new one reads the
-          // transcript instead. True either way, so it is said either way.
-          r.note.hidden = false;
-          r.note.textContent = 'Continues from the saved transcript.';
-        }
-      } else {
-        // Only reachable if it was debriefed between the list call and this one — a
-        // race, not a dead thread. The row already says "debriefed" in its meta line.
-        r.note.hidden = false;
-        r.note.textContent = 'Finished while this list was loading — open it to read the debrief.';
-      }
-    }
-  })();
-
-  return { destroy() { gone = true; topicSelect.dispose(); mock.dispose(); learner.dispose(); practice.dispose(); } };
+  return mountTrackHome(view, {
+    discipline: 'design', title: 'System design',
+    loadInterviews: async () => {
+      const { interviews, topics } = await callJson('/api/design');
+      presets = new Set((topics || []).map(topic => topic.slug));
+      return { presetSlugs: presets, interviews: (interviews || []).map(item => ({
+        id: item.id, slug: item.topicSlug, startedAt: item.startedAt, debriefed: item.debriefed,
+        title: typeof item.prompt === 'string' && item.prompt.trim() ? item.prompt.trim() : titleOf(item),
+      })) };
+    },
+    openInterview: item => onOpen(item.id),
+    createNewMock: () => {
+      const topicSelect = createSelect({ label: 'System design problem', value: '', options: [['', 'Choose for me · unseen'], ['Design a URL-shortening service.', 'URL shortener'], ['Design a messaging service for one-to-one conversations.', 'Messaging'], ['Design a cloud file-storage service.', 'File storage'], ['Design a personalized news-feed service.', 'News feed']] });
+      const mock = createInterviewSetup({ slug: 'design-new-mock', discipline: 'design', label: 'Mock interview', description: 'Let the interviewer choose a fresh problem using your history, or pick a topic.', startLabel: 'Begin interview', onStart: async state => {
+        const problem = topicSelect.value ? null : (await callJson('/api/mock/prepare', { discipline: 'design', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
+        onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: problem?.statement || topicSelect.value, problemSlug: problem?.slug, requestId: state.startRequestId });
+      } });
+      return { root: el('div', { class: 'ui-stack' }, [topicSelect, mock.root]), dispose() { topicSelect.dispose(); mock.dispose(); } };
+    },
+    startMock: (problem, state) => onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode,
+      prompt: problem.statement, problemSlug: presets.has(problem.slug) ? undefined : problem.slug, requestId: state.startRequestId }),
+  });
 }
 
 /* ---------------- one interview, read back ---------------- */
@@ -284,18 +197,16 @@ function mountReview(host, data, { onBack }) {
 
   const log = el('div', { class: 'dz-log ui-pane-scroll ui-inset', tabindex: '0', 'aria-label': 'Interview transcript' });
 
-  const entry = (kind, text) => {
-    log.append(el('div', { class: `dz-entry dz-${kind}` }, [
-      el('span', { class: 'mono dz-who', text: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief' }),
-      conversationText(text, { className: 'dz-body', user: kind === 'a' }),
-    ]));
+  const conversationView = bindConversation(log);
+  const entry = (kind, text, elapsedMs) => {
+    log.append(conversationMessage({ speaker: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief', user: kind === 'a', text, elapsedMs, className: `dz-entry dz-${kind}` }));
   };
 
   if (!data.turns?.length) {
     log.append(el('div', { class: 'dzl-empty' },
       'Nothing was said in this interview — it was closed before the first question.'));
   } else {
-    replayTurns(data.turns, entry, log);
+    replayTurns(data.turns, entry, log, data.startedAt);
   }
 
   // An interview without a debrief is not a finished interview, and must not read like
@@ -308,28 +219,31 @@ function mountReview(host, data, { onBack }) {
           : 'It can still be resumed.') }));
   }
 
+  const phaseFilter = createSelect({ label: 'Transcript phase', value: '', options: [['', 'All phases'], ...PHASES], onChange: event => {
+    for (const item of log.children) item.hidden = Boolean(event.target.value && item.dataset.phase !== event.target.value);
+  } });
   const canvasHost = el('div', { class: 'dz-canvas ui-editor-surface' },
     el('div', { class: 'dz-loading mono', text: 'Loading the board…' }));
+  const boardControls = boardTools(() => boardApi);
 
   const view = el('div', { class: 'dz-view ui-workspace' }, [
-    el('div', { class: 'dz-bar' }, [
-      el('button', { class: 'dz-back linkbtn', type: 'button', text: '← Interviews', onclick: () => onBack() }),
-      el('span', { class: 'mono dz-title dzr-prompt', text: titleOf(data) }),
-      data.topicSlug ? el('button', { class: 'btn btn--quiet', text: 'Learning notes', onclick: () => openLearningNotes(data.topicSlug, titleOf(data)) }) : null,
-      el('button', { class: 'btn btn--secondary', text: 'Practise from this mock', onclick: async event => {
-        const button = event.currentTarget; button.disabled = true;
-        try { await startPracticeFromMock({ discipline: 'design', slug: data.topicSlug, interviewId: data.id }); }
-        catch (error) { button.disabled = false; entry('d', error.message); }
-      } }),
-      data.report ? el('button', { class: 'btn btn--secondary', text: 'View report', onclick: () => showDesignReport(data.id, log).catch(error => entry('d', error.message)) }) : null,
-      el('span', { class: 'spacer' }),
-      el('span', { class: 'mono dim', text: metaOf({ ...data, turns: data.turns?.length ?? 0 }) }),
-    ]),
+    screenHeader({ back: { onClick: onBack, label: 'Back to interviews', className: 'dz-back' }, crumb: 'Interviews', title: titleOf(data),
+      badges: [createBadge(data.debriefed ? 'Debriefed' : 'In progress', data.debriefed ? 'good' : 'neutral')],
+      meta: metaOf({ ...data, turns: data.turns?.length ?? 0 }),
+      actions: {
+        primary: data.debriefed ? { label: 'View report', variant: 'primary', onClick: () => showDesignReport(data.id, log).catch(error => entry('d', error.message)) } : null,
+        secondary: [data.topicSlug ? { label: 'Learning notes', onClick: () => openLearningNotes(data.topicSlug, titleOf(data)) } : null,
+          practiseFromMock({ variant: data.debriefed ? 'secondary' : 'primary', onClick: async event => {
+            const button = event.currentTarget; button.disabled = true;
+            try { await startPracticeFromMock({ discipline: 'design', slug: data.topicSlug, interviewId: data.id }); }
+            catch (error) { button.disabled = false; entry('d', error.message); }
+          } })],
+      },
+    }),
     el('div', { class: 'dz-split' }, [
-      canvasHost,
+      el('section', { class: 'ui-board-pane has-board-tools is-review' }, [paneHeader({ title: 'Whiteboard', tools: boardControls }), canvasHost]),
       el('div', { class: 'dz-side ui-pane' }, [
-        el('div', { class: 'dz-phases' }, el('span', { class: 'dz-phase', 'aria-pressed': 'true',
-          text: PHASE_LABELS.get(data.phase) ?? 'Read-only' })),
+        paneHeader({ title: 'Transcript', tools: [phaseFilter] }),
         log,
       ]),
     ]),
@@ -353,6 +267,7 @@ function mountReview(host, data, { onBack }) {
         theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
         viewModeEnabled: true,
         excalidrawAPI: (instance) => { boardApi = instance; },
+        onChange: (_elements, appState) => boardControls.sync(appState?.zoom?.value),
         initialData: { elements: data.elements, scrollToContent: true },
         UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, export: false } },
       }));
@@ -364,7 +279,7 @@ function mountReview(host, data, { onBack }) {
     }
   })();
 
-  return { destroy() { gone = true; stopTheme(); root?.unmount(); root = null; boardApi = null; } };
+  return { destroy() { gone = true; conversationView.dispose(); stopTheme(); root?.unmount(); root = null; boardApi = null; } };
 }
 
 /* ---------------- one interview, live ---------------- */
@@ -407,6 +322,13 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   /* ---- the transcript column ---- */
 
   const log = el('div', { class: 'dz-log ui-pane-scroll ui-inset', tabindex: '0', 'aria-label': 'Interview transcript' });
+  let following = true, lastLogTop = 0;
+  log.addEventListener('wheel', event => { if (event.deltaY < 0) following = false; }, { passive: true });
+  log.addEventListener('scroll', () => {
+    if (log.scrollTop < lastLogTop) following = false;
+    if (log.scrollHeight - log.scrollTop - log.clientHeight <= 1) following = true;
+    lastLogTop = log.scrollTop;
+  });
   let pausedElapsed = 0;
   const clock = el('span', { class: 'mono dz-clock' });
   const timeControls = createMockTimeControls({ clock, extend: async change => {
@@ -416,11 +338,11 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   function paintTimeControls() {
     timeControls.update({ disabled: !interviewId || busy || timeControls.saving || draining || modeControl.saving || changingPause || finishing, hidden: debriefed });
   }
-  const pauseButton = el('button', { class: 'dz-pause', type: 'button', text: 'Pause',
+  const pauseButton = el('button', { class: 'btn btn--quiet dz-pause', type: 'button', text: 'Pause',
     title: 'Pause the timer and microphone without ending your interview', disabled: true, onclick: () => togglePause() });
   const phaseBar = el('div', { class: 'dz-phases', role: 'group', 'aria-label': 'Interview phase' }, PHASES.map(([id, label]) =>
     el('button', {
-      class: 'dz-phase', type: 'button', dataset: { phase: id },
+      class: 'btn btn--quiet dz-phase', type: 'button', dataset: { phase: id },
       'aria-pressed': String(id === phase),
       text: label,
       title: `Tell the interviewer you have moved on to ${label.toLowerCase()}`,
@@ -434,7 +356,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   }
 
   const input = el('textarea', {
-    class: 'dz-input', rows: '3', placeholder: 'Explain your approach, assumptions, and trade-offs…',
+    class: 'dz-input', rows: '3', placeholder: 'Talk through your approach',
     'aria-label': 'Your answer',
     onkeydown: (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.altKey && !hasOpenOverlay() && claimActionKey(e)) answer();
@@ -445,10 +367,10 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   try { pendingRequest = JSON.parse(localStorage.getItem('design-request:' + resumed?.id)); } catch { /* no saved request */ }
   const draft = readDraft(resumed?.id ? 'design:' + resumed.id : '');
   if (draft?.text) input.value = draft.text;
-  input.addEventListener('input', () => { if (interviewId) saveDraft('design:' + interviewId, input.value); });
+  input.addEventListener('input', () => { if (interviewId) saveDraft('design:' + interviewId, input.value); paintDraft(); });
 
   const inputSize = bindComposerInput(input);
-  const sendButton = composerSend(el('button', { class: 'dz-send', type: 'button', onclick: () => answer() }));
+  const sendButton = composerSend(el('button', { class: 'btn btn--quiet dz-send', type: 'button', onclick: () => answer() }));
 
   const micSlot = el('span', { class: 'dz-mic' });
   const status = el('div', { class: 'dz-status mono', role: 'status', text: '' });
@@ -460,7 +382,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
 
   // Speaking cuts playback immediately; the button and Escape remain alternatives.
   const skipButton = el('button', {
-    class: 'btn btn--secondary btn--sm', type: 'button', hidden: true, text: 'Interrupt · Esc',
+    class: 'btn btn--secondary', type: 'button', hidden: true, text: 'Interrupt · Esc',
     title: 'Stop the interviewer and start answering (Esc)',
     onclick: () => interrupt(),
   });
@@ -480,7 +402,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     else { micMuted = false; openMic(); }
     paintVoice();
   });
-  function paintDraft() { paintVoice(); paintTimeControls(); }
+  function paintDraft() { paintVoice(); paintTimeControls(); sendButton.disabled = !input.value.trim() || busy || paused || draining; }
   let writingDraft = false;
   const unwatchDraft = interviewId ? watchDraft('design:' + interviewId, text => {
     if (writingDraft) return;
@@ -489,7 +411,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     if (pendingDraft && isVoice()) closeMic();
     paintDraft();
   }) : () => {};
-  const sendVoice = composerSend(el('button', { class: 'dz-voice-send', type: 'button', onclick: () => answer() }));
+  const sendVoice = composerSend(el('button', { class: 'btn btn--quiet dz-voice-send', type: 'button', onclick: () => answer() }));
   const voicePanel = el('div', { class: 'dz-voice', hidden: true }, [voiceView.root]);
   voiceView.setControls({ lead: [micButton], actions: [skipButton, typeLink, sendVoice] });
   const typePanel = el('div', { class: 'dz-type' }, input);
@@ -531,7 +453,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       modeStatus.hidden = !state.pending; modeStatus.textContent = state.error ? 'Mode changed here; saving failed.' : 'Saving answer mode…';
       modeRetry.hidden = !state.error;
       paintDraft();
-      sendButton.disabled = busy || timeControls.saving || draining || state.saving || paused || changingPause;
+      sendButton.disabled = !input.value.trim() || busy || timeControls.saving || draining || state.saving || paused || changingPause;
       doneButton.disabled = busy || timeControls.saving || draining || state.saving || paused || changingPause || !interviewId;
       if (!state.pending) openMic();
     },
@@ -561,24 +483,30 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       if (voice?.hasTranscriptionError()) { say('Retry or discard the failed audio before sending.'); return false; }
       return !destroyed;
     } catch (error) { say(error.message); return false; }
-    finally { draining = false; if (!destroyed) { paintDraft(); sendButton.disabled = busy || paused; } }
+    finally { draining = false; if (!destroyed) { paintDraft(); sendButton.disabled = !input.value.trim() || busy || paused; } }
   }
   const doneButton = el('button', {
-    class: 'dz-done', type: 'button', text: 'Done — debrief me',
+    class: 'btn btn--quiet dz-done', type: 'button', text: 'Finish', 'data-danger': 'true',
     onclick: () => finish(),
   });
 
   function say(what) { status.textContent = what; }
 
   /** One entry in the transcript. Returns the node so tokens can stream into it. */
-  function entry(kind, text = '') {
+  let replaying = false;
+  let lastEntryPhase = null;
+  function entry(kind, text = '', elapsedMs = replaying ? undefined : paused ? pausedElapsed : startedAt ? Math.max(0, Date.now() - startedAt) : undefined) {
+    if (!replaying && kind !== 'd' && phase !== lastEntryPhase) {
+      log.append(conversationSeparator(PHASE_LABELS.get(phase) || phase, { phase: true, value: phase }));
+      lastEntryPhase = phase;
+    }
     const body = conversationText(text, { className: 'dz-body', user: kind === 'a' });
-    const node = el('div', { class: `dz-entry dz-${kind}` }, [
-      el('span', { class: 'mono dz-who' }, [kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief', kind === 'q' ? replayButton(() => body.dataset.markdown, replayReply) : null]),
-      body,
-    ]);
+    const node = conversationMessage({ speaker: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief', user: kind === 'a', body, elapsedMs,
+      className: `dz-entry dz-${kind}`, dataset: { phase }, actions: kind === 'q' ? [replayButton(() => body.dataset.markdown, replayReply)] : [] });
+    node.hidden = Boolean(livePhaseFilter.value && phase !== livePhaseFilter.value);
     log.append(node);
-    log.scrollTop = log.scrollHeight;
+    if (kind === 'a') following = true;
+    if (following) log.scrollTop = log.scrollHeight;
     return body;
   }
 
@@ -596,6 +524,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     if (!idle) say('thinking…');
     if (isVoice() && !idle) paintVoice('Thinking…', 'think');
     // An answer may be met with silence, so its bubble waits for words to put in it.
+    const thinking = thinkingRow(); log.append(thinking);
     const answering = url === '/api/design/turn';
     let target = answering ? null : entry(kind), silent = false;
     const reply = () => (target ??= entry(kind));
@@ -605,10 +534,12 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     try {
       await streamPost(url, body, {
         onToken: (text) => {
+          thinking.remove();
+      if (target) target.dataset.streaming = 'false';
           if (destroyed) return;
-          const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+          const follow = following;
           if (kind === 'd') setConversationText(reply(), 'Writing your report…');
-          else appendConversationText(reply(), text);
+          else { appendConversationText(reply(), text); reply().dataset.streaming = 'true'; }
           if (follow) log.scrollTop = log.scrollHeight;
           // A reply to earlier words is shown, not spoken over the candidate's new ones.
           if (answering && !speechInterrupted && (candidateLoud || input.value.trim())) interrupt();
@@ -666,7 +597,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       }
       if (!silent && !idle && !reply().textContent.trim() && !cut) setConversationText(reply(), 'No response was received.');
       if (silent && !idle && !destroyed) {
-        const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        const follow = following;
         log.append(interviewerSilentNote({ live: true }));
         if (follow) log.scrollTop = log.scrollHeight;
       }
@@ -677,10 +608,12 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       setConversationText(reply(), error.message);
       reply().closest('.dz-entry')?.classList.add('dz-err');
     } finally {
+      thinking.remove();
+      if (target) target.dataset.streaming = 'false';
       replyFailed = failed;
       busy = false;
       paintDraft();
-      sendButton.disabled = false;
+      sendButton.disabled = !input.value.trim();
       doneButton.disabled = paused;
       pauseButton.disabled = !interviewId || debriefed;
       practise.disabled = !interviewId;
@@ -733,6 +666,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     api?.updateScene({ appState: { viewModeEnabled: true } });
     doneButton.disabled = true;
     doneButton.textContent = 'View report';
+    doneButton.removeAttribute('data-danger');
+    doneButton.classList.replace('btn--quiet', 'btn--primary');
+    view.querySelector('.ui-header-actions').append(doneButton);
     doneButton.disabled = false;
     doneButton.onclick = () => showDesignReport(interviewId, log).catch(error => say(error.message));
     await showDesignReport(interviewId, log).catch(error => say(error.message));
@@ -748,7 +684,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     clock.classList.toggle('paused', paused);
     paintClock();
     input.disabled = paused;
-    sendButton.disabled = paused || busy;
+    sendButton.disabled = !input.value.trim() || paused || busy;
     doneButton.disabled = paused || busy;
     typeLink.disabled = paused;
     voiceLink.disabled = paused || !speechSupported() || !voice;
@@ -837,7 +773,11 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
 
   const canvasHost = el('div', { class: 'dz-canvas ui-editor-surface' },
     el('div', { class: 'dz-loading mono', text: 'Loading the whiteboard…' }));
-  const practise = el('button', { class: 'btn btn--quiet', text: 'Practise from this mock', disabled: !interviewId, onclick: async event => {
+  const boardControls = boardTools(() => api);
+  const livePhaseFilter = createSelect({ label: 'Transcript phase', value: '', options: [['', 'All phases'], ...PHASES], onChange: event => {
+    for (const item of log.children) item.hidden = Boolean(event.target.value && item.dataset.phase !== event.target.value);
+  } });
+  const practise = practiseFromMock({ variant: 'secondary',  disabled: !interviewId, onClick: async event => {
     const button = event.currentTarget; button.disabled = true;
     try {
       clearTimeout(sceneTimer);
@@ -846,27 +786,16 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     } catch (error) { button.disabled = false; modeStatus.hidden = false; modeStatus.textContent = error.message; }
   } });
 
-  const composer = createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [voiceLink], trailing: [typeActions], notices: [modeStatus, modeRetry] });
+  const modelPicker = createCoachModelPicker({ compact: true });
+  const composer = createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [modelPicker.root, voiceLink], trailing: [typeActions], notices: [modeStatus, modeRetry] });
   const view = el('div', { class: 'dz-view ui-workspace' }, [
-    el('div', { class: 'dz-bar' }, [
-      el('button', { class: 'dz-back linkbtn', type: 'button', text: '← Interviews',
-        title: 'Leave this interview open and go back — the clock stops', onclick: () => onBack() }),
-      el('span', { class: 'mono dz-title', text: 'System design' }),
-      el('span', { class: 'mono dim', text: level }),
-      timeControls.root,
-      pauseButton,
-      practise,
-      el('span', { class: 'spacer' }),
-      doneButton,
-    ]),
+    screenHeader({ back: { onClick: onBack, label: 'Back to interviews', className: 'dz-back' }, crumb: 'Interviews', title: 'System design', meta: [level],
+      status: timeControls.root, actions: { secondary: [pauseButton, doneButton, { label: 'Learning notes', onClick: async () => { if (!interviewId) return; try { const saved = await callJson(`/api/design/${interviewId}`); if (saved.topicSlug) openLearningNotes(saved.topicSlug, titleOf(saved)); else entry('d', 'No problem notes are associated with this interview.'); } catch (error) { entry('d', error.message); } } }], overflow: [practise] } }),
     el('div', { class: 'dz-split' }, [
-      canvasHost,
+      el('section', { class: 'ui-board-pane has-board-tools' }, [paneHeader({ title: 'Whiteboard', tools: boardControls }), canvasHost]),
       el('div', { class: 'dz-side ui-pane' }, [
-        el('div', { class: 'dz-panel-heading ui-toolbar' }, [
-          el('strong', { text: 'Interview' }),
-          el('span', { text: 'Board included with each answer' }),
-        ]),
-        phaseBar,
+        paneHeader({ title: 'Interview', tools: [livePhaseFilter] }),
+        el('div', { class: 'dz-phase-actions' }, phaseBar),
         log,
         composer,
       ]),
@@ -874,6 +803,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   ]);
   replace(host, view);
 
+  const conversationView = bindConversation(log, { composer, onJump: () => { following = true; } });
   const disposeSplit = installPaneResizer(view.querySelector('.dz-split'), { storageKey: 'studio.workspace-split.design.v1', label: 'Whiteboard and interviewer' });
   const onKey = (e) => {
     if (e.key === 'Escape' && speaker?.speaking && !hasOpenOverlay() && claimActionKey(e)) interrupt();
@@ -945,6 +875,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
         if (decision === 'send') answer();
       },
     });
+    mountComposerDictation(composer, voice);
     micSlot.append(voice.root);
     voice.root.classList.add('voice-control--external-preview');
   } catch { /* typing still works */ }
@@ -975,7 +906,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       boardRoot.render(ex.createElement(ex.Excalidraw, {
         theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
         excalidrawAPI: (instance) => { api = instance; bindTools(); },
-        onChange: (next) => onSceneChange(next),
+        onChange: (next, appState) => { boardControls.sync(appState?.zoom?.value); onSceneChange(next); },
         // Resuming means finding the room as you left it, so the saved scene is the
         // board's starting state rather than something drawn back onto an empty one.
         initialData: elements.length ? { elements, scrollToContent: true } : null,
@@ -994,7 +925,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     if (resumed) {
       // Everything that was said, back in the log, before the candidate is invited to
       // add to it. The clock is already shifted by the server, so it reads as time spent.
-      replayTurns(resumed.turns, (kind, text) => entry(kind, text), log);
+      replaying = true;
+      replayTurns(resumed.turns, (kind, text, elapsedMs) => entry(kind, text, elapsedMs), log, resumed.startedAt);
+      replaying = false; lastEntryPhase = resumed.turns?.at(-1)?.phase || phase;
       if (resumed.rebuilt) {
         // Said plainly: the model that answers next did not ask these questions. It is
         // reading the transcript above, same as the candidate can, not remembering it.
@@ -1023,8 +956,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   function destroy() {
       if (destroyed) return;
       destroyed = true;
-      disposeSplit();
-      inputSize.dispose(); unwatchDraft(); timeControls.dispose();
+      disposeSplit(); conversationView.dispose();
+      inputSize.dispose(); modelPicker.dispose(); unwatchDraft(); timeControls.dispose();
       clearTimeout(sceneTimer);
       if (clockTimer) clearInterval(clockTimer);
       if (turnTimer) clearInterval(turnTimer);
@@ -1089,7 +1022,7 @@ export function initDesign(host, { level = 'L4', minutes = 45, interviewId = nul
   function failed(message) {
     replace(host, el('div', { class: 'dzl' }, el('div', { class: 'dzl-empty' }, [
       message, ' ',
-      el('button', { class: 'linkbtn', type: 'button', text: 'Back to all interviews', onclick: showLibrary }),
+      el('button', { class: 'btn btn--quiet linkbtn', type: 'button', text: 'Back to all interviews', onclick: showLibrary }),
     ])));
     return { destroy() {} };
   }

@@ -214,7 +214,7 @@ export function createVoiceControl({
 
   const talkLabel = el('span', { text: 'Speak' });
   const talkButton = el('button', {
-    class: 'vc-talk', type: 'button',
+    class: 'btn btn--quiet vc-talk', type: 'button',
     'aria-label': 'Record a message for the coach. Click again to stop.',
   }, [micGlyph(), talkLabel]);
 
@@ -233,7 +233,7 @@ export function createVoiceControl({
     replace(status, [
       head ? el('span', { class: 'mono vc-statushead', text: head }) : null,
       body ? el('span', { class: 'vc-statusbody', text: body }) : null,
-      el('button', { class: 'icon-btn vc-dismiss', type: 'button', 'aria-label': 'Dismiss microphone notice', onclick: () => { if (!failedPhrases.size) note('', '', ''); } }, icon('close')),
+      el('button', { class: 'btn btn--icon icon-btn vc-dismiss', type: 'button', 'aria-label': 'Dismiss microphone notice', onclick: () => { if (!failedPhrases.size) note('', '', ''); } }, icon('close')),
     ]);
   }
 

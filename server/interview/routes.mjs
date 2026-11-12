@@ -13,7 +13,7 @@ import { SseStream } from '../coach/sse.mjs';
 import { readCoachChoice, runProviderTurn, stoppedProviderExit } from '../coach/provider.mjs';
 import { createNarrationFilter } from '../design/narration.mjs';
 import { newState, pause, resume, elapsed, advance, recordHints, observe, shouldInterject } from './state.mjs';
-import { data, systemPrompt, lldSystemPrompt, turnPrompt, rehydratePrompt, debriefPrompt } from './prompt.mjs';
+import { data, systemPrompt, lldSystemPrompt, turnPrompt, rehydratePrompt, debriefPrompt, REGRADE_NOTE } from './prompt.mjs';
 import { createSessionContext } from '../coach/session-context.mjs';
 import { contextPacket } from '../coach/context-packet.mjs';
 import { buildConversation } from '../coach/native-sessions.mjs';
@@ -150,7 +150,7 @@ async function persist(svc, state, id) {
   if (state.debriefed && state.discipline === 'lld') await refreshLearning(svc.root, state.slug);
 }
 
-async function generate(svc, state, id, body, kind, slot, stream) {
+async function generate(svc, state, id, body, kind, slot, stream, { regrade = false } = {}) {
   const key = keyOf(state.slug, id);
   const choice = await readCoachChoice(svc.root, svc);
   let conversation = svc.conversations.get(key);
@@ -184,23 +184,28 @@ async function generate(svc, state, id, body, kind, slot, stream) {
       return result;
     } : null, onAction: action => record(svc, state, id, { kind: 'tool_action', action: structuredClone(action), requestId: body.requestId, ...(debriefing ? {reviewActivity:true} : {}) }),
   });
-  const currentContext = debriefing ? reviewContextSections({state,turns,agentMemory,learnerHistory:learner,scenario:state.scenario || lldScenario(state.slug)}) : [
+  // A re-grade judges the same record afresh: the earlier report is left out, so it cannot anchor the new one.
+  const gradedTurns = regrade ? turns.filter(t => t.kind !== 'debrief' && !(t.replyKind === 'debrief' && ['partial', 'error'].includes(t.kind)) && !t.reviewActivity) : turns;
+  const currentContext = debriefing ? reviewContextSections({state,turns:gradedTurns,agentMemory,learnerHistory:learner,scenario:state.scenario || lldScenario(state.slug)}) : [
     ['Problem',state.statement],
     ...(state.discipline === 'lld' ? [['Private scenario facts; answer only what is asked',(state.scenario || lldScenario(state.slug))?.facts || '']] : []),
     ['Session decisions and unresolved questions',sessionRecord],
     ['Current workspace',{code:await readWork()}],
     ['Current interview metadata',{phase:state.phase,mode:state.mode,minutes:state.minutes,gaps:state.gaps,curveballDone:state.curveballDone}],
   ];
-  const message = debriefing ? debriefPrompt(state, [], Date.now(), {includeEvidence:false}) : turnPrompt(state, {
+  const message = debriefing ? `${debriefPrompt(state, [], Date.now(), {includeEvidence:false})}${regrade ? `\n${REGRADE_NOTE}` : ''}` : turnPrompt(state, {
     kind, said:body.said || '', code:body.code ?? state.lastCode, full:true, includeWorkspace:false, includeScenario:false,
   });
   // The notice is in this prompt now; a later turn must not repeat it.
   if (kind !== 'debrief' && state.minutes * 60000 - elapsed(state) <= 120000) state.warningGiven = true;
-  const nativeConversation = buildConversation({key:debriefing ? reviewConversationKey(state.slug,id) : `interview:${state.slug}:${id}`,
+  // Its own conversation, so the review thread's earlier report is not in front of the grader.
+  const conversationKey = regrade ? `review:${state.slug}:${id}:regrade:${body.requestId}` : debriefing ? reviewConversationKey(state.slug,id) : `interview:${state.slug}:${id}`;
+  const nativeConversation = buildConversation({key:conversationKey,
     requestId:body.requestId,message,context:currentContext,
     bootstrap:{instructions:debriefing ? '' : LIVE_MOCK_POLICY,sessionTools:!debriefing,
       sections:debriefing ? [] : [['Full saved interview record',handoffRecords(evidenceRecords(turns.filter(t => !body.requestId || t.requestId !== body.requestId)),{query:body.said||''})]]}});
   const prompt = nativeConversation.bootstrapPrompt;
+  const regraded = regrade ? { regrade: true, reportDifficulty: state.reportDifficulty || null } : {};
   let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', buffered = '', child, finished = false, sessionId = null, silent = false;
   const emit = text => {
     if (!text) return;
@@ -244,13 +249,13 @@ async function generate(svc, state, id, body, kind, slot, stream) {
             if (tags.curveball) state.curveballDone = true;
           }
         }
-        await record(svc, state, id, { kind: failure || stopped ? 'partial' : kind, replyKind: kind, asked, requestId: body.requestId, provider: choice.provider, model: choice.model, stopped });
+        await record(svc, state, id, { kind: failure || stopped ? 'partial' : kind, replyKind: kind, asked, requestId: body.requestId, provider: choice.provider, model: choice.model, stopped, ...regraded });
       }
       if (!failure && !stopped && kind === 'debrief' && !asked.trim()) {
         failure = 'The interviewer returned an empty debrief.';
       }
-      if (stopped && !asked) await record(svc, state, id, { kind: 'partial', replyKind: kind, asked: '', requestId: body.requestId, stopped: true });
-      if (failure) await record(svc, state, id, { kind: 'error', replyKind: kind, message: failure, requestId: body.requestId });
+      if (stopped && !asked) await record(svc, state, id, { kind: 'partial', replyKind: kind, asked: '', requestId: body.requestId, stopped: true, ...regraded });
+      if (failure) await record(svc, state, id, { kind: 'error', replyKind: kind, message: failure, requestId: body.requestId, ...regraded });
       if (failure || stopped) {
         state.claudeSessionId = null; conversation?.close?.();
       } else {
@@ -266,7 +271,7 @@ async function generate(svc, state, id, body, kind, slot, stream) {
           conversation?.close?.(); svc.conversations.delete(key);
         }
       }
-      if (body.requestId) state.requests[body.requestId] = { status: failure || stopped ? 'failed' : 'completed', kind, said: body.said || '' };
+      if (body.requestId) state.requests[body.requestId] = { status: failure || stopped ? 'failed' : 'completed', kind, said: body.said || '', ...(regrade ? { regrade: true } : {}) };
       await persist(svc, state, id);
       if (!failure && !stopped) await commit?.();
       if (failure) stream.error(failure);
@@ -370,13 +375,29 @@ async function action(req, res, ctx, kind) {
       if (!existing || !['opening', 'turn', 'debrief', 'event'].includes(existing.kind)) {
         throw new HttpError(409, 'NOT_RETRYABLE', 'No saved reply is available to retry.');
       }
-      kind = existing.kind;
+      kind = existing.regrade ? 'regrade' : existing.kind;
       body.said = existing.said || '';
     }
-    if (existing && existing.kind && existing.kind !== kind) {
+    const regrade = kind === 'regrade';
+    if (regrade) kind = 'debrief';
+    if (existing && existing.kind && (existing.kind !== kind || Boolean(existing.regrade) !== regrade)) {
       throw new HttpError(409, 'REQUEST_REUSED', 'This request identity was already used for another interview action.');
     }
     if (existing?.status === 'completed' || existing?.status === 'skipped') return sendJson(res, 200, { duplicate: true, skipped: existing.status === 'skipped', state: publicState(state) });
+    if (regrade) {
+      if (!state.debriefed || state.completionReason === 'no-response') throw new HttpError(409, 'NOT_GRADED', 'Only a finished interview with a report can be re-graded.');
+      if (typeof body.requestId !== 'string' || !/^[\w-]{1,100}$/.test(body.requestId)) throw new HttpError(400, 'BAD_REQUEST', 'A valid request identity is required.');
+      const turns = await svc.store.readTurns(body.slug, id);
+      if (!turns.some(t => t.kind === 'debrief')) throw new HttpError(409, 'NOT_GRADED', 'This interview has no report to re-grade.');
+      // The record is never rewritten: the new report is appended and the earlier one stays in turns.jsonl.
+      if (!Object.hasOwn(state, 'originalReportDifficulty')) state.originalReportDifficulty = state.reportDifficulty || null;
+      state.requests[body.requestId] = { status: 'accepted', kind, said: '', regrade: true };
+      await svc.store.writeState(body.slug, id, state);
+      stream = new SseStream(res);
+      stream.send('accepted', { requestId: body.requestId, said: '', state: publicState(state, true) });
+      await generate(svc, state, id, { requestId: body.requestId, said: '' }, kind, slot, stream, { regrade: true });
+      return;
+    }
     if (state.endedAt !== null && kind !== 'debrief') throw new HttpError(409, 'ENDED', 'The interview has ended. Finish its debrief first.');
     if (state.debriefed) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
     if (state.pausedAt !== null && !['resume', 'debrief', 'mode'].includes(kind)) throw new HttpError(409, 'PAUSED', 'Resume the interview first.');
@@ -573,6 +594,7 @@ export const interviewRoutes = {
   'POST /api/interview/resume': (q, r, c) => action(q, r, c, 'resume'),
   'POST /api/interview/stop': stop,
   'POST /api/interview/retry': (q, r, c) => action(q, r, c, 'retry'),
+  'POST /api/interview/regrade': (q, r, c) => action(q, r, c, 'regrade'),
   'POST /api/interview/extend': extend,
   'POST /api/interview/ask': ask,
   'GET /api/interview': list,

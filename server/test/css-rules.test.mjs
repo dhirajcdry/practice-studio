@@ -190,13 +190,13 @@ test('the coach log is block flow, not a flex column', () => {
 });
 
 // A missing palette token must not silently inherit a different family's colour.
-test('all five families define a complete light and dark palette', () => {
+test('all core families define a complete light and dark palette', () => {
   const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
   const tokens = `ink-rgb on-ink-rgb on-ink canvas card ink ink-70 ink-50 ink-35
     hair-20 hair-10 hair-06 accent accent-rgb accent-soft solid-bg solid-fg solid-edge
     solid-hover easy easy-rgb easy-soft med med-rgb med-soft hard hard-rgb hard-soft
     tok-kw tok-def shadow shadow-lift texture`.split(/\s+/);
-  for (const family of ['studio', 'desk', 'editorial', 'ink', 'terminal']) {
+  for (const family of ['studio', 'desk', 'dunes']) {
     for (const mode of ['', '.is-dark']) {
       const selector = `body.theme-${family}${mode}`;
       const palette = rules(css).filter(rule => rule.selector === selector);
@@ -211,7 +211,7 @@ test('all theme families define the component shape token contract', () => {
   const contract = `surface-card-bg surface-card-border surface-card-radius surface-card-shadow surface-card-hover-bg surface-card-hover-shadow
     row-radius row-hover-bg row-gap row-border tab-radius tab-active-bg tab-active-fg tab-active-indicator tab-active-shadow
     chip-radius chip-border chip-font float-radius float-shadow float-border`.split(/\s+/);
-  const families = ['studio', 'desk', 'editorial', 'ink', 'terminal', 'nebula', 'horizon', 'abyss', 'dunes'];
+  const families = ['studio', 'desk', 'dunes'];
   for (const family of families) {
     const base = rules(css).find(rule => rule.selector === `body.theme-${family}`);
     const dark = rules(css).find(rule => rule.selector === `body.theme-${family}.is-dark`);
@@ -254,7 +254,7 @@ test('content surfaces do not override shared inset geometry', () => {
   const surfaces = new Set(['.recent-chat', '.submission-row', '.sidebar-record-summary',
     '.submission-card', '.rr-tutor', '.state', '.ws-notice', '.ci-setup', '.ci-live-header',
     '.ci-notice', '.ci-paused', '.ci-score-hero', '.ci-empty-session', '.set-card',
-    '.set-themes .set-card', '.dzl-row', '.cmsg-receipt', '.detail-problem']);
+    '.set-themes .set-card', '.th-problem', '.cmsg-receipt', '.detail-problem']);
   const offenders=[];
   for (const file of fs.readdirSync(WEB_CSS).filter(f=>f.endsWith('.css') && f!=='ui.css')) {
     const css=fs.readFileSync(path.join(WEB_CSS,file),'utf8').replace(/\/\*[\s\S]*?\*\//g,'');
@@ -269,4 +269,30 @@ test('content surfaces do not override shared inset geometry', () => {
     }
   }
   assert.deepEqual(offenders, [], 'Use the ui-inset/row/cluster contract instead of a competing geometry rule');
+});
+
+
+test('styles never reintroduce backdrop filtering or retired theme selectors', () => {
+  for (const file of fs.readdirSync(WEB_CSS).filter(file => file.endsWith('.css'))) {
+    const css = fs.readFileSync(path.join(WEB_CSS, file), 'utf8');
+    assert.doesNotMatch(css, /backdrop-filter\s*:/, file);
+    assert.doesNotMatch(css, /theme-(?:editorial|ink|terminal|scoreboard|nebula|horizon|abyss)\b/, file);
+  }
+});
+
+
+test('feature button class literals use shared variants or content rows', () => {
+  const dir = path.resolve(WEB_CSS, '../js');
+  const offenders = [];
+  for (const file of fs.readdirSync(dir).filter(file => file.endsWith('.js'))) {
+    const source = fs.readFileSync(path.join(dir, file), 'utf8');
+    for (const match of source.matchAll(/el\('button',\s*\{(?:(?!el\(|\}).){0,300}?class:\s*(['"`])([^'"`]*)\1/gs)) {
+      const classes = match[2].split(/\s+/);
+      if (classes.includes('ui-action-row')) continue;
+      assert.ok(classes.includes('btn'), `${file}: ${match[2]}`);
+      if (!classes.some(name => ['btn--primary', 'btn--secondary', 'btn--quiet', 'btn--icon'].includes(name))) offenders.push(`${file}: ${match[2]}`);
+      if (classes.some(name => name.startsWith('btn--') && !['btn--primary', 'btn--secondary', 'btn--quiet', 'btn--icon', 'btn--lg'].includes(name))) offenders.push(`${file}: ${match[2]}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
 });

@@ -23,7 +23,7 @@
 // a statement, a python stub, and metaData. A cached premium problem is a real answer from
 // LeetCode and is kept, but it is counted honestly as something that will not open.
 
-import { LEETCODE_CACHE_DIR, CATALOG_FILE, SOLUTIONS_INDEX_FILE, VENDOR_ROOT } from '../server/paths.mjs';
+import { LEETCODE_CACHE_DIR, CATALOG_FILE, COLLECTION_FILE, SOLUTIONS_INDEX_FILE, VENDOR_ROOT } from '../server/paths.mjs';
 import { LeetCodeContentCache, LeetCodeError, toContent } from '../server/leetcode.mjs';
 import { loadSolutionStore } from '../server/solutions.mjs';
 import { loadCatalog } from '../server/catalog.mjs';
@@ -71,7 +71,7 @@ function readiness(content) {
 }
 
 const store = loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT);
-const catalog = loadCatalog(CATALOG_FILE, store);
+const catalog = loadCatalog(CATALOG_FILE, store, COLLECTION_FILE);
 const cache = new LeetCodeContentCache({ cacheDir: LEETCODE_CACHE_DIR });
 
 const wanted = ONLY.length

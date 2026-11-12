@@ -100,8 +100,9 @@ export function parseReport(text, turns = [], { dimensions: rubric = DIMENSIONS,
       complexity: str(raw.code.complexity, 120), optimal: str(raw.code.optimal, 120),
       notes: list(raw.code.notes, 4).map(s => str(s, 300)).filter(Boolean),
     } : null,
-    practice: list(raw.practice, 3).map(p => typeof p === 'string' ? { title: str(p, 160), why: null }
-      : { title: str(p?.title, 160), why: str(p?.why, 300) }).filter(p => p.title),
+    // fix and at arrived later; older reports have only title and why, and get null for both.
+    practice: list(raw.practice, 3).map(p => typeof p === 'string' ? { title: str(p, 160), why: null, fix: null, at: null }
+      : { title: str(p?.title, 160), why: str(p?.why, 300), fix: str(p?.fix, 120), at: checkedTime(p?.at) }).filter(p => p.title),
   };
 }
 
@@ -109,12 +110,39 @@ export function buildReport(state, turns, now = Date.now()) {
   const debrief = [...turns].reverse().find(t => t.kind === 'debrief');
   if (!state.debriefed || !debrief) return null;
   const facts = reportFacts(state, turns, now);
-  return { facts, judgement: parseReport(debrief.asked, turns, { durationMs: facts.durationMs, dimensions: state.discipline === 'lld' ? LLD_DIMENSIONS : DIMENSIONS }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}) };
+  const dimensions = state.discipline === 'lld' ? LLD_DIMENSIONS : DIMENSIONS;
+  return { facts, judgement: parseReport(debrief.asked, turns, { durationMs: facts.durationMs, dimensions }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}),
+    ...(debrief.regrade ? { regraded: regradeFacts(state, turns, debrief, { durationMs: facts.durationMs, dimensions }) } : {}) };
 }
 
-/** How a report's difficulty reads in text, so a Beginner "Hire" is never taken for an Amazon-level one. */
+/** A re-graded report names when it was re-graded and what the first report said; the first stays in the record. */
+function regradeFacts(state, turns, latest, options) {
+  const debriefs = turns.filter(t => t.kind === 'debrief');
+  const original = debriefs[0];
+  const first = original && original !== latest ? parseReport(original.asked, turns, options) : null;
+  return {
+    at: latest.at || null,
+    count: debriefs.filter(t => t.regrade).length,
+    original: original && original !== latest ? {
+      at: original.at || null,
+      signal: first?.signal ?? null,
+      headline: first?.headline ?? null,
+      difficulty: original.reportDifficulty ?? state.originalReportDifficulty ?? null,
+    } : null,
+  };
+}
+
+/** How a report's difficulty reads in text, so a Beginner "Hire" is never taken for a full-bar one. */
 export function reportDifficultyLabel(difficulty) {
-  return { beginner: 'Beginner difficulty (a step below Amazon SDE II)', 'amazon-sde-2': 'Amazon SDE II difficulty' }[difficulty] || null;
+  const labels = { beginner: 'Beginner difficulty (a step below mid-level)', 'mid-level': 'Mid-level difficulty' };
+  return labels[difficulty === 'amazon-sde-2' ? 'mid-level' : difficulty] || null; // privacy-ok: legacy id
+}
+
+export function regradeLine(regraded) {
+  const day = value => value ? String(value).slice(0, 10) : 'an unrecorded date';
+  const o = regraded.original;
+  const first = o ? `The original report from ${day(o.at)} said ${o.signal || 'no signal'}${o.headline ? `: “${o.headline.replace(/\.$/, '')}”` : ''}; it is kept in the interview record.` : '';
+  return `_Re-graded on ${day(regraded.at)} with the current report rules.${first ? ' ' + first : ''}_`;
 }
 
 /** Markdown for interview.md, so the mirrored record reads well outside Studio. */
@@ -123,6 +151,7 @@ export function reportMarkdown(report) {
   if (!j) return null;
   const difficulty = reportDifficultyLabel(report.difficulty);
   const lines = [`**${j.signal || 'No signal'}**${difficulty ? ` · ${difficulty}` : ''}${j.headline ? ` — ${j.headline}` : ''}`, ''];
+  if (report.regraded) lines.push(regradeLine(report.regraded), '');
   if (j.summary) lines.push(j.summary, '');
   lines.push(Object.hasOwn(facts, 'finalBoard')
     ? `Duration ${clock(facts.durationMs)} of ${clock(facts.plannedMs)} · ${facts.finalBoard ? 'Board recorded' : 'The board was empty'} · phase durations and hint counts not recorded`

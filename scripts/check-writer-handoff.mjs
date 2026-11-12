@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // End-to-end tutor handoff with fake providers and a fake Writer; never real notes.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -86,5 +87,5 @@ try {
  console.log('passed: distinct tutor-memory receipt, tutor context handoff, durable delivery, source identity, linked live status, reload without duplicate generation');
 } finally {
  socket?.close();for(const child of [chrome,server])if(child&&child.exitCode===null&&!child.signalCode)await new Promise(resolve=>{const timer=setTimeout(()=>{child.kill('SIGKILL');resolve();},3000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.kill();});
- await new Promise(resolve=>writer.close(resolve));await fixture.cleanup();await fsp.rm(profile,{recursive:true,force:true});
+ await new Promise(resolve=>writer.close(resolve));await fixture.cleanup();await cleanupChrome(chrome, profile);
 }

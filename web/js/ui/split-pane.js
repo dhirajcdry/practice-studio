@@ -92,12 +92,14 @@ export function installPaneResizer(container, {
     handle.addEventListener('lostpointercapture', end);
     window.addEventListener('blur', end);
   });
-  const observer = new ResizeObserver(() => { apply(); });
+  let frame = 0;
+  const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(apply); };
+  const observer = new ResizeObserver(schedule);
   observer.observe(container); observer.observe(left);
-  media.addEventListener('change', apply);
+  media.addEventListener('change', schedule);
   apply();
   return () => {
-    gone = true; endDrag?.(); observer.disconnect(); media.removeEventListener('change', apply);
+    gone = true; endDrag?.(); observer.disconnect(); media.removeEventListener('change', schedule); cancelAnimationFrame(frame);
     handle.remove();
     if (originalColumns) container.style.setProperty('--workspace-columns', originalColumns);
     else container.style.removeProperty('--workspace-columns');

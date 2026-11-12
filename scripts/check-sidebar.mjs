@@ -19,7 +19,7 @@ export async function checkSidebar(evaluate) {
         if (tabs.some(n => Math.abs(box(n).top - box(tabs[0]).top) > 1)) issues.push('tabs wrap');
         if (bar.height > 88) issues.push('sidebar header taller than 88px');
         for (const button of panel.querySelectorAll('.coach-bar button')) {
-          if (visible(button) && box(button).height > 32.5) issues.push('sidebar header control taller than 32px');
+          if (visible(button)) { const expected = button.matches('.ui-tab') ? 38 : 28; if (Math.abs(box(button).height - expected) > 1) issues.push('sidebar control does not match tab/button height'); }
         }
         for (const select of document.querySelectorAll('select')) {
           if (visible(select)) issues.push('visible native select');

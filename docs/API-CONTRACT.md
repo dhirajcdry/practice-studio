@@ -7,9 +7,11 @@ Server: Node 23, `node:http`, no framework, **binds 127.0.0.1 only**, port **417
 
 ## Scope decisions (settled, do not revisit)
 
-- **NeetCode 250 plus curated collections.** The default catalog includes the 250
-  NeetCode curriculum and the curated `amazon-interview` collection. Collection membership
-  is exposed through `lists`; NeetCode coverage/statistics remain based on `neetcode250`.
+- **NeetCode 250 plus an optional private collection.** The catalog is the 250 NeetCode
+  curriculum, plus the learner's own collection when `STUDIO_HOME/collection.json` exists
+  (never shipped in the repo). Its `id` becomes a `lists` key and a tag, and
+  `GET /api/problems` returns `collection: { id, label, note, checkedAt }` or `null`.
+  NeetCode coverage/statistics remain based on `neetcode250`.
 - **Drop `pattern === "JavaScript"`** — 30 non-DSA language exercises. They are not in the
   250 anyway; assert this rather than assuming it.
 - **Python only.** No language switcher.
@@ -43,7 +45,7 @@ server-side search. Filtering and sorting are the client's job.
     "title": "Two Sum",                 // bundle title; /api/problems/:slug has the real one
     "pattern": "Arrays & Hashing",
     "difficulty": "Easy",
-    "lists": { "blind75": true, "neetcode150": true, "neetcode250": true, "amazon-interview": false },
+    "lists": { "blind75": true, "neetcode150": true, "neetcode250": true },  // + the collection id, if any
     "tags": [],
     "interviewPrep": null,
     "isPro": false,
@@ -138,3 +140,19 @@ trusted:
 
 No external network requests from the page except LeetCode-hosted `<img>` in descriptions.
 No CDNs — Monaco and every asset are served from disk so the app works offline.
+
+## Problem URL import
+
+`POST /api/problems/import/preview` accepts `{ "url": "https://leetcode.com/problems/two-sum/" }`.
+It returns `{ slug, existing, entry, content, pythonStub, runner: { supported, message } }`.
+It uses the existing cache and does not change catalog membership.
+
+`POST /api/problems/import` accepts the same body and returns `{ slug, existing, entry }`.
+New entries persist in the private workspace and have `lists.added: true`; duplicates
+return the existing entry without changing its curriculum membership. Request metadata
+is never accepted as problem evidence. Invalid URLs return 400; nonexistent problems
+return 404; upstream failures return 503. Unsupported harnesses and premium content
+remain importable with an explicit limitation in the preview.
+A name already used by saved system-design or LLD work returns 409 rather than
+reclassifying that evidence. Imported LeetCode identities, including `design-` names,
+are registered with the shared discipline resolver as coding problems.

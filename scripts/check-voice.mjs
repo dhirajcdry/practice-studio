@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Real Chrome voice-mode regression with browser-only microphone/ASR fakes.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -95,8 +96,8 @@ try {
     await send('Page.navigate', {url:'about:blank'});
     await until(()=>evaluate("return location.href==='about:blank' && document.readyState==='complete'"),'blank');
     await send('Page.navigate', {url:ORIGIN+route});
-    await until(()=>evaluate("return !!document.querySelector('.pr-launch')"), name+' launcher');
-    await evaluate("[...document.querySelectorAll('.pr-launch button')].find(b=>b.textContent==='Start practice').click()");
+    await until(()=>evaluate("return !!document.querySelector('.th-practice')"), name+' launcher');
+    await evaluate("document.querySelector('.th-practice').click()");
     await until(()=>evaluate("return !!document.querySelector('.pr-actions')"), name+' composer');
     await until(()=>evaluate("return voiceFixture.captures===1 && document.querySelector('.voice-panel').textContent.includes('Listening')"), name+' Start practice joins voice');
     await sleep(1100); await evaluate("voiceFixture.level=0");
@@ -168,4 +169,4 @@ try {
     console.log(name, JSON.stringify(await evaluate("return {firstPlayMs:voiceFixture.plays[0].at,firstDoneMs:voiceFixture.asks[0].closedAt,firstPlayBeforeDone:voiceFixture.plays[0].at<voiceFixture.asks[0].closedAt,acceptedTurns:voiceFixture.asks.length,captures:voiceFixture.captures}")));
   }
   console.log('ok — streamed playback before completion, continuous voice, interrupt/pause, delayed previews, drafts and responsive geometry');
-} finally { socket?.close(); for (const w of pending.values()) clearTimeout(w.timer); for (const p of [chrome, server]) if (p?.exitCode === null) { p.kill(); await Promise.race([new Promise(r => p.once('exit', r)), sleep(1000)]); } await fs.rm(HOME, { recursive: true, force: true }); await fs.rm(PROFILE, { recursive: true, force: true }); }
+} finally { socket?.close(); for (const w of pending.values()) clearTimeout(w.timer); for (const p of [chrome, server]) if (p?.exitCode === null) { p.kill(); await Promise.race([new Promise(r => p.once('exit', r)), sleep(1000)]); } await fs.rm(HOME, { recursive: true, force: true }); await cleanupChrome(chrome, PROFILE); }

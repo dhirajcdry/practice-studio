@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Python editor parity regression: shared editor controls in practice/LLD modes.
 import { spawn } from 'node:child_process';
@@ -80,12 +81,31 @@ try {
   await until(async () => (await fetch(debugUrl + '/json/list')).ok, 'Chrome');
   const tab = (await (await fetch(debugUrl + '/json/list')).json()).find(x => x.type === 'page'); socket = new WebSocket(tab.webSocketDebuggerUrl);
   await new Promise(resolve => socket.addEventListener('open', resolve, { once: true }));
-  socket.addEventListener('message', e => { const m = JSON.parse(e.data), p = pending.get(m.id); if (p) { clearTimeout(p.timer); pending.delete(m.id); m.error ? p.reject(Error(m.error.message)) : p.resolve(m.result); } });
+  socket.addEventListener('message', e => {
+    const m = JSON.parse(e.data), p = pending.get(m.id);
+    if (m.method === 'Page.javascriptDialogOpening') {
+      for (const [id, request] of pending) {
+        clearTimeout(request.timer); pending.delete(id);
+        request.reject(Error(`Unexpected ${m.params.type} dialog at ${m.params.url}`));
+      }
+    }
+    if (p) {
+      clearTimeout(p.timer); pending.delete(m.id);
+      m.error ? p.reject(Error(m.error.message)) : p.resolve(m.result);
+    }
+  });
   await send('Page.enable'); await send('Runtime.enable');
+  // Practice starts in voice mode. This editor-only fixture must not open a real
+  // microphone or leave Chrome's permission request pending across navigation.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `
+    if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => {
+      throw new DOMException('Microphone disabled in editor fixture', 'NotAllowedError');
+    };
+  ` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: origin + '/#/lld' });
-  await until(() => evaluate("return !!document.querySelector('.pr-launch')"), 'LLD launcher');
-  await evaluate("document.querySelector('.pr-launch button.btn').click()");
+  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'LLD launcher');
+  await evaluate("document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-coach') && !!document.querySelector('.editor-wrap') && !!window.monaco?.editor.getModels().length"), 'practice editor');
   const practiceHash = await evaluate('return location.hash');
   await checkEditorEdges('LLD practice');
@@ -129,7 +149,7 @@ try {
   assert.equal(await evaluate("return document.querySelector('.editor-wrap').getAttribute('aria-pressed')"), 'true', 'wrap follows reload');
   await evaluate("const s=await import('/js/settings.js');s.setSetting('codeSize',19)"); await sleep(100);
   assert.equal(await evaluate("const e=monaco.editor.getEditors()[0];return e.getOption(monaco.editor.EditorOption.fontSize)"), 19, 'font setting live');
-  await evaluate("location.hash='#/lld'"); await until(() => evaluate("return !!document.querySelector('.pr-launch')"), 'LLD library');
+  await evaluate("location.hash='#/lld'"); await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'LLD library');
   assert.equal(await evaluate('return monaco.editor.getModels().length'), 0, 'route disposal releases the model');
   await evaluate("location.hash='#/p/two-sum'");
   await until(() => evaluate("return !!document.querySelector('.ws-host .monaco-editor')"), 'LeetCode shared editor');
@@ -194,8 +214,10 @@ try {
   await evaluate("monaco.editor.getModels()[0].setValue('# Changed in independent practice');");
   await until(() => evaluate("return document.querySelector('.pr-save').textContent==='Saved'"),'branch saves independently');
   assert.equal(await evaluate("return (await(await fetch('/api/lld/lld-locker/1760000000000-00000010/code')).json()).code"),'# Candidate design\n','original mock code is unchanged');
-  await evaluate("location.hash='#/lld'"); await until(()=>evaluate("return !!document.querySelector('.lld-record button')"),'history branch action');
-  await evaluate("document.querySelector('.lld-record button').click()");
+  await evaluate("location.hash='#/lld'"); await until(()=>evaluate("return !!document.querySelector('[data-slug=lld-locker] .th-expand')"),'history branch action');
+  await evaluate("document.querySelector('[data-slug=lld-locker] .th-expand').click()");
+  await until(()=>evaluate("return [...document.querySelectorAll('[data-slug=lld-locker] .th-history .btn')].some(n=>n.textContent==='Practise from it')"),'history practice action');
+  await evaluate("[...document.querySelectorAll('[data-slug=lld-locker] .th-history .btn')].find(n=>n.textContent==='Practise from it').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-source-link')"),'branch from history');
   await until(()=>evaluate("return !!document.querySelector('.pr-editor .monaco-editor') && document.querySelector('.pr-save').textContent==='Saved'"),'history branch saved before navigation');
 
@@ -229,5 +251,5 @@ try {
   }
 } finally {
   socket?.close(); chrome?.kill('SIGTERM'); server?.kill('SIGTERM');
-  await fs.rm(profile, { recursive: true, force: true }).catch(() => {}); await fs.rm(home, { recursive: true, force: true }).catch(() => {});
+  await cleanupChrome(chrome, profile); await fs.rm(home, { recursive: true, force: true }).catch(() => {});
 }

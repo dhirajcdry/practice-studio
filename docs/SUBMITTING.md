@@ -334,3 +334,29 @@ fresh background tab is opened), and `/check/` polling is paced by the worker, n
 tab's throttled timers. The lookup and the POST are separate injections, so a tab that
 goes quiet during the lookup is `not_sent` and one that goes quiet while sending is
 `unknown`. Still one POST, no retry.
+
+## Read-only LeetCode shuffle
+
+Connector **1.3.0** adds `{ source: 'studio-page', type: 'random', id }` on the same
+`studio-submit` port. Reload the extension in `chrome://extensions`, then reload
+Studio. Settings → **Shuffle picks from** → **All of LeetCode** enables this path.
+
+Each explicit Shuffle click or `r` asks for an algorithms question with no difficulty
+filter, inside an existing LeetCode tab or a new inactive tab that is closed afterwards.
+Nothing is submitted. Cookies stay in the browser. There is one random-question
+GraphQL call, plus at most one more if the first pick is premium: **two calls maximum
+per click**. A second premium pick says “LeetCode picked a premium problem; shuffle
+again”. Errors and malformed responses never retry, and there is no prefetch.
+
+Success is `{ ok: true, slug, paidOnly: false }`; failures are `{ ok: false, code,
+message }`. The worker validates `titleSlug` and boolean `isPaidOnly`; unexpected
+GraphQL shapes return `RANDOM_RESPONSE_INVALID`. Sign-in, Cloudflare, rate limits
+and connection errors remain visible. Missing or outdated Connectors show setup
+instructions instead of falling back to a Studio pick.
+
+The page imports the pick with `POST /api/problems/import` and `{ slug, source:
+'others' }`. The route also accepts a LeetCode URL and `source: 'you'` (the default).
+New picks go into **Others**, manual imports into **You**. Existing slugs keep their
+original lists and records, including when imports race. Content loading after a new
+pick uses the existing import/content cache path; the two-call cap concerns random
+selection, not that content read.

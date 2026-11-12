@@ -19,7 +19,7 @@
 
   window.addEventListener('message', (event) => {
     const data = event.data;
-    if (event.source !== window || !data || data.source !== 'studio-page' || !['submit', 'details'].includes(data.type)) return;
+    if (event.source !== window || !data || data.source !== 'studio-page' || !['submit', 'details', 'random'].includes(data.type)) return;
     if (!isStudio()) return;
 
     const reply = (result) => window.postMessage({ source: 'studio-connector', id: data.id, result }, location.origin);
@@ -31,7 +31,7 @@
       // The extension was reloaded or removed after this page loaded. A fresh bridge put
       // in by the reloaded extension answers too, and the page prefers its answer.
       return reply({ ok: false, code: 'CONNECTOR_GONE', submissionState: 'not_sent',
-        message: 'The Studio Connector was reloaded since this page opened. Reload Studio, then submit again. Nothing was submitted.' });
+        message: data.type === 'random' ? 'The Studio Connector was reloaded. Reload Studio, then shuffle again.' : 'The Studio Connector was reloaded since this page opened. Reload Studio, then submit again. Nothing was submitted.' });
     }
     port.onMessage.addListener((result) => {
       answered = true;
@@ -41,7 +41,7 @@
     port.onDisconnect.addListener(() => {
       if (answered) return;
       reply({ ok: false, code: 'CONNECTOR_ERROR', submissionState: 'unknown',
-        message: 'The Studio Connector stopped before it answered. Check your submissions on LeetCode before sending another.' });
+        message: data.type === 'random' ? 'The Studio Connector stopped before it answered. Reload Studio, then shuffle again.' : 'The Studio Connector stopped before it answered. Check your submissions on LeetCode before sending another.' });
     });
     // `target` is 'neetcode' for premium problems (with `neetcodeSlug`); absent means LeetCode.
     port.postMessage({ type: data.type, submissionId: data.submissionId, slug: data.slug, code: data.code, lang: data.lang, target: data.target, neetcodeSlug: data.neetcodeSlug });

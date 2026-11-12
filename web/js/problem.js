@@ -1,8 +1,12 @@
+import { openLearningNotes } from './learning.js';
+import { screenHeader, paneHeader } from './ui/headers.js';
 // The problem screen: description on the left, quick facts on the right, and the
 // Solution / Article reference panels as a slide-open drawer. The panels are always
 // one keystroke away and never open on their own — seeing the answer before you have
 // tried is the one thing that would make this app useless.
 
+import { icon } from './ui/icon.js';
+import { currentCollection } from './browse.js';
 import { el, replace, clear, frag } from './dom.js';
 import { sanitizeHtml, isBlankHtml } from './sanitize.js';
 import { renderMarkdown, codeBlock } from './markdown.js';
@@ -50,7 +54,7 @@ function stateBlock({ tone = '', head, body, actions = [] }) {
     ...[].concat(body).map(text => (text instanceof Node ? text : el('p', { text }))),
     actions.length
       ? el('div', { class: 'acts' }, actions.map(a =>
-        el('button', { class: 'act', type: 'button', text: a.label, onclick: a.onClick })))
+        el('button', { class: 'btn btn--quiet act', type: 'button', text: a.label, onclick: a.onClick })))
       : null,
   ]);
 }
@@ -99,20 +103,21 @@ export function closeDrawer({ instant = false } = {}) {
 }
 
 function drawerShell(entry, kind) {
-  const tabs = el('div', { class: 'dtabs', role: 'tablist' }, [
+  const tabs = el('div', { class: 'ui-tabs dtabs', role: 'tablist' }, [
     el('button', {
-      class: 'dtab', role: 'tab', type: 'button', 'aria-selected': String(kind === 'solution'),
+      class: 'btn btn--quiet ui-tab dtab', role: 'tab', type: 'button', 'aria-selected': String(kind === 'solution'),
       text: 'Solution', onclick: () => openPanel(entry, 'solution'),
     }),
     el('button', {
-      class: 'dtab', role: 'tab', type: 'button', 'aria-selected': String(kind === 'article'),
+      class: 'btn btn--quiet ui-tab dtab', role: 'tab', type: 'button', 'aria-selected': String(kind === 'article'),
       text: 'Article', onclick: () => openPanel(entry, 'article'),
     }),
   ]);
-  const head = el('div', { class: 'dhead' }, [
+  const head = el('div', { class: 'dhead ui-dialog-header' }, [
     tabs,
     el('span', { class: 'dtitle', text: entry.title }),
-    el('button', { class: 'dclose', type: 'button', text: 'Close esc', onclick: closeDrawer }),
+    el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }),
+    el('button', { class: 'btn btn--icon dclose ui-dialog-close', type: 'button', 'aria-label': 'Close reference', onclick: closeDrawer }, icon('close', 15)),
   ]);
   const body = el('div', { class: 'dbody' });
   removeResizer();
@@ -192,7 +197,7 @@ function renderSolutionInto(body, entry, result) {
   const pre = codeBlock(result.code, result.language || 'python');
   pre.classList.add('solutioncode');
   const copy = el('button', {
-    class: 'copy', type: 'button', text: 'Copy',
+    class: 'btn btn--quiet copy', type: 'button', text: 'Copy',
     onclick: async (event) => {
       try { await navigator.clipboard.writeText(result.code); event.target.textContent = 'Copied'; }
       catch { event.target.textContent = 'Copy failed'; }
@@ -247,7 +252,7 @@ function renderArticleInto(body, entry, result) {
 
 export function renderProblem(entry, context) {
   const view = el('div', { class: 'view' });
-  const { neighbours, onOpen } = context;
+  const { neighbours, onOpen, canShuffle, shuffleBusy = false, onShuffle } = context;
 
   const titleEl = el('h1', { text: entry.title });
   const badgeRow = el('span', { class: 'row1-badges', style: 'display:contents' });
@@ -256,7 +261,7 @@ export function renderProblem(entry, context) {
   // narrowest one is worth printing.
   const tags = el('div', { class: 'ptags' }, [
     el('span', { class: 'tag pattern', text: entry.pattern, title: 'Pattern' }),
-    entry.interviewPrep ? el('span', { class: 'tag quiet', text: 'amazon-interview' }) : null,
+    entry.interviewPrep ? el('span', { class: 'tag quiet', text: currentCollection()?.id || 'collection' }) : null,
     entry.leetcodePremium ? el('span', { class: 'tag quiet', text: 'LeetCode Premium' }) : null,
     entry.lists.blind75
       ? el('span', { class: 'tag', text: 'Blind 75' })
@@ -271,15 +276,20 @@ export function renderProblem(entry, context) {
         titleEl,
         el('span', { class: 'tag ' + entry.difficulty.toLowerCase(), text: entry.difficulty }),
         badgeRow,
-        el('span', { class: 'pnav' }, [['previous', 'Previous', '‹'], ['next', 'Next', '›']].map(([key, label, text]) => {
+        el('span', { class: 'pnav' }, [['previous', 'Previous'], ['next', 'Next']].map(([key, label]) => {
           const neighbour = neighbours[key];
           return el('button', {
-            class: 'pnav-btn', type: 'button', text,
+            class: 'btn btn--icon pnav-btn', type: 'button',
             title: neighbour ? `${label}: ${neighbour.title} (⌘${key === 'previous' ? '←' : '→'})` : `${label} (⌘${key === 'previous' ? '←' : '→'})`,
             'aria-label': neighbour ? `${label}: ${neighbour.title}; keyboard shortcut Command ${key === 'previous' ? 'Left Arrow' : 'Right Arrow'}` : `${label}; keyboard shortcut Command ${key === 'previous' ? 'Left Arrow' : 'Right Arrow'}`,
             disabled: !neighbour, onclick: () => { if (neighbour) onOpen(neighbour.slug); },
-          });
-        })),
+          }, icon(key === 'previous' ? 'back' : 'forward', 15));
+        }).concat(el('button', {
+          class: 'btn btn--icon pnav-btn pnav-shuffle', type: 'button',
+          title: canShuffle ? 'Random problem (r)' : 'Random problem: nothing else matches your filters',
+          'aria-label': shuffleBusy ? 'Finding a LeetCode problem…' : canShuffle ? 'Random problem; keyboard shortcut R' : 'Random problem; nothing else matches your filters',
+          disabled: shuffleBusy || !canShuffle, 'aria-busy': String(shuffleBusy), onclick: () => onShuffle?.(),
+        }, [icon('shuffle', 14), el('span', { class: 'shuffle-label', role: 'status', text: '' })]))),
       ]),
       tags,
     ]),
@@ -288,11 +298,11 @@ export function renderProblem(entry, context) {
       panelToggle(entry, 'article', 'Article', 'a', entry.hasArticle),
       el('span', { class: 'plinks' }, [
         entry.youtubeVideoId ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
-          href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`, text: 'Video ↗' }) : null,
+          href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`, text: 'Video' }) : null,
         entry.neetcodeSlug ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
-          href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug)}`, text: 'NeetCode ↗' }) : null,
+          href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug)}`, text: 'NeetCode' }) : null,
         el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
-          href: `https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, text: 'LeetCode ↗' }),
+          href: `https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, text: 'LeetCode' }),
       ]),
     ]),
   ]);
@@ -307,10 +317,30 @@ export function renderProblem(entry, context) {
   // is closed the grid falls back to two columns and the editor keeps its width.
   enableWideLayout(true);
   const contentPromise = loadProblem(entry.slug, entry);
-  view.append(workspaceRail());
+  let workspaceActions;
+  const workspace = mountWorkspace(entry, { contentPromise, headerActions: actions => { workspaceActions = actions; } });
+  const nav = [...hero.querySelectorAll('.pnav-btn')];
+  const links = [...hero.querySelectorAll('.plink')];
+  for (const link of links) {
+    link.textContent = link.textContent.includes('Video') ? 'Watch the video' : `Open on ${link.textContent}`;
+  }
+  const header = screenHeader({ back: { href: '#/', label: 'Back to problems' },
+    crumb: context.listLabel || 'Problems', title: titleEl,
+    badges: [hero.querySelector('.tag.' + entry.difficulty.toLowerCase()), badgeRow],
+    meta: [entry.number ? `No. ${entry.number}` : '', entry.pattern, workspaceActions.status],
+    actions: { primary: workspaceActions.submit, secondary: [...nav, el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }), workspaceActions.run], overflow: [...links, workspaceActions.reset] },
+  });
+  const toggles = hero.querySelector('.paneltoggles');
+  toggles.className = 'ui-tabs problem-tabs';
+  toggles.setAttribute('role', 'tablist');
+  toggles.querySelector('.plinks')?.remove();
+  toggles.prepend(el('button', { class: 'btn btn--quiet ui-tab', role: 'tab', 'aria-selected': 'true', text: 'Problem', onclick: () => closeDrawer() }));
+  toggles.append(el('button', { class: 'btn btn--quiet ui-tab', role: 'tab', text: 'Notes', onclick: () => openLearningNotes(entry.slug, entry.title) }));
+  hero.replaceChildren(paneHeader({ tabs: toggles }), tags);
+  view.append(header, workspaceRail());
   view.append(el('div', { class: 'pbody with-workspace' }, [
     el('div', { class: 'pcol' }, [hero, interviewPrepCard(entry), descCard]),
-    mountWorkspace(entry, { contentPromise }),
+    workspace,
     mountCoach(entry),
   ]));
 
@@ -335,7 +365,9 @@ function interviewPrepCard(entry) {
           el('a', { href: source.url, target: '_blank', rel: 'noopener noreferrer', text: `${source.id} ` }))]),
       ]));
   }
-  return el('section', { class: 'card', 'aria-label': 'Amazon interview preparation' },
+  const collection = currentCollection();
+  const checked = collection?.checkedAt ? ` Mappings checked ${collection.checkedAt}.` : '';
+  return el('section', { class: 'card', 'aria-label': `${collection?.label || 'Collection'} preparation` },
     el('details', { class: 'desc rich', dataset: { interviewPrep: prep.id } }, [
       el('summary', { text: `${prep.id} · ${prep.priority} · ${prep.match}` }),
       el('p', { text: prep.reportedPrompt }),
@@ -344,14 +376,15 @@ function interviewPrepCard(entry) {
       el('p', { text: `Reported round: ${prep.round}. Source assessment: ${prep.authenticity}.` }),
       el('p', {}, ['Candidate report sources: ', ...prep.sources.map(source =>
         el('a', { href: source.url, target: '_blank', rel: 'noopener noreferrer', text: `${source.id} ` }))]),
-      el('p', { text: 'Candidate reports supplied for preparation, not verified transcripts or predictions. Practice extensions are suggested exercises. LeetCode mappings checked November 3, 2026.' }),
+      el('p', { text: `Candidate reports supplied for preparation, not verified transcripts or predictions. Practice extensions are suggested exercises.${checked}` }),
     ]));
 }
 
 function panelToggle(entry, kind, label, key, available) {
   const button = el('button', {
-    class: 'ptoggle' + (available ? '' : ' miss'),
-    type: 'button',
+    class: 'btn btn--quiet ui-tab ptoggle' + (available ? '' : ' miss'),
+    type: 'button', role: 'tab',
+    'aria-selected': String(drawerState.slug === entry.slug && drawerState.kind === kind),
     'aria-pressed': String(drawerState.slug === entry.slug && drawerState.kind === kind),
     dataset: { panel: kind },
     onclick: () => openPanel(entry, kind),
@@ -394,7 +427,7 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
   if (result.source === 'mock') badgeRow.append(el('span', { class: 'tag quiet', text: 'Sample text' }));
 
   for (const topic of content?.topicTags || []) {
-    if (String(topic).toLowerCase() === entry.pattern.toLowerCase()) continue;
+    if (String(topic).toLowerCase() === (entry.pattern || '').toLowerCase()) continue;
     tags.append(el('span', { class: 'tag quiet', text: String(topic), 'data-topic': '1' }));
   }
 

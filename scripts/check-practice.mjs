@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // LLD layout regression: real Chrome/CDP, scratch home, fake interviewer only.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -51,8 +52,8 @@ try {
   async function shot(name) { const s = await send('Page.captureScreenshot', { format: 'png' }); await fs.writeFile(`/tmp/studio-practice-${name}.png`, Buffer.from(s.data, 'base64')); }
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN + '/#/lld' });
-  await until(() => evaluate("return !!document.querySelector('.pr-launch')"), 'LLD launcher');
-  await evaluate("document.querySelector('.pr-launch button.btn').click()");
+  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'LLD launcher');
+  await evaluate("document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-coach') && !!window.monaco?.editor.getModels().length"), 'practice editor');
   // The work/coach split is a real divider: keyboard and pointer resizing must
   // preserve the editor instance and keep both panes usable.
@@ -159,7 +160,7 @@ try {
   await until(() => evaluate("return document.querySelector('.pr-save').textContent==='Saved'"), 'document save');
   assert.equal(await evaluate("return document.querySelector('.pr-work-error').hidden"),true,'later successful autosave clears its error without a question');
   await evaluate("window.fetch=window.__practiceFetch;delete window.__practiceFetch;");
-  await evaluate("document.querySelector('.pr-work-bar .python-run').click()");
+  await evaluate("document.querySelector('.ui-pane-header .python-run').click()");
   await until(() => evaluate("return document.querySelector('.lld-output').textContent.includes('42')"), 'Python run');
   await mode('Typed');
   await evaluate(`window.__practiceFetch=window.fetch;window.fetch=(url,options)=>{
@@ -182,8 +183,8 @@ try {
   await until(() => evaluate("return !!document.querySelector('.pr-answer')?.textContent.includes('second half.') && document.querySelector('.pr-state').textContent==='Ready when you are'"), 'fake answer');
   const saved = await evaluate("const p=location.hash.split('/');return await(await fetch('/api/practice/'+p[3]+'/'+p[4])).json();");
   assert.equal(saved.exchanges.length, 1); assert.equal(saved.exchanges[0].status, 'complete'); assert.equal(saved.code, 'print(42)');
-  await evaluate("[...document.querySelectorAll('.pr-exchange button')].at(-1).click()");
-  await until(() => evaluate("return [...document.querySelectorAll('.pr-exchange button')].at(-1).textContent==='Saved to notes'"), 'learning note saved');
+  await evaluate("document.querySelector('.pr-exchange button[aria-label=\"Save to notes\"]').click()");
+  await until(() => evaluate("return !!document.querySelector('.pr-exchange button[aria-label=\"Saved to notes\"]')"), 'learning note saved');
   await reload(); await sleep(300);
   await until(() => evaluate("return !!document.querySelector('.pr-answer') && !!window.monaco?.editor.getModels().length"), 'reload practice');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), 'print(42)');
@@ -192,8 +193,8 @@ try {
   await until(() => evaluate("return !!document.querySelector('.ln-sheet[open] .ln-note-text')"), 'notes');
   for (const width of [1440, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
-    const m = await evaluate("const d=document.querySelector('.ln-sheet').getBoundingClientRect(),c=document.querySelector('.ui-dialog-close').getBoundingClientRect();return {right:d.right-c.right,top:c.top-d.top,overflow:document.documentElement.scrollWidth>innerWidth};");
-    assert.ok(m.right >= 10 && m.right <= 24 && m.top >= 10 && m.top <= 24, 'close anchored to header top right: '+JSON.stringify(m)); assert.equal(m.overflow, false);
+    const m = await evaluate("const d=document.querySelector('.ln-sheet').getBoundingClientRect(),h=document.querySelector('.ln-sheet .ui-dialog-header').getBoundingClientRect(),c=document.querySelector('.ui-dialog-close').getBoundingClientRect();return {right:d.right-c.right,center:Math.abs((c.top+c.bottom-h.top-h.bottom)/2),height:c.height,inside:c.top>=h.top&&c.bottom<=h.bottom,overflow:document.documentElement.scrollWidth>innerWidth};");
+    assert.ok(m.right >= 10 && m.right <= 24 && m.center <= 1 && m.height === 28 && m.inside, 'close anchored to header top right: '+JSON.stringify(m)); assert.equal(m.overflow, false);
     await shot('notes-'+width);
   }
   await evaluate("document.querySelector('.ui-dialog-close').click()");
@@ -211,7 +212,7 @@ try {
   await until(()=>evaluate("return document.querySelector('.pr-state')?.textContent==='Ready when you are'"),'long-history reply completes');
   assert.equal(await evaluate("return document.querySelector('.pr-thread').scrollTop"),0,'reading older content during streaming is preserved');
   for (const dark of [true, false]) {
-    await evaluate(`const s=await import('/js/settings.js');s.setSetting('theme','editorial');s.setSetting('mode',${dark}?'dark':'light');`);
+    await evaluate(`const s=await import('/js/settings.js');s.setSetting('theme','desk');s.setSetting('mode',${dark}?'dark':'light');`);
     await sleep(150); await shot(dark?'dark':'light');
   }
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
@@ -219,8 +220,8 @@ try {
   assert.equal(await evaluate('return document.documentElement.scrollWidth<=innerWidth'), true); await shot('narrow');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN+'/#/design' });
-  await until(() => evaluate("return !!document.querySelector('.pr-launch')"), 'design launcher');
-  await evaluate("document.querySelector('.pr-launch button.btn').click()");
+  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'design launcher');
+  await evaluate("document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-board .excalidraw')"), 'practice whiteboard');
   const boardRoute = await evaluate('return location.hash');
   // An unfenced text field/portal used to be treated as the catalog search box.
@@ -309,8 +310,8 @@ try {
   await designStore.create(sourceId,{prompt:'Design a URL-shortening service.',topicSlug:'design-url-shortener',startedAt:Date.now()-60000,endedAt:Date.now(),debriefed:true,phase:'wrapup',level:'L4',minutes:45});
   await designStore.writeScene(sourceId,0,designSnapshot.elements);
   await designStore.appendTurn(sourceId,{kind:'debrief',asked:'Review reservation atomicity.'});
-  await evaluate("location.hash='#/design'"); await until(()=>evaluate("return !!document.querySelector('.dzl-row')"),'design source mock');
-  await evaluate("[...document.querySelectorAll('.dzl-row button')].find(b=>b.textContent==='Practise from this mock').click()");
+  await evaluate("location.hash='#/design'"); await until(()=>evaluate("return !!document.querySelector('[data-slug=design-url-shortener] .th-expand')"),'design source mock');
+  await evaluate(`document.querySelector('[data-slug=design-url-shortener] .th-expand').click(); [...document.querySelectorAll('[data-slug=design-url-shortener] .th-history .btn')].find(b=>b.textContent==='Practise from it').click();`);
   await until(()=>evaluate("return !!document.querySelector('.pr-board .excalidraw') && !!document.querySelector('.pr-source-link')"),'practice from design mock');
   const designBranch = await evaluate("const p=location.hash.split('/');return await(await fetch('/api/practice/'+p[3]+'/'+p[4])).json();");
   assert.deepEqual(designBranch.elements,designSnapshot.elements,'copied whiteboard retains every element');
@@ -347,9 +348,9 @@ try {
   await until(()=>evaluate("return !document.querySelector('.ci-sheet')"),'inspector Escape cleanup');
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
   await evaluate("location.hash='#/lld'");
-  await until(()=>evaluate("return !!document.querySelector('.pr-launch')"),'practice launcher');
-  assert.equal(await evaluate("return document.querySelector('.pr-launch .ui-select-button').textContent.trim()"),'Choose my own problem');
-  await evaluate("document.querySelector('.pr-launch button.btn').click()");
+  await until(()=>evaluate("return !!document.querySelector('.th-practice')"),'practice launcher');
+  assert.equal(await evaluate("return document.querySelector('.th-practice').textContent.trim()"),'Untimed practice');
+  await evaluate("document.querySelector('.th-practice').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-empty') && !!window.monaco?.editor.getModels().length"),'blank practice');
   assert.match(await evaluate("return document.querySelector('.pr-empty').textContent"),/What would you like to work on/);
   assert.equal(await evaluate("return document.querySelectorAll('.pr-exchange').length"),0);
@@ -377,5 +378,5 @@ try {
 } finally {
   socket?.close(); for (const p of [chrome, server]) if (p && p.exitCode === null) p.kill();
   for (const p of pending.values()) clearTimeout(p.timer);
-  await fs.rm(HOME, { recursive:true, force:true }); await fs.rm(PROFILE, { recursive:true, force:true });
+  await fs.rm(HOME, { recursive:true, force:true }); await cleanupChrome(chrome, PROFILE);
 }

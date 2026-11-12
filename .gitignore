@@ -18,3 +18,11 @@ session.json
 
 # Playwright MCP page dumps left by Codex runs
 .playwright-mcp/
+
+# PUBLIC repo: personal data lives in STUDIO_HOME, never here (AGENTS.md "Public repo").
+# scripts/privacy-scan.mjs also blocks these in the pre-commit hook and CI.
+/collection*.json
+/data/collection*.json
+*.private.*
+private-terms*
+notes-personal/

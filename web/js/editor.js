@@ -93,10 +93,10 @@ export function mountWorkspace(entry, options = {}) {
   const statusEl = el('span', { class: 'ws-status mono' });
   const runLabel = el('span', { text: 'Run' });
   const runButton = el('button', {
-    class: 'ws-run', type: 'button',
+    class: 'btn btn--secondary ws-run', type: 'button',
     title: "Run against the example cases on this machine (⌘')",
     onclick: () => doRun(),
-  }, [runLabel]);
+  }, [runLabel, el('kbd', { text: "⌘'" })]);
 
   // Reset throws away everything you wrote, so it asks once. A single stray click on a
   // small button in a toolbar is not enough intent to delete a solution — and the button
@@ -107,14 +107,14 @@ export function mountWorkspace(entry, options = {}) {
     if (resetArmed) clearTimeout(resetArmed);
     resetArmed = null;
     revertButton.classList.remove('is-arming');
-    revertLabel.textContent = 'Reset';
+    revertLabel.textContent = 'Reset code';
     revertButton.title = 'Put LeetCode\'s starter code back. What you wrote is not kept.';
   }
 
   // It lives in the file row, beside the file it resets, and away from Run and Submit.
-  const revertLabel = el('span', { class: 'ws-reset-label', text: 'Reset' });
+  const revertLabel = el('span', { class: 'ws-reset-label', text: 'Reset code' });
   const revertButton = el('button', {
-    class: 'editor-tool ws-reset', type: 'button', hidden: true,
+    class: 'btn btn--icon editor-tool ws-reset', type: 'button', hidden: true,
     title: 'Put LeetCode\'s starter code back. What you wrote is not kept.',
     onclick: () => {
       if (stubCode === null || !editor) return;
@@ -137,7 +137,7 @@ export function mountWorkspace(entry, options = {}) {
 
   // Hiding the sidebar must never be one-way. Shown only while it is closed.
   const sidebarButton = el('button', {
-    class: 'icon-btn editor-open-sidebar', type: 'button',
+    class: 'btn btn--icon icon-btn editor-open-sidebar', type: 'button',
     'aria-label': `Show sidebar · ${chordLabel('coach')}`,
     title: `Show sidebar (${chordLabel('coach')})`,
     onclick: () => window.dispatchEvent(new CustomEvent('studio:open-coach')),
@@ -147,7 +147,7 @@ export function mountWorkspace(entry, options = {}) {
   // There used to be a Problem button *and* a Focus button doing opposite halves of the
   // same job; hiding the statement IS focus mode, so there is one of them now.
   const probButton = el('button', {
-    class: 'ws-mini prob-toggle', type: 'button', 'aria-pressed': 'true',
+    class: 'btn btn--quiet ws-mini prob-toggle', type: 'button', 'aria-pressed': 'true',
     title: `Show or hide the problem statement (${chordLabel('problem')})`,
     onclick: () => setProblemHidden(!isProblemHidden()),
   }, [el('span', { class: 'ws-problabel', text: 'Problem' }), el('kbd', { text: chordLabel('problem') })]);
@@ -158,10 +158,10 @@ export function mountWorkspace(entry, options = {}) {
   // doSubmit, not in an extra modifier nobody remembers.
   const submitLabel = el('span', { text: 'Submit' });
   const submitButton = el('button', {
-    class: 'ws-submit', type: 'button', disabled: !contentReady,
+    class: 'btn btn--primary ws-submit', type: 'button', disabled: !contentReady,
     title: 'Send this code to LeetCode and run every hidden test (⌘↵)',
     onclick: () => doSubmit(),
-  }, [submitLabel]);
+  }, [submitLabel, el('kbd', { text: '⌘↵' })]);
 
   options.contentPromise?.then((result) => {
     if (disposed) return;
@@ -182,7 +182,7 @@ export function mountWorkspace(entry, options = {}) {
   const shapeNotice = el('div', { class: 'ws-notice ui-inset ui-cluster warn', hidden: true, role: 'status' });
   const host = el('div', { class: 'ws-host' });
 
-  const panel = createRunPanel({ slug, getCode: () => (editor ? editor.getValue() : ''), onEvent: onRunEvent });
+  const panel = createRunPanel({ slug, getCode: () => (editor ? editor.getValue() : ''), onCollapse: () => setResultsHidden(true), onEvent: onRunEvent });
   const judge = createSubmitPanel({
     slug,
     getCode: () => (editor ? editor.getValue() : ''),
@@ -215,11 +215,11 @@ export function mountWorkspace(entry, options = {}) {
   // asked for; the other collapses to one line that says what it is holding, so
   // nothing is lost and one click brings it back.
   const judgeStub = el('button', {
-    class: 'ws-stub', type: 'button', hidden: true,
+    class: 'btn btn--quiet ws-stub', type: 'button', hidden: true,
     onclick: () => showResults('judge'),
   });
   const runStub = el('button', {
-    class: 'ws-stub', type: 'button', hidden: true,
+    class: 'btn btn--quiet ws-stub', type: 'button', hidden: true,
     onclick: () => showResults('run'),
   });
   const runLane = el('div', { class: 'ws-lane' }, panel.root);
@@ -233,10 +233,10 @@ export function mountWorkspace(entry, options = {}) {
   // Only there while the tutor has lines marked: what they are, and one click to clear them.
   const marksCount = el('span', { class: 'tutor-chip-n' });
   const marksChip = el('button', {
-    class: 'tutor-chip', type: 'button', hidden: true,
+    class: 'btn btn--quiet tutor-chip', type: 'button', hidden: true,
     title: 'Clear the lines your tutor marked',
     onclick: () => { tutor?.clearMarks(); },
-  }, [el('span', { class: 'tutor-chip-flag', 'aria-hidden': 'true', text: '⚑' }), marksCount, el('span', { class: 'tutor-chip-x', 'aria-hidden': 'true', text: '×' })]);
+  }, [icon('report', 15), marksCount, icon('close', 15)]);
   function paintMarks(count) {
     marksChip.hidden = count === 0;
     marksCount.textContent = `${count} tutor mark${count === 1 ? '' : 's'}`;
@@ -273,6 +273,13 @@ export function mountWorkspace(entry, options = {}) {
     results,
   ]);
 
+  if (options.headerActions) {
+    options.headerActions({ run: runButton, submit: submitButton, reset: revertButton, status: statusEl });
+    // The screen rail owns these controls in the three-pane coding workspace.
+    root.append(el('div', { hidden: true }, probButton));
+    root.querySelector('.ws-bar').remove();
+  }
+
   /* ---- save state ---- */
 
   function paintStatus() {
@@ -285,7 +292,7 @@ export function mountWorkspace(entry, options = {}) {
     // The reason only belongs in the bar when there is no notice carrying it.
     if (saveDetail && saveState === 'failed') statusEl.append(el('span', { class: 'ws-status-why', text: saveDetail }));
     if (saveState === 'failed') {
-      statusEl.append(el('button', { class: 'ws-retry', type: 'button', text: 'Retry', onclick: () => flush() }));
+      statusEl.append(el('button', { class: 'btn btn--quiet ws-retry', type: 'button', text: 'Retry', onclick: () => flush() }));
     }
     const nothingToReset = stubCode === null || !editor || editor.getValue() === stubCode;
     if (nothingToReset && resetArmed) disarmReset();
@@ -379,7 +386,7 @@ export function mountWorkspace(entry, options = {}) {
     shapeNotice.hidden = !mismatch;
     replace(shapeNotice, mismatch ? [
       el('span', { class: 'ws-noticebody', text: mismatch.message }),
-      ...(mismatch.fix ? [el('button', { class: 'ws-mini', type: 'button',
+      ...(mismatch.fix ? [el('button', { class: 'btn btn--quiet ws-mini', type: 'button',
         text: "Use NeetCode's name", onclick: mismatch.fix })] : []),
     ] : []);
   }
@@ -392,8 +399,8 @@ export function mountWorkspace(entry, options = {}) {
     replace(noticeEl, [
       el('span', { class: 'mono ws-noticehead', text: head }),
       el('span', { class: 'ws-noticebody', text: body }),
-      ...actions.map(a => el('button', { class: 'ws-mini', type: 'button', text: a.label, onclick: a.onClick })),
-      el('button', { class: 'ws-noticex', type: 'button', 'aria-label': 'Dismiss', text: '×', onclick: () => { noticeEl.hidden = true; } }),
+      ...actions.map(a => el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: a.label, onclick: a.onClick })),
+      el('button', { class: 'btn btn--icon ws-noticex', type: 'button', 'aria-label': 'Dismiss', onclick: () => { noticeEl.hidden = true; } }, icon('close')),
     ]);
   }
 
@@ -592,7 +599,7 @@ export function mountWorkspace(entry, options = {}) {
     // Settings and the reference drawer. So only with nothing focused or from the
     // statement beside the code: every other box on the page has its own ⌘↵.
     if (hasOpenOverlay() || isTextEntry(event.target) || event.altKey) return;
-    if (event.target !== document.body && !event.target.closest?.('.pcol')) return;
+    if (event.target !== document.body && !event.target.closest?.('.pcol, .ui-screen-header')) return;
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       if (claimActionKey(event)) doSubmit(); return;
     }

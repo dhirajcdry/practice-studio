@@ -173,8 +173,8 @@ requested. Attempt reviews teach openly. Saved reports are never rewritten.
 The global Report difficulty (`report-settings.json`, default `beginner`) is read when a
 report is generated and frozen on that interview as `reportDifficulty`, so changing it
 never regrades a finished report and follow-ups recheck ratings at the same difficulty.
-Both named difficulties grade against Amazon SDE II (L5) whatever the mock's target level:
-`amazon-sde-2` at that bar and `beginner` a step below it. Older records without the field
+Both named difficulties grade against mid-level SDE II (L4) whatever the mock's target level:
+`mid-level` at that bar and `beginner` a step below it. An earlier id for the same bar is still read as `mid-level`. Older records without the field
 keep the target-level bar above.
 
 ## Past performance in mocks
@@ -272,3 +272,21 @@ request a debrief. The explicit finish endpoint remains the completion boundary.
 `minutes` (an integer from 1–240) and an idempotent `requestId`. They serialize with
 model turns, preserve `originalMinutes`, increase `minutes`, and append a
 `time_extended` record without inference. Pause accounting is unchanged.
+
+## User-added coding problems
+
+The Add problem view previews one explicitly supplied LeetCode problem URL using the
+existing content cache. Import stores catalog metadata in `STUDIO_HOME/added-problems.json`
+with atomic, serialized writes. Startup and the running catalog merge these entries
+without changing curriculum membership. Statements, starter code and examples remain
+in the existing LeetCode cache; learner work uses the normal coding storage paths.
+Preview never adds a catalog entry, and unavailable or nonexistent URLs cannot create
+placeholder problems. Unsupported local harnesses are reported explicitly. Imports do
+not invoke a model, fetch reference solutions, or submit code.
+
+The progress tracker supports one explicit global reset. `GET /api/tracker` reports
+catalog problems from evidence on disk and the current top-level `resetAt`; `POST
+/api/tracker/reset` with `{}` stores a marker in the separate workspace `tracker.json`,
+and `POST /api/tracker/restore` with `{}` clears it. Resetting never edits session logs,
+attempts, or submission metadata: only evidence with a valid timestamp after the marker
+contributes to the reset view. A lone `problem_opened` after reset is not an attempt.

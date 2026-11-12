@@ -131,9 +131,10 @@ for a problem, open it while online to cache its statement and starter code, the
 your solution and press **Run**. Local results cover the cases shown; they are separate
 from an accepted LeetCode submission.
 
-Choose **Amazon interview** in Problem explorer or Roadmap for the 18-question
-[practice collection](docs/AMAZON-INTERVIEW.md): 17 reported-prompt mappings plus
-Game of Life, added for personal practice. Source links and variation notes stay with each item.
+To add your own practice collection (for example, problems for one interview), put a
+`collection.json` in your workspace (`STUDIO_HOME`, default `~/LeetCodeTutor`). Its
+`label` appears in Problem explorer and Roadmap. It is personal data and never belongs in
+this repo; `server/test/fixtures/collection.json` shows the shape.
 
 | Optional piece | Setup |
 | --- | --- |

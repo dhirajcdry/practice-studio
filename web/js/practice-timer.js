@@ -17,7 +17,7 @@ export function createPracticeTimer({ timer, serverNow, change, onError }) {
   const time = el('span', { class: 'pr-timer-value', role: 'timer', 'aria-label': 'Practice time elapsed', 'aria-live': 'off' });
   const label = el('span', { class: 'pr-timer-label', 'aria-live': 'polite' });
   const failure = el('span', { class: 'pr-timer-error', role: 'alert', hidden: true, text: 'Timer not saved' });
-  const button = el('button', { type: 'button', class: 'btn btn--quiet btn--sm', onclick: () => setRunning(!isRunning()) });
+  const button = el('button', { type: 'button', class: 'btn btn--quiet', onclick: () => setRunning(!isRunning()) });
   const root = el('div', { class: 'pr-timer', role: 'group', 'aria-label': 'Practice timer' }, [
     el('div', { class: 'pr-timer-reading' }, [label, time]), button, failure,
   ]);

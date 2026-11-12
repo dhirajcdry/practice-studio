@@ -23,9 +23,9 @@ export function fixtureReport(quote = 'I will use a map.') {
     ],
     code: { complexity: 'O(n) time · O(1) space', optimal: 'O(n) time · O(1) space', notes: ['Early return when the reach covers the last index would save a pass.'] },
     practice: [
-      { title: 'Write 3 edge cases before every first run', why: 'Testing was rated Weak and the [0] case surfaced only from a failing run.' },
-      { title: 'Jump Game II under a 20-minute timer', why: 'Same invariant, adds counting — checks the idea transfers.' },
-      { title: 'Narrate while debugging', why: 'You went silent for over a minute after the failing run.' },
+      { fix: 'Name edge cases before the first run', at: '05:40', title: 'Write 3 edge cases before every first run', why: 'Testing was rated Weak and the [0] case surfaced only from a failing run.' },
+      { fix: 'Check the idea transfers', at: null, title: 'Jump Game II under a 20-minute timer', why: 'Same invariant, adds counting — checks the idea transfers.' },
+      { fix: 'Keep talking while you debug', at: '06:10', title: 'Narrate while debugging', why: 'You went silent for over a minute after the failing run.' },
     ],
   });
 }

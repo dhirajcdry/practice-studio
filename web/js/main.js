@@ -2,11 +2,15 @@
 
 import { el, replace } from './dom.js';
 import { hasOpenOverlay } from './keyboard.js';
+import { icon } from './ui/icon.js';
 import { loadCatalog, api } from './api.js';
-import { progressMapFrom } from './catalog-progress.js';
+import { loadCatalogProgress } from './catalog-progress.js';
 import { loadStats } from './streak.js';
 import { installStreakPill } from './streak-pill.js';
-import { renderBrowse, visibleProblems, filteredProblems } from './browse.js';
+import { renderBrowse, visibleProblems, filteredProblems, setCollection, isKnownList, LIST_FILTERS } from './browse.js';
+import { renderProblemImport } from './problem-import.js';
+import { randomProblem, createLeetCodeShuffle } from './shuffle.js';
+import { randomViaConnector } from './leetcode-bridge.js';
 import { renderRoadmap } from './roadmap.js';
 import { renderProblem, openPanel, closeDrawer, isDrawerOpen, setDrawerListener, drawerKind } from './problem.js';
 import { init as initDashboard } from './dashboard.js';
@@ -16,8 +20,9 @@ import { showInterviewSetup, activeInterview, interviewAction } from './intervie
 import { coachBeginAttempt, coachReviewAttempt } from './coach.js';
 import { installResizers } from './resize.js';
 import { installRecorder, mountRecorder } from './recorder.js';
-import { installSettingsButton, apply as applySettings, onSettingsChange } from './settings.js';
+import { installSettingsButton, apply as applySettings, onSettingsChange, shuffleSourceSetting } from './settings.js';
 
+let problemImport = null;
 let dashboard = null;
 let design = null;
 let lld = null;
@@ -87,10 +92,61 @@ function neighboursOf(slug) {
   return { previous: list[index - 1] || null, next: list[index + 1] || null };
 }
 
+/** A random problem from the filtered set, never the one open now (null when none). */
+function shuffleTarget() {
+  return randomProblem(filteredProblems(data, state), currentSlug());
+}
+
+const leetcodeShuffle = createLeetCodeShuffle({
+  random: randomViaConnector,
+  importProblem: async body => {
+    const response = await fetch('/api/problems/import', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    const saved = await response.json();
+    if (!response.ok) throw Error(saved.error?.message || 'The problem could not be imported.');
+    return saved;
+  },
+  onOpen: ({ entry, slug }) => {
+    if (!bySlug.has(slug)) { data.problems.push(entry); bySlug.set(slug, entry); }
+    handlers.onOpen(slug);
+  },
+  onBusy: paintShuffle,
+});
+function paintShuffle() {
+  const busy = leetcodeShuffle.busy;
+  const leetcode = shuffleSourceSetting() === 'leetcode';
+  for (const button of document.querySelectorAll('.shufflebtn, .pnav-shuffle')) {
+    button.disabled = busy || (button.matches('.pnav-shuffle') && !leetcode && !shuffleTarget());
+    button.setAttribute('aria-busy', String(busy));
+    const label = busy ? 'Finding a LeetCode problem…' : `Random problem from ${leetcode ? 'LeetCode' : 'this view'} (r)`;
+    button.setAttribute('aria-label', label); button.title = label;
+    const text = button.querySelector('.shuffle-label');
+    if (text) text.textContent = button.matches('.shufflebtn') ? (busy ? 'Finding…' : 'Shuffle') : '';
+  }
+}
+async function shuffle() {
+  if (leetcodeShuffle.busy) return;
+  if (shuffleSourceSetting() !== 'leetcode') {
+    const pick = shuffleTarget(); if (pick) handlers.onOpen(pick.slug);
+    return;
+  }
+  document.querySelector('[data-shuffle-notice]')?.remove();
+  try { await leetcodeShuffle.run(); }
+  catch (error) {
+    const notice = el('div', { class: 'submission-toast shuffle-notice', role: 'alert', 'data-shuffle-notice': '' }, [
+      el('span', { text: error.message || 'Shuffle could not finish. Try again.' }),
+      el('a', { href: 'https://github.com/dhirajcdry/practice-studio/blob/main/docs/SUBMITTING.md', target: '_blank', rel: 'noopener', text: ' Connector setup' }),
+      el('button', { class: 'btn btn--quiet', type: 'button', text: 'Dismiss', onclick: () => notice.remove() }),
+    ]);
+    document.body.append(notice);
+  }
+}
+
 const handlers = {
-  onCatalogMode: (mode) => { state.catalogMode = mode; saveState(); const hash = mode === 'roadmap' ? '#/roadmap' : '#/'; if (location.hash === hash) render(); else location.hash = hash; },
   onOpen: (slug) => { state.selectedSlug = slug; goProblem(slug); },
   onBack: () => goBrowse(),
+  onShuffle: shuffle,
+  shuffleState: () => ({ busy: leetcodeShuffle.busy, leetcode: shuffleSourceSetting() === 'leetcode' }),
   onPattern: (pattern) => { state.pattern = pattern; if (pattern) state.collapsed.delete(pattern); state.selectedSlug = null; render(); appEl.querySelector(pattern ? '.tree-pattern[aria-pressed="true"]' : '.tree-root')?.focus({ preventScroll: true }); },
   onRetryProgress: () => { progressLoadedAt = 0; refreshCatalogProgress(); },
   onToggle: (pattern) => {
@@ -112,90 +168,25 @@ const handlers = {
   },
 };
 
-/* ------------------------------- section menu ------------------------------ */
+/* -------------------------------- section nav ------------------------------- */
 
-const navButton = document.getElementById('navbtn');
-const navLabel = document.getElementById('navlabel');
-const navMenu = document.getElementById('navmenu');
-
-function navItems() {
-  return [...navMenu.querySelectorAll('a')];
-}
-
-function closeNav(refocus = false) {
-  if (navMenu.hidden) return;
-  navMenu.hidden = true;
-  navButton.setAttribute('aria-expanded', 'false');
-  // Closing with the keyboard must put the caret back on the button it came from,
-  // otherwise focus lands on <body> and the next Tab starts the page over.
-  if (refocus) navButton.focus();
-}
-
-// A pointer open grows the menu from its button; a keyboard open is instant, because
-// the arrow keys are how you move fast.
-function openNav(focusIndex = -1, { instant = false } = {}) {
-  if (instant) navMenu.dataset.instant = ''; else delete navMenu.dataset.instant;
-  navMenu.hidden = false;
-  navButton.setAttribute('aria-expanded', 'true');
-  const items = navItems();
-  if (focusIndex >= 0 && items.length) items[(focusIndex + items.length) % items.length].focus();
-}
-
-function moveNavFocus(step) {
-  const items = navItems();
-  const index = items.indexOf(document.activeElement);
-  items[((index < 0 ? 0 : index + step) + items.length) % items.length].focus();
-}
-
-navButton.addEventListener('click', () => {
-  if (navMenu.hidden) openNav(); else closeNav();
-});
-
-navButton.addEventListener('keydown', (event) => {
-  if (event.key === 'ArrowDown') { event.preventDefault(); openNav(0, { instant: true }); }
-  else if (event.key === 'ArrowUp') { event.preventDefault(); openNav(-1, { instant: true }); }
-});
-
-// The menu's own keys are handled before the app's global map sees them, so Escape here
-// closes the menu rather than clearing the search box behind it.
-navMenu.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') { event.stopPropagation(); closeNav(true); }
-  else if (event.key === 'ArrowDown') { event.preventDefault(); moveNavFocus(1); }
-  else if (event.key === 'ArrowUp') { event.preventDefault(); moveNavFocus(-1); }
-  else if (event.key === 'Tab') closeNav();
-});
-
-// Choosing an item routes through the hash like any other link; the menu just gets out
-// of the way. Clicking the section you are already on changes no hash and fires no
-// hashchange, so the close cannot wait for the re-render.
-navMenu.addEventListener('click', () => closeNav(true));
-
-document.addEventListener('pointerdown', (event) => {
-  if (!navMenu.hidden && !event.target.closest('.topnav')) closeNav();
-});
+const leetcodeLink = document.getElementById('navleetcode');
 
 /** Mark the section nav from the hash, so it can never disagree with the route. */
 function markNav() {
   const hash = location.hash || '#/';
-  // A deep-linked interview is still the Design section, the same way a problem page
-  // is still Problems.
-  const route = hash.startsWith('#/p/') || hash === '#/roadmap' ? '#/'
-    : hash.startsWith('#/lld/') ? '#/lld' : hash.startsWith('#/design/') ? '#/design'
+  // Everything LeetCode (catalog, roadmap, progress, a problem page, adding one) is the
+  // LeetCode section; a deep-linked interview is still its Design or LLD section.
+  const route = hash.startsWith('#/p/') || ['#/', '#/roadmap', '#/add', '#/progress'].includes(hash) ? '#/'
+    : hash.startsWith('#/lld') ? '#/lld' : hash.startsWith('#/design') ? '#/design'
       : hash;
-
-  let current = null;
+  // One tap returns to whichever catalog view you last used.
+  const mode = hash === '#/roadmap' ? 'roadmap' : hash === '#/' ? 'explorer' : state.catalogMode;
+  leetcodeLink.href = mode === 'roadmap' ? '#/roadmap' : '#/';
   for (const link of document.querySelectorAll('.topnav a')) {
-    if (link.dataset.route === route) { link.setAttribute('aria-current', 'page'); current = link; }
+    if (link.dataset.route === route) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-
-  // The button names the LeetCode section you are in. When you are somewhere that is
-  // not in its menu — a system design interview — it goes back to naming the group,
-  // because claiming "Problems" while you are on the design screen would be a lie
-  // about where you are, which is the one job this button has.
-  const inMenu = current && navItems().includes(current);
-  navLabel.textContent = inMenu ? current.textContent : 'LeetCode';
-  navButton.classList.toggle('quiet', !inMenu);
 }
 
 function render() {
@@ -207,7 +198,7 @@ function render() {
     onAttemptStart: detail => coachBeginAttempt(detail.slug),
     onAttemptEnd: detail => coachReviewAttempt(detail),
   });
-  document.body.classList.toggle('browse-page', !currentSlug() && !location.hash.startsWith('#/design') && !location.hash.startsWith('#/lld') && location.hash !== '#/progress');
+  document.body.classList.toggle('browse-page', !currentSlug() && location.hash !== '#/add' && !location.hash.startsWith('#/design') && !location.hash.startsWith('#/lld') && location.hash !== '#/progress');
   if (currentSlug()) progressLoadedAt = 0;
   markNav();
   // The dashboard owns its own DOM and its own fetch, so it is torn down explicitly
@@ -217,7 +208,18 @@ function render() {
   // down explicitly rather than leaving both running behind another route.
   if (design) { design.destroy?.(); design = null; }
 
+  if (problemImport) { problemImport.destroy(); problemImport = null; }
   if (lld) { lld.destroy(); lld = null; }
+  if (location.hash === '#/add') {
+    closeDrawer({ instant: true });
+    problemImport = renderProblemImport({ onAdded: async ({ entry, slug }) => {
+      if (!bySlug.has(slug)) data.problems.push(entry);
+      bySlug.set(slug, entry);
+      if (entry.lists?.added || entry.lists?.others) { state.list = entry.lists.others ? 'others' : 'added'; state.pattern = null; state.query = ''; state.difficulty = 'all'; searchEl.value = ''; state.catalogMode = 'explorer'; saveState(); }
+      goProblem(slug);
+    } });
+    replace(appEl, problemImport.element); mountRecorder(); return;
+  }
   if (location.hash === '#/lld' || location.hash.startsWith('#/lld/')) {
     lld = initLLD(appEl); mountRecorder(); return;
   }
@@ -243,7 +245,7 @@ function render() {
     const entry = bySlug.get(slug);
     if (!entry) {
       replace(appEl, el('div', { class: 'view' }, [
-        el('div', { class: 'crumb' }, el('button', { class: 'linkbtn', type: 'button', text: '← All problems', onclick: goBrowse })),
+        el('div', { class: 'crumb' }, el('button', { class: 'btn btn--quiet linkbtn', type: 'button', 'aria-label': 'Back to all problems', onclick: goBrowse }, [icon('back'), 'All problems'])),
         el('section', { class: 'card' }, el('div', { class: 'emptynote' }, [
           'There is no problem with the slug ', el('b', { text: slug }), ' in the NeetCode 250.',
         ])),
@@ -252,7 +254,7 @@ function render() {
       return;
     }
     state.selectedSlug = slug;
-    replace(appEl, renderProblem(entry, { neighbours: neighboursOf(slug), onBack: goBrowse, onOpen: handlers.onOpen }));
+    replace(appEl, renderProblem(entry, { listLabel: LIST_FILTERS.find(list => list.id === state.list)?.label || 'Problems', neighbours: neighboursOf(slug), canShuffle: shuffleSourceSetting() === 'leetcode' || !!shuffleTarget(), shuffleBusy: leetcodeShuffle.busy, onShuffle: handlers.onShuffle, onBack: goBrowse, onOpen: handlers.onOpen }));
     window.scrollTo({ top: 0, behavior: 'instant' });
     installResizers();
     mountRecorder();
@@ -260,8 +262,11 @@ function render() {
   }
 
   closeDrawer({ instant: true });
-  if (location.hash === '#/roadmap') state.catalogMode = 'roadmap';
-  else if (location.hash === '#/') state.catalogMode = 'explorer';
+  if (location.hash === '#/roadmap') {
+    state.catalogMode = 'roadmap';
+    // The roadmap draws the curated lists only.
+    if (['added', 'others'].includes(state.list)) { state.list = 'neetcode250'; state.pattern = null; }
+  } else if (location.hash === '#/') state.catalogMode = 'explorer';
   saveState();
   replace(appEl, renderCatalog());
   mountRecorder();
@@ -276,18 +281,22 @@ function renderCatalog() {
 
 let progressLoadedAt = 0;
 let progressPending = false;
+let progressRefreshQueued = false;
 let statsReadOnce = false;
 let streakPill = null;
-async function refreshCatalogProgress() {
-  if (progressPending || Date.now() - progressLoadedAt < 30_000) return;
+window.addEventListener('studio-tracker-changed', () => { progressLoadedAt = 0; void refreshCatalogProgress(true); });
+async function refreshCatalogProgress(force = false) {
+  if (progressPending) { if (force) progressRefreshQueued = true; return; }
+  if (!force && Date.now() - progressLoadedAt < 30_000) return;
   progressPending = true;
   try {
     // The first read shares the top bar pill's request; later ones ask again.
     const timeout = new Promise(resolve => setTimeout(resolve, 8000, null));
-    const stats = await Promise.race([loadStats({ fresh: statsReadOnce }), timeout]);
+    const result = await Promise.race([Promise.all([loadStats({ fresh: statsReadOnce }), loadCatalogProgress()]), timeout]);
+    const [stats, progress] = result || [];
     statsReadOnce = true;
     if (!stats) throw new Error('Progress unavailable');
-    state.progress = progressMapFrom(stats);
+    state.progress = progress;
     state.stats = stats;
     streakPill?.update(stats);
     state.progressState = 'ready';
@@ -298,6 +307,7 @@ async function refreshCatalogProgress() {
   } finally {
     progressPending = false;
     progressLoadedAt = Date.now();
+    if (progressRefreshQueued) { progressRefreshQueued = false; void refreshCatalogProgress(true); }
     if (document.body.classList.contains('browse-page')) {
       const y = window.scrollY;
       replace(appEl, renderCatalog());
@@ -420,6 +430,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 's') { event.preventDefault(); openPanel(entry, 'solution', { instant: true }); return; }
     if (event.key === 'a') { event.preventDefault(); openPanel(entry, 'article', { instant: true }); return; }
     if (isDrawerOpen()) return;
+    if (event.key === 'r') { event.preventDefault(); if (!event.repeat) handlers.onShuffle(); return; }
     const { previous, next } = neighboursOf(slug);
     if ((event.key === 'j' || event.key === 'ArrowDown') && next) { event.preventDefault(); handlers.onOpen(next.slug); }
     if ((event.key === 'k' || event.key === 'ArrowUp') && previous) { event.preventDefault(); handlers.onOpen(previous.slug); }
@@ -427,6 +438,7 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (state.catalogMode === 'roadmap') return;
+  if (event.key === 'r') { event.preventDefault(); if (!event.repeat) handlers.onShuffle(); return; }
   if (event.key === 'j' || event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); }
   else if (event.key === 'k' || event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); }
   else if (event.key === 'Enter' && state.selectedSlug) { event.preventDefault(); handlers.onOpen(state.selectedSlug); }
@@ -447,8 +459,10 @@ window.addEventListener('hashchange', render);
 window.addEventListener('pageshow', (event) => { if (event.persisted) render(); });
 
 setDrawerListener(() => {
-  for (const button of document.querySelectorAll('.ptoggle')) {
-    button.setAttribute('aria-pressed', String(drawerKind() === button.dataset.panel));
+  for (const button of document.querySelectorAll('.problem-tabs [role=tab]')) {
+    const selected = button.dataset.panel ? drawerKind() === button.dataset.panel : !drawerKind() && button.textContent === 'Problem';
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('aria-selected', String(selected));
   }
 });
 
@@ -460,7 +474,7 @@ function showBanner(message) {
   replace(bannerEl, [
     el('span', { class: 'bhead', text: 'Offline demo' }),
     el('span', { class: 'btext', text: message }),
-    el('button', { class: 'blink', type: 'button', text: 'Retry connection', onclick: () => location.reload() }),
+    el('button', { class: 'btn btn--quiet blink', type: 'button', text: 'Retry connection', onclick: () => location.reload() }),
   ]);
 }
 
@@ -486,7 +500,7 @@ async function boot() {
   });
   // A layout change moves the panes, so anything that measured them has to measure
   // again — the resize handles sit in the gaps between columns that just moved.
-  onSettingsChange(() => { if (currentSlug()) installResizers(); });
+  onSettingsChange(() => { paintShuffle(); if (currentSlug()) installResizers(); });
 
   const hadSavedCollapse = loadState();
   try {
@@ -501,6 +515,9 @@ async function boot() {
     return;
   }
 
+  setCollection(data.collection);
+  // A remembered collection that this workspace no longer has falls back to the curriculum.
+  if (!isKnownList(state.list)) state.list = 'neetcode250';
   bySlug = new Map(data.problems.map(p => [p.slug, p]));
 
   // First visit: show the shape of the curriculum — first pattern open, rest closed.

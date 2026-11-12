@@ -57,9 +57,11 @@ export function tabLabel(index) {
  */
 export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
   const tabs = el('div', { class: 'tc-tabs' });
+  const caseActions = el('div', { class: 'tc-row-actions' });
+  const caseRail = el('div', { class: 'tc-row' }, [tabs, caseActions]);
   const panelEl = el('div', { class: 'tc-panel' });
   const noticeEl = el('div', { class: 'tc-notice', hidden: true });
-  const root = el('div', { class: 'tc' }, [tabs, noticeEl, panelEl]);
+  const root = el('div', { class: 'tc' }, [caseRail, noticeEl, panelEl]);
 
   let examples = [];       // {input, expected, source:'example'}
   let mine = [];           // {input, expected, source:'custom'|'leetcode', note}
@@ -143,7 +145,7 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
       ...list.map((c, i) => {
         const mineHere = i >= examples.length;
         return el('button', {
-          class: 'tc-tab' + (i === selected ? ' is-on' : '') + (mineHere ? ' is-mine' : ''),
+          class: 'btn btn--quiet tc-tab' + (i === selected ? ' is-on' : '') + (mineHere ? ' is-mine' : ''),
           type: 'button',
           'aria-pressed': String(i === selected),
           title: mineHere ? caseOrigin(c.source) : "Published example",
@@ -156,7 +158,7 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
       }),
       runnable
         ? el('button', {
-          class: 'tc-add', type: 'button', title: 'Add a test case of your own',
+          class: 'btn btn--quiet tc-add', type: 'button', title: 'Add a test case of your own',
           onclick: () => addCase({ input: blankInput() }),
         }, '+')
         : null,
@@ -194,7 +196,7 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
       if (!runnable) { clear(panelEl); return; }
       replace(panelEl, el('p', { class: 'tc-empty' }, [
         el('span', { text: loaded ? 'No example cases for this problem. ' : 'Loading the example cases… ' }),
-        loaded ? el('button', { class: 'act', type: 'button', text: 'Add one', onclick: () => addCase({ input: blankInput() }) }) : null,
+        loaded ? el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Add one', onclick: () => addCase({ input: blankInput() }) }) : null,
       ]));
       return;
     }
@@ -232,15 +234,15 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
         ? el('span', { class: 'mono dim tc-origin', text: caseOrigin(c.source) })
         : el('span', { class: 'mono dim tc-origin', text: "Published example — read only" }),
       el('span', { class: 'spacer' }),
-      isMine
-        ? el('button', { class: 'ws-mini', type: 'button', text: 'Delete', onclick: () => removeCase(index) })
+    ]);
+
+    replace(caseActions, [isMine
+        ? el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: 'Delete', onclick: () => removeCase(index) })
         : el('button', {
-          class: 'ws-mini', type: 'button', text: 'Copy to a new case',
+          class: 'btn btn--quiet ws-mini', type: 'button', text: 'Copy to a new case',
           title: 'An editable copy, so the example itself stays what the problem published',
           onclick: () => addCase({ input: c.input, expected: c.expected }),
-        }),
-      onRun ? el('button', { class: 'ws-run tc-run', type: 'button', text: 'Run', onclick: onRun }) : null,
-    ]);
+        })]);
 
     // The tutor's reason for the case, as plain text under the fields it explains.
     const why = isMine && c.source === 'coach' && String(c.note ?? '').trim()

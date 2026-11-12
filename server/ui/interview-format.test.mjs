@@ -24,14 +24,14 @@ test('outcomes never manufacture a hire signal', () => {
 test('a Beginner-graded signal says so, and its tone stays on the raw signal', () => {
   assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire', reportDifficulty: 'beginner' }), { label: 'Hire (Beginner)', tone: 'success' });
   assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'No hire', reportDifficulty: 'beginner' }), { label: 'No hire (Beginner)', tone: 'danger' });
-  assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire', reportDifficulty: 'amazon-sde-2' }), { label: 'Hire', tone: 'success' });
+  assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire', reportDifficulty: 'mid-level' }), { label: 'Hire', tone: 'success' });
   assert.deepEqual(interviewOutcome({ debriefed: true, hireSignal: 'Hire' }), { label: 'Hire', tone: 'success' });
   assert.deepEqual(interviewOutcome({ debriefed: true, reportDifficulty: 'beginner' }), { label: 'Completed', tone: 'neutral' });
   assert.equal(signalLabel(null, 'beginner'), null);
 });
 test('report difficulty names are known values only', () => {
   assert.equal(reportDifficultyLabel('beginner'), 'Beginner');
-  assert.equal(reportDifficultyLabel('amazon-sde-2'), 'Amazon SDE II');
+  assert.equal(reportDifficultyLabel('mid-level'), 'Mid-level');
   assert.equal(reportDifficultyLabel(undefined), '');
   assert.equal(reportDifficultyLabel('nonsense'), '');
 });

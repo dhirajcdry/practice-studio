@@ -1,3 +1,5 @@
+import { leetcodeViews } from './leetcode-views.js';
+import { screenHeader } from './ui/headers.js';
 // Practice Studio — Phase 6, the progress dashboard ("how am I actually doing").
 //
 // Mounts with `init(mountEl, api)`. Everything it draws comes from `GET /api/stats`,
@@ -186,19 +188,9 @@ function needMore({ have, need, what, how }) {
 /* ============================================================ sections */
 
 function headSection(stats, { onRefresh, busy }) {
-  return el('div', { class: 'dash-head' }, [
-    el('div', {}, [
-      el('h1', { text: 'Progress' }),
-      el('div', { class: 'sub' }, [
-        `Your saved practice: ${evidenceSummary(stats)}.`,
-      ]),
-    ]),
-    el('button', {
-      class: 'dash-refresh', type: 'button', disabled: busy,
-      text: busy ? 'Reading…' : 'Re-read workspace',
-      onclick: onRefresh,
-    }),
-  ]);
+  return screenHeader({ title: 'Progress', meta: [evidenceSummary(stats)], actions: { secondary: [
+    { label: busy ? 'Reading…' : 'Re-read workspace', disabled: busy, onClick: onRefresh, className: 'dash-refresh' },
+  ] }, status: leetcodeViews('progress') });
 }
 
 function truthSection(stats) {
@@ -556,7 +548,7 @@ function serverState({ kind, message, onRefresh }) {
     el('p', { class: 'dash-quiet', style: 'padding:0;font-style:italic' },
       'Your progress will appear once it can be loaded.'),
     el('div', { style: 'margin-top:13px' },
-      el('button', { class: 'dash-refresh', type: 'button', text: 'Try again', onclick: onRefresh })),
+      el('button', { class: 'btn btn--quiet dash-refresh', type: 'button', text: 'Try again', onclick: onRefresh })),
   ]));
 }
 
@@ -661,10 +653,7 @@ function renderInto(mountEl, stats, { onRefresh, busy, now }) {
 
 function renderLoading(mountEl) {
   replace(mountEl, el('div', { class: 'dash view' }, [
-    el('div', { class: 'dash-head' }, el('div', {}, [
-      el('h1', { text: 'Progress' }),
-      el('div', { class: 'sub', text: 'Loading your progress…' }),
-    ])),
+    screenHeader({ title: 'Progress', meta: ['Loading your progress…'] , status: leetcodeViews('progress') }),
     el('section', { class: 'dash-card' }, el('div', { class: 'dash-pad' },
       el('div', { class: 'skel' }, [el('i'), el('i', { style: 'width:70%' }), el('i', { style: 'width:45%' })]))),
   ]));
@@ -690,10 +679,7 @@ export function init(mountEl, api = {}) {
     // demo dashboard here would be the exact dishonesty this screen exists to avoid.
     if (api && api.mode === 'mock') {
       replace(mountEl, el('div', { class: 'dash view' }, [
-        el('div', { class: 'dash-head' }, el('div', {}, [
-          el('h1', { text: 'Progress' }),
-          el('div', { class: 'sub', text: 'Your practice record lives on this machine, and it is not reachable right now.' }),
-        ])),
+        screenHeader({ title: 'Progress', meta: ['Your practice record lives on this machine, and it is not reachable right now.'] , status: leetcodeViews('progress') }),
         serverState({ kind: 'mock', onRefresh: () => location.reload() }),
       ]));
       return;
@@ -707,10 +693,7 @@ export function init(mountEl, api = {}) {
 
     if (!result.ok) {
       replace(mountEl, el('div', { class: 'dash view' }, [
-        el('div', { class: 'dash-head' }, el('div', {}, [
-          el('h1', { text: 'Progress' }),
-          el('div', { class: 'sub', text: 'The practice record could not be read.' }),
-        ])),
+        screenHeader({ title: 'Progress', meta: ['The practice record could not be read.'] , status: leetcodeViews('progress') }),
         serverState({ kind: result.kind, message: result.message, onRefresh: load }),
       ]));
       return;
@@ -823,10 +806,7 @@ function renderSelfTests() {
   const results = runSelfTests();
   const failed = results.filter((r) => !r.pass).length;
   return el('div', { class: 'dash view' }, [
-    el('div', { class: 'dash-head' }, el('div', {}, [
-      el('h1', { text: 'Dashboard self-tests' }),
-      el('div', { class: 'sub', text: `${results.length - failed} passed, ${failed} failed.` }),
-    ])),
+    screenHeader({ title: 'Dashboard self-tests', meta: [`${results.length - failed} passed, ${failed} failed.`] }),
     el('section', { class: 'dash-card' }, el('div', { class: 'dash-selftest' }, results.map((r) => el('div', {
       class: r.pass ? 'ok' : 'bad',
       text: `${r.pass ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ` — ${r.detail}` : ''}`,

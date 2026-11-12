@@ -20,16 +20,16 @@ export async function checkControls({ call, evaluate, wait }, origin) {
         const buttons = [...row.children].flatMap(child => child.matches('button') ? [child]
           : child.querySelectorAll('button').length === 1 ? [...child.querySelectorAll('button')] : [])
           .filter(button => visible(button)
-          && !button.matches('.hover-surface,.set-card,.roadmap-node,.tree-root,.tree-pattern,.phead,.rr-casehead'));
+          && !button.matches('.ui-action-row,.hover-surface,.set-card,.roadmap-node,.tree-root,.tree-pattern,.phead,.rr-casehead'));
         const groups = [];
         for (const button of buttons) {
           const box = button.getBoundingClientRect();
           let group = groups.find(g => box.top < g.bottom - .5 && box.bottom > g.top + .5);
           if (!group) groups.push(group = { top: box.top, bottom: box.bottom, controls: [] });
-          group.controls.push({ selector: path(button), height: box.height });
+          group.controls.push({ selector: path(button), height: box.height, expected: button.matches('.ui-tab') ? 38 : button.matches('.btn--lg') ? 34 : 28 });
         }
         return groups.filter(g => g.controls.length >= 2
-          && Math.max(...g.controls.map(c => c.height)) - Math.min(...g.controls.map(c => c.height)) > .5)
+          && g.controls.some(c => Math.abs(c.height - c.expected) > .5))
           .map(g => ({ row: path(row), controls: g.controls }));
       });
     })()`);
@@ -42,6 +42,13 @@ export async function checkControls({ call, evaluate, wait }, origin) {
       m.setSetting('mode', ${JSON.stringify(mode)});
       await document.fonts.ready;
     })()`);
+    // History is now a dismissible popover. Settings takes focus and closes it;
+    // reopen the real surface before measuring the next palette.
+    await evaluate(`(() => {
+      const history = document.querySelector('[aria-label="History"]');
+      if (history?.getAttribute('aria-expanded') !== 'true') history.click();
+    })()`);
+    await wait(`document.querySelector('.chat-history-popover .recent-chat')?.getBoundingClientRect().width > 0`);
     await measure('problem', theme, mode);
     await checkSidebar(evaluate);
     const geometry = await evaluate(`(() => {
@@ -49,10 +56,11 @@ export async function checkControls({ call, evaluate, wait }, origin) {
       const text = row?.querySelector('.recent-title');
       const icons = [...document.querySelectorAll('.coach-chat-tools .icon-btn')].filter(n => !n.hidden);
       const tab = document.querySelector('.coach-tab').getBoundingClientRect();
-      const model = tab;
+      const model = document.querySelector('.coach-chat-tools').getBoundingClientRect();
       const bar = document.querySelector('.coach-bar');
       const style = getComputedStyle(bar);
       return {
+        headerInset: bar.getBoundingClientRect().right - Math.max(...[...bar.querySelectorAll('button')].filter(n => n.getClientRects().length).map(n => n.getBoundingClientRect().right)),
         inset: text ? text.getBoundingClientRect().left - row.getBoundingClientRect().left : null,
         overflow: row ? Math.max(...[row.parentElement, document.querySelector('.coach-log')]
           .filter(Boolean).map(n => n.scrollWidth - n.clientWidth)) : null,
@@ -60,9 +68,11 @@ export async function checkControls({ call, evaluate, wait }, origin) {
           Math.abs(r.top + r.height / 2 - model.top - model.height / 2)]; }),
         bar: bar.getBoundingClientRect().height,
         limit: tab.height + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-          + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth),
+          + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)
+          + (model.top >= tab.bottom ? model.height + 4 : 0),
       };
     })()`);
+    assert.ok(geometry.headerInset >= 6, `${theme}/${mode}: pane header tools need edge clearance ${JSON.stringify(geometry)}`);
     assert.ok(geometry.inset >= 6, `${theme}/${mode}: hover inset ${JSON.stringify(geometry)}`);
     assert.ok(geometry.overflow <= 1, `${theme}/${mode}: horizontal overflow`);
     assert.ok(geometry.icons.length >= 1 && geometry.icons.length <= 3 && geometry.icons.every(([w, h, delta]) =>
@@ -94,7 +104,7 @@ export async function checkControls({ call, evaluate, wait }, origin) {
     })`);
     await measure('catalog', theme, mode);
   }
-  assert.deepEqual(failures, [], 'Sibling control heights (theme, row, selectors and measured heights)');
+  assert.deepEqual(failures, [], 'Shared control heights: 38px tabs, 28px controls, 34px setup actions');
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

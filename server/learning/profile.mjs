@@ -82,7 +82,7 @@ export async function readLearnerProfile(root, { discipline, excludeInterviewId,
     const j = report.judgement;
     assessments.push({ id, ...identity, discipline: d, date, targetLevel: state.targetLevel || state.level || null, source,
       ...(state.reportDifficulty ? { reportDifficulty: state.reportDifficulty } : {}), assessmentKind: 'model judgement', evidenceStatus: j ? 'recorded' : 'no structured assessment',
-      signal: j?.signal || null, summary: j?.summary || null, dimensions: j?.dimensions || [], technicalErrors: j?.technicalErrors || [],
+      signal: j?.signal || null, headline: j?.headline || null, summary: j?.summary || null, moveUp: j?.moveUp || null, dimensions: j?.dimensions || [], technicalErrors: j?.technicalErrors || [],
       missingConsiderations: j?.missingConsiderations || [], discoveries: j?.discoveries || [],
       strengths: j?.strengths || [], improvements: j?.improvements || [], practice: j?.practice || [] });
   }

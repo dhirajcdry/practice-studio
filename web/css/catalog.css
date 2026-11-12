@@ -7,11 +7,6 @@ body.browse-page main{max-width:1680px;padding:32px 28px 48px}
 .catalog .viewhead h1{font:600 30px/1.2 var(--display);letter-spacing:-.045em}
 .catalog .viewhead .sub{font:13px/1.6 var(--ui);margin-top:8px;color:var(--ink-70)}
 
-.catalog-modes{display:flex;gap:4px;padding:4px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card)}
-.catalog-modes button{padding:8px 14px;font:12px var(--ui);border-radius:var(--r-sm);color:var(--ink-50);transition:color var(--dur-hover) ease,background-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out)}
-.catalog-modes button:hover{color:var(--ink)}
-.catalog-modes button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
-
 .catalog-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:28px;align-items:start}
 
 /* ---------------- sidebar tree ---------------- */
@@ -57,23 +52,6 @@ body.browse-page main{max-width:1680px;padding:32px 28px 48px}
    as a contained toolbar its edges are the column's edges. */
 .catalog .filterbar::before{content:none}
 /* A segmented control: a recessed track, the chosen option raised out of it. */
-.catalog .seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:calc(var(--r-md) - 3px);background:rgba(var(--ink-rgb),.055)}
-.catalog .seg-opt{
-  display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:6px 12px;
-  border:0;border-radius:calc(var(--r-md) - 5px);background:transparent;box-shadow:none;
-  color:var(--ink-50);font:500 12px/1.2 var(--ui);letter-spacing:0;text-transform:none;white-space:nowrap;
-  transition:color var(--dur-hover) ease,background-color var(--dur-hover) ease,box-shadow var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
-}
-.catalog .seg-opt:hover{color:var(--ink);background:rgba(var(--ink-rgb),.05);border:0}
-.catalog .seg-opt[aria-pressed="true"],
-.catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
-  color:var(--ink);background:var(--card);border:0;
-  box-shadow:0 1px 2px rgba(var(--ink-rgb),.12),0 0 0 1px var(--hair-10);
-}
-body.is-dark .catalog .seg-opt[aria-pressed="true"],
-body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
-  background:rgba(var(--ink-rgb),.13);box-shadow:inset 0 1px 0 rgba(var(--ink-rgb),.08),0 1px 3px rgba(var(--on-ink-rgb),.5);
-}
 .catalog .seg-dot{width:7px;height:7px;border-radius:50%;flex:none;opacity:.75;transition:opacity var(--dur-hover) ease}
 .catalog .seg-opt.easy .seg-dot{background:var(--easy)}
 .catalog .seg-opt.medium .seg-dot{background:var(--med)}
@@ -84,16 +62,13 @@ body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
 .catalog .seg-opt.hard[aria-pressed="true"] .seg-dot{box-shadow:0 0 0 3px var(--hard-soft)}
 .catalog .filterbar .spacer{flex:1 1 auto}
 .catalog .countpill{gap:0;padding:0 4px;font:12px var(--ui);color:var(--ink-50);letter-spacing:0;white-space:pre}
-.catalog .countpill b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
-.catalog .filterbar .linkbtn{min-height:30px;padding:6px 10px;border-radius:calc(var(--r-md) - 5px);font:500 12px var(--ui);color:var(--ink-50)}
-.catalog .filterbar .linkbtn:hover{color:var(--ink);background:rgba(var(--ink-rgb),.05);text-decoration:none}
+.catalog .countpill b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}.catalog .filterbar .linkbtn:hover{text-decoration:none}
 @media(max-width:1080px){.catalog .filterbar{position:static;margin:0 0 14px}}
 @media(max-width:620px){.catalog .seg{max-width:100%;overflow-x:auto}.catalog .filterbar .spacer{display:none}}
-.catalog .linkbtn{font:11px var(--ui);text-transform:none;letter-spacing:0;min-height:30px}
 
 /* ---------------- pattern sections ---------------- */
 .catalog .sections{gap:14px}
-.catalog .psec{border:1px solid var(--hair-10);border-radius:var(--r-md);box-shadow:none;background:var(--card);transition:border-color .2s ease,box-shadow .2s ease}
+.catalog .psec{border:1px solid var(--hair-10);border-radius:var(--r-md);box-shadow:none;background:var(--card);transition:border-color 150ms ease}
 .catalog .psec.open{box-shadow:var(--shadow)}
 .catalog .phead{grid-template-columns:12px 20px minmax(0,1fr) auto auto;gap:12px;padding:14px 18px 14px 16px;min-height:54px;background:var(--surface-inset, transparent);transition:background-color var(--dur-hover) ease}
 .catalog .phead:hover{background:var(--hair-06)}
@@ -151,12 +126,17 @@ body.is-dark .catalog .seg-opt:is(.easy,.medium,.hard)[aria-pressed="true"]{
 
 /* The art themes put panes on frosted glass; the tree would otherwise sit straight on
    the painting and its small text would fight the image. */
-body.theme-art .catalog-tree{padding:10px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:color-mix(in srgb,var(--card) 80%,transparent);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6)}
-body.theme-art .catalog .viewhead>div:first-child{padding:var(--space-3) var(--content-rail);margin:0;border-radius:var(--r-md);background:color-mix(in srgb,var(--card) 55%,transparent);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
 
 /* Reduced motion: no movement; colour fades stay. */
 @media(prefers-reduced-motion:reduce){.catalog :is(*,*::before,*::after){transition-property:opacity,color,background-color,border-color !important}}
 
 @media(max-width:1250px){.catalog-layout{grid-template-columns:225px minmax(0,1fr);gap:20px}.catalog .prow{grid-template-columns:18px 34px minmax(0,1fr) minmax(70px,max-content)}.catalog .prow .plists,.catalog .prow .assets{display:none}.sec-progress{min-width:0}.sec-progress .meter{width:64px}}
 @media(max-width:850px){body.browse-page main{padding:24px 16px}.catalog-layout{grid-template-columns:minmax(0,1fr)}.catalog-tree{position:static;max-height:260px;border:1px solid var(--hair-10);border-radius:var(--r-md);padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 10px}.tree-heading,.tree-root,.tree-report{grid-column:1/-1}.tree-pattern{padding-left:10px}.tree-pattern::before,.tree-pattern::after{content:none}}
-@media(max-width:520px){body.browse-page .topbar{padding-inline:14px}.catalog .viewhead h1{font-family:var(--display);font-size:27px}.catalog .prow{grid-template-columns:18px minmax(0,1fr) minmax(62px,max-content);gap:8px;padding:12px}.catalog .prow .pnum{display:none}.catalog .phead{gap:8px;padding:12px;grid-template-columns:10px 18px minmax(0,1fr) auto}.catalog .phead .pcount{display:none}.catalog .phead .pname{font-size:12px}.sec-progress .meter{display:none}.catalog-tree{grid-template-columns:minmax(0,1fr)}.catalog .filterbar .countpill{margin-left:auto}}
+@media(max-width:520px){body.browse-page .topbar{padding-inline:14px}.catalog .viewhead h1{font-family:var(--display);font-size:27px}.catalog .prow{grid-template-columns:18px minmax(0,1fr) minmax(62px,max-content);gap:8px;padding:12px}.catalog .prow .pnum{display:none}.catalog .phead{gap:8px;padding:12px;grid-template-columns:10px 18px minmax(0,1fr) auto}.catalog .phead .pcount{display:none}.catalog .phead .pname{font-size:12px}.sec-progress .meter{display:none}.catalog-tree{grid-template-columns:minmax(0,1fr)}.catalog .filterbar .countpill{margin-left:auto}}.catalog .filterbar .shufflebtn{display:inline-flex;align-items:center;}
+
+/* Quiet header action shares the segmented control's outer height. */
+body[class] .catalog .catalog-add{height:calc(var(--control-h-sm) + var(--space-2) + 2px);min-height:calc(var(--control-h-sm) + var(--space-2) + 2px);padding-inline:var(--space-2);gap:var(--space-1);color:var(--ink-50);align-self:center;white-space:nowrap}
+.catalog .catalog-add,.catalog .catalog-add:hover{text-decoration:none}
+.catalog .catalog-add:hover{color:var(--ink);background:var(--row-hover-bg)}
+
+.submission-toast.shuffle-notice{position:fixed;bottom:24px;z-index:60;display:flex;align-items:center;gap:10px;font-size:12px}

@@ -54,7 +54,18 @@ and use row spacing with inset content rather than stretching cards beyond their
 - `createTabs` / `createBadge` (`primitives.js`): tab bars with roving focus; status chips.
 - `createActionRow({ content, trailing, onClick, className })`: clickable content rows. Uses shared row/inset geometry and grows with its content. Never apply `.btn` to a multiline content row: `.btn` deliberately has compact toolbar geometry.
 - `icon(name, size)` (`icon.js`): stroke icons in `currentColor`. Add a path there; never use Unicode glyphs (♫ ⌨ ▷ ◈) as icons.
-- Buttons: `.btn` plus `--primary` (one per state, `--solid-*` tokens) · `--secondary` · `--quiet` · `--danger-quiet`; `.icon-btn` for icon-only (borderless, 28px).
+- `button({ label, icon, kbd, variant, size, pressed, disabled, danger, ariaLabel,
+  title, onClick, className })` in `ui/button.js`: `.btn` with exactly one of
+  `btn--primary`, `btn--secondary`, `btn--quiet`, `btn--icon`. Standard height 28px,
+  padding 0 10px, gap 6px, icons 15px. `size: 'lg'` is 34px for setup calls to action
+  only. Composer Send is 28px. Icon buttons need an accessible label and never have a box.
+  Danger recolours quiet actions; pressed quiet actions use accent-soft. Focus is a
+  2px accent outline with 2px offset. Hook classes do not define another variant.
+- `practiseFromMock(options)` shares the label and default outline treatment.
+- Tabs use `ui/tabs.js` (13px/500, 2px underline, roving keyboard focus); `segmented`
+  is the compact content-width grouped-switch surface. Badges use `ui/badge.js`,
+  20px high, with neutral/good/warn/bad/accent tones. Content rows remain content-sized
+  `ui-action-row` controls rather than toolbar buttons.
 
 ## Rules
 
@@ -87,6 +98,22 @@ bounded body scroller. Its list, detail, empty and narrow states are in the visu
 audit. Exact payloads expand inside bounded text panels; long content must not widen
 the sheet or move the close control. Practice adds open/empty desktop and narrow states.
 
+## Themes
+
+Studio, Desk and Twin Suns (`dunes`) are the only families. Each has a light and
+ dark palette in `themes.css`; retired saved selections fall back to Studio without
+changing light/dark mode. Semantic verdict and syntax colours remain independent
+of control geometry.
+
+- Studio: Avenir Next, flat adjoining panes, hairline dividers, 6px controls, no pane shadow.
+- Desk: warm paper and grain, 14px floating panes with 10px gaps, 9px controls,
+  Iowan Old Style titles at weight 500.
+- Twin Suns: the painting is behind solid boards, never text. Boards have ink borders,
+  3px corners, 14px gaps and two hard offset shadows. Controls and titles use Futura
+  stencil capitals. The survey stripe belongs only beneath the app bar.
+
+No app stylesheet may use backdrop filtering. Floating layers use solid surfaces.
+
 ## Interview report
 
 `server/interview/report.mjs` derives the report on read: `reportFacts` counts the raw
@@ -95,7 +122,19 @@ interviewer's JSON. A quote stays a quote only if the candidate actually said it
 otherwise it's shown as an observation. Nothing is stored, so a parser or layout fix
 costs a reload, never a recording. The sheet is `web/js/interview-report.js` + `web/css/report.css`.
 
-Any finished interview, however old, can be asked about from the sheet's side panel
+Reports lead with the verdict and facts, then the move-up band and at most three fixes.
+Older practice items retain their title and improvements. The box score selects the
+first Weak dimension, otherwise first Mixed, otherwise the first dimension. Play by
+play attaches each distinct evidence quote at most once, within 60 seconds. The final
+code precedes strengths and the saved follow-up thread. All time links open the
+conversation at the nearest turn; reduced-motion preferences suppress scrolling animation.
+The audit covers the report hero, box score, code, follow-ups and 375px layout, including
+44px targets and composited text contrast. Set `STUDIO_REPORT_SHOTS=/absolute/output`
+when running `npm run check:visual` to capture full-page Twin Suns/Studio reports and
+a Twin Suns problem page. `STUDIO_VISUAL_PORT` selects an alternate scratch port.
+
+
+Any finished interview, however old, can be asked about from the sheet's follow-up thread
 (`POST /api/interview/ask`, prompt in `server/interview/review.mjs`). Questions and
 answers go to `followups.jsonl` beside the record, never into `turns.jsonl`. The question
 is saved before it's answered, a question still being answered comes back `pending`, and
@@ -166,11 +205,31 @@ states to that audit; an overflow-only check is insufficient.
 
 ### Header and conversation anatomy
 
-Use `workspaceHeader` and `dialogHeader` from `web/js/ui/headers.js`. Navigation, title and metadata share one compact desktop row. The back icon has a
-labelled link; title and metadata wrap naturally when space is limited.
-Actions own a trailing rail and wrap below on small screens. Dialogs always put the
-labelled close icon at the top right. Notes and reports use the same header contract.
-The visual audit checks close placement and title/action overlap across themes.
+Use `screenHeader`, `dialogHeader` and `paneHeader` from `ui/headers.js`.
+`workspaceHeader` is a compatibility adapter for existing callers.
+
+- Screen (46px): back, crumb, truncating title, badges, dot-separated metadata,
+  flexible space, status, secondary actions, primary, overflow.
+- Dialog (56px): title and metadata, action rail, separator, Close alone at the
+  right edge. Secondary actions enter the existing keyboard-accessible menu on
+  narrow screens. They retain their original handlers and current disabled state.
+- Pane (38px): title/subtitle or tabs, then tools. Whiteboard zoom/fit is driven by
+  the vendored API. Pane controls stay outside the scroll region.
+
+The action placement contract for the redesign is:
+
+| Region | Primary | Secondary | Overflow |
+| --- | --- | --- | --- |
+| Finished mock review | View report | Learning notes; Practise from this mock (outline) | Existing interviewer/print actions |
+| Review without report | Practise from this mock | Learning notes | — |
+| Report dialog | Practise from this mock | Ask the interviewer (pressed while open) | Re-grade; Print |
+| Live mock | — | Timer; Pause/Resume; Finish (danger); Run; Submit | Learning notes; previous/next/shuffle |
+| Untimed practice | — | Timer; Start/Resume; Learning notes | — |
+| Coding workspace | Submit with shortcut | Previous/next/shuffle icons; Run with shortcut | External resources; Reset code |
+
+Reset retains its arm-to-confirm step. Reference tabs retain their drawers and S/A
+shortcuts. The coding screen rail replaces the old editor run bar. The case row
+owns Copy to a new case; there is only one Run control.
 
 Conversation controls use the UI font even in themes with serif prose. Show one
 current status; additional text explains an available action, never repeats that
@@ -178,7 +237,17 @@ status. Microphone controls remain available during replies and playback. The tr
 remains the single scroll owner, and controls stay in normal layout flow.
 
 Mock and practice transcripts use `ui/conversation.js` and `.ui-conversation-text`:
-14px UI type, a 1.6 line height, a 68ch maximum reading width, and 16px between turns.
+14px UI type, a 1.6 line height, and a centred 720px maximum message column.
+`conversationMessage` owns labels, timestamps and action rows across chat, mocks,
+practice and report follow-ups. Learner bubbles align right, use a soft ink fill and
+9px/12px padding, and occupy at most 85% of the column. Their speaker name is
+screen-reader-only. Consecutive same-speaker messages have 6px separation and one
+visible speaker label; different speakers have 16px separation. Elapsed timestamps
+remain visible. Code uses 12.5px mono, bounded horizontal scrolling and a shared
+Copy code icon. Message actions appear on hover/focus and on the latest coach reply.
+Day and phase separators use a centred label between hairlines. A quiet Thinking
+row precedes tokens. Jump to latest appears only after new content arrives while
+the reader is above the bottom; activation resumes the existing follow behavior.
 Interviewer/coach replies use the safe Markdown renderer for both saved and streaming
 text. Store the original source separately from rendered DOM so split tokens, Replay,
 and Save to notes retain block boundaries. Learner prose stays literal (fenced code
@@ -197,7 +266,8 @@ header; preferences belong in Settings. Do not add a control here without removi
 
 The live draft separates confirmed text from highlighted provisional words. Preview
 revisions never enter the saved answer; final phrases enter once, in recording order.
-Long drafts scroll inside the panel. Sent answers are in the conversation above, so the
+Long drafts scroll inside the panel without moving its status/control line. The bar
+uses the composer well, border, radius and 28px controls. Sent answers are in the conversation above, so the
 panel does not repeat them.
 
 Clicking the words edits them in typed mode, and `answerModeSwitch` is the labelled
@@ -273,10 +343,9 @@ Practice questions enter the learner profile as ungraded observations, not verdi
 or completed interviews. `npm run check:practice` verifies real browser flows with
 fake providers and a scratch workspace.
 
-Editor frames use `.ui-editor-surface`. Decorative theme blur must not apply to
-these frames: `backdrop-filter` creates a containing block for fixed descendants,
-which changes the coordinates of embedded editor overlays. Keep whiteboards and
-code editors opaque; apply theme decoration to their surrounding chrome instead.
+Editor frames use `.ui-editor-surface`. Keep whiteboards and code editors opaque.
+Backdrop filtering is forbidden across the app; it changes fixed-overlay coordinates
+and adds paint cost. Theme decoration belongs behind solid surfaces.
 
 ### Shared Python editor
 
@@ -297,8 +366,8 @@ verifies the shared behavior in an isolated browser with fake providers.
 
 ### Practice from an attempted mock
 
-LLD and system-design history rows, open mocks and report sheets expose
-“Practise from this mock”. `startPracticeFromMock` passes a typed source identity;
+LLD and system-design history rows (“Practise from it” in a problem's detail), the
+Next session card (“Practise this”), open mocks and report sheets branch a practice copy. `startPracticeFromMock` passes a typed source identity;
 `POST /api/practice/start` resolves the authoritative saved work on the server.
 An active editor flushes before branching. Finished mocks stay read-only.
 
@@ -314,8 +383,11 @@ with large transcript truncation labelled honestly. Missing feedback stays missi
 
 Use `web/js/workspace-tools.js` with the existing `coach-actions.js` protocol for
 Python and board actions. Register against the full session target and unregister
-on disposal. Render receipts with the shared inset/cluster styles inside the scrolling
-conversation. The composer and workspace header must not move as receipts arrive.
+on disposal. Render receipts through `ui/receipt.js` inside the scrolling
+conversation: a 15px kind icon, 12.5px sentence and existing Undo action. Consecutive
+receipts share a 2px left rule without card boxes. Show output is closed by default
+and open for a failing run; its mono output scrolls within 180px. Tutor runs retain
+their coach attribution and never increment learner statistics. The composer and workspace header must not move as receipts arrive.
 Only live actions may execute; recorded receipts are display-only. Preserve native
 Undo and refuse receipt Undo if intervening edits changed the target. A successful
 acknowledgement means the workspace save completed, not merely that pixels changed.
@@ -333,10 +405,15 @@ All chat, practice, mock and report inputs use `web/js/ui/composer.js`:
 - `createComposer` supplies one bordered surface, content, transient notices and a
   footer with options on the left and actions on the right. Model/input-mode pickers
   belong in the footer. Idle status must not add a dedicated row.
-- `bindComposerInput` owns auto-growth (40px minimum, 180px cap or 20% of viewport height). Call `resize()` for
+- `bindComposerInput` owns auto-growth (one line through eight lines, then internal scrolling). Call `resize()` for
   programmatic draft changes and `dispose()` on teardown. Width changes and input
   events are observed. A large draft scrolls inside the input, never grows the page.
-- `composerSend` provides the same labelled icon action and shortcut hint everywhere.
+- `composerSend` provides a 28px filled icon action with the shortcut in the shared
+  tooltip. Empty drafts disable Send. Coding chat swaps Send for its existing Stop
+  action during streaming; other surfaces have no server cancellation action.
+  The textarea has no separate focus ring: focus belongs to the rounded well container.
+  Existing model/effort selection is one quiet footer button. Dictation uses the same
+  capture controller and saved draft as typing, with a compact mic icon.
   Keep the existing Cmd/Ctrl+Enter behavior; plain Enter remains a newline.
 - The composer stays in normal flex flow, so the transcript automatically receives
   the remaining height. Its inner body can scroll, while the footer stays visible. Do not copy an absolute overlay without an inset protocol.
@@ -417,3 +494,62 @@ away from the fixed header and leaves room for the keyboard focus ring outside t
 Branch-practice visual states measure section gaps, list indentation, horizontal
 overflow and the reading boundary with long feedback at desktop/mobile widths,
 including a focused, partially scrolled report.
+
+
+Round 1 header verification uses the screen header as the coding readiness anchor;
+the removed editor run bar must not gate audit setup. Buttons are 28px, pane tabs
+38px, ordinary controls including composer Send are 28px, and setup actions are 34px. A narrow coach header can put its icon tools
+on a second row while keeping all three tab labels visible. Narrow screen actions
+remain reachable in More actions. Live mocks keep Submit outlined and expose
+Practise from this mock in More actions. Board zoom labels follow Excalidraw's
+onChange app state, including wheel and pinch changes; native undo/redo keeps the
+theme's floating surface. Studio's screen chrome and work panes are flush.
+Shared conversation anatomy uses `.ui-message`, one visible `.ui-speaker` per grouped
+speaker run, `.ui-message-actions`, and a bounded reading body. User bubbles stay within
+the shared reading width. Receipts use `.ui-receipt`; successful output starts collapsed and failed runs expand it. Composer Send is a 28px control, while setup actions remain 34px.
+
+
+### Track homes
+
+`#/lld` and `#/design` share `web/js/track-home.js` and `web/css/track-home.css`, fed by
+`GET /api/track-home?discipline=` (`server/learning/track-home.mjs`) plus the track's own
+interview and practice lists. One 1040px reading column, in this order:
+
+1. **Next session**: the first practice suggestion of the latest graded mock (title, why,
+   fix), its "move up" line, Practise this / Open the report, and the other suggestions.
+2. **Skills**: rubric rows by graded-mock columns (latest eight, oldest left) plus an
+   Overall row. A cell without evidence is a dash. One graded mock is labelled a single
+   reading, not a trend; tallies count only rated reports. No averages or percentages.
+3. **Problems**: one row per problem, most recent activity first, then catalog problems
+   not tried yet. Mocks without a structured report say "Feedback, not graded".
+
+New mock setup and open practice live behind the header actions. A page visit never
+starts a model turn. The learner disclosure stays last.
+
+### Settings, library rows and paint cost
+
+Settings use `ui/segmented.js` with 28px padded options and a filled selection.
+Native checkbox semantics remain on the shared `.ui-switch` (role `switch`). Sections
+use an 11px uppercase label, an 8px content gap, 36px minimum rows, 12px helper text,
+and 24px between sections. Theme miniatures show pane geometry in light and dark
+without requesting the painting. Quiet prompt rows are content actions: 32px minimum,
+13px type, 2px apart, no border. They are not 28px toolbar controls.
+
+Design and LLD saved mocks are listed under their problem on the track home (see
+"Track homes"): a title, outcome badge and dot-separated relative metadata, one
+contextual action (Open mock / Continue practice / Review / Mock it), and a detail with
+each attempt plus Mock it again, Practise untimed and Learning notes. Open retains
+resumption for unfinished interviews. Coding history retains its Open
+and resume behavior; practice branching is supported only for LLD and system design.
+Reference drawers retain Solution / Article tabs and shortcuts with a separate close rail.
+
+Twin Suns owns the only painting layer, a fixed contained pseudo-element behind
+opaque boards. Pane headers have only a bottom hairline. Avoid background attachment
+and layout transitions. Transitions use opacity, transform, background-color, color or
+border-color at 120–160ms; reduced motion disables them. Long row groups can use
+`content-visibility:auto` with intrinsic size estimates. Active streaming messages stay
+visible. Conversation decoration and composer/resize measurements are scheduled per
+animation frame; token updates replace only the active reply body, never saved messages.
+
+Browser checks must await Chrome exit through `scripts/chrome-cleanup.mjs` before
+removing disposable profiles. The helper retries removal five times at 200ms intervals.

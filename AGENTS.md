@@ -3,6 +3,27 @@
 <!-- This is the single source of truth for all AI coding agents. CLAUDE.md is a symlink to this file. -->
 <!-- AGENTS.md spec: https://agents.md — supported by Claude Code, Cursor, Codex, Copilot, Gemini CLI, and others. -->
 
+## Public repo: read before adding anything
+
+`github.com/dhirajcdry/practice-studio` is **public**. Everything committed here is published.
+
+- **Goes here:** code, docs about how Studio works, and neutral fixtures with made-up content.
+- **Never goes here:** which companies Dhiraj is interviewing with, interview dates,
+  recruiter or interviewer names, practice records or stats, mock transcripts, notes,
+  real screenshots of the workspace, emails, absolute `/Users/...` paths, hostnames.
+- **Where personal data lives instead:** `STUDIO_HOME` (`~/NextSteps/InterviewPrep/data/leetcode-tutor/`,
+  privately backed up). For example, a practice collection is `STUDIO_HOME/collection.json`
+  and its shape is shown by `server/test/fixtures/collection.json`.
+- **Features stay generic.** A company-specific need becomes a generic feature (a "collection",
+  a "mid-level bar") whose specifics come from the workspace. Don't hardcode a company name.
+- **Screenshots** for docs come from a scratch or demo `STUDIO_HOME`, never the live app on :4173.
+- **Enforced:** `.githooks/pre-commit` and `pre-push` run `scripts/privacy-scan.mjs`, and CI runs
+  it too. Hooks are enabled with `git config core.hooksPath .githooks` (already set on Dhiraj's Mac;
+  set it in any new clone). Private terms are kept outside the repo in `~/NextSteps/.private-terms.txt`.
+  If the scan blocks you, move the data out. Never use `--no-verify`, and never add `privacy-ok`
+  to hide personal data. It is only for text that is genuinely public.
+- If personal data was already pushed, stop and tell Dhiraj. Rewriting public history needs their OK.
+
 ## What this is
 
 A local-first interview practice environment. You solve LeetCode problems in your own

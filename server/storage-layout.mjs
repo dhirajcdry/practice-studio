@@ -17,6 +17,12 @@ function assertSlug(slug) {
   if (typeof slug !== 'string' || slug.length > 100 || !SLUG_RE.test(slug)) throw new Error('Invalid problem slug.');
 }
 
+// Runtime catalog additions are LeetCode identities too, including design-* names.
+export function registerCodingSlug(slug) {
+  assertSlug(slug);
+  CODING_SLUGS.add(slug);
+}
+
 export function disciplineForSlug(slug) {
   assertSlug(slug);
   if(CODING_SLUGS.has(slug))return 'coding';

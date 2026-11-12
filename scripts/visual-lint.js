@@ -5,7 +5,10 @@ export function visualLint() {
   // labels touching compact chips, clipped drawer text, unreadable muted text,
   // and a flush child escaping the inset shared by a stacked pane.
   const out = [];
+  const modal = document.querySelector('dialog:modal');
   const visible = (node) => {
+    // Content behind a modal is inert and covered by its backdrop, not a reading surface.
+    if (modal && !modal.contains(node)) return false;
     if (node.checkVisibility && !node.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
     if (!node.getClientRects().length) return false;
     const style = getComputedStyle(node);
@@ -175,9 +178,18 @@ export function visualLint() {
     let bg = null, x = n, painted = false;
     while (x) { const xs = getComputedStyle(x); if (xs.backgroundImage !== 'none') { painted = true; break; } const c = rgb(xs.backgroundColor); if (c && c.a > .95) { bg = c; break; } x = x.parentElement; }
     if (painted || !bg) continue;
-    const L1 = lum(fg), L2 = lum(bg); const ratio = (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05);
+    const report = n.closest('.rp-body');
+    const over = (front, back) => ({ r: front.r * front.a + back.r * (1 - front.a), g: front.g * front.a + back.g * (1 - front.a), b: front.b * front.a + back.b * (1 - front.a), a: 1 });
+    if (report) {
+      // Report text uses translucent ink tokens and selected-row washes. Measure
+      // their painted colour, not the uncomposited RGB channels of rgba().
+      const layers = []; let ancestor = n;
+      while (ancestor) { const color = rgb(getComputedStyle(ancestor).backgroundColor); if (color) layers.push(color); if (color?.a >= .99) break; ancestor = ancestor.parentElement; }
+      bg = layers.reverse().reduce((back, front) => over(front, back), bg);
+    }
+    const L1 = lum(report ? over(fg, bg) : fg), L2 = lum(bg); const ratio = (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05);
     const size = parseFloat(s.fontSize); const bold = parseInt(s.fontWeight) >= 600;
-    const need = size >= 24 || (size >= 18.6 && bold) ? 3 : 4.5;
+    const need = report ? 4.5 : size >= 24 || (size >= 18.6 && bold) ? 3 : 4.5;
     const key = name(n) + s.color;
     if (ratio < need - .05 && !seen.has(key)) { seen.add(key); out.push({ kind: 'contrast', where: name(n), what: label(n), detail: `${ratio.toFixed(2)}:1 (needs ${need}) ${s.color} on rgb(${bg.r},${bg.g},${bg.b}) at ${size}px` }); }
   }
@@ -260,7 +272,7 @@ export function visualLint() {
   for (const header of document.querySelectorAll('.ui-dialog-header')) {
     if (!visible(header)) continue;
     const close = header.querySelector('.ui-dialog-close'), h = header.getBoundingClientRect(), c = close?.getBoundingClientRect(), s = getComputedStyle(header);
-    if (!c || Math.abs(h.right - c.right - parseFloat(s.paddingRight)) > 2 || Math.abs(c.top - h.top - parseFloat(s.paddingTop)) > 2)
+    if (!c || Math.abs(h.right - c.right - parseFloat(s.paddingRight)) > 2 || Math.abs((c.top + c.bottom) / 2 - (h.top + h.bottom) / 2) > 2)
       out.push({ kind: 'dialog-close', where: name(header), detail: 'Close must occupy the top-right header rail' });
   }
   // Input can grow or scroll; the send/mode rail must always remain reachable.

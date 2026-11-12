@@ -88,13 +88,13 @@ export function mergeAction(prev, next) {
 }
 
 const GLYPHS = {
-  add_case: '＋', update_case: '✎', remove_case: '−', run_code: '▶',
-  mark_lines: '⚑', clear_marks: '⚑', edit_code: '✎', open_panel: '↗',
-  save_note: '✎', get_state: '◎',
+  add_case: 'plus', update_case: 'edit', remove_case: 'minus', run_code: 'play',
+  mark_lines: 'report', clear_marks: 'report', edit_code: 'edit', open_panel: 'forward',
+  save_note: 'edit', get_state: 'report',
 };
 
 export function receiptGlyph(tool) {
-  return GLYPHS[studioToolName(tool)] || '•';
+  return GLYPHS[studioToolName(tool)] || 'report';
 }
 
 function lineSpan(from, to) {
@@ -499,10 +499,10 @@ export function createMonacoTutor(instance, monaco, { onMarksChange = () => {} }
     const actions = document.createElement('div');
     actions.className = 'tutor-note-actions';
     const toggle = document.createElement('button');
-    toggle.type = 'button'; toggle.className = 'btn btn--quiet btn--sm'; toggle.textContent = 'Collapse';
+    toggle.type = 'button'; toggle.className = 'btn btn--quiet'; toggle.textContent = 'Collapse';
     toggle.setAttribute('aria-expanded', 'true');
     const dismiss = document.createElement('button');
-    dismiss.type = 'button'; dismiss.className = 'icon-btn'; dismiss.append(icon('close'));
+    dismiss.type = 'button'; dismiss.className = 'btn btn--icon icon-btn'; dismiss.append(icon('close'));
     const text = document.createElement('div');
     text.className = 'tutor-note-text';
     text.textContent = mark.note; // Plain text only; learner/tool content never becomes HTML.

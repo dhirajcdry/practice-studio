@@ -47,5 +47,4 @@ body.motion-off .pic-shimmer{animation:none;opacity:.5}
   padding:32px;background:var(--pic-backdrop);cursor:zoom-out;
 }
 .pic-lightbox img{max-width:min(1100px, 100%);max-height:calc(100vh - 140px);object-fit:contain;border-radius:var(--r-md);box-shadow:0 20px 60px var(--pic-shadow)}
-.pic-lightbox p{margin:0;max-width:70ch;color:var(--pic-backdrop-ink);font-size:13.5px;line-height:1.5;text-align:center}
-.pic-lightbox .pic-close{position:absolute;top:16px;right:16px}
+.pic-lightbox p{margin:0;max-width:70ch;color:var(--pic-backdrop-ink);font-size:13.5px;line-height:1.5;text-align:center}.pic-lightbox .pic-close{position:absolute;top:16px;right:16px}

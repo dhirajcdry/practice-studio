@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Real browser checks for roadmap interaction, data integrity, themes, and narrow screens.
 import {spawn} from 'node:child_process';
 import {mkdtemp, rm, writeFile} from 'node:fs/promises';
@@ -83,5 +84,5 @@ try {
   console.log(headline+'; demo is identified, Submit never redirects to LeetCode, and blocked demo states have no retry or uncertainty warning.');
 } finally {
   ws?.close(); chrome.kill(); await sleep(200);
-  await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
+  await cleanupChrome(chrome, profile);
 }

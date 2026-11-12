@@ -1,4 +1,8 @@
-import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
+import { createPopover } from './ui/popover.js';
+import { paintReceipt, receiptOutput, receiptFailed, toolReceipt } from './ui/receipt.js';
+import { conversationMessage, bindConversation, conversationSeparator, messageAction, thinkingRow, conversationText } from './ui/conversation.js';
+import { paneHeader } from './ui/headers.js';
+import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { activeInterview } from './interview.js';
 import { createInterviews } from './interviews.js';
@@ -22,7 +26,7 @@ import { icon } from './ui/icon.js';
 import { el, clear, replace } from './dom.js';
 import { renderMarkdown, renderUserText, looksLikeCode } from './markdown.js';
 import { splitDiagramBlocks, renderDiagram } from './illustrator.js';
-import { streamCoachMessage, api } from './api.js';
+import { streamCoachMessage, loadHistory, api } from './api.js';
 import { createVoicePanel } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
@@ -141,22 +145,24 @@ export function toolLine(name, summary) {
  * Codex picture by itself; a replayed one looks its pictures up and offers a button.
  */
 export function renderCoachText(target, text, cache = null, { slug = null, live = false } = {}) {
-  clear(target);
+  target.dataset.markdown = text;
+  const fragment = document.createDocumentFragment();
   const segments = splitDiagramBlocks(text);
-  if (!segments.length) return target;
+  if (!segments.length) { replace(target, fragment); return target; }
   const usedThisPass = new Set();
   for (const segment of segments) {
-    if (segment.type === 'markdown') { target.append(renderMarkdown(segment.text)); continue; }
+    if (segment.type === 'markdown') { fragment.append(renderMarkdown(segment.text)); continue; }
     const key = segment.complete ? `${segment.lang}::${segment.code}` : null;
     if (cache && key && cache.has(key) && !usedThisPass.has(key)) {
       usedThisPass.add(key);
-      target.append(cache.get(key));
+      fragment.append(cache.get(key));
       continue;
     }
     const node = renderDiagram(segment.lang, segment.code, { complete: segment.complete, slug, live });
     if (cache && key && !usedThisPass.has(key)) { cache.set(key, node); usedThisPass.add(key); }
-    target.append(node);
+    fragment.append(node);
   }
+  replace(target, fragment);
   return target;
 }
 
@@ -204,8 +210,7 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
   const summary = receiptSummary(action);
   const undoable = !!onUndo && !ui.undone && canUndo(action);
   const why = status === 'failed' ? String(action.message || '').trim() : '';
-  const row = el('div', { class: `cmsg-receipt ui-inset ui-inset--compact ui-cluster is-${status}`, 'data-tool': tool }, [
-    el('span', { class: 'cr-glyph', 'aria-hidden': 'true', text: receiptGlyph(tool) }),
+  const row = paintReceipt(el('div'), { tool, status, output: receiptOutput(action), failed: receiptFailed(action), content: [
     action.url && (/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(action.url) || tool === 'start_notes_session' && /^https:\/\/[a-z0-9.-]+\.ts\.net(?::\d+)?\//i.test(action.url))
       ? el('a', { class: 'cr-text', text: summary, href: action.url, target: '_blank', rel: 'noopener noreferrer' })
       : el('span', { class: 'cr-text', text: summary }),
@@ -214,14 +219,14 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
     status === 'undone' ? el('span', { class: 'cr-state', text: 'Undone' }) : null,
     undoable
       ? el('button', {
-        class: 'cr-undo', type: 'button', disabled: !!ui.busy,
+        class: 'btn btn--quiet cr-undo', type: 'button', disabled: !!ui.busy,
         title: tool === 'edit_code' ? 'Put your code back as it was before this edit' : 'Put your test cases back as they were',
         text: ui.busy ? 'Undoing…' : 'Undo', onclick: onUndo,
       })
       : null,
     why ? el('div', { class: 'cr-why', text: why }) : null,
     ui.error ? el('div', { class: 'cr-why', text: ui.error }) : null,
-  ]);
+  ] });
   if (tool === 'start_notes_session' && action.writerSessionId) {
     const refresh = async () => {
       if (!row.isConnected) return;
@@ -244,7 +249,7 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
         const response = await fetch(`/api/coach/recall/${encodeURIComponent(action.revisionId)}`);
         const result = await response.json();
         if (result.status === 'saved' && /^http:\/\/127\.0\.0\.1(?::\d+)?\//.test(result.url)) {
-          row.querySelector('.cr-text').replaceWith(el('a', { class: 'cr-text', text: 'Saved to Studycraft ↗',
+          row.querySelector('.cr-text').replaceWith(el('a', { class: 'cr-text', text: 'Saved to Studycraft',
             href: result.url, target: '_blank', rel: 'noopener noreferrer' }));
           return;
         }
@@ -257,21 +262,20 @@ function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
 }
 
 function noticeBlock({ tone = '', head, body, actions = [] }) {
-  return el('div', { class: 'state ui-inset ui-inset--roomy ' + tone }, [
-    el('h3', { text: head }),
-    el('p', { text: body }),
+  return el('div', { class: 'ui-conversation-error ' + tone, role: 'status' }, [
+    el('span', { text: body || head }),
     actions.length
-      ? el('div', { class: 'acts' }, actions.map(a => el('button', { class: 'act', type: 'button', text: a.label, onclick: a.onClick })))
+      ? el('div', { class: 'acts' }, actions.map(a => el('button', { class: 'btn btn--quiet act', type: 'button', text: a.label === 'Ask again' ? 'Retry' : a.label, onclick: a.onClick })))
       : null,
   ]);
 }
 
 const STARTERS = [
-  { label: 'Where do I start?', text: 'I have read the problem and I am not sure where to start. Ask me one question that would unblock me — do not give me the approach.' },
-  { label: 'Check my approach', text: 'Here is the approach I am about to write. Tell me where it breaks before I spend twenty minutes on it.' },
-  { label: 'Why is this wrong?', text: 'My code fails one of the example cases. Point me at the reasoning error rather than the fix.' },
-  { label: 'Trace my code', text: 'Trace what my current code does on Example 1 as a step-by-step ```viz illustration with frames, using the real values. If it goes wrong, stop on the step where it diverges. Then say in one sentence what I am missing — do not write the fix.' },
-  { label: 'Picture it', text: 'Give me one ```image that will make this problem\'s core idea stick in an interview: a concrete metaphor, not a diagram of the solution. Then tie it back to the algorithm in two sentences, without revealing more than I have already worked out.' },
+  { icon: 'play', label: 'Where do I start?', text: 'I have read the problem and I am not sure where to start. Ask me one question that would unblock me — do not give me the approach.' },
+  { icon: 'check', label: 'Check my approach', text: 'Here is the approach I am about to write. Tell me where it breaks before I spend twenty minutes on it.' },
+  { icon: 'bug', label: 'Why is this wrong?', text: 'My code fails one of the example cases. Point me at the reasoning error rather than the fix.' },
+  { icon: 'code', label: 'Trace my code', text: 'Trace what my current code does on Example 1 as a step-by-step ```viz illustration with frames, using the real values. If it goes wrong, stop on the step where it diverges. Then say in one sentence what I am missing — do not write the fix.' },
+  { icon: 'image', label: 'Picture it', text: 'Give me one ```image that will make this problem\'s core idea stick in an interview: a concrete metaphor, not a diagram of the solution. Then tie it back to the algorithm in two sentences, without revealing more than I have already worked out.' },
 ];
 
 /* ============================== the panel ============================== */
@@ -325,7 +329,7 @@ export function createCoachPanel(entry) {
 
   const input = el('textarea', {
     class: 'coach-input', rows: '2', spellcheck: 'true',
-    placeholder: 'Ask the coach —  ⌘↵ to send',
+    placeholder: 'Ask the coach',
     'aria-label': 'Message the coach',
   });
   const restoredDraft = readDraft(slug);
@@ -336,10 +340,10 @@ export function createCoachPanel(entry) {
   function committed() { return input.value; }
 
   const inputSize = bindComposerInput(input);
-  const sendButton = composerSend(el('button', { class: 'coach-send', type: 'button', onclick: () => submit() }), 'Ask coach');
+  const sendButton = composerSend(el('button', { class: 'btn btn--quiet coach-send', type: 'button', onclick: () => submit() }), 'Ask coach');
 
   const stopButton = el('button', {
-    class: 'ws-mini coach-stop', type: 'button', hidden: true, text: 'Stop',
+    class: 'btn btn--quiet ws-mini coach-stop', type: 'button', hidden: true, text: 'Stop',
     onclick: () => { setState('Stopping'); stopRun(slug); },
   });
 
@@ -368,9 +372,9 @@ export function createCoachPanel(entry) {
       log.scrollTop = log.scrollHeight;
     },
     onState: (state) => {
-      voiceView.root.hidden = state === 'idle'; input.hidden = state !== 'idle';
+      voiceView.root.hidden = true; input.hidden = false;
       voiceView.update({state,draft:input.value,partial:partialWords});
-      sendButton.disabled = state !== 'idle' || streaming || changingModel;
+      sendButton.disabled = !input.value.trim() || state !== 'idle' || streaming || changingModel;
       if (state === 'recording') setState('Listening');
       else if (state === 'working') setState('Transcribing');
       else if (!streaming) setState(thread.live ? 'Attempt in progress' : 'Ready');
@@ -379,12 +383,16 @@ export function createCoachPanel(entry) {
 
   const composer = createComposer({ className: 'coach-compose', content: [input, voiceView.root],
     trailing: [stopButton, sendButton], notices: api.demo ? [] : [voice.status] });
+  composerSend(stopButton, 'Stop');
+  stopButton.replaceChildren(icon('stop', 15));
+  const conversationView = bindConversation(log, { composer, onJump: () => { following = true; mayResume = true; } });
+  sendButton.disabled = !input.value.trim();
   const composerOptions = composer.querySelector('.ui-composer-options');
   composerOptions.classList.add('coach-actions');
-  if (!api.demo) composerOptions.append(voice.root);
+
 
   const closeButton = el('button', {
-    class: 'icon-btn coach-hide', type: 'button',
+    class: 'btn btn--icon icon-btn coach-hide', type: 'button',
   'aria-label': 'Hide sidebar · ' + chordLabel('coach'),
   }, [icon('sidebar', 16)]);
   tooltip(closeButton, 'Hide sidebar · ' + chordLabel('coach'));
@@ -399,19 +407,19 @@ export function createCoachPanel(entry) {
   const attachmentChip = el('div', { class: 'submission-attachment', hidden: true }, [
     attachmentLabel,
     el('button', {
-      class: 'icon-btn', type: 'button', text: '×', 'aria-label': 'Remove attached submission', onclick: clearAttachment,
-    }),
+      class: 'btn btn--icon icon-btn', type: 'button', 'aria-label': 'Remove attached submission', onclick: clearAttachment,
+    }, icon('close')),
   ]);
   composer.prepend(attachmentChip);
   const tabChat = el('button', {
-    class: 'coach-tab ui-tab', type: 'button', 'aria-pressed': 'true', text: 'Chat',
+    class: 'btn btn--quiet coach-tab ui-tab', type: 'button', 'aria-pressed': 'true', text: 'Chat',
   });
-  const tabInterviews = el('button', { class: 'coach-tab ui-tab', type: 'button', 'aria-pressed': 'false', text: 'Interviews' });
+  const tabInterviews = el('button', { class: 'btn btn--quiet coach-tab ui-tab', type: 'button', 'aria-pressed': 'false', text: 'Interviews' });
   const interviews = createInterviews(entry);
   let selectedTab = 'chat';
   const submissionCount = el('span', { class: 'submission-count' });
   const tabSubmissions = el('button', {
-    class: 'coach-tab ui-tab', type: 'button', 'aria-pressed': 'false',
+    class: 'btn btn--quiet coach-tab ui-tab', type: 'button', 'aria-pressed': 'false',
   }, ['Submissions', submissionCount]);
   const submissions = createSubmissions({
     slug,
@@ -428,20 +436,22 @@ export function createCoachPanel(entry) {
   });
   const submissionsView = submissions.root;
   submissionsView.hidden = true;
+  let historyPopover = null;
   const pastChats = el('div', { class: 'chat-history-popover', hidden: true });
   function chooseThread(past) {
     if (streaming) return;
+    restoreWanted = false;
     resumeSessionId = past.sessionId;
     thread.pending = false;
-    pastChats.hidden = true;
+    pastChats.hidden = true; historyPopover?.close(false);
     historyButton.setAttribute('aria-pressed', 'false');
     showTab('chat');
     replayThread(past);
   }
   function iconButton(label, path, action) {
-    const node = el('button', { class: 'icon-btn chat-icon', type: 'button', 'aria-label': label, onclick: action });
+    const node = el('button', { class: 'btn btn--icon icon-btn chat-icon', type: 'button', 'aria-label': label, onclick: action });
     const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 24 24');
+    for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '15', height: '15', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
     const shape = document.createElementNS(icon.namespaceURI, 'path');
     shape.setAttribute('d', path);
     icon.append(shape);
@@ -452,22 +462,25 @@ export function createCoachPanel(entry) {
   const historyButton = iconButton('History', 'M3 10a9 9 0 1 1 1 8 M3 4v6h6 M12 7v6l4 2', () => {
     pastChats.hidden = !pastChats.hidden;
     historyButton.setAttribute('aria-pressed', String(!pastChats.hidden));
+    if (pastChats.hidden) historyPopover.close(false);
     if (!pastChats.hidden) {
-      const bar = root.querySelector('.coach-bar');
-      pastChats.style.top = `${bar.offsetTop + bar.offsetHeight}px`;
+      historyPopover.open();
       renderHistory(pastChats, {
         slug, onResume: chooseThread, current: resumeSessionId || shownRun?.result?.sessionId,
         disabled: streaming, heading: 'Past chats',
       });
     }
   });
+  historyPopover = createPopover({ anchor: historyButton, label: 'Recent chats', content: pastChats, className: 'coach-history-menu', bounds: () => root });
+  historyPopover.root.addEventListener('toggle', event => { if (event.newState === 'closed') { pastChats.hidden = true; historyButton.setAttribute('aria-pressed', 'false'); } });
   const newChatButton = iconButton('New chat', 'M14 5l5 5 M4 20l5-1L21 7l-5-5L4 14z M14 20h8 M18 16v8', () => {
     if (streaming) return;
+    restoreWanted = false;
     resumeSessionId = null;
     shownRun = null;
     thread.pending = true;
     turns = 0;
-    pastChats.hidden = true;
+    pastChats.hidden = true; historyPopover?.close(false);
     historyButton.setAttribute('aria-pressed', 'false');
     showTab('chat');
     showEmptyState();
@@ -486,7 +499,7 @@ export function createCoachPanel(entry) {
     tabInterviews.setAttribute('aria-pressed', String(selectedTab === 'interviews'));
     tabSubmissions.setAttribute('aria-pressed', String(onSubmissions));
     [tabChat, tabInterviews, tabSubmissions].forEach((tab, index) => { const chosen = ['chat', 'interviews', 'submissions'][index] === selectedTab; tab.setAttribute('aria-selected', String(chosen)); tab.tabIndex = chosen ? 0 : -1; });
-    pastChats.hidden = true;
+    pastChats.hidden = true; historyPopover?.close(false);
     historyButton.setAttribute('aria-pressed', 'false');
     setChatToolsVisible(historyButton, newChatButton, pastChats, onChat);
     if (onSubmissions) {
@@ -510,7 +523,7 @@ export function createCoachPanel(entry) {
   window.addEventListener('studio-open-submission', submissionChanged);
   function closeHistory() {
     if (pastChats.hidden) return;
-    pastChats.hidden = true;
+    pastChats.hidden = true; historyPopover?.close(false);
     historyButton.setAttribute('aria-pressed', 'false');
     historyButton.focus();
   }
@@ -522,21 +535,19 @@ export function createCoachPanel(entry) {
   let changingModel = false;
   const modelPicker = createCoachModelPicker({ compact: true, onPending: pending => {
     changingModel = pending;
-    sendButton.disabled = pending || streaming || voice.isBusy();
+    sendButton.disabled = !input.value.trim() || pending || streaming || voice.isBusy();
   } });
 
   const root = el('section', { class: 'card coach', 'aria-label': 'Coach' }, [
-    el('div', { class: 'coach-bar' }, [
-      el('span', { class: 'coach-tabs ui-tabs', role: 'tablist', 'aria-label': 'Practice sidebar' }, [tabChat, tabInterviews, tabSubmissions]),
-      el('div', { class: 'coach-chat-tools' }, [historyButton, newChatButton, closeButton]),
-    ]),
+    Object.assign(paneHeader({ tabs: el('span', { class: 'coach-tabs ui-tabs', role: 'tablist', 'aria-label': 'Practice sidebar' }, [tabChat, tabInterviews, tabSubmissions]), tools: [historyButton, newChatButton, closeButton] }), { className: 'ui-pane-header coach-bar' }),
     log,
     submissionsView,
     interviews.root,
-    pastChats,
-    composer,
+    conversationView.jump, composer,
   ]);
+  if (!api.demo) mountComposerDictation(composer, voice);
 
+  root.querySelector('.ui-pane-tools').classList.add('coach-chat-tools');
   composer.querySelector('.coach-actions').prepend(modelPicker.root);
   composerOptions.append(el('div', { class: 'coach-status-row' }, [stateSeparator, stateLabel]));
   const sidebarTabs = [tabChat, tabInterviews, tabSubmissions];
@@ -559,6 +570,7 @@ export function createCoachPanel(entry) {
 
   function autosize() {
     inputSize.resize();
+    sendButton.disabled = !input.value.trim() || streaming || voice.isBusy() || changingModel;
   }
   const unwatchDraft = watchDraft(slug, text => {
     // Saving committed text must leave the visible provisional phrase in place.
@@ -646,16 +658,17 @@ export function createCoachPanel(entry) {
     newChatButton.hidden = true;
     const recent = el('div', { class: 'recent-chats' });
     replace(log, el('div', { class: 'coach-empty' }, [
-      el('div', { class: 'coach-context' }, ['Code + changes · Run results · Saved speech']),
+      el('h3', { text: 'Ask about this problem' }),
+      el('p', { class: 'coach-context', text: 'The coach can see your code and changes, run results, and saved speech.' }),
       el('div', { class: 'coach-starters' }, STARTERS.map(starter => el('button', {
-        class: 'chip', type: 'button', text: starter.label,
+        class: 'ui-action-row ui-starter', type: 'button',
         onclick: () => {
           input.value = starter.text;
           saveDraft(slug, input.value);
           autosize();
           input.focus();
         },
-      }))), recent,
+      }, [icon(starter.icon, 15), el('span', { text: starter.label })]))), recent,
     ]));
     renderHistory(recent, { slug, onResume: chooseThread });
   }
@@ -683,12 +696,8 @@ export function createCoachPanel(entry) {
   // for the log to scroll: the answer looked cut off mid-sentence and the wheel did
   // nothing. A message and the panel it sits in must not share a class name.
   function messageNode(role, text = '') {
-    const bodyEl = el('div', { class: 'cmsg-body rich' });
-    const message = el('div', { class: 'cmsg ' + role }, [
-      el('div', { class: 'mono dim cmsg-who', text: role === 'you' ? 'You' : 'Coach' }),
-      bodyEl,
-    ]);
-    if (role === 'you') bodyEl.append(renderUserText(text));
+    const bodyEl = conversationText(role === 'you' ? text : '', { user: role === 'you', className: 'cmsg-body' });
+    const message = conversationMessage({ speaker: role === 'you' ? 'You' : 'Coach', user: role === 'you', body: bodyEl, className: 'cmsg ' + role });
     return { message, bodyEl };
   }
 
@@ -714,32 +723,42 @@ export function createCoachPanel(entry) {
    * on screen and imply the coach can see both, when the CLI is resuming exactly one.
    */
   function replayThread(thread) {
-    const nodes = [];
     historyButton.hidden = false;
     newChatButton.hidden = false;
+    replace(log, threadNodes(thread));
+    following = true;
+    scrollDown(true);
+  }
+
+  /** The saved turns of one conversation as nodes, each tagged with the turn it came from. */
+  function threadNodes(thread) {
+    const nodes = [];
+    let day = null;
+    const push = (turn, node) => { if (turn.requestId) node.dataset.requestId = String(turn.requestId); nodes.push(node); };
     for (const turn of thread.turns || []) {
-      if (turn.ask && turn.ask.trim()) nodes.push(messageNode('you', turn.ask).message);
-      else if (turn.kind === 'attempt-review') nodes.push(noteNode('Attempt review'));
+      const at = turn.at || thread.startedAt;
+      const nextDay = at && new Date(at).toDateString();
+      if (nextDay && nextDay !== day && nextDay !== 'Invalid Date') { nodes.push(conversationSeparator(threadDate(at))); day = nextDay; }
+      if (turn.ask && turn.ask.trim()) push(turn, messageNode('you', turn.ask).message);
+      else if (turn.kind === 'attempt-review') push(turn, noteNode('Attempt review'));
       const said = (turn.answer || '').trim() !== '';
       const worked = (Array.isArray(turn.tools) && turn.tools.length > 0)
         || (Array.isArray(turn.actions) && turn.actions.length > 0);
       if (!said && !worked) {
         // Killed before it got a word out. An empty card under a "Coach" heading reads
         // as an answer you failed to scroll to.
-        nodes.push(noteNode(turn.stopped ? 'Stopped before the coach answered' : 'The coach said nothing'));
+        push(turn, noteNode(turn.stopped ? 'Stopped before the coach answered' : 'The coach said nothing'));
         continue;
       }
       const { message: card, bodyEl } = messageNode('reply');
-      nodes.push(card);
+      push(turn, card);
       const acted = Array.isArray(turn.actions) ? turn.actions.filter(a => a && a.tool) : [];
       if (worked) {
         const tools = el('div', { class: 'cmsg-tools' });
         for (const line of turn.tools || []) {
           // Stored as "<name> <summary>". A Studio tool's line is said plainly, never its arguments.
           const name = studioToolName(String(line).split(' ')[0]);
-          tools.append(el('div', {
-            class: 'cmsg-tool mono dim', 'data-tool': name, text: name ? toolLine(name) : line,
-          }));
+          tools.append(toolReceipt(name, name ? toolLine(name) : line));
         }
         coverToolLines(tools, acted);
         card.insertBefore(tools, bodyEl);
@@ -751,9 +770,33 @@ export function createCoachPanel(entry) {
       // An answer that was cut short is shown as one rather than passed off as whole.
       if (turn.stopped) card.append(el('div', { class: 'cmsg-note mono dim', text: 'Stopped before it finished' }));
     }
-    const date = threadDate(thread.startedAt);
-    if (date) nodes.unshift(el('div', { class: 'chat-date', text: date }));
-    replace(log, nodes);
+    return nodes;
+  }
+
+  /**
+   * On open, draw the conversation the next message will continue.
+   *
+   * The server continues the problem's last conversation unless told otherwise. The panel
+   * used to open on the empty screen regardless, so a question typed there appeared alone,
+   * as a new chat, while it was really one more turn of a thread you could not see.
+   * What is on screen and what the coach is continuing must be the same conversation.
+   */
+  let restoreWanted = !thread.pending;
+  async function restoreCurrentThread() {
+    const data = await loadHistory(slug);
+    if (disposed) return;
+    const wanted = restoreWanted && !thread.pending && !resumeSessionId;
+    restoreWanted = false;
+    const current = wanted && data.ok && data.currentSessionId
+      ? data.threads.find(past => past.sessionId === data.currentSessionId) : null;
+    // A turn already on screen as a run (in flight, or adopted after a reload) is not drawn twice.
+    const shown = shownRun?.serverId;
+    const nodes = current ? threadNodes({ ...current, turns: current.turns.filter(turn => !shown || turn.requestId !== shown) }) : [];
+    if (!nodes.length) { if (!log.firstChild) showEmptyState(); return; }
+    historyButton.hidden = false;
+    newChatButton.hidden = false;
+    if (!log.firstChild || log.querySelector('.coach-empty')) replace(log, nodes);
+    else log.prepend(...nodes);
     following = true;
     scrollDown(true);
   }
@@ -765,7 +808,8 @@ export function createCoachPanel(entry) {
     newChatButton.disabled = on;
     newChatButton.title = on ? 'Wait for the current answer to finish before starting a new chat.' : 'New chat';
     if (!pastChats.hidden) renderHistory(pastChats, { slug, onResume: chooseThread, disabled: on });
-    sendButton.disabled = on || voice.isBusy() || changingModel;
+    sendButton.disabled = !input.value.trim() || on || voice.isBusy() || changingModel;
+    sendButton.hidden = on;
     modelPicker.setBusy(on);
     sendButton.setAttribute('aria-label', on ? 'Asking coach' : 'Ask coach');
     sendButton.classList.toggle('busy', on);
@@ -788,6 +832,10 @@ export function createCoachPanel(entry) {
     shownRun = run;
     if (detachRun) { detachRun(); detachRun = null; }
 
+    // The same turn, already drawn from the saved thread: the run is the fuller copy.
+    if (run.serverId) for (const node of log.querySelectorAll('[data-request-id]')) {
+      if (node.dataset.requestId === String(run.serverId)) node.remove();
+    }
     if (printAsk) {
       if (run.review) addNote(run.lead || 'Attempt ended. Reviewing it end to end.');
       else if (run.ask) addMessage('you', run.ask);
@@ -799,7 +847,7 @@ export function createCoachPanel(entry) {
     const receiptsEl = el('div', { class: 'cmsg-receipts' });
     card.insertBefore(receiptsEl, bodyEl);
     const receiptUi = new Map();     // action id → { busy, error, undone }
-    const thinking = el('div', { class: 'coach-thinking mono dim' }, [el('i'), el('span', { text: 'Thinking' })]);
+    const thinking = thinkingRow(); thinking.classList.add('coach-thinking');
 
     let painted = 0;                 // how many tool lines are already on screen
     const diagrams = new Map();      // finished drawings, kept across frames
@@ -813,9 +861,7 @@ export function createCoachPanel(entry) {
     const paintTools = () => {
       for (; painted < run.tools.length; painted++) {
         const t = run.tools[painted];
-        toolsEl.append(el('div', {
-          class: 'cmsg-tool mono dim', 'data-tool': studioToolName(t.name), text: toolLine(t.name, t.summary),
-        }));
+        toolsEl.append(toolReceipt(studioToolName(t.name), toolLine(t.name, t.summary)));
       }
       coverToolLines(toolsEl, [...(run.actions?.values() ?? [])]);
     };
@@ -846,6 +892,7 @@ export function createCoachPanel(entry) {
       // sentence being read moves under the eye every time a token lands.
       const keep = following ? -1 : log.scrollTop;
       renderCoachText(bodyEl, run.text, diagrams, { slug, live: true });
+      bodyEl.dataset.streaming = String(!run.done && Boolean(run.text));
       if (following) log.scrollTop = log.scrollHeight;
       else if (keep >= 0) log.scrollTop = keep;
       paintedAt = performance.now();
@@ -867,6 +914,7 @@ export function createCoachPanel(entry) {
       paintTools();
       paintReceipts();
       renderCoachText(bodyEl, run.text, diagrams, { slug, live: true });
+      bodyEl.dataset.streaming = String(!run.done && Boolean(run.text));
       if (run.text.trim() === '') bodyEl.remove();
 
       const outcome = shapeCoachOutcome(run.result, run.text.trim() !== '');
@@ -881,6 +929,7 @@ export function createCoachPanel(entry) {
         }));
       }
 
+      bodyEl.dataset.streaming = 'false';
       setBusy(false, outcome && outcome.tone === 'err' ? 'Not available' : thread.live ? 'Attempt in progress' : 'Ready');
       resumeSessionId = null;
       markSeen(slug);
@@ -976,7 +1025,10 @@ export function createCoachPanel(entry) {
     if (event.key === 'Escape' && document.activeElement === input) { event.preventDefault(); input.blur(); }
   });
 
-  showEmptyState();
+  // The empty screen only when there is nothing to continue; deciding first avoids
+  // flashing it before the thread.
+  if (restoreWanted) { historyButton.hidden = true; newChatButton.hidden = true; restoreCurrentThread(); }
+  else showEmptyState();
   submissions.refresh();
   const savedSidebar = readSidebar(slug);
   showTab(savedSidebar.tab || (activeInterview(slug) ? 'interviews' : 'chat'));
@@ -999,6 +1051,7 @@ export function createCoachPanel(entry) {
       // A new attempt is a new conversation, so the previous turn is genuinely
       // unwanted — this is the one place that stops a run rather than letting it finish.
       stopRun(slug);
+      restoreWanted = false;
       thread.pending = true;
       thread.live = true;
       resumeSessionId = null;
@@ -1035,7 +1088,7 @@ export function createCoachPanel(entry) {
       unwatchDraft();
       saveDraft(slug, committed());
       voice.dispose({ finish: true });
-      inputSize.dispose(); modelPicker.dispose();
+      inputSize.dispose(); conversationView.dispose(); historyPopover.dispose(); modelPicker.dispose();
       interviews.dispose();
     },
   };
@@ -1112,7 +1165,7 @@ function paintRunsChip() {
   // Following it goes to the answer; the × takes the note away and nothing else.
   replace(runsChip, others.map((run) => el('div', { class: 'coach-run mono' }, [
     el('button', {
-      class: 'coach-run-go', type: 'button',
+      class: 'btn btn--quiet coach-run-go', type: 'button',
       title: run.done ? 'The answer is waiting on that problem' : 'Still being written',
       onclick: () => {
         openOnMount = true;
@@ -1125,7 +1178,7 @@ function paintRunsChip() {
       el('span', { class: 'coach-run-state', text: run.done ? 'answer ready' : 'writing…' }),
     ]),
     el('button', {
-      class: 'coach-run-x', type: 'button', text: '×',
+      class: 'btn btn--icon coach-run-x', type: 'button',
       'aria-label': `Hide this note about ${run.title}`,
       // Said plainly, because a × next to something still being written looks like a
       // cancel and is not one.
@@ -1142,7 +1195,7 @@ window.addEventListener('hashchange', paintRunsChip);
 function ensureLauncher() {
   if (launcher && document.body.contains(launcher)) return launcher;
   launcher = el('button', {
-    class: 'coach-launch', type: 'button', 'aria-pressed': 'false',
+    class: 'btn btn--quiet coach-launch', type: 'button', 'aria-pressed': 'false',
     onclick: () => setOpen(!isOpen()),
   }, [el('span', { text: 'Coach' }), el('kbd', { text: chordLabel('coach') })]);
   document.body.append(launcher);
@@ -1182,7 +1235,7 @@ window.addEventListener('studio-interview-change', () => {
   if (!interview || active?.slug !== interview.slug) return;
   active.openInterview(interview.id || null);
   setOpen(true, { focus: false });
-});
+    }, icon('close'));
 window.addEventListener('studio-interview-open', event => {
   if (active?.slug !== event.detail.slug) return;
   active.openInterview(event.detail.id);

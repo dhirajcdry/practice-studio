@@ -1,6 +1,7 @@
 import { el } from '../dom.js';
 import { createCountBadge } from './badge.js';
 export function createTabs(tabs, value, onChange = () => {}) {
+  tabs = tabs.map(tab => typeof tab === 'string' ? { id: tab, label: tab } : tab);
   const root = el('div', { class: 'ui-tabs', role: 'tablist' });
   const buttons = tabs.map(tab => el('button', { type: 'button', role: 'tab', class: 'ui-tab' }, [
     el('span', { text: tab.label }), tab.count == null ? null : createCountBadge(tab.count),

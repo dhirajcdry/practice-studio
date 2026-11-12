@@ -1,16 +1,16 @@
 /* Reuses the report sheet's viewport, theme, backdrop, and shared dialog header. */
 .ci-sheet { width:min(880px,calc(100vw - var(--space-6))); }
 .ci-body { display:flex;flex-direction:column;gap:var(--space-4);font:var(--text-sm)/var(--line-md) var(--ui); }
-.ci-body h3,.ci-body p,.ci-body dl { margin:0; }
-.ci-body>.btn { align-self:flex-start; }
-.ci-body>.ci-request { align-self:stretch; }
-.ci-request .ui-row-content { display:flex;flex-direction:column;gap:var(--space-1); }
+.ci-body h3,.ci-body p,.ci-body dl { margin:0; }.ci-body>.btn{ align-self:flex-start; }
+.ci-body>.ci-request { align-self:stretch; }.ci-request .ui-row-content{ display:flex;flex-direction:column; }
 .ci-request-identity { display:flex;flex-direction:column;gap:var(--space-1); }
 .ci-caption { font-size:var(--text-xs);line-height:var(--line-lg); }
 .ci-facts { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-2) var(--space-4); }
 .ci-facts dt { color:var(--ink-60);overflow-wrap:anywhere; }
 .ci-facts dd { margin:0;text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums; }
-.ci-source { border:var(--row-border);border-radius:var(--row-radius); }
+.ci-source { border:0;border-bottom:1px solid var(--hair-10);border-radius:0; }
 .ci-source summary { padding:var(--space-3);cursor:pointer; }
 .ci-source pre { margin:0;padding:var(--space-3);max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--text-xs);border-top:1px solid var(--hair-10); }
 @media(max-width:600px) { .ci-sheet { width:calc(100vw - var(--space-4));height:calc(100dvh - var(--space-4));margin:var(--space-2) auto; } }
+
+.ci-request.ui-action-row{border:0;border-bottom:1px solid var(--hair-10);border-radius:0;background:transparent;box-shadow:none}

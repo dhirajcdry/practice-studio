@@ -57,3 +57,15 @@ test('report grounding uses exact quote provenance and bounds timeline timestamp
   assert.equal(report.dimensions[1].evidence[1].at, null);
   assert.equal(report.moments.length, 1);
 });
+
+test('practice items keep their fix headline and a bounded moment; older items get nulls', () => {
+  const report = parseReport(JSON.stringify({ practice: [
+    { fix: 'Name edge cases first', at: '00:20', title: 'Three cases before every run', why: 'No cases offered.' },
+    { title: 'Older drill', why: 'Older report.' },
+    { fix: 'Late', at: '99:00', title: 'Out of range', why: 'x' },
+  ] }), turns, { durationMs: 600000 });
+  assert.deepEqual(report.practice[0], { title: 'Three cases before every run', why: 'No cases offered.', fix: 'Name edge cases first', at: 20000 });
+  assert.equal(report.practice[1].fix, null);
+  assert.equal(report.practice[1].at, null);
+  assert.equal(report.practice[2].at, null, 'a moment past the end of the interview is dropped');
+});

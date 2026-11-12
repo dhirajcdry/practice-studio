@@ -561,3 +561,46 @@ test('extension rejects completed sessions and in-flight reservations; plain LLD
   assert.ok(turn.events.some(e => e.name === 'done'));
   assert.equal((await interview.store.readState('lld-meeting-room-booking', lldId)).debriefed, false);
 });
+test('re-grading a finished interview appends a fresh report, keeps the original and never shows it to the grader', async t => {
+  const { root, interview, call } = await fixture(t);
+  const promptLog = path.join(root, 'prompts.jsonl');
+  process.env.FAKE_INTERVIEW_PROMPT = promptLog;
+  t.after(() => { delete process.env.FAKE_INTERVIEW_PROMPT; });
+  const opening = await call('POST /api/interview/start', { slug: 'two-sum', mode: 'typed', minutes: 45, code: 'pass' });
+  const id = opening.events.find(e => e.name === 'interview').data.id;
+  const body = { slug: 'two-sum', interviewId: id };
+  await call('POST /api/interview/turn', { ...body, said: 'I will use a map.', requestId: 'answer-1', code: 'seen = {}' });
+  await assert.rejects(call('POST /api/interview/regrade', { ...body, requestId: 'regrade-early' }), /Only a finished interview/);
+  await call('POST /api/interview/done', { ...body, requestId: 'end-1' });
+  const before = await interview.store.readTurns('two-sum', id);
+  const original = before.find(t => t.kind === 'debrief');
+
+  const regraded = await call('POST /api/interview/regrade', { ...body, requestId: 'regrade-1' });
+  assert.ok(regraded.events.some(e => e.name === 'done'));
+  const turns = await interview.store.readTurns('two-sum', id);
+  assert.deepEqual(turns.slice(0, before.length), before, 'the earlier record is untouched');
+  const debriefs = turns.filter(t => t.kind === 'debrief');
+  assert.equal(debriefs.length, 2);
+  assert.equal(debriefs[0].requestId, original.requestId);
+  assert.equal(debriefs[1].regrade, true);
+
+  const logged = (await fs.readFile(promptLog, 'utf8')).trim().split('\n').map(JSON.parse);
+  const reports = logged.filter(row => row.args.join(' ').includes('going over it'));
+  const last = reports.at(-1);
+  assert.match(last.prompt, /This is a re-grade of a finished interview/);
+  assert.ok(!last.prompt.includes(JSON.stringify(original.asked).slice(1, 60)) && !last.prompt.includes('Your written debrief'), 'the earlier report is not in front of the grader');
+  assert.ok(!last.args.includes('--resume'), 'a re-grade starts its own conversation');
+  assert.notEqual(last.args[last.args.indexOf('--session-id') + 1], reports[0].args[reports[0].args.indexOf('--session-id') + 1]);
+
+  const detail = JSON.parse((await call('GET /api/interview/:slug/:id', {}, { slug: 'two-sum', id })).output);
+  assert.equal(detail.report.regraded.count, 1);
+  assert.equal(detail.report.regraded.original.signal, 'Lean hire');
+  const doc = await fs.readFile(path.join(problemDir(root, 'two-sum'), 'interviews', id, 'interview.md'), 'utf8');
+  assert.match(doc, /Re-graded on \d{4}-\d{2}-\d{2} with the current report rules\. The original report from/);
+
+  const duplicate = await call('POST /api/interview/regrade', { ...body, requestId: 'regrade-1' });
+  assert.equal(JSON.parse(duplicate.output).duplicate, true);
+  await assert.rejects(call('POST /api/interview/done', { ...body, requestId: 'regrade-1' }), /another interview action/);
+  assert.equal((await interview.store.readTurns('two-sum', id)).filter(t => t.kind === 'debrief').length, 2);
+  assert.equal(interview.live.size, 0);
+});

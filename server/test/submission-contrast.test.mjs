@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const css = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/css/themes.css'), 'utf8');
-const themes = ['studio', 'desk', 'editorial', 'ink', 'terminal', 'nebula', 'horizon', 'abyss', 'dunes'];
+const themes = ['studio', 'desk', 'dunes'];
 const declarations = (selector) => {
   const matches = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
     m[1].split(',').map((s) => s.trim().split('\n').pop().trim()).includes(selector));
@@ -56,6 +56,26 @@ test('submission verdict tokens meet 4.5:1 against every theme card', () => {
           for (const token of ['verdict-hard', 'verdict-med']) {
             assert.ok(contrast(palette[token], hardSurface) >= 4.5,
               `${theme}${mode}: ${token} rejected hero over ${base} at ${alpha} wash is below 4.5:1`);
+          }
+        }
+      }
+    }
+  }
+});
+
+
+test('muted text meets AA after compositing on theme surfaces', () => {
+  for (const theme of themes) {
+    for (const mode of ['', '.is-dark']) {
+      const palette = declarations(`body.theme-${theme}${mode}`);
+      for (const token of ['ink-50', 'ink-35']) {
+        const alpha = Number(palette[token].match(/,([.\d]+)\)$/)[1]);
+        for (const base of ['card', 'canvas']) {
+          for (const wash of [0, .07]) {
+            const surface = blend(palette.ink, palette[base], wash);
+            const foreground = blend(palette.ink, surface, alpha);
+            assert.ok(contrast(foreground, surface) >= 4.5,
+              `${theme}${mode}: ${token} on ${base} with ${wash} wash is below AA`);
           }
         }
       }

@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // LLD layout regression: real Chrome/CDP, scratch home, fake interviewer only.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -41,7 +42,7 @@ try {
   async function shot(name) { const s = await send('Page.captureScreenshot', { format: 'png' }); await fs.writeFile(`/tmp/studio-guidance-${name}.png`, Buffer.from(s.data, 'base64')); }
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN + '/#/lld' });
-  await until(()=>evaluate("return !!document.querySelector('.pr-launch')"),'page');
+  await until(()=>evaluate("return !!document.querySelector('.th-practice')"),'page');
   await evaluate("(await import('/js/settings.js')).openSettings();[...document.querySelectorAll('.settings button')].find(b=>b.textContent==='Coaching instructions').click();");
   await until(()=>evaluate("return document.querySelector('.gi-body')?.textContent.includes('No saved coaching instructions')"),'empty instructions');
   const click = async text => evaluate(`const b=[...document.querySelectorAll('.gi-sheet button')].find(b=>b.textContent===${JSON.stringify(text)});if(!b)throw Error('Missing button');b.click();`);
@@ -69,7 +70,7 @@ try {
   await shot('instructions-narrow');
   await evaluate("document.querySelector('.gi-sheet').close()");
   await send('Page.reload');
-  await until(()=>evaluate("return !!document.querySelector('.pr-launch')"),'reload');
+  await until(()=>evaluate("return !!document.querySelector('.th-practice')"),'reload');
   await evaluate("await(await import('/js/coaching-instructions.js')).openCoachingInstructions();");
   assert.match(await evaluate("return document.querySelector('.gi-rule').textContent"),/Start with a concrete example/);
   await click('Edit');
@@ -85,7 +86,12 @@ try {
   assert.deepEqual(issues,[],'no browser exceptions');
   console.log('ok — instructions create/edit/disable/history/undo/reload/conflict; desktop and narrow bounds');
 } finally {
-  socket?.close(); for (const p of [chrome, server]) if (p && p.exitCode === null) p.kill();
+  socket?.close();
+  await Promise.all([chrome, server].filter(Boolean).map(child => new Promise(resolve => {
+    if (child.exitCode !== null || child.signalCode) return resolve();
+    child.once('exit', resolve); child.kill();
+  })));
+  await cleanupChrome(chrome, PROFILE);
   for (const p of pending.values()) clearTimeout(p.timer);
-  await fs.rm(HOME, { recursive:true, force:true }); await fs.rm(PROFILE, { recursive:true, force:true });
+  await fs.rm(HOME, { recursive:true, force:true, maxRetries: 5, retryDelay: 200 });
 }

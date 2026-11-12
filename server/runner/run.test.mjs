@@ -528,10 +528,10 @@ test('a `manual` problem never runs — the printed example is not the whole inp
 });
 
 test('real LeetCode data: a cached problem runs straight from its cache entry', async (t) => {
-  // Uses whatever the user has already opened. Skipped rather than failed on a fresh machine,
-  // because this test is about real metaData, not about the cache being populated.
-  const file = path.join(os.homedir(), 'LeetCodeTutor', 'cache', 'leetcode', 'two-sum.json');
-  if (!fs.existsSync(file)) return t.skip('two-sum has not been fetched on this machine yet');
+  // Optional captured fixture, explicitly supplied by the caller. The default suite
+  // never probes or reads a learner's real cache.
+  const file = process.env.STUDIO_TEST_CACHED_PROBLEM;
+  if (!file) return t.skip('No opt-in cached-problem fixture supplied');
   const { question } = JSON.parse(await fsp.readFile(file, 'utf8'));
   const r = await runCode({
     code: GOOD_TWO_SUM,

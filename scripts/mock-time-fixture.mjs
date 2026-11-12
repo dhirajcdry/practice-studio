@@ -22,14 +22,14 @@ export async function checkMockTime(kind, detailUrl) {
   let total = initial.minutes;
   for (const minutes of [15, 20, 7]) {
     await wait(() => !button().disabled);
-    const headerBefore = button().closest('.ci-header,.dz-bar').getBoundingClientRect();
+    const headerBefore = button().closest('.ci-header,.ui-screen-header').getBoundingClientRect();
     button().click();
     const option = [...document.querySelectorAll('.ui-menu-item')].find(node => node.textContent.includes(minutes === 7 ? 'Custom' : `+${minutes} min`));
     check(option, 'Missing time option'); option.click();
     if (minutes === 7) {
       const input = document.querySelector('.mock-time-input'); input.value = '7'; input.form.requestSubmit();
     }
-    const headerAfter = button().closest('.ci-header,.dz-bar').getBoundingClientRect();
+    const headerAfter = button().closest('.ci-header,.ui-screen-header').getBoundingClientRect();
     check(Math.abs(headerAfter.height - headerBefore.height) < 1, 'Time editor must not expand the header');
     total += minutes;
     await wait(async () => !button().disabled && (await saved()).minutes === total);

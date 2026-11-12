@@ -7,6 +7,9 @@ import { visualLint } from './visual-lint.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 export async function runVisualAudit({ origin, target, output }) {
+  // check:visual copies this neutral fixture into the scratch STUDIO_HOME as collection.json.
+  const collectionFixture = JSON.parse(await fsp.readFile(new URL('../server/test/fixtures/collection.json', import.meta.url), 'utf8'));
+  const collectionCount = new Set(collectionFixture.problems.map(problem => problem.slug)).size;
   const lint = `return (${visualLint.toString()})();`;
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
@@ -77,7 +80,7 @@ export async function runVisualAudit({ origin, target, output }) {
   const submissions = `${coach} clickText('.coach-tab', 'Submissions'); await sleep(400); need('.submission-row');`;
   const editor = `const inst = window.monaco.editor.getEditors()[0]; if (!inst) throw Error('No editor'); inst.focus();`;
   const problem = '/#/p/jump-game';
-  const learnerRun = `need('.ws-bar .ws-run').click(); for (let i=0; i<100 && !document.querySelector('.rr-case'); i++) await sleep(50); need('.rr-case');`;
+  const learnerRun = `need('.ui-screen-header .ws-run').click(); for (let i=0; i<100 && !document.querySelector('.rr-case'); i++) await sleep(50); need('.rr-case');`;
   const tutorRun = `const api = await import('/js/api.js'); if (!api.simulateRun) throw Error('Tutor fixture requires simulated run'); const raw = await api.runCode('jump-game', ''); await (await import('/js/coach-actions.js')).applyAction({ id: crypto.randomUUID(), slug: 'jump-game', refresh: 'run', run: raw });`;
   const tutorSpacing = `
     const banner=need('.rr-tutor'), body=need('.rr-body'), tabs=need('.rr-tabs');
@@ -109,7 +112,12 @@ export async function runVisualAudit({ origin, target, output }) {
   `;
   const lldSelection = {
     url: '/#/lld',
-    setup: `for (let i=0; i<100 && !document.querySelector('[data-slug="lld-locker"]'); i++) await sleep(50); need('[data-slug="lld-locker"]').click();`,
+    // The seeded saved-practice list loads independently of the scenario cards.
+    // Wait for it before clicking: inserting it afterward moves the selected
+    // scenario after its scrollIntoView has already run.
+    setup: `for (let i=0; i<100 && (!document.querySelector('[data-slug="lld-locker"]') || !document.querySelector('.pr-saved-row')); i++) await sleep(50);
+      need('.pr-saved-row'); await document.fonts.ready; await new Promise(requestAnimationFrame);
+      need('[data-slug="lld-locker"]').click();`,
     ready: '#setup-lld-locker .ci-start',
     assert: `const card=need('[data-slug="lld-locker"]'), setup=need('#setup-lld-locker'), start=need('#setup-lld-locker .ci-start');
       const a=card.getBoundingClientRect(), b=setup.getBoundingClientRect(), c=start.getBoundingClientRect();
@@ -238,15 +246,21 @@ export async function runVisualAudit({ origin, target, output }) {
   });
   const mockTimeSetup = `for(let i=0;i<100&&document.querySelector('.mock-add-time')?.disabled;i++)await sleep(50);need('.ci-clock').textContent='+03:00';need('.mock-add-time').click();`;
   const mockCustomSetup = `${mockTimeSetup} [...document.querySelectorAll('.ui-menu-item')].find(n=>n.textContent.includes('Custom')).click();`;
+  const importPreview = `need('#problem-url').value='https://leetcode.com/problems/import-sample/description/'; need('.import-form').requestSubmit(); for(let i=0;i<100&&!document.querySelector('.import-save');i++)await sleep(100);need('.import-save');`;
   const states = {
+    importEmpty: { url: '/#/add', ready: '.import-form' },
+    importPreview: { url: '/#/add', ready: '.import-form', setup: importPreview },
+    importNarrow: { url: '/#/add', width: 390, ready: '.import-form', setup: importPreview, assert: `const r=need('.import-preview').getBoundingClientRect(); if(r.right>innerWidth||r.left<0)throw Error('Import preview overflows');` },
+    importError: { url: '/#/add', ready: '.import-form', setup: `need('#problem-url').value='https://example.com/problems/sample/';need('.import-form').requestSubmit();for(let i=0;i<100&&need('.import-status').textContent==='Loading problem…';i++)await sleep(50);`, assert: `if(!need('.import-status').textContent.includes('Use a URL'))throw Error('Missing invalid URL error');` },
+    importSaved: { url: '/#/add', ready: '.catalog', setup: `${importPreview} need('.import-save').click();for(let i=0;i<100&&!location.hash.startsWith('#/p/');i++)await sleep(100);if(location.hash!=='#/p/import-sample')throw Error('Import did not open');location.hash='#/';await sleep(400);`, assert: `if(!document.querySelector('.prow[data-slug="import-sample"]'))throw Error('Imported problem missing from Added by you');` },
     mockTimeMenu: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.ci-panel', setup: mockTimeSetup, assert: `need('.ui-menu-item');` },
     mockTimeCustom: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.ci-panel', setup: mockCustomSetup, assert: `if(!visible(need('.mock-time-input')))throw Error('Custom minutes hidden');` },
     mockTimeCustomNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.ci-panel', setup: `need('.lld-interviewer').scrollIntoView({block:'center'}); ${mockCustomSetup}`, assert: `const r=need('.mock-time-custom').getBoundingClientRect();if(r.right>innerWidth||r.left<0)throw Error('Custom minutes overflow');` },
 
     conversationLLD: { url: '/#/lld/lld-locker/1760000000000-00000011', width: 1440, height: 900, ready: '.ci-text code', assert: conversationAssertions },
     conversationLLDNarrow: { url: '/#/lld/lld-locker/1760000000000-00000011', width: 390, ready: '.ci-text code', setup: `for(let i=0;i<100&&!document.querySelector('.ci-text code');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'center'});`, assert: conversationAssertions },
-    conversationDesign: { url: '/#/design/2026-11-04T12-00-00-000Z', width: 1440, height: 900, ready: '.dz-body code', assert: conversationAssertions },
-    conversationDesignNarrow: { url: '/#/design/2026-11-04T12-00-00-000Z', width: 390, ready: '.dz-body code', setup: `for(let i=0;i<100&&!document.querySelector('.dz-body code');i++)await sleep(50);need('.dz-side').scrollIntoView({block:'center'});`, assert: conversationAssertions },
+    conversationDesign: { url: '/#/design/2026-11-04T12-00-00-000Z', width: 1440, height: 900, ready: '.dz-log .ui-conversation-text code', assert: conversationAssertions },
+    conversationDesignNarrow: { url: '/#/design/2026-11-04T12-00-00-000Z', width: 390, ready: '.dz-log .ui-conversation-text code', setup: `for(let i=0;i<100&&!document.querySelector('.dz-log .ui-conversation-text code');i++)await sleep(50);need('.dz-side').scrollIntoView({block:'center'});`, assert: conversationAssertions },
     modelEffort,
     modelEffortNarrow: {...modelEffort,width:390},
     modelEffortMenu: {...modelEffort,width:390,setup:modelEffort.setup+`need('.pr-coach .coach-model-select button').click();need('[role="menu"]:not([hidden]) [role="menuitemradio"]').click();`,ready:'[role="menu"][aria-label$="thinking level"]:not([hidden])',assert:modelEffort.assert+`const option=need('[role="menu"]:not([hidden]) [role="menuitemradio"]');if(option.disabled||!option.textContent.includes('Model default'))throw Error('Model default is unavailable');`},
@@ -271,7 +285,7 @@ export async function runVisualAudit({ origin, target, output }) {
     practiceBranchNarrow: feedbackState(390),
     practiceBranchScrolled: feedbackState(1440,true),
     practiceBranchScrolledNarrow: feedbackState(390,true),
-    agentActions: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'done',summary:'Updated LLD memory with the observed invariant and the next verification exercise.'},{replay:true});showWorkspaceAction(log,{id:'visual-run',tool:'run_code',status:'done',summary:'Ran Python (coach run)',result:{exitCode:0,stdout:'reservation trace '.repeat(40)}},{replay:true});log.lastElementChild.querySelector('details').open=true;log.scrollTop=log.scrollHeight;` },
+    agentActions: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'done',summary:'Updated LLD memory with the observed invariant and the next verification exercise.'},{replay:true});showWorkspaceAction(log,{id:'visual-run',tool:'run_code',status:'done',summary:'Ran Python (coach run)',result:{exitCode:0,stdout:'reservation trace '.repeat(40)}},{replay:true});if(log.lastElementChild.querySelector('details').open)throw Error('Successful run output must start collapsed');log.scrollTop=log.scrollHeight;` },
     agentActionsNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:390, ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'failed',summary:'Update learner memory',message:'The saved note changed. Read it again before replacing this passage.'},{replay:true});need('.pr-coach').scrollIntoView({block:'center'});log.scrollTop=log.scrollHeight;` },
     practiceLongDraft: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:1024, height:650, ready: '.pr-coach .pr-answer', setup: `${practiceMode('Typed')} const input=need('.pr-typed textarea'); input.value='A concrete trace through reservation ownership, validation and cancellation. '.repeat(80);input.dispatchEvent(new Event('input'));`, assert: `const c=need('.ui-composer').getBoundingClientRect(),t=need('.pr-thread').getBoundingClientRect();if(c.height>280||t.height<80)throw Error('Long draft consumes conversation');` },
     practiceVoice: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: practiceMode('Voice'), assert: `if(visible(document.querySelector('.pr-typed')))throw Error('Voice exposes typed input');` },
@@ -285,15 +299,17 @@ export async function runVisualAudit({ origin, target, output }) {
     practiceTimerPaused: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-timer', setup: `for(let i=0;i<100&&need('.pr-timer button').disabled;i++)await sleep(50);if(need('.pr-timer-label').textContent==='Elapsed')need('.pr-timer button').click();for(let i=0;i<100&&need('.pr-timer-label').textContent!=='Paused';i++)await sleep(50);`, assert: `if(need('.pr-timer-label').textContent!=='Paused')throw Error('Timer not paused');` },
     learningNotes: { url: '/#/lld', setup: `(await import('/js/learning.js')).openLearningNotes('lld-locker','Locker system');`, ready: '.ln-sheet[open] .ln-evidence' },
     learningNotesNarrow: { url: '/#/lld', width: 390, setup: `(await import('/js/learning.js')).openLearningNotes('lld-locker','A much longer problem title: reservations, ownership, and concurrent allocation');`, ready: '.ln-sheet[open] .ln-evidence' },
-    lldLibrary: { url: '/#/lld', ready: '.lld-scenario' },
-    lldMockNarrow: { url: '/#/lld', width: 390, ready: '.lld-new-mock .ci-start', assert: `need('.lld-new-mock [aria-label="Answer mode: Voice"]'); need('.lld-new-mock [aria-label^="Target level:"]');` },
+    lldLibrary: { url: '/#/lld', ready: '.th-problem' },
+    lldProblemOpen: { url: '/#/lld', setup: `need('.th-problem .th-expand').click();`, ready: '.th-problem-detail:not([hidden]) .th-detail-actions' },
+    lldNewMock: { url: '/#/lld', setup: `need('.th-new').click();`, ready: '.th-start:not([hidden]) .ci-start' },
+    lldMockNarrow: { url: '/#/lld', width: 390, setup: `need('.th-new').click();`, ready: '.th-start:not([hidden]) .ci-start', assert: `need('.th-start [aria-label="Answer mode: Voice"]'); need('.th-start [aria-label^="Target level:"]');` },
     lldContextNarrow: { url: '/#/lld', width: 390, setup: `need('.learner-context summary').click();`, ready: '.learner-context > div:not([hidden])', assert: `if (!need('.learner-context').open) throw Error('Learning context did not expand');` },
     lldSelected: lldSelection,
     lldSelectedNarrow: { ...lldSelection, width: 390 },
     lldLongDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1024, height: 650, setup: `for(let i=0;i<100 && !document.querySelector('.ci-composer .ui-mode-switch:not(:disabled)');i++) await sleep(50); const log=need('.ci-log'); for(let i=0;i<20;i++){const p=document.createElement('p');p.textContent='Interviewer: How does reservation ownership prevent conflicting updates?';log.append(p);} log.scrollTop=log.scrollHeight;`, ready: '.ci-contained .ci-log' },
     lldDocumentNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.lld-workspace .ci-panel', setup: `for(let i=0;i<100 && !document.querySelector('.ci-panel');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'center'});` },
     lldDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.lld-workspace .ci-panel' },
-    reference: { url: problem, setup: `need('[data-panel="solution"]').click();`, ready: '.drawer.show .drawer-resize', assert: `need('.scrim.show'); if (getComputedStyle(need('.scrim')).backdropFilter !== 'blur(5px)') throw Error('Reference blur missing');` },
+    reference: { url: problem, setup: `need('[data-panel="solution"]').click();`, ready: '.drawer.show .drawer-resize', assert: `need('.scrim.show'); const d=need('.drawer.show'); const s=getComputedStyle(d); if (s.backgroundColor==='transparent' || s.backgroundColor==='rgba(0, 0, 0, 0)') throw Error('Reference surface must be opaque'); if (d.getBoundingClientRect().width<280) throw Error('Reference surface too narrow');` },
     interviewLive: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-panel[data-mode="typed"] .ci-input', assert: `need('.ci-phases');` },
     interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-voice .voice-state');` },
     interviewNoResponse: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/1760000000000-00000003')) { const data = await response.json(); data.completionReason = 'no-response'; data.report = null; delete data.hireSignal; data.turns = data.turns.filter(t => t.kind === 'opening'); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; (await import('/js/interview.js')).openInterviewRecord('jump-game', '1760000000000-00000003');`, ready: '.ci-empty-session', assert: `if (document.querySelector('.ci-open-report,.ci-mini-dim')) throw Error('Empty interview displays a report');` },
@@ -301,13 +317,25 @@ export async function runVisualAudit({ origin, target, output }) {
       if (document.querySelectorAll('.ci-mini-dim').length !== 4) throw Error('Missing dimensions'); need('.ci-open-report'); need('.ci-transcript');
     ` },
     interviewReport: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003'); await new Promise(r => { const t = setInterval(() => { const b = document.querySelector('.ci-open-report'); if (b) { clearInterval(t); b.click(); r(); } }, 50); });`, ready: '.rp-sheet[open] .rp-signal', assert: `
-      if (document.querySelectorAll('.rp-dim').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
-      if (!document.querySelector('.rp-quote')) throw Error('Verified quote missing');
+      if (document.querySelectorAll('.rp-dim-row').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
+      if (!document.querySelector('.rp-moment-quote q')) throw Error('Verified quote missing');
       if (getComputedStyle(need('.rp-scroll')).scrollbarWidth !== 'thin') throw Error('Report scrollbar is not thin');
     ` },
     interviewReportLower: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003'); await new Promise(r => { const t = setInterval(() => { const b = document.querySelector('.ci-open-report'); if (b) { clearInterval(t); b.click(); setTimeout(() => { document.querySelector('.rp-dims')?.scrollIntoView({ block: 'start' }); r(); }, 300); } }, 50); });`, ready: '.rp-sheet[open] .rp-signal', assert: `
-      if (document.querySelectorAll('.rp-dim').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
-      if (!document.querySelector('.rp-quote')) throw Error('Verified quote missing');
+      if (document.querySelectorAll('.rp-dim-row').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
+      if (!document.querySelector('.rp-moment-quote q')) throw Error('Verified quote missing');
+    ` },
+    interviewReportCode: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003'); await new Promise(r => { const t = setInterval(() => { const b = document.querySelector('.ci-open-report'); if (b) { clearInterval(t); b.click(); setTimeout(() => { document.querySelector('.rp-solution')?.scrollIntoView({ block: 'start' }); r(); }, 300); } }, 50); });`, ready: '.rp-sheet[open] .rp-signal', assert: `
+      if (document.querySelectorAll('.rp-dim-row').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
+      if (!document.querySelector('.rp-moment-quote q')) throw Error('Verified quote missing');
+    ` },
+    interviewReportFollowups: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003'); await new Promise(r => { const t = setInterval(() => { const b = document.querySelector('.ci-open-report'); if (b) { clearInterval(t); b.click(); setTimeout(() => { document.querySelector('.rp-dims')?.scrollIntoView({ block: 'start' }); r(); }, 300); } }, 50); });`, ready: '.rp-sheet[open] .rp-signal', assert: `
+      if (document.querySelectorAll('.rp-dim-row').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
+      if (!document.querySelector('.rp-moment-quote q')) throw Error('Verified quote missing');
+    ` },
+    interviewReportPhone: { width:375, height:844, url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000003'); await new Promise(r => { const t = setInterval(() => { const b = document.querySelector('.ci-open-report'); if (b) { clearInterval(t); b.click(); setTimeout(() => {  r(); }, 300); } }, 50); });`, ready: '.rp-sheet[open] .rp-signal', assert: `
+      if (document.querySelectorAll('.rp-dim-row').length !== 4) throw Error('Missing dimensions'); need('.rp-track'); need('.rp-practice');
+      if (!document.querySelector('.rp-moment-quote q')) throw Error('Verified quote missing');
     ` },
     interviewPaused: { url: problem, setup: `const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-paused:not([hidden])' },
     interviewsList: { url: problem, setup: `${coach} clickText('.coach-tab', 'Interviews'); document.querySelector('.interview-back')?.click();`, ready: '.interviews-overview .interview-row' },
@@ -331,24 +359,28 @@ export async function runVisualAudit({ origin, target, output }) {
     coachPicture: { url: problem, setup: `${coach} const picture=(await import('/js/coach-image.js')).renderImageCard(JSON.stringify({prompt:'An interval merging diagram',alt:'How overlapping intervals combine'})); need('.coach-log').append(picture);`, ready: '.pic-offer' },
     coachIllustration: { url: problem, setup: `${coach} const viz=(await import('/js/viz.js')).drawViz({type:'array',title:'Walking the array',values:[2,3,1,1,4],frames:[{note:'Start at the first index.'},{note:'Track the furthest reachable index.'}]}); need('.coach-log').append(viz);`, ready: '.viz-stepper' },
     catalog: { url: '/#/', ready: '.catalog' },
-    amazonCatalog: { url: '/#/', setup: `clickText('.seg-opt', 'Amazon interview'); need('.filterbar').scrollIntoView({block:'start'});`, ready: '.catalog', assert: `
+    trackerSettings: { url: '/#/', ready: '.catalog', setup: `need('.set-settings').click();for(let i=0;i<100&&need('.tracker-reset-all').disabled;i++)await sleep(50);`, assert: `if(document.querySelector('.tracker-actions'))throw Error('Unexpected per-problem tracker control');` },
+    trackerReset: { url: '/#/', ready: '.catalog', setup: `await fetch('/api/tracker/restore',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});need('.set-settings').click();for(let i=0;i<100&&need('.tracker-reset-all').disabled;i++)await sleep(50);need('.tracker-reset-all').click();if(!need('.tracker-reset-all').textContent.includes('again'))throw Error('Reset must ask for a second click');if(document.querySelector('.tracker-restore-all').offsetParent)throw Error('Undo shown before any reset');need('.tracker-reset-all').click();for(let i=0;i<100&&!document.querySelector('.tracker-restore-all').offsetParent;i++)await sleep(50);`, assert: `const data=await(await fetch('/api/tracker')).json();if(!data.resetAt||data.problems.some(p=>p.status!=='empty'))throw Error('All tracker statuses must reset');if(!need('[aria-label="Problem tracker"]').textContent.includes('preserved'))throw Error('Missing preservation receipt');` },
+    trackerSettingsNarrow: { url: '/#/', width: 390, ready: '.catalog', setup: `need('.set-settings').click();`, assert: `const r=need('.tracker-reset-all').getBoundingClientRect();if(r.left<0||r.right>innerWidth)throw Error('Reset control outside viewport');` },
+
+    collectionCatalog: { url: '/#/', setup: `clickText('.seg-opt', '${collectionFixture.label}'); need('.filterbar').scrollIntoView({block:'start'});`, ready: '.catalog', assert: `
       const rows = [...document.querySelectorAll('.prow')];
-      if (rows.length !== 17 || new Set(rows.map(row => row.dataset.slug)).size !== 17) throw Error('Amazon collection must contain 17 unique problems');
-      if (!need('.countpill').textContent.includes('17')) throw Error('Incorrect Amazon collection count');` },
-    amazonCatalogNarrow: { url: '/#/', width: 390, setup: `clickText('.seg-opt', 'Amazon interview'); need('.filterbar').scrollIntoView({block:'start'});`, ready: '.catalog' },
-    amazonProblem: { url: '/#/p/time-based-key-value-store', setup: `need('[data-interview-prep]').open = true;`, ready: '[data-interview-prep]', assert: `
-      if (!need('[data-interview-prep]').textContent.includes('strictly increasing')) throw Error('Missing timestamp variation caveat');
-      if (!need('.ptags').textContent.includes('amazon-interview')) throw Error('Missing Amazon tag');` },
-    amazonProblemNarrow: { url: '/#/p/time-based-key-value-store', width: 390, setup: `need('[data-interview-prep]').open = true; need('[data-interview-prep]').scrollIntoView({block:'start'});`, ready: '[data-interview-prep]' },
-    amazonRoadmap: { url: '/#/roadmap', setup: `clickText('.chip', 'Amazon interview');`, ready: '.roadmap', assert: `
+      if (rows.length !== ${collectionCount} || new Set(rows.map(row => row.dataset.slug)).size !== ${collectionCount}) throw Error('Collection must contain ${collectionCount} unique problems');
+      if (!need('.countpill').textContent.includes('${collectionCount}')) throw Error('Incorrect collection count');` },
+    collectionCatalogNarrow: { url: '/#/', width: 390, setup: `clickText('.seg-opt', '${collectionFixture.label}'); need('.filterbar').scrollIntoView({block:'start'});`, ready: '.catalog' },
+    collectionProblem: { url: '/#/p/time-based-key-value-store', setup: `need('[data-interview-prep]').open = true;`, ready: '[data-interview-prep]', assert: `
+      if (!need('[data-interview-prep]').textContent.includes('Fixture caveat')) throw Error('Missing collection caveat');
+      if (!need('.ptags').textContent.includes('${collectionFixture.id}')) throw Error('Missing collection tag');` },
+    collectionProblemNarrow: { url: '/#/p/time-based-key-value-store', width: 390, setup: `need('[data-interview-prep]').open = true; need('[data-interview-prep]').scrollIntoView({block:'start'});`, ready: '[data-interview-prep]' },
+    collectionRoadmap: { url: '/#/roadmap', setup: `clickText('.chip', '${collectionFixture.label}');`, ready: '.roadmap', assert: `
       const counts = [...document.querySelectorAll('.node-meta')].map(node => parseInt(node.textContent, 10));
-      if (counts.reduce((a,b) => a+b, 0) !== 17) throw Error('Roadmap must include all 17 Amazon problems');` },
+      if (counts.reduce((a,b) => a+b, 0) !== ${collectionCount}) throw Error('Roadmap must include all ${collectionCount} collection problems');` },
     roadmap: { url: '/#/roadmap', ready: '.roadmap' },
     progress: { url: '/#/progress', ready: '.dash-card' },
-    design: { url: '/#/design', ready: '.dzl-list' },
-    designSetup: { url: '/#/design', setup: `need('.dzl-new').click();`, ready: '.dz-setup .ci-start', assert: `need('.dz-setup [aria-label="Answer mode: Voice"]'); need('[aria-label="System design problem: Choose for me · unseen"]');` },
-    designSetupNarrow: { url: '/#/design', width: 390, setup: `need('.dzl-new').click();`, ready: '.dz-setup .ci-start' },
-    problem: { url: problem, ready: '.ws-bar', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
+    design: { url: '/#/design', ready: '.th-problems' },
+    designSetup: { url: '/#/design', setup: `need('.th-new').click();`, ready: '.th-start .ci-start', assert: `need('.th-start [aria-label="Answer mode: Voice"]'); need('[aria-label="System design problem: Choose for me · unseen"]');` },
+    designSetupNarrow: { url: '/#/design', width: 390, setup: `need('.th-new').click();`, ready: '.th-start .ci-start' },
+    problem: { url: problem, ready: '.ui-screen-header .ws-run', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
     chat: { url: problem, setup: coach, ready: '.recent-chat', assert: historySpacing },
     chatNarrow: { url: problem, setup: `${coach} need('.recent-chats').style.width='260px'; need('.recent-title').textContent='I am struggling to understand how these overlapping intervals should merge, especially when the new interval spans several existing intervals.';`, ready: '.recent-chat', assert: historySpacing },
     chatActive: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); need('.coach-chat-tools [aria-label="History"]').click();`, ready: '.chat-history-popover .recent-chat', assert: historySpacing },
@@ -367,12 +399,12 @@ export async function runVisualAudit({ origin, target, output }) {
       inst.setPosition({ lineNumber: 3, column: 9 });
       inst.trigger('keyboard', 'type', { text: 'num' });
       await inst.getAction('editor.action.triggerSuggest').run();`, ready: '.suggest-widget.visible' },
-    runResult: { url: '/?simrun=pass#/p/jump-game', setup: `need('.ws-bar .ws-run').click();`, ready: '.rr-case' },
+    runResult: { url: '/?simrun=pass#/p/jump-game', setup: `need('.ui-screen-header .ws-run').click();`, ready: '.rr-case' },
     tutorRun: { url: '/?simrun=pass#/p/jump-game', setup: learnerRun + tutorRun, ready: '.rr-tutor button', assert: tutorSpacing },
     tutorRunNoHistory: { url: '/?simrun=pass#/p/jump-game', setup: tutorRun, ready: '.rr-tutor', assert: tutorSpacing + `if (document.querySelector('.rr-tutor button')) throw Error('No learner run exists to restore');` },
     tutorRunNarrow: { url: '/?simrun=pass#/p/jump-game', setup: learnerRun + tutorRun + `need('.ws-results').style.width='360px';`, ready: '.rr-tutor button', assert: tutorSpacing },
     tutorRunError: { url: '/?simrun=compile#/p/jump-game', setup: tutorRun, ready: '.rr-tutorbody > .state', assert: tutorSpacing },
-    verdictWrong: { url: '/?simsubmit=wrong#/p/jump-game', setup: `need('.ws-bar .ws-submit').click();`, ready: '.sub-verdict.v-rejected', assert: `
+    verdictWrong: { url: '/?simsubmit=wrong#/p/jump-game', setup: `need('.ui-screen-header .ws-submit').click();`, ready: '.sub-verdict.v-rejected', assert: `
       const expected = [...document.querySelectorAll('.sub-detail')].find(n => n.firstElementChild.textContent === 'Expected output');
       const actual = document.querySelector('.sub-detail.bad');
       const pane = need('.ws-results').getBoundingClientRect();
@@ -381,7 +413,7 @@ export async function runVisualAudit({ origin, target, output }) {
         const box = node.getBoundingClientRect();
         if (box.top < pane.top - 1 || box.bottom > pane.bottom + 1) throw Error('Failure comparison is below the results fold');
       }` },
-    verdictAccepted: { url: '/?simsubmit=accepted&motion=0#/p/jump-game', setup: `need('.ws-bar .ws-submit').click();`, ready: '.sub-verdict.v-accepted' },
+    verdictAccepted: { url: '/?simsubmit=accepted&motion=0#/p/jump-game', setup: `need('.ui-screen-header .ws-submit').click();`, ready: '.sub-verdict.v-accepted' },
     cases: { url: '/#/p/cheapest-flights-within-k-stops', setup: `need('.tc-tab.is-mine').click();`, ready: '.tc-panel' },
     settingsVoice: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings()); need('.set-voice').scrollIntoView({ block: 'center' });`, ready: '.set-voice', assert: `need('[aria-label^="Speech output"]'); need('[aria-label^="Natural voice"]'); need('[aria-label="Speech speed"]'); need('[aria-label="Preview voice"]');` },
     settings: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings());`, ready: '.settings', assert: `
@@ -418,10 +450,12 @@ export async function runVisualAudit({ origin, target, output }) {
           await send('Page.navigate', { url: 'about:blank' });
           await until("location.href === 'about:blank' && document.readyState === 'complete'", 'blank page');
           await send('Page.navigate', { url: `${origin}${config.url}` });
-          await until("document.readyState === 'complete' && document.querySelector('.catalog,.ws-bar,.roadmap,.dash-card,.dzl-list,.dz-view,.lld-view,.pr-view')", 'view');
+          await until("document.readyState === 'complete' && document.querySelector('.catalog,.ws,.roadmap,.dash-card,.th-problems,.dz-view,.lld-view,.pr-view,.problem-import')", 'view');
           await evaluate(`const settings = await import('/js/settings.js');
             settings.setSetting('theme', ${JSON.stringify(theme)}); settings.setSetting('mode', ${JSON.stringify(mode)});
-            settings.setSetting('motion', false); settings.setSetting('celebrations', false);`);
+            settings.setSetting('motion', false); settings.setSetting('celebrations', false);
+            document.body.getBoundingClientRect(); await document.fonts.ready;
+            await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);`);
           if (config.url.includes('/p/')) {
             await until("window.monaco?.editor.getEditors().length && document.querySelector('.tc-tab')", 'editor and cases');
           }
@@ -435,6 +469,16 @@ export async function runVisualAudit({ origin, target, output }) {
             await evaluate(`const reading=need(${JSON.stringify(config.keyboardFocus)});reading.focus({preventScroll:true});reading.scrollTop=${scrollTop};`);
           }
           if (config.assert) await evaluate(config.assert);
+          if (state.startsWith('interviewReport')) await evaluate(`
+            const scroll = need('.rp-scroll');
+            if (scroll.scrollWidth > scroll.clientWidth + 1) throw Error('Report has horizontal overflow');
+            for (const button of document.querySelectorAll('.rp-sheet button')) {
+              if (!visible(button)) continue;
+              const r = button.getBoundingClientRect();
+              const minimum = button.classList.contains('btn--lg') ? 34 : 28;
+              if (r.width < minimum - .5 || r.height < minimum - .5) throw Error('Report control below shared size: ' + button.textContent + ' / ' + button.getAttribute('aria-label'));
+            }
+          `);
           if (['chat', 'subsList', 'interviewDebrief', 'interviewLive'].includes(state)) {
             await checkSidebar(expression => evaluate('return ' + expression));
           }
@@ -491,6 +535,10 @@ export async function runVisualAudit({ origin, target, output }) {
         if (state === 'suggest') await evaluate(`if (typeof window.visualOriginalCode === 'string') { window.monaco.editor.getEditors()[0].setValue(window.visualOriginalCode); await sleep(500); }`);
       }
       console.log(`Visual audit: ${theme}/${mode}, ${Object.keys(states).length} states`);
+    }
+    if (process.env.STUDIO_REPORT_SHOTS) {
+      const { captureReport } = await import('./capture-report.mjs');
+      await captureReport({ send, evaluate, until, origin, output: process.env.STUDIO_REPORT_SHOTS });
     }
     return findings;
   } finally {

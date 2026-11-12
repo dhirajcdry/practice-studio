@@ -22,11 +22,12 @@ export function ratingTone(value = '') {
 }
 export const REPORT_DIFFICULTIES = [
   { id: 'beginner', label: 'Beginner' },
-  { id: 'amazon-sde-2', label: 'Amazon SDE II' },
+  { id: 'mid-level', label: 'Mid-level' },
 ];
 /** The name of a saved report's difficulty; '' for an older report that has none. */
 export function reportDifficultyLabel(difficulty) {
-  return REPORT_DIFFICULTIES.find(option => option.id === difficulty)?.label || '';
+  const id = difficulty === 'amazon-sde-2' ? 'mid-level' : difficulty; // earlier name, on saved reports privacy-ok: legacy id
+  return REPORT_DIFFICULTIES.find(option => option.id === id)?.label || '';
 }
 /** A signal as display text. Display only: tone and logic stay on the raw signal. */
 export function signalLabel(signal, difficulty) {

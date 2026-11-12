@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Real browser wiring, fake interviewer, synthetic cached statement, scratch home.
 // No mic and no actual judge submission; verdicts enter through the same event API.
@@ -66,38 +67,39 @@ try {
   // Reject capture rather than fabricating audio. Typed mode remains fully usable.
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); }, configurable: true });" });
   await send('Page.navigate', { url: origin + '/#/lld' });
-  await until(() => evaluate("return document.querySelectorAll('.lld-scenario').length === 3;"), 'LLD library');
-  assert.equal(await evaluate("return document.querySelectorAll('.ci-start').length;"), 1, 'one primary action starts an adaptive mock');
-  assert.ok(await evaluate("return !!document.querySelector('.lld-new-mock [aria-label=\"Answer mode: Voice\"]');"), 'new mocks default to voice');
+  await until(() => evaluate("return document.querySelectorAll('.th-problem[data-slug]').length === 3;"), 'LLD home');
+  assert.ok(await evaluate("return !!document.querySelector('.th-new') && document.querySelector('.th-start').hidden;"), 'the new-mock setup waits behind one primary action');
+  await evaluate("document.querySelector('.th-new').click();");
+  assert.ok(await evaluate("return !document.querySelector('.th-start').hidden && !!document.querySelector('.th-start [aria-label=\"Answer mode: Voice\"]');"), 'new mocks default to voice');
+  await evaluate("document.querySelector('.th-new').click();");
   for (const width of [1440, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-    const slugs = await evaluate("return [...document.querySelectorAll('.lld-scenario')].map(n => n.dataset.slug);");
+    const slugs = await evaluate("return [...document.querySelectorAll('.th-problem[data-slug]')].map(n => n.dataset.slug);");
     for (const slug of slugs) {
-      const point = await evaluate(`const button = document.querySelector('[data-slug="${slug}"]'); button.scrollIntoView({block:'center'}); const r = button.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2};`);
+      const point = await evaluate(`const button = [...document.querySelectorAll('[data-slug="${slug}"] .th-problem-actions .btn')].find(b => b.textContent === 'Mock it'); button.scrollIntoView({block:'center'}); const r = button.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2};`);
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
       const selection = await evaluate(`
-        const button = document.querySelector('[data-slug="${slug}"]'), host = document.getElementById(button.getAttribute('aria-controls'));
-        const start = host.querySelector('.ci-start'), a = button.getBoundingClientRect(), b = host.getBoundingClientRect(), c = start?.getBoundingClientRect();
-        return { expanded:button.getAttribute('aria-expanded'), single:document.querySelectorAll('.lld-scenario[aria-expanded="true"]').length === 1,
-          adjacent:host.previousElementSibling === button && b.top >= a.bottom && b.top-a.bottom <= 16,
+        const row = document.querySelector('[data-slug="${slug}"]'), toggle = row.querySelector('.th-expand');
+        const start = row.querySelector('.th-setup .ci-start'), a = row.querySelector('.th-problem-head').getBoundingClientRect(), c = start?.getBoundingClientRect();
+        return { expanded:toggle.getAttribute('aria-expanded'), below:!!c && c.top >= a.bottom,
           visible:!!c && c.width > 0 && c.left >= 0 && c.right <= innerWidth && c.top >= 0 && c.bottom <= innerHeight,
           fits:document.documentElement.scrollWidth <= innerWidth };
       `);
-      assert.deepEqual(selection, { expanded:'true', single:true, adjacent:true, visible:true, fits:true }, `${slug} setup follows its card at ${width}px`);
+      assert.deepEqual(selection, { expanded:'true', below:true, visible:true, fits:true }, `${slug} setup follows its row at ${width}px`);
+      await evaluate(`document.querySelector('[data-slug="${slug}"] .th-expand').click();`);
     }
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     await fs.writeFile(`/tmp/studio-lld-library-${width}.png`, Buffer.from(shot.data, 'base64'));
   }
   assert.equal(await evaluate("return (await (await fetch('/api/lld')).json()).interviews.length;"), 0, 'selection never starts an interview');
-  await evaluate("document.querySelector('.lld-scenario[aria-expanded=\"true\"]').click();");
-  assert.equal(await evaluate("return document.querySelectorAll('.ci-start').length;"), 1, 'closing a sample leaves the primary new-mock action');
+  assert.equal(await evaluate("return document.querySelectorAll('.th-setup .ci-start').length;"), 0, 'closing a problem removes its setup');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
-  await evaluate("document.querySelector('[data-slug=\"lld-locker\"]').focus();");
+  await evaluate("[...document.querySelectorAll('[data-slug=\"lld-locker\"] .th-problem-actions .btn')].find(b => b.textContent === 'Mock it').focus();");
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  assert.equal(await evaluate("return document.querySelector('[data-slug=\"lld-locker\"]').getAttribute('aria-expanded');"), 'true', 'keyboard opens the selected problem');
-  await evaluate("document.querySelector('#setup-lld-locker .ci-start').click();");
+  assert.ok(await evaluate("return !!document.querySelector('[data-slug=\"lld-locker\"] .th-setup .ci-start');"), 'keyboard opens the selected problem');
+  await evaluate("document.querySelector('[data-slug=\"lld-locker\"] .th-setup .ci-start').click();");
   await until(() => evaluate("return !!document.querySelector('.ci-log .cmsg') && !!window.monaco?.editor.getModels().length;"), 'LLD opening');
   assert.equal(await evaluate("return document.querySelector('.ui-workspace-header h1').textContent;"), 'Locker system', 'Start opens the chosen problem');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), '', 'candidate starts with blank Python');
@@ -130,9 +132,9 @@ try {
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'typed', 'changed mode survives reload');
   await evaluate("const b = document.querySelector('.ci-pause[aria-label=\"Resume interview\"]'); if (b && !b.hidden) b.click();");
   await until(() => evaluate("return !document.querySelector('.ci-input').disabled || !!document.querySelector('.ci-paused button');"), 'restored controls');
-  await until(() => evaluate("return !document.querySelector('.ci-send').disabled;"), 'ready after resume');
+  await until(() => evaluate("return !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled;"), 'ready after resume');
   await evaluate("const input = document.querySelector('.ci-input'); input.value = 'I will check overlapping reservations before mutating room state.'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();");
-  await until(() => evaluate("return document.querySelectorAll('.ci-candidate').length === 1 && !document.querySelector('.ci-send').disabled;"), 'candidate answer');
+  await until(() => evaluate("return document.querySelectorAll('.ci-candidate').length === 1 && !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled;"), 'candidate answer');
   for (const mode of ['light', 'dark']) {
     await evaluate(`(await import('/js/settings.js')).setSetting('mode', ${JSON.stringify(mode)});`);
     await evaluate('await new Promise(resolve => setTimeout(resolve, 350));');
@@ -143,13 +145,13 @@ try {
   }
   await evaluate("document.querySelector('.ci-finish').click();");
   await until(() => evaluate("return !!document.querySelector('.rp-sheet[open]');"), 'LLD report');
-  assert.equal(await evaluate("return document.querySelectorAll('.rp-dim').length;"), 9, 'LLD rubric has nine dimensions');
+  assert.equal(await evaluate("return document.querySelectorAll('.rp-dim-row').length;"), 9, 'LLD rubric has nine dimensions');
   assert.ok(await evaluate("return document.querySelector('.rp-sheet').textContent.includes('State modeling');"));
   await evaluate("document.querySelector('.rp-sheet [aria-label=\"Close report\"]').click();");
   assert.ok(await evaluate("return !!document.querySelector('.ci-open-report') && document.querySelector('.ci-open-report').getBoundingClientRect().width > 0;"), 'completed LLD report remains reopenable');
   await evaluate("location.hash='#/lld';");
-  await until(() => evaluate("return !!document.querySelector('.lld-new-mock .ci-start');"), 'adaptive setup');
-  await evaluate("document.querySelector('.lld-new-mock .ci-start').click();");
+  await until(() => evaluate("return !!document.querySelector('.th-new');"), 'adaptive setup');
+  await evaluate("document.querySelector('.th-new').click(); document.querySelector('.th-start .ci-start').click();");
   await until(() => evaluate("return document.querySelector('.ui-workspace-header h1')?.textContent==='Museum ticket reservations' && !!document.querySelector('.ci-log .cmsg');"), 'adaptive problem opening');
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'voice');
   assert.equal(await evaluate("return monaco.editor.getModels().find(m=>!m.isDisposed())?.getValue();"), '', 'generated mock starts blank');
@@ -159,10 +161,10 @@ try {
   assert.ok(await fs.stat(path.join(problemDir(home,generated.slug), 'interviews', generated.id, 'turns.jsonl')));
   await answerMode('typed');
   await evaluate("location.hash='#/design';");
-  await until(() => evaluate("return !!document.querySelector('.dzl-new');"), 'design library');
-  await evaluate("document.querySelector('.dzl-new').click();");
-  assert.ok(await evaluate("return !!document.querySelector('.dz-setup [aria-label=\"Answer mode: Voice\"]') && !!document.querySelector('[aria-label=\"System design problem: Choose for me · unseen\"]');"));
-  await evaluate("document.querySelector('.dz-setup .ci-start').click();");
+  await until(() => evaluate("return !!document.querySelector('.th-new');"), 'design home');
+  await evaluate("document.querySelector('.th-new').click();");
+  assert.ok(await evaluate("return !!document.querySelector('.th-start [aria-label=\"Answer mode: Voice\"]') && !!document.querySelector('[aria-label=\"System design problem: Choose for me · unseen\"]');"));
+  await evaluate("document.querySelector('.th-start .ci-start').click();");
   await until(() => evaluate("return document.querySelector('.dz-log')?.textContent.includes('Design a museum ticket reservation system.');"), 'adaptive system design opening');
   assert.ok(await evaluate("return document.querySelector('.dz-view').dataset.mode==='voice';"));
   await evaluate("document.querySelector('.dz-compose .ui-mode-switch[data-mode=type]').click();");
@@ -171,8 +173,8 @@ try {
   await until(async () => (await (await fetch(origin + '/api/design/' + designRecord.id)).json()).mode === 'typed', 'design mode saved');
   const designIdentity = await (await fetch(origin + '/api/design/' + designRecord.id)).json();
   await evaluate("document.querySelector('.dz-back').click();");
-  await until(() => evaluate("return [...document.querySelectorAll('.dzl-go')].some(n=>n.textContent==='Resume');"), 'design history');
-  await evaluate("[...document.querySelectorAll('.dzl-go')].find(n=>n.textContent==='Resume').click();");
+  await until(() => evaluate("return [...document.querySelectorAll('.th-problem-actions .btn')].some(n=>n.textContent==='Open mock');"), 'design history');
+  await evaluate("[...document.querySelectorAll('.th-problem-actions .btn')].find(n=>n.textContent==='Open mock').click();");
   await until(() => evaluate("return document.querySelector('.dz-view')?.dataset.mode==='type';"), 'resumed typed design');
   const designResumed = await (await fetch(origin + '/api/design/' + designRecord.id)).json();
   assert.equal(designResumed.id, designIdentity.id);
@@ -220,5 +222,5 @@ try {
     child.once('exit', resolve); child.kill();
   })));
   for (const item of pending.values()) clearTimeout(item.timer);
-  await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); await fs.rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); await cleanupChrome(chrome, profile);
 }

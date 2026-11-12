@@ -1,3 +1,5 @@
+import { leetcodeViews } from './leetcode-views.js';
+import { screenHeader } from './ui/headers.js';
 // The browse screen: curated collections grouped by the 18 NeetCode patterns, in the
 // server's curriculum order. All filtering is client side — the whole list arrives
 // at boot, so nothing here ever touches the network.
@@ -6,20 +8,33 @@ import { el, frag } from './dom.js';
 import { progressFor, summarizeProgress, summarizeByDifficulty } from './catalog-progress.js';
 import { computeStreak, recentDays } from './streak.js';
 import { flameIcon } from './streak-pill.js';
+import { icon } from './ui/icon.js';
 
 export const LIST_FILTERS = [
   { id: 'neetcode250', label: 'NeetCode 250' },
   { id: 'neetcode150', label: 'NeetCode 150' },
   { id: 'blind75', label: 'Blind 75' },
-  { id: 'amazon-interview', label: 'Amazon interview' },
+  { id: 'added', label: 'You' },
+  { id: 'others', label: 'Others' },
 ];
+const BUILT_IN_COUNT = LIST_FILTERS.length;
+
+/** The learner's private collection, from the workspace (never shipped in the repo). */
+let privateCollection = null;
+export function setCollection(value) {
+  privateCollection = value && typeof value.id === 'string' && typeof value.label === 'string' ? value : null;
+  LIST_FILTERS.length = BUILT_IN_COUNT;
+  if (privateCollection) LIST_FILTERS.push({ id: privateCollection.id, label: privateCollection.label });
+}
+export function currentCollection() { return privateCollection; }
+export function isKnownList(id) { return LIST_FILTERS.some(f => f.id === id); }
 export const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
 
 /** Case-insensitive match over title and pattern, plus the problem number. */
 function matches(problem, needle) {
   if (!needle) return true;
   return problem.title.toLowerCase().includes(needle)
-    || problem.pattern.toLowerCase().includes(needle)
+    || (problem.pattern || '').toLowerCase().includes(needle)
     || String(problem.number) === needle
     || (problem.tags || []).some(tag => tag.includes(needle))
     || [problem.interviewPrep?.id, problem.interviewPrep?.reportedPrompt]
@@ -32,14 +47,16 @@ export function groupProblems(data, state) {
   const byPattern = new Map(data.patterns.map(p => [p, { pattern: p, total: 0, all: [], items: [] }]));
 
   for (const problem of data.problems) {
-    const bucket = byPattern.get(problem.pattern);
+    const pattern = problem.pattern || 'Uncategorized';
+    if (problem.lists[state.list] && !byPattern.has(pattern)) byPattern.set(pattern, { pattern, total: 0, all: [], items: [] });
+    const bucket = byPattern.get(pattern);
     if (!bucket) continue;
     if (!problem.lists[state.list]) continue;
     bucket.total++;
     bucket.all.push(problem);
     if (state.difficulty !== 'all' && problem.difficulty !== state.difficulty) continue;
     if (!matches(problem, needle)) continue;
-    if (state.pattern && state.pattern !== problem.pattern) continue;
+    if (state.pattern && state.pattern !== pattern) continue;
     bucket.items.push(problem);
   }
   return [...byPattern.values()];
@@ -147,13 +164,13 @@ function nextUp(collection, state, onOpen) {
   const next = collection.find(problem => progressFor(problem.slug, state.progress).status !== 'accepted');
   if (!next) return el('div', { class: 'ov-next done' }, [checkIcon('ov-done-check'), el('span', { text: 'Every problem in this list is accepted.' })]);
   const status = progressFor(next.slug, state.progress);
-  return el('button', { class: 'ov-next', type: 'button', onclick: () => onOpen(next.slug), title: `Open ${next.title}` }, [
+  return el('button', { class: 'ui-action-row ov-next', type: 'button', onclick: () => onOpen(next.slug), title: `Open ${next.title}` }, [
     el('span', { class: 'ov-kicker', text: status.status === 'empty' ? 'Next up' : `Next up · ${status.label.toLowerCase()}` }),
     el('span', { class: 'ov-next-title', text: next.title }),
     el('span', { class: 'ov-next-meta' }, [
       el('span', { class: 'tag ' + next.difficulty.toLowerCase(), text: next.difficulty }),
       el('span', { text: next.pattern }),
-      el('span', { class: 'ov-next-go', 'aria-hidden': 'true', text: '→' }),
+      el('span', { class: 'ov-next-go', 'aria-hidden': 'true' }, icon('forward', 15)),
     ]),
   ]);
 }
@@ -192,7 +209,7 @@ function progressOverview(collection, state, handlers) {
         el('div', { class: 'ov-streak-n', text: 'Progress unavailable' }),
         el('div', { class: 'ov-streak-best', text: 'Your stats could not be read. The problem library below still works.' }),
       ]),
-      el('button', { class: 'ov-retry', type: 'button', text: 'Retry', onclick: handlers.onRetryProgress }),
+      el('button', { class: 'btn btn--quiet ov-retry', type: 'button', text: 'Retry', onclick: handlers.onRetryProgress }),
     ]);
   }
   if (!state.progress) {
@@ -236,7 +253,7 @@ function assetDot(present, letter, label) {
 function problemRow(problem, state, needle, onOpen) {
   const progress = progressFor(problem.slug, state.progress);
   const row = el('button', {
-    class: 'prow' + (state.selectedSlug === problem.slug ? ' sel' : ''),
+    class: 'ui-action-row prow' + (state.selectedSlug === problem.slug ? ' sel' : ''),
     type: 'button',
     dataset: { slug: problem.slug },
     onclick: () => onOpen(problem.slug),
@@ -277,11 +294,11 @@ function patternSection(group, index, state, needle, handlers) {
   const filtered = group.items.length !== group.total;
 
   const head = el('button', {
-    class: 'phead', type: 'button', 'aria-expanded': String(open),
+    class: 'ui-action-row phead', type: 'button', 'aria-expanded': String(open),
     'aria-controls': 'sec-' + index,
     onclick: () => handlers.onToggle(group.pattern),
   }, [
-    el('span', { class: 'caret', 'aria-hidden': 'true', text: '▶' }),
+    el('span', { class: 'caret', 'aria-hidden': 'true' }, icon('forward', 15)),
     folderIcon(),
     el('span', { class: 'pname', text: group.pattern }),
     filtered ? el('span', { class: 'pcount', text: `${group.items.length} of ${group.total} shown` }) : null,
@@ -322,7 +339,7 @@ function treeItem({ root = false, label, items, summary, pressed, onClick }) {
 
 function chip(label, pressed, onClick, extraClass = '') {
   return el('button', {
-    class: 'chip ' + extraClass, type: 'button', 'aria-pressed': String(pressed), onclick: onClick, text: label,
+    class: 'btn btn--quiet chip ' + extraClass, type: 'button', 'aria-pressed': String(pressed), onclick: onClick, text: label,
   });
 }
 
@@ -338,23 +355,17 @@ export function renderBrowse(data, state, handlers) {
   const collection = data.problems.filter(problem => problem.lists[state.list]);
   const listLabel = LIST_FILTERS.find(f => f.id === state.list)?.label || 'All problems';
 
-  view.append(el('div', { class: 'viewhead' }, [
-    el('div', {}, [
-      el('h1', { text: 'Problem explorer' }),
-      el('div', { class: 'sub', text: 'A place for every pattern. A record of every attempt.' }),
-    ]),
-    el('div', {class:'catalog-modes', 'aria-label':'Catalog view'}, [
-      el('button',{type:'button','aria-pressed':'true',text:'Explorer',onclick:()=>handlers.onCatalogMode('explorer')}),
-      el('button',{type:'button','aria-pressed':'false',text:'Roadmap',onclick:()=>handlers.onCatalogMode('roadmap')}),
-    ]),
-  ]));
+  view.append(screenHeader({ title: 'Problem explorer', actions: { secondary: [
+    el('a', { href: '#/add', class: 'btn btn--quiet catalog-add' }, [icon('plus', 15), 'Add problem']),
+  ] }, status: leetcodeViews('explorer') }));
   view.append(progressOverview(collection, state, handlers));
+
 
   // One toolbar, aligned to the column it filters: two segmented controls (which list,
   // which level) and the count. Labels moved into aria: the options say what they are.
-  const segment = (label, options) => el('div', { class: 'seg', role: 'group', 'aria-label': label }, options);
+  const segment = (label, options) => el('div', { class: 'segmented seg', role: 'group', 'aria-label': label }, options);
   const controls = el('div', { class: 'filterbar' }, [
-    segment('List', LIST_FILTERS.map(f =>
+    segment('List', LIST_FILTERS.filter(f => !['added', 'others'].includes(f.id) || state.list === f.id || data.problems.some(p => p.lists?.[f.id])).map(f =>
       chip(f.label, state.list === f.id, () => handlers.onList(f.id), 'seg-opt'))),
     segment('Level', [
       chip('All levels', state.difficulty === 'all', () => handlers.onDifficulty('all'), 'seg-opt'),
@@ -369,9 +380,16 @@ export function renderBrowse(data, state, handlers) {
     el('span', { class: 'countpill' }, shown === collection.length
       ? [el('b', { text: String(shown) }), ' problems']
       : [el('b', { text: String(shown) }), ` of ${collection.length}`]),
+    el('button', {
+      class: 'btn btn--quiet linkbtn shufflebtn', type: 'button',
+      disabled: !!handlers.shuffleState?.().busy, 'aria-busy': String(!!handlers.shuffleState?.().busy),
+      title: 'Random problem (r)',
+      'aria-label': handlers.shuffleState?.().busy ? 'Finding a LeetCode problem…' : 'Random problem; keyboard shortcut R',
+      onclick: handlers.onShuffle,
+    }, [icon('shuffle', 14), el('span', { class: 'shuffle-label', role: 'status', text: handlers.shuffleState?.().busy ? 'Finding…' : 'Shuffle' })]),
     anyCollapsible && !forcedOpen
       ? el('button', {
-        class: 'linkbtn', type: 'button',
+        class: 'btn btn--quiet linkbtn', type: 'button',
         text: allCollapsed ? 'Expand all' : 'Collapse all',
         onclick: () => handlers.onToggleAll(!allCollapsed),
       })
@@ -382,19 +400,19 @@ export function renderBrowse(data, state, handlers) {
   const sidebar = el('nav', { class: 'catalog-tree', 'aria-label': 'Problem patterns' }, [
     el('div', { class: 'tree-heading' }, [el('span', { text: 'Patterns' }), el('span', { class: 'tree-legend', text: state.progress ? 'solved / total' : 'problems' })]),
     treeItem({ root: true, label: listLabel, items: collection, summary: rootSummary, pressed: !state.pattern, onClick: () => handlers.onPattern(null) }),
-    ...data.patterns.map(pattern => {
-      const items = collection.filter(problem => problem.pattern === pattern);
+    ...groups.map(group => group.pattern).map(pattern => {
+      const items = collection.filter(problem => (problem.pattern || 'Uncategorized') === pattern);
       const summary = state.progress ? summarizeProgress(items, state.progress) : null;
       return treeItem({ label: pattern, items, summary, pressed: state.pattern === pattern, onClick: () => handlers.onPattern(pattern) });
     }),
-    el('a', {class:'tree-report',href:'#/progress',text:'View practice report →'}),
+    el('a', {class:'tree-report',href:'#/progress',text:'View practice report'}),
   ]);
   const content = el('div', {class:'catalog-content'});
   layout.append(sidebar, content);
   view.append(layout);
   content.append(el('div', {class:'catalog-path'}, [el('span',{text:listLabel}), el('span',{text:'/'}),el('strong',{text:state.pattern || 'All patterns'})]), controls);
-  if (state.list === 'amazon-interview') {
-    content.append(el('p', { class: 'sub', text: 'Reported-problem mappings and your personal practice additions. Open a problem for its source and context. Candidate reports are not verified transcripts or predictions.' }));
+  if (privateCollection && state.list === privateCollection.id && privateCollection.note) {
+    content.append(el('p', { class: 'sub', text: privateCollection.note }));
   }
 
   if (shown === 0) {
@@ -404,7 +422,7 @@ export function renderBrowse(data, state, handlers) {
       needle ? ' with the current filters' : '',
       '. ',
       el('button', {
-        class: 'linkbtn', type: 'button', style: 'display:inline;padding:0',
+        class: 'btn btn--quiet linkbtn', type: 'button', style: 'display:inline;padding:0',
         text: 'Clear everything', onclick: handlers.onClear,
       }),
       ' to see all 250 again.',
@@ -433,6 +451,7 @@ export function renderBrowse(data, state, handlers) {
     el('kbd', { text: '/' }), ' search  ',
     el('kbd', { text: 'j' }), el('kbd', { text: 'k' }), ' move  ',
     el('kbd', { text: '↵' }), ' open  ',
+    el('kbd', { text: 'r' }), ' random  ',
     el('kbd', { text: 'esc' }), ' clear',
   ]));
 

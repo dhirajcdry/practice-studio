@@ -22,8 +22,8 @@ test('report difficulty routes are registered on the app, behind the loopback gu
   const url = `http://127.0.0.1:${server.address().port}/api/report/difficulty`;
   const put = (difficulty, headers = {}) => fetch(url, { method: 'PUT', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ difficulty }) });
   assert.deepEqual(await (await fetch(url)).json(), { difficulty: 'beginner' });
-  assert.deepEqual(await (await put('amazon-sde-2')).json(), { difficulty: 'amazon-sde-2' });
+  assert.deepEqual(await (await put('mid-level')).json(), { difficulty: 'mid-level' });
   assert.equal((await put('hard')).status, 400);
   assert.equal((await put('beginner', { origin: 'https://evil.example' })).status, 403);
-  assert.equal(await readReportDifficulty(root), 'amazon-sde-2');
+  assert.equal(await readReportDifficulty(root), 'mid-level');
 });

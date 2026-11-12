@@ -29,7 +29,7 @@ export function workspaceRail() {
     ['results', 'Test results', () => window.dispatchEvent(new CustomEvent('studio:toggle-results'))],
   ];
   return el('nav', { class: 'workspace-rail', 'aria-label': 'Workspace panels' }, [
-    ...items.map(([id, label, onclick]) => el('button', { type: 'button', title: label, 'aria-label': label,
+    ...items.map(([id, label, onclick]) => el('button', { class: 'btn btn--icon', type: 'button', title: label, 'aria-label': label,
       'data-pane': id, 'aria-pressed': 'false', onclick }, [icon(id), el('span', {text:label})])),
   ]);
 }

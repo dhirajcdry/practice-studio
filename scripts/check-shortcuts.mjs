@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // The app must not intercept shortcuts the browser already owns.
 //
 //   node scripts/check-shortcuts.mjs
@@ -176,7 +177,7 @@ try {
   chrome.kill();
   await chromeExited;
   await scratch?.cleanup();
-  await fsp.rm(PROFILE, { recursive: true, force: true, maxRetries: 5 });
+  await cleanupChrome(chrome, PROFILE);
 }
 
 process.exit(failed ? 1 : 0);

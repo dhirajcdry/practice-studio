@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // One results lane at a time, checked in a real browser.
 //
 //   node scripts/check-lanes.mjs
@@ -16,12 +17,12 @@
 // Its own server against a scratch workspace, so the real one is out of reach.
 
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { startScratch, requireFreePort } from './check-scratch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -29,21 +30,9 @@ const PORT = 9338;
 const SERVER_PORT = 4182;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
-const HOME = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-lanes-home-'));
+await requireFreePort(PORT);
+const { cleanup: cleanupScratch } = await startScratch(SERVER_PORT, 'two-sum', {});
 const PROFILE = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-lanes-profile-'));
-const realCache = path.join(os.homedir(), 'LeetCodeTutor', 'cache');
-if (fs.existsSync(realCache)) {
-  await fsp.cp(realCache, path.join(HOME, 'cache'), { recursive: true });
-}
-
-const server = spawn(process.execPath, ['server/index.mjs'], {
-  cwd: ROOT,
-  env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT) },
-  stdio: 'ignore',
-});
-for (let i = 0; i < 100; i += 1) {
-  try { await fetch(`${ORIGIN}/api/stats`); break; } catch { await sleep(100); }
-}
 
 async function cdp() {
   const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
@@ -98,13 +87,13 @@ try {
   if (!ready) throw new Error('the editor never mounted');
 
   const press = (label) => evaluate(
-    `[...document.querySelectorAll('.ws > .ws-bar button')]`
+    `[...document.querySelectorAll('.ui-screen-header .ws-run, .ui-screen-header .ws-submit')]`
     + `.find(b => b.textContent.trim().startsWith(${JSON.stringify(label)}))?.click()`,
   );
   const settle = (busyLabel) => evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < 150; i++) {
-      const b = [...document.querySelectorAll('.ws > .ws-bar button')]
+      const b = [...document.querySelectorAll('.ui-screen-header .ws-run, .ui-screen-header .ws-submit')]
         .find(x => x.textContent.trim().startsWith(${JSON.stringify(busyLabel)}));
       if (!b) return true;
       await sleep(100);
@@ -190,9 +179,8 @@ try {
   close();
 } finally {
   chrome.kill();
-  server.kill();
-  await fsp.rm(HOME, { recursive: true, force: true }).catch(() => {});
-  await fsp.rm(PROFILE, { recursive: true, force: true }).catch(() => {});
+  await cleanupScratch();
+  await cleanupChrome(chrome, PROFILE);
 }
 
 if (problems.length) {

@@ -12,17 +12,17 @@ export function mockTimeReading(minutes, elapsedMs) {
 // Only the clock lives in the header. Choices, editing and errors stay in its popover.
 export function createMockTimeControls({ clock, extend, onChange = () => {} }) {
   let disabled = true, saving = false, pending = null, gone = false, custom = false;
-  const button = el('button', { class: 'btn btn--quiet btn--sm mock-add-time', type: 'button', 'aria-label': 'Add time', disabled: true,
+  const button = el('button', { class: 'btn btn--quiet mock-add-time', type: 'button', 'aria-label': 'Add time', disabled: true,
     onclick: () => { if (popover.isOpen) popover.close(); else { paint(); popover.open(); } } }, [clock, icon('chevron', 12)]);
   const input = el('input', { class: 'mock-time-input', type: 'number', min: '1', max: '240', step: '1', value: '15', 'aria-label': 'Minutes to add', required: true });
-  const add = el('button', { class: 'btn btn--primary btn--sm', type: 'submit', text: 'Add' });
+  const add = el('button', { class: 'btn btn--primary', type: 'submit', text: 'Add' });
   const form = el('form', { class: 'mock-time-custom', hidden: true, onsubmit: event => { event.preventDefault(); if (form.reportValidity()) void save(Number(input.value)); } }, [input, el('span', { class: 'dim', text: 'min' }), add]);
   const choices = el('div', { class: 'mock-time-choices' }, [
     ...[15, 20].map(minutes => el('button', { class: 'ui-menu-item', type: 'button', text: `+${minutes} min`, onclick: () => save(minutes) })),
     el('button', { class: 'ui-menu-item', type: 'button', text: 'Custom…', onclick: () => { custom = true; paint(); input.focus(); input.select(); } }),
   ]);
   const message = el('p', { class: 'mock-time-message dim', role: 'status', hidden: true });
-  const retry = el('button', { class: 'btn btn--quiet btn--sm', type: 'button', text: 'Retry', hidden: true, onclick: () => save(pending.minutes) });
+  const retry = el('button', { class: 'btn btn--quiet', type: 'button', text: 'Retry', hidden: true, onclick: () => save(pending.minutes) });
   const popover = createPopover({ anchor: button, label: 'Add time', className: 'mock-time-popover',
     content: [el('div', { class: 'ui-menu-heading', text: 'Add time' }), choices, form, message, retry],
     focus: () => pending ? retry : custom ? input : choices.querySelector('button'),

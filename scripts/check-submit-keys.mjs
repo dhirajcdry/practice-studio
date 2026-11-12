@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // ⌘↵ sends code to a real judge, so it must only ever do that from the workspace.
 //
 //   node scripts/check-submit-keys.mjs
@@ -175,7 +176,7 @@ try {
   chrome.kill();
   await chromeExited;
   await scratch.cleanup();
-  await fsp.rm(PROFILE, { recursive: true, force: true, maxRetries: 5 });
+  await cleanupChrome(chrome, PROFILE);
 }
 
 if (problems.length) console.error(`submit keys: ${problems.length} wrong — ${problems.join('; ')}`);

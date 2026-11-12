@@ -3,6 +3,7 @@ import { el, replace } from './dom.js';
 import { activeInterview, createInterviewPanel, interviewJson, createInterviewSetup } from './interview.js';
 import { readSidebar, saveSidebar } from './sidebar-state.js';
 import { interviewDuration, relativeInterviewDate, interviewOutcome } from './interview-format.js';
+import { icon } from './ui/icon.js';
 
 const labels = { in_progress: 'In progress', paused: 'Paused', completed: 'Completed', needs_attention: 'Needs attention' };
 export function createInterviews(entry) {
@@ -12,14 +13,14 @@ export function createInterviews(entry) {
   const rows = new Map();
   const list = el('div', { class: 'interview-list' });
   const notice = el('div', { class: 'interviews-notice ui-inset dim', role: 'status' });
-  const retry = el('button', { class: 'ws-mini', text: 'Retry loading interviews', hidden: true, onclick: () => refresh() });
+  const retry = el('button', { class: 'btn btn--quiet ws-mini', text: 'Retry loading interviews', hidden: true, onclick: () => refresh() });
   const count = el('span', { class: 'interviews-count dim' });
   const setup = createInterviewSetup(entry);
   const overview = el('div', { class: 'interviews-overview' }, [setup.root,
     el('div', { class: 'interviews-toolbar' }, [el('strong', { text: 'Past interviews' }), count]), notice, retry, list]);
   const detailContent = el('div', { class: 'interview-detail-content' });
   const detail = el('section', { class: 'interview-detail', hidden: true }, [
-    el('button', { class: 'btn btn--quiet interview-back', text: '← Interviews', onclick: collapse }), detailContent,
+    el('button', { class: 'btn btn--quiet interview-back', 'aria-label': 'Back to interviews', onclick: collapse }, [icon('back'), 'Interviews']), detailContent,
   ]);
   const root = el('section', { class: 'interviews-view', 'aria-label': 'Interviews', hidden: true }, [
     el('div', { dataset: { interviewRecorder: '' } }), overview, detail,
@@ -42,7 +43,8 @@ export function createInterviews(entry) {
     row.badge.className = 'ui-badge interview-status ui-badge--' + outcome.tone;
     row.title.textContent = relativeInterviewDate(record.startedAt);
     row.meta.textContent = `${interviewDuration(record)} · ${record.mode === 'voice' ? 'Voice' : 'Typed'}`;
-    row.resume.hidden = state !== 'paused';
+    row.resume.hidden = false;
+    row.resume.setAttribute('aria-label', state === 'paused' ? 'Open and resume interview' : 'Open interview');
   }
   function rowFor(record) {
     let row = rows.get(record.id);
@@ -51,11 +53,11 @@ export function createInterviews(entry) {
       const badge = el('span', { class: 'interview-status mono' });
       const meta = el('span', { class: 'interview-row-meta dim' });
       const content = el('div', { class: 'interview-row-content' });
-      const button = el('button', { class: 'interview-row-summary ui-inset ui-row-content ui-stack', type: 'button', onclick: () => {
+      const button = el('button', { class: 'ui-action-row interview-row-summary ui-row-content ui-stack', type: 'button', onclick: () => {
         const id = article.dataset.interviewId;
         if (selected === id) collapse(); else open(id);
       } }, [el('span', { class: 'interview-row-top' }, [title, badge]), meta]);
-      const resume = el('button', { class: 'btn btn--quiet btn--sm interview-row-resume', text: 'Resume', hidden: true, onclick: () => { open(record.id); panel?.resume(); } });
+      const resume = el('button', { class: 'btn btn--secondary interview-row-resume', text: 'Open', hidden: false, onclick: () => { open(record.id); if (status(record) === 'paused') panel?.resume(); } });
       const article = el('article', { class: 'sidebar-record interview-row', dataset: { interviewId: record.id } }, [el('div', { class: 'interview-row-heading' }, [button, resume]), content]);
       row = { article, button, title, badge, meta, content, resume }; rows.set(record.id, row);
     }
@@ -71,7 +73,7 @@ export function createInterviews(entry) {
     nodes.forEach((node, index) => {
       if (list.children[index] !== node) list.insertBefore(node, list.children[index] || null);
     });
-    notice.textContent = records.length ? '' : 'Your interviews will appear here.';
+    notice.textContent = records.length ? '' : 'No interviews recorded.';
   }
   function collapse() {
     panelEpoch++;

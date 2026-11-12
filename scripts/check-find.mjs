@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // ⌘F opens a search box, not a slab, checked in a real browser.
 //
 //   node scripts/check-find.mjs
@@ -18,12 +19,12 @@
 // It reaches nothing but its own server against a scratch workspace.
 
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { startScratch, requireFreePort } from './check-scratch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -31,21 +32,9 @@ const PORT = 9341;
 const SERVER_PORT = 4185;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
-const HOME = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-find-home-'));
+await requireFreePort(PORT);
+const { cleanup: cleanupScratch } = await startScratch(SERVER_PORT, 'two-sum', {});
 const PROFILE = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-find-profile-'));
-const realCache = path.join(os.homedir(), 'LeetCodeTutor', 'cache');
-if (fs.existsSync(realCache)) {
-  await fsp.cp(realCache, path.join(HOME, 'cache'), { recursive: true });
-}
-
-const server = spawn(process.execPath, ['server/index.mjs'], {
-  cwd: ROOT,
-  env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT) },
-  stdio: 'ignore',
-});
-for (let i = 0; i < 100; i += 1) {
-  try { await fetch(`${ORIGIN}/api/stats`); break; } catch { await sleep(100); }
-}
 
 async function cdp() {
   const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
@@ -84,7 +73,7 @@ const chrome = spawn(CHROME, [
 
 // Every theme, because the widget's colours are defined per theme and "invisible" is a
 // thing that happens in exactly one of them.
-const THEMES = ['ps-studio-light', 'ps-studio-dark', 'ps-desk-light', 'ps-desk-dark', 'ps-editorial-light', 'ps-editorial-dark', 'ps-ink-light', 'ps-ink-dark', 'ps-terminal-light', 'ps-terminal-dark'];
+const THEMES = ['ps-studio-light', 'ps-studio-dark', 'ps-desk-light', 'ps-desk-dark', 'ps-dunes-light', 'ps-dunes-dark'];
 
 try {
   await sleep(2500);
@@ -237,9 +226,8 @@ try {
   close();
 } finally {
   chrome.kill();
-  server.kill();
-  await fsp.rm(HOME, { recursive: true, force: true }).catch(() => {});
-  await fsp.rm(PROFILE, { recursive: true, force: true }).catch(() => {});
+  await cleanupScratch();
+  await cleanupChrome(chrome, PROFILE);
 }
 
 if (problems.length) {

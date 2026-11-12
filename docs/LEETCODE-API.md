@@ -616,3 +616,25 @@ In practice, enforcement targets scraping at scale and contest cheating, not ind
 - Cookie lifetime, and the exact wire shape of an *expired* (vs. absent) session.
 - Rate limits.
 - That premium content populates with a premium session.
+
+## Connector random-question query
+
+**[UNVERIFIED LIVE]** Connector 1.3.0 uses this read-only query in a signed-in browser
+tab. `titleSlug` and `isPaidOnly` match the documented question fields above; the
+`randomQuestion` response has not been checked against the live service here. The
+Connector rejects GraphQL errors, a missing/invalid slug, or a non-boolean premium
+flag with a clear error, without retrying.
+
+```graphql
+query randomQuestion($categorySlug: String, $filters: QuestionListFilterInput) {
+  randomQuestion(categorySlug: $categorySlug, filters: $filters) {
+    titleSlug
+    isPaidOnly
+  }
+}
+```
+
+Variables: `{ "categorySlug": "algorithms", "filters": {} }`. There is no difficulty
+filter. A premium result permits one additional random call, capped at two per
+explicit click. A second premium result is an error. Nothing is submitted, and no
+queries are prefetched. Tests use fake responses only.

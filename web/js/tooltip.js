@@ -2,6 +2,7 @@
 let tip;
 let timer;
 let owner;
+let listening = false;
 function hide() {
   clearTimeout(timer);
   tip?.remove();
@@ -9,6 +10,12 @@ function hide() {
   owner = null;
 }
 export function tooltip(button, label) {
+  if (!listening) {
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    window.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });
+    listening = true;
+  }
   function show() {
     hide();
     owner = button;
@@ -16,7 +23,7 @@ export function tooltip(button, label) {
       if (!button.isConnected || owner !== button) return;
       tip = document.createElement('div');
       tip.className = 'control-tooltip';
-      tip.textContent = label;
+      tip.textContent = typeof label === 'function' ? label() : label;
       tip.setAttribute('role', 'tooltip');
       document.body.append(tip);
       const box = button.getBoundingClientRect();
@@ -29,6 +36,3 @@ export function tooltip(button, label) {
   button.addEventListener('focus', show);
   for (const event of ['pointerleave', 'blur', 'click']) button.addEventListener(event, hide);
 }
-window.addEventListener('scroll', hide, true);
-window.addEventListener('resize', hide);
-window.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });

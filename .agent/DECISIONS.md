@@ -1,5 +1,15 @@
 # Decision log
 
+
+## 2026-11-11 — Three theme families and shared UI chrome
+
+The visual rewrite keeps Studio, Desk and Twin Suns, with opaque text surfaces and
+no backdrop filtering. Shared button and screen/dialog/pane header primitives own
+control geometry, action rails and responsive overflow. Existing hook classes and
+action handlers remain compatible; raw records and conversation storage are untouched.
+This round preserves reference drawers and reset confirmation. Browser verification
+is deferred by explicit task instruction; Node tests and static contracts are used here.
+
 ## 2026-11-04 — Semantic context deltas and one report/review conversation
 
 Dhiraj authorized fixing repeated interview context after the Gift Card Ledger usage audit.
@@ -268,3 +278,14 @@ Regression checks pause token delivery mid-sentence beyond the old timeout, requ
 one complete first clip through the real browser and fake TTS endpoint, and preserve
 every word across bounded long-text chunks. Main-session implementation; no delegation
 or real speech model was needed.
+
+
+### Round 1b header regression corrections
+
+Coding audit readiness follows the screen header/editor, not the removed run bar.
+Shared button display rules must honor hidden controls and layout-owned visibility.
+Keep feature hooks when moving controls into shared headers; keyboard action scope
+includes the screen header. Pane tabs remain 38px and action buttons 28px. Narrow
+coach tools may use a second row; container-sized headers collapse secondary actions
+into the existing menu without dropping nested controls. Board zoom labels consume
+Excalidraw app-state changes, so gesture zoom and header zoom share one display.

@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Reading a long answer while it is still being written.
 //
 //   node scripts/check-coach-stream.mjs
@@ -78,6 +79,8 @@ try {
     for (let i = 0; i < 100 && !document.querySelector('.coach-compose textarea'); i++) await sleep(100);
     const ta = document.querySelector('.coach-compose textarea');
     if (!ta) throw Error('the coach panel never mounted');
+    const idleSend = document.querySelector('.coach-send');
+    window.streamIdle = { disabled: Boolean(idleSend?.disabled), jumpHidden: document.querySelector('.ui-jump-latest')?.hidden !== false };
 
     // A long answer that keeps arriving throughout the hold and resume checks.
     const LINE = 'The interviewer would stop you here, because the second pass is doing work the first one already paid for. ';
@@ -100,7 +103,10 @@ try {
 
     ta.value = 'why is this two passes?';
     ta.dispatchEvent(new Event('input', { bubbles: true }));
+    window.streamBeforeSubmit = { enabled: !document.querySelector('.coach-send')?.disabled };
     document.querySelector('.coach-send').click();
+    for (let i = 0; i < 200 && document.querySelector('.coach-stop')?.hidden; i++) await sleep(10);
+    window.streamDuringSubmit = { sendHidden: document.querySelector('.coach-send')?.hidden === true, stopVisible: document.querySelector('.coach-stop')?.getClientRects().length > 0 };
 
     const log = document.querySelector('.coach-log');
     await sleep(2400);
@@ -111,6 +117,11 @@ try {
     const r = window.streamCheck.log.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   })()`);
+  const controls = await evaluate('(() => ({...window.streamCheck, idle: window.streamIdle, before: window.streamBeforeSubmit, during: window.streamDuringSubmit}))()');
+  if (!controls.idle?.jumpHidden) throw Error('Jump to latest must be hidden before unread content');
+  if (controls.idle?.disabled !== true) throw Error('Send must be disabled for an empty idle composer');
+  if (controls.before?.enabled !== true) throw Error('Send must enable after draft input');
+  if (!controls.during?.sendHidden || !controls.during?.stopVisible) throw Error('Send/Stop visibility is wrong while streaming');
   // One real browser wheel tick, including the native default scroll action.
   await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: -100 });
   await evaluate(`(async () => {
@@ -126,6 +137,7 @@ try {
       drift = Math.max(drift, Math.abs(log.scrollTop - placed));
     }
     const growth = log.innerText.length - charsBefore;
+    if (document.querySelector('.ui-jump-latest')?.hidden !== false) throw Error('Jump to latest must appear while unread content arrives above the bottom');
     window.streamCheck.held = { placed, drift, growth, stoppedAboveBottom };
   })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: 100000 });
@@ -133,6 +145,7 @@ try {
     const { log, realFetch, tall, held } = window.streamCheck;
     const resumeChars = log.innerText.length;
     await new Promise(resolve => setTimeout(resolve, 900));
+    if (document.querySelector('.ui-jump-latest')?.hidden !== true) throw Error('Jump to latest must hide on return to the bottom');
     window.fetch = realFetch;
     return { ...held, chars: log.innerText.length, resumeGrowth: log.innerText.length - resumeChars,
       screens: +(tall / log.clientHeight).toFixed(1),
@@ -173,7 +186,7 @@ try {
   chrome.kill();
   await chromeExited;
   await scratch?.cleanup();
-  await fsp.rm(PROFILE, { recursive: true, force: true, maxRetries: 5 });
+  await cleanupChrome(chrome, PROFILE);
 }
 
 process.exit(failed ? 1 : 0);

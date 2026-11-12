@@ -15,6 +15,7 @@ import {
   VENDOR_ROOT,
   WEB_DIR,
   LEETCODE_CACHE_DIR,
+  COLLECTION_FILE,
   HOST,
   PORT,
 } from './paths.mjs';
@@ -29,7 +30,7 @@ import { startWriterWorker } from './writer-handoff.mjs';
 
 export function boot({ quiet = false } = {}) {
   const solutions = loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT);
-  const catalog = loadCatalog(CATALOG_FILE, solutions);
+  const catalog = loadCatalog(CATALOG_FILE, solutions, COLLECTION_FILE, path.join(HOME_ROOT, 'added-problems.json'));
   const neetcode = new NeetCodeContentCache({ cacheDir: path.join(LEETCODE_CACHE_DIR, '..', 'neetcode') });
   const leetcode = new LeetCodeContentCache({
     cacheDir: LEETCODE_CACHE_DIR,

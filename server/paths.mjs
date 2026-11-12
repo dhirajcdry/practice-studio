@@ -28,6 +28,8 @@ export const HOME_ROOT = process.env.STUDIO_HOME
 export const MIRROR_DIR = process.env.STUDIO_MIRROR_DIR
   ? path.resolve(process.env.STUDIO_MIRROR_DIR)
   : null;
+/** The learner's private practice collection, if any. Personal data: never in the repo. */
+export const COLLECTION_FILE = path.join(HOME_ROOT, 'collection.json');
 export const LEETCODE_CACHE_DIR = path.join(HOME_ROOT, 'cache', 'leetcode');
 
 export const PORT = Number(process.env.STUDIO_PORT || 4173);

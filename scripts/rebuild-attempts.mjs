@@ -13,7 +13,7 @@ import { listProblemSlugs, problemDir } from '../server/storage-layout.mjs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { HOME_ROOT, CATALOG_FILE, SOLUTIONS_INDEX_FILE, VENDOR_ROOT } from '../server/paths.mjs';
+import { HOME_ROOT, CATALOG_FILE, COLLECTION_FILE, SOLUTIONS_INDEX_FILE, VENDOR_ROOT } from '../server/paths.mjs';
 import { gatherAttempt, listAttempts } from '../server/attempts/assemble.mjs';
 import { renderAttempt } from '../server/attempts/render.mjs';
 import { loadSolutionStore } from '../server/solutions.mjs';
@@ -23,7 +23,7 @@ const args = process.argv.slice(2);
 const DRY = args.includes('--dry');
 const only = args.filter((a) => !a.startsWith('--'));
 
-const catalog = loadCatalog(CATALOG_FILE, loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT));
+const catalog = loadCatalog(CATALOG_FILE, loadSolutionStore(SOLUTIONS_INDEX_FILE, VENDOR_ROOT), COLLECTION_FILE);
 
 const slugsInWorkspace = await listProblemSlugs(HOME_ROOT,{discipline:'coding'});
 let slugs = slugsInWorkspace;

@@ -39,7 +39,7 @@ export function summarizeByDifficulty(problems = [], progressMap = null, difficu
   });
 }
 
-/** The /api/stats payload's per-problem records, keyed by slug. Throws on a bad shape. */
+/** The tracker's per-problem records, keyed by slug. Throws on a bad shape. */
 export function progressMapFrom(data) {
   if (!Array.isArray(data?.problems)) throw new Error('Progress response did not contain a problems array');
   return new Map(data.problems.filter(problem => problem && typeof problem.slug === 'string')
@@ -47,7 +47,7 @@ export function progressMapFrom(data) {
 }
 
 export async function loadCatalogProgress({ signal } = {}) {
-  const response = await fetch('/api/stats', { signal, headers: { accept: 'application/json' } });
+  const response = await fetch('/api/tracker', { signal, headers: { accept: 'application/json' } });
   if (!response.ok) throw new Error(`Progress request failed (${response.status})`);
   return progressMapFrom(await response.json());
 }

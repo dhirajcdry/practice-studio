@@ -461,14 +461,14 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
   const site = siteOf(shaped.target);
   if (shaped.status === 'blocked') {
     const acts = [];
-    if (shaped.retry && handlers.onResubmit) acts.push(el('button', { class: 'act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit }));
+    if (shaped.retry && handlers.onResubmit) acts.push(el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit }));
     target.append(el('div', { class: 'state ui-inset ui-inset--roomy ' + shaped.tone }, [
       el('h3', { text: shaped.headline }),
       el('p', { text: shaped.message }),
       shaped.advice && !shaped.challenge ? el('p', { text: shaped.advice }) : null,
       shaped.fallback ? (() => {
         const copyStatus = el('p', { role: 'status', text: handlers.fallbackNote || `Or submit by hand: copy your solution, paste it into ${site.name}’s editor and submit there.` });
-        const copy = el('button', { class: 'act', type: 'button', text: 'Copy current solution', onclick: async () => {
+        const copy = el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Copy current solution', onclick: async () => {
           try {
             await navigator.clipboard.writeText(handlers.getCode());
             copyStatus.textContent = `Solution copied. Paste it into ${site.name}’s editor, check the language, then submit there. Studio has not submitted it.`;
@@ -524,7 +524,7 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
         // the only thing you could do with it was read it.
         shaped.failingInput && handlers.onUseFailingCase
           ? el('button', {
-            class: 'ws-mini', type: 'button', text: 'Use as test case',
+            class: 'btn btn--quiet ws-mini', type: 'button', text: 'Use as test case',
             title: 'Add this input to the local cases, so you can run against it here',
             onclick: () => handlers.onUseFailingCase({
               input: shaped.failingInput,
@@ -546,7 +546,7 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
       : linkOut(shaped.submissionsUrl, `Your submissions on ${site.name} ↗`),
     el('span', { class: 'spacer' }),
     handlers.onResubmit
-      ? el('button', { class: 'act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit })
+      ? el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit })
       : null,
   ]);
   target.append(foot);
@@ -602,7 +602,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
         el('span', { class: 'mono', text: `Waiting for ${siteOf(where.target).name}` }),
         clock,
         el('span', { class: 'spacer' }),
-        el('button', { class: 'act', type: 'button', text: 'Stop waiting', onclick: () => stop('cancelled') }),
+        el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Stop waiting', onclick: () => stop('cancelled') }),
       ]),
     ]));
     ticker = setInterval(() => {
@@ -657,7 +657,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
       aim();
       replace(body, [
         el('p', { text: mismatch.message }),
-        ...(mismatch.fix ? [el('button', { class: 'act', type: 'button',
+        ...(mismatch.fix ? [el('button', { class: 'btn btn--quiet act', type: 'button',
           text: "Use NeetCode's name", onclick: () => {
             mismatch.fix();
             replace(body, el('p', { text: 'Check your code, then submit when ready.' }));
@@ -682,7 +682,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
         footer = el('div', { class: 'sub-foot' }, el('span', { class: 'spacer' }));
         body.append(footer);
       }
-      footer.append(el('button', { class: 'ws-mini', type: 'button', text: 'Open in Submissions', onclick: () => window.dispatchEvent(new CustomEvent('studio-open-submission', { detail })) }));
+      footer.append(el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: 'Open in Submissions', onclick: () => window.dispatchEvent(new CustomEvent('studio-open-submission', { detail })) }));
     }
   }
 

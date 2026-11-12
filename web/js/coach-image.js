@@ -138,7 +138,7 @@ export function renderImageCard(code, { slug = null, live = false } = {}) {
     status.textContent = '';
     replace(stage, el('div', { class: 'pic-offer' }, [
       el('p', { class: 'dim', text: lead }),
-      el('button', { class: 'act pic-go', type: 'button', text: 'Paint this picture', onclick: () => ask(w, prompt, alt, false) }),
+      el('button', { class: 'btn btn--quiet act pic-go', type: 'button', text: 'Paint this picture', onclick: () => ask(w, prompt, alt, false) }),
       el('span', { class: 'mono dim pic-cost', text: 'about 30–60 s · uses your ChatGPT image allowance' }),
     ]));
   };
@@ -162,7 +162,7 @@ export function renderImageCard(code, { slug = null, live = false } = {}) {
     status.textContent = '';
     const img = el('img', { class: 'pic-img', src: state.url, alt: alt || 'Picture from the coach', decoding: 'async' });
     img.addEventListener('error', () => failed({ message: 'The picture file could not be loaded from the studio server.' }), { once: true });
-    replace(stage, el('button', { class: 'pic-open', type: 'button', title: 'Open larger', onclick: () => openLightbox(state.url, alt) }, img));
+    replace(stage, el('button', { class: 'ui-action-row pic-open', type: 'button', title: 'Open larger', onclick: () => openLightbox(state.url, alt) }, img));
   };
 
   const failed = (state) => {
@@ -173,7 +173,7 @@ export function renderImageCard(code, { slug = null, live = false } = {}) {
       el('p', { text: state.status === 'gave-up'
         ? 'Five minutes passed without a picture. Codex may still finish it; trying again picks it up if it did.'
         : (state.message || 'Codex did not return a picture.') }),
-      el('div', { class: 'acts' }, el('button', { class: 'act', type: 'button', text: 'Try again', onclick: () => ask(w, prompt, alt, true) })),
+      el('div', { class: 'acts' }, el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Try again', onclick: () => ask(w, prompt, alt, true) })),
     ]));
   };
 
@@ -230,7 +230,7 @@ function openLightbox(url, alt) {
   const box = el('div', { class: 'pic-lightbox', role: 'dialog', 'aria-label': alt || 'Picture', onclick: close }, [
     el('img', { src: url, alt: alt || 'Picture from the coach' }),
     alt ? el('p', { text: alt }) : null,
-    el('button', { class: 'ws-mini pic-close', type: 'button', text: 'Close esc', onclick: close }),
+    el('button', { class: 'btn btn--quiet ws-mini pic-close', type: 'button', text: 'Close esc', onclick: close }),
   ]);
   document.addEventListener('keydown', onKey, true);
   document.body.append(box);

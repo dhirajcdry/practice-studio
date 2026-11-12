@@ -1,3 +1,5 @@
+import { segmented } from './ui/segmented.js';
+import { dialogHeader } from './ui/headers.js';
 import { openContextInspector } from './context-inspector.js';
 // Settings: the theme, and how the editor reads.
 //
@@ -15,16 +17,29 @@ import { REPORT_DIFFICULTIES, reportDifficultyLabel } from './interview-format.j
 
 const STORE_KEY = 'studio.settings.v1';
 
+// Shuffle's local preference is independent of appearance settings.
+const SHUFFLE_KEY = 'studio.shuffle-source.v1';
+export function getShuffleSource() {
+  try { return localStorage.getItem(SHUFFLE_KEY) === 'leetcode' ? 'leetcode' : 'studio'; }
+  catch { return 'studio'; }
+}
+let shuffleSource = getShuffleSource();
+export function shuffleSourceSetting() { return shuffleSource; }
+function shuffleSourceControl() {
+  return createSelect({ label: 'Shuffle picks from', value: shuffleSource,
+    options: [['studio', "Studio's problems"], ['leetcode', 'All of LeetCode']],
+    onChange: event => {
+      shuffleSource = event.target.value === 'leetcode' ? 'leetcode' : 'studio';
+      try { localStorage.setItem(SHUFFLE_KEY, shuffleSource); } catch { /* forgets */ }
+      for (const fn of listeners) fn(getSettings());
+    },
+  });
+}
+
 // A family keeps its character in either appearance.
 export const THEMES = [
   { id: 'studio', name: 'Studio', blurb: 'Clean and docked. Panes meet edge to edge.', light: { paper: '#F3F4F6', ink: '#111111', accent: '#355DCC' }, dark: { paper: '#121212', ink: '#E8E8E8', accent: '#91A7FF' } },
   { id: 'desk', name: 'Desk', blurb: 'Soft and rounded. Panes float on warm paper.', light: { paper: '#F6F4F0', ink: '#181818', accent: '#AC5636' }, dark: { paper: '#171513', ink: '#EEE8E0', accent: '#E2875F' } },
-  { id: 'editorial', name: 'Editorial', blurb: 'Serif prose, double rules, a printed page.', light: { paper: '#F4EFE6', ink: '#1A1614', accent: '#9B2C2C' }, dark: { paper: '#16120F', ink: '#ECE3D4', accent: '#E07B6E' } },
-  { id: 'ink', name: 'Ink', blurb: 'Banded headers, heavy rules, no rounding.', light: { paper: '#EDEDEA', ink: '#0A0A0A', accent: '#1B49F5' }, dark: { paper: '#0B0B0B', ink: '#F4F4F0', accent: '#6E8BFF' } },
-  { id: 'terminal', name: 'Terminal', blurb: 'Split panes, a status line, [ bracketed ] controls.', light: { paper: '#F3F1E7', ink: '#17301F', accent: '#9E5C00' }, dark: { paper: '#0D0D0D', ink: '#D9DED9', accent: '#5FD38D' } },
-  { id: 'nebula', name: 'Nebula', blurb: 'An observatory readout: bracketed frames, lit controls.', art: true, light: { paper: '#F6F3FB', ink: '#1D1733', accent: '#6B3FD4' }, dark: { paper: '#0B0A1A', ink: '#ECE8FF', accent: '#B69CFF' } },
-  { id: 'horizon', name: 'Event Horizon', blurb: 'Art deco in gold: double rules, Didot, gilt buttons.', art: true, light: { paper: '#FBF6EC', ink: '#22180C', accent: '#B4600A' }, dark: { paper: '#08070A', ink: '#F3ECE0', accent: '#FFB25C' } },
-  { id: 'abyss', name: 'Abyss', blurb: 'Rounded and soft-lit, like something glowing in the deep.', art: true, light: { paper: '#EEF8F8', ink: '#0B2A33', accent: '#00808A' }, dark: { paper: '#04101A', ink: '#DDF6F7', accent: '#3FF0D0' } },
   { id: 'dunes', name: 'Twin Suns', blurb: 'Matte field kit: survey stripes, two suns, two shadows.', art: true, light: { paper: '#FBF2E8', ink: '#2A1A10', accent: '#C2491D' }, dark: { paper: '#08141A', ink: '#E9E4DA', accent: '#FF9A62' } },
 ];
 
@@ -48,14 +63,15 @@ function systemPrefersDark() {
 const DEFAULTS = { theme: 'studio', mode: 'system', codeSize: 14, motion: true, typingFx: true, typingSparks: false, celebrations: true, coachPictures: 'auto' };
 // Codex pictures spend the user's image quota, so how eagerly the coach may make one is his call.
 export const PICTURE_MODES = ['auto', 'ask', 'off'];
-const LEGACY = { paper: ['studio', 'light'], slate: ['studio', 'dark'], editorial: ['editorial', 'light'], ink: ['ink', 'light'], blueprint: ['studio', 'dark'], phosphor: ['terminal', 'dark'] };
+const LEGACY = { paper: 'studio', slate: 'studio', editorial: 'studio', ink: 'studio', blueprint: 'studio', phosphor: 'studio', nebula: 'studio', horizon: 'studio', abyss: 'studio' };
 
 function read() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
     let theme = THEMES.some(t => t.id === raw.theme) ? raw.theme : DEFAULTS.theme;
     let mode = ['system', 'light', 'dark'].includes(raw.mode) ? raw.mode : undefined;
-    if (!THEMES.some(t => t.id === raw.theme) && LEGACY[raw.theme]) [theme, mode] = LEGACY[raw.theme];
+    if (!THEMES.some(t => t.id === raw.theme) && LEGACY[raw.theme]) theme = LEGACY[raw.theme];
+    if (!mode && ['paper', 'slate', 'blueprint', 'phosphor'].includes(raw.theme)) mode = raw.theme === 'paper' ? 'light' : 'dark';
     return {
       theme, mode: mode || DEFAULTS.mode,
       codeSize: Number(raw.codeSize) >= 10 && Number(raw.codeSize) <= 20 ? Number(raw.codeSize) : DEFAULTS.codeSize,
@@ -127,18 +143,16 @@ export function toggleDark() { setSetting('mode', isDark() ? 'light' : 'dark'); 
 
 function themeCard(theme, onPick) {
   const chosen = current.theme === theme.id;
-  const previewStyle = `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}${theme.art ? `;--pl-art:url(img/themes/${theme.id}-light.jpg);--pd-art:url(img/themes/${theme.id}-dark.jpg)` : ''}`;
+  const previewStyle = `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}`;
   return el('button', {
-    class: 'set-card set-theme ui-inset', type: 'button', 'aria-pressed': String(chosen),
+    class: 'ui-action-row set-card set-theme ui-inset', type: 'button', 'aria-pressed': String(chosen),
     onclick: () => onPick(theme.id),
   }, [
     el('div', {
       class: 'theme-preview', 'data-theme-preview': theme.id, 'aria-hidden': 'true', ...(theme.art ? { 'data-art': '' } : {}), style: previewStyle,
     }, ['light', 'dark'].map((mode) => el('i', { class: `theme-half ${mode}` }, [
-      el('b', { class: 'theme-title-line' }),
-      el('b', { class: 'theme-text-line' }),
-      el('b', { class: 'theme-text-line' }),
-      el('b', { class: 'theme-accent-bar' }),
+      el('b', { class: 'theme-preview-bar' }),
+      el('span', { class: 'theme-preview-panes' }, [el('b'), el('b'), el('b')]),
     ]))),
     el('div', { class: 'set-cardname', text: theme.name }),
     el('div', { class: 'set-cardblurb', text: theme.blurb }),
@@ -168,11 +182,10 @@ function createReportDifficultyControl() {
   let selected = null, loaded = false, saving = false;
   const notice = el('div', { class: 'coach-model-notice set-notice', role: 'status', hidden: true });
   const say = (text) => { notice.textContent = text; notice.hidden = !text; };
-  const buttons = REPORT_DIFFICULTIES.map(({ id, label }) => el('button', {
-    type: 'button', text: label, disabled: true, 'aria-pressed': 'false', dataset: { difficulty: id },
-    onclick: () => { void choose(id); },
-  }));
-  const seg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Report difficulty', 'aria-busy': 'true' }, buttons);
+  const seg = segmented({ label: 'Report difficulty', className: 'set-seg', options: REPORT_DIFFICULTIES, value: null, onChange: id => { void choose(id); } });
+  seg.setAttribute('aria-busy', 'true');
+  const buttons = [...seg.querySelectorAll('button')];
+  buttons.forEach(button => { button.disabled = true; button.dataset.difficulty = button.dataset.value; });
   // The buttons stay mounted so keyboard focus survives a save.
   const paint = () => {
     seg.setAttribute('aria-busy', String(!loaded || saving));
@@ -198,6 +211,54 @@ function createReportDifficultyControl() {
   return { seg, notice };
 }
 
+let trackerSaving = false;
+function createTrackerControl() {
+  let loaded = false, resetAt = null;
+  const notice = el('p', { class: 'set-cardblurb', role: 'status', hidden: true });
+  const say = text => { notice.textContent = text; notice.hidden = !text; };
+  // Reset arms on the first click and acts on the second, like the editor's Reset.
+  // Undo appears only once a reset exists, so it can't be hit by the same gesture.
+  let armed = false, disarmTimer = 0;
+  const disarm = () => { armed = false; clearTimeout(disarmTimer); paint(); };
+  const reset = el('button', { class: 'btn btn--secondary tracker-reset-all', type: 'button', disabled: true, onclick: () => {
+    if (!armed) { armed = true; paint(); disarmTimer = setTimeout(disarm, 4000); return; }
+    disarm(); void change('reset');
+  } });
+  reset.addEventListener('blur', () => { if (armed) disarm(); });
+  const since = el('span', { class: 'set-cardblurb tracker-since' });
+  const restore = el('button', { class: 'btn btn--quiet tracker-restore-all', type: 'button', text: 'Undo reset', disabled: true, onclick: () => change('restore') });
+  const restoreRow = el('div', { class: 'set-row', hidden: true }, [since, restore]);
+  const paint = () => {
+    reset.textContent = armed ? 'Click again to reset' : 'Reset all tracker progress';
+    reset.disabled = !loaded || trackerSaving;
+    restoreRow.hidden = !resetAt;
+    restore.disabled = !loaded || trackerSaving;
+    if (resetAt) since.textContent = `Tracker counting from ${new Date(resetAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`;
+  };
+  async function change(action) {
+    if (!loaded || trackerSaving) return;
+    trackerSaving = true; paint(); say('');
+    try {
+      const response = await fetch(`/api/tracker/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      if (!response.ok) throw Error('Tracker could not be updated. Please try again.');
+      const result = await response.json(); resetAt = result.resetAt || null;
+      say(action === 'reset' ? 'Tracker reset. Your code, attempts, conversations, notes, and results are preserved.' : 'Reset undone. The tracker shows your full history again.');
+      window.dispatchEvent(new Event('studio-tracker-changed'));
+    } catch (error) { say(error.message); }
+    finally { trackerSaving = false; paint(); }
+  }
+  fetch('/api/tracker').then(async response => {
+    if (!response.ok) throw Error('Could not load tracker. Reopen Settings to retry.');
+    const result = await response.json(); resetAt = result.resetAt || null; loaded = true; paint();
+  }).catch(error => say(error.message));
+  return el('section', { class: 'set-section', 'aria-label': 'Problem tracker' }, [
+    el('div', { class: 'mono dim set-label', text: 'Problem tracker' }),
+    el('p', { class: 'set-cardblurb', text: 'Start a fresh round across all problems. Only tracker progress resets; all saved work, history, practice reports, and your streak stay intact.' }),
+    el('div', { class: 'set-row' }, [reset]),
+    restoreRow, notice,
+  ]);
+}
+
 let voicePreview = null;
 let coachPicker = null;
 let panel = null;
@@ -221,18 +282,12 @@ export function openSettings() {
 
   opener = document.activeElement;
   const themeCards = el('div', { class: 'set-cards set-themes' });
-  const modeSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Appearance' });
-  const pictureSeg = el('div', { class: 'set-seg', role: 'group', 'aria-label': 'Coach pictures' });
-  const PICTURE_LABELS = { auto: 'Auto', ask: 'Ask first', off: 'Off' };
+  const modeSeg = segmented({ label: 'Appearance', className: 'set-seg', value: current.mode,
+    options: ['system', 'light', 'dark'].map(id => ({ id, label: id[0].toUpperCase() + id.slice(1) })), onChange: mode => setSetting('mode', mode) });
+  const pictureSeg = segmented({ label: 'Coach pictures', className: 'set-seg', value: current.coachPictures,
+    options: [{ id: 'auto', label: 'Auto' }, { id: 'ask', label: 'Ask first' }, { id: 'off', label: 'Off' }], onChange: mode => setSetting('coachPictures', mode) });
   const rerender = () => {
-    replace(pictureSeg, PICTURE_MODES.map((mode) => el('button', {
-      type: 'button', text: PICTURE_LABELS[mode],
-      'aria-pressed': String(current.coachPictures === mode), onclick: () => setSetting('coachPictures', mode),
-    })));
-    replace(modeSeg, ['system', 'light', 'dark'].map((mode) => el('button', {
-      type: 'button', text: mode[0].toUpperCase() + mode.slice(1),
-      'aria-pressed': String(current.mode === mode), onclick: () => setSetting('mode', mode),
-    })));
+    modeSeg.setValue(current.mode); pictureSeg.setValue(current.coachPictures);
     replace(themeCards, THEMES.map((t) => themeCard(t, (id) => setSetting('theme', id))));
   };
   rerender();
@@ -250,7 +305,7 @@ export function openSettings() {
   });
 
   const motion = el('input', {
-    type: 'checkbox', class: 'set-check', 'aria-label': 'Animations',
+    type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': 'Animations',
     ...(current.motion ? { checked: 'checked' } : {}),
     onchange: (event) => setSetting('motion', event.target.checked),
   });
@@ -258,7 +313,7 @@ export function openSettings() {
     el('span', { class: 'set-rowname', text: label }),
     el('span', { class: 'spacer' }),
     el('input', {
-      type: 'checkbox', class: 'set-check', 'aria-label': label,
+      type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': label,
       ...(current[key] ? { checked: 'checked' } : {}),
       onchange: (event) => setSetting(key, event.target.checked),
     }),
@@ -278,7 +333,7 @@ export function openSettings() {
       const speed = Number(event.target.value); saveVoicePreferences({ speed }); speedValue.textContent = `${speed.toFixed(1)}×`;
     },
   });
-  const preview = el('button', { class: 'ws-mini', type: 'button', text: '▶ Preview', 'aria-label': 'Preview voice', onclick: () => {
+  const preview = el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: 'Preview', 'aria-label': 'Preview voice', onclick: () => {
     voicePreview ??= createSpeaker(); voicePreview.cancel();
     voicePreview.say('Let’s walk through your approach. What would you try first?');
   } });
@@ -290,7 +345,7 @@ export function openSettings() {
     el('label', { class: 'set-row' }, [
       el('span', { class: 'set-rowname', text: 'Send when I pause' }),
       el('span', { class: 'spacer' }),
-      el('input', { type: 'checkbox', class: 'set-check', 'aria-label': 'Send when I pause',
+      el('input', { type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': 'Send when I pause',
         ...(autoSendEnabled() ? { checked: 'checked' } : {}), onchange: event => saveAutoSend(event.target.checked) }),
     ]),
     el('p', { class: 'set-cardblurb', text: 'Natural voices run on this Mac. If unavailable, the system voice is used.' }),
@@ -298,12 +353,9 @@ export function openSettings() {
   coachPicker = createCoachModelPicker();
   const reportDifficulty = createReportDifficultyControl();
   panel = el('aside', { class: 'settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings' }, [
-    el('div', { class: 'set-head' }, [
-      el('span', { class: 'mono dim', text: 'Settings' }),
-      el('span', { class: 'spacer' }),
-      el('button', { class: 'ws-mini', type: 'button', text: 'Done', onclick: closeSettings }),
-    ]),
+    dialogHeader({ title: 'Settings', onClose: closeSettings, closeLabel: 'Close settings' }),
     el('div', { class: 'set-body' }, [
+      createTrackerControl(),
       el('div', { class: 'mono dim set-label', text: 'Coach' }),
       coachPicker.root,
       el('button', {class:'btn btn--quiet',type:'button',text:'Coaching instructions',onclick:()=>{closeSettings();void openCoachingInstructions();}}),
@@ -312,8 +364,11 @@ export function openSettings() {
       el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
       el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
       el('div', { class: 'mono dim set-label', text: 'Report difficulty' }), reportDifficulty.seg, reportDifficulty.notice,
-      el('p', { class: 'set-cardblurb', text: "Used when a mock's report is written. Beginner grades a step below the Amazon SDE II bar while you're learning; Amazon SDE II grades at the full bar. Saved reports keep the difficulty they were graded at." }),
+      el('p', { class: 'set-cardblurb', text: "Used when a mock's report is written. Beginner grades a step below the mid-level (SDE II / L4) bar while you're learning; Mid-level grades at the full bar. Saved reports keep the difficulty they were graded at." }),
       voiceSection,
+      el('label', { class: 'set-row' }, [
+        el('span', { class: 'set-rowname', text: 'Shuffle picks from' }), shuffleSourceControl(),
+      ]),
       el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
       el('div', { class: 'mono dim set-label', text: 'Theme' }),
       themeCards,
@@ -345,6 +400,16 @@ export function openSettings() {
   ]);
 
   scrim = el('div', { class: 'set-scrim', onclick: closeSettings });
+  const body = panel.querySelector('.set-body');
+  let section = null;
+  for (const node of [...body.children]) {
+    if (node.matches('.set-label')) {
+      section = el('section', { class: 'set-section', 'aria-label': node.textContent });
+      body.insertBefore(section, node); section.append(node);
+    } else if (node.matches('section')) {
+      node.classList.add('set-section'); section = null;
+    } else if (section) section.append(node);
+  }
   document.body.append(scrim, panel);
   document.body.classList.add('settings-open');
   panel.querySelector('button').focus();
@@ -406,7 +471,7 @@ export function installSettingsButton(mountEl) {
   if (!mountEl) return;
 
   const dayNight = el('button', {
-    class: 'set-open set-daynight', type: 'button',
+    class: 'btn btn--icon set-open set-daynight', type: 'button',
     onclick: () => { toggleDark(); paintDayNight(dayNight); },
   }, [dayNightGlyph()]);
   paintDayNight(dayNight);
@@ -416,7 +481,7 @@ export function installSettingsButton(mountEl) {
 
   mountEl.append(dayNight);
   mountEl.append(el('button', {
-    class: 'set-open set-settings', type: 'button', title: 'Settings — theme and editor',
+    class: 'btn btn--icon set-open set-settings', type: 'button', title: 'Settings — theme and editor',
     'aria-label': 'Settings',
     onclick: openSettings,
   }, settingsGlyph()));

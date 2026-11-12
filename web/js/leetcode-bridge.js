@@ -73,7 +73,7 @@ export function detailsViaConnector(slug, submissionId) {
 // Correlation and listener cleanup are shared; operation semantics stay at the edges.
 function connectorRequest(request, signal = null) {
   const id = `studio-${Date.now()}-${nextId += 1}`;
-  const reading = request.type === 'details';
+  const reading = request.type === 'details' || request.type === 'random';
   return new Promise(resolve => {
     let gone = null;
     let goneTimer = null;
@@ -99,7 +99,7 @@ function connectorRequest(request, signal = null) {
         return;
       }
       if (reading) {
-        done({ ok: false, code: 'CONNECTOR_ERROR', message: 'The details response could not be read.' });
+        done({ ok: false, code: 'CONNECTOR_ERROR', message: 'The Connector response could not be read.' });
         return;
       }
       const source = request.target === 'neetcode' ? 'NeetCode' : 'LeetCode';
@@ -109,7 +109,7 @@ function connectorRequest(request, signal = null) {
       });
     }
     function onAbort() {
-      if (reading) done({ ok: false, code: 'CANCELLED', message: 'Stopped waiting for details.' });
+      if (reading) done({ ok: false, code: 'CANCELLED', message: 'Stopped waiting for the Connector.' });
       else done({
         ok: false, code: 'CANCELLED', submissionState: 'unknown', message: 'Stopped waiting for the verdict.',
       });
@@ -119,4 +119,15 @@ function connectorRequest(request, signal = null) {
     signal?.addEventListener('abort', onAbort, { once: true });
     window.postMessage({ ...request, source: 'studio-page', id }, location.origin);
   });
+}
+
+export const RANDOM_CONNECTOR_VERSION = '1.3.0';
+export function randomViaConnector() {
+  const version = connectorVersion();
+  if (!version || !versionAtLeast(version, RANDOM_CONNECTOR_VERSION)) {
+    return Promise.resolve({ ok: false, code: version ? 'CONNECTOR_OUTDATED' : 'CONNECTOR_MISSING',
+      message: version ? 'Shuffling from LeetCode needs Studio Connector 1.3.0. Reload it in chrome://extensions, then reload Studio.'
+        : 'Install Studio Connector to shuffle from LeetCode, then reload Studio.' });
+  }
+  return connectorRequest({ type: 'random' }, AbortSignal.timeout(90000));
 }

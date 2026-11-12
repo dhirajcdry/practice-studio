@@ -8,16 +8,16 @@ import { practiceSystemPrompt } from '../practice/routes.mjs';
 
 const flat = (s) => s.replace(/\s+/g, ' ');
 
-test('role names map to Studio levels, and Amazon L5 is not Studio L5', () => {
+test('role names map to Studio levels, and a company L5 is not Studio L5', () => {
   assert.equal(levelKey('L4'), 'L4');
   assert.equal(levelKey('l6'), 'L6');
-  assert.equal(levelKey('Amazon SDE II (L5)'), 'L4');
+  assert.equal(levelKey('SDE II (L5)'), 'L4');
   assert.equal(levelKey('SDE-2'), 'L4');
   assert.equal(levelKey('SDE III'), 'L5');
   assert.equal(levelKey('SDE I'), 'L3');
   assert.equal(levelKey('L9'), null);
   assert.equal(levelKey(undefined), null);
-  assert.match(levelLabel('L4'), /mid-level, e\.g\. Amazon SDE II/);
+  assert.match(levelLabel('L4'), /mid-level, e\.g\. SDE II/);
 });
 
 test('every level has a bar, and an unknown level adds nothing', () => {
@@ -42,10 +42,10 @@ test('the mock interviewer is told what its level means and not to re-raise answ
   assert.match(flat(mockDebrief(newInterview({ level: 'L4' })).toString()), /THE L4 BAR/);
 });
 
-test('a design report graded as Amazon SDE II uses the mid-level bar', () => {
+test('a design report graded at Mid-level uses the mid-level bar', () => {
   const state = { ...newState({ slug: 'system-design' }), discipline: 'design', targetLevel: 'L5' };
   assert.match(debriefPrompt(state, [], Date.now()), /THE L5 BAR/);
-  assert.match(debriefPrompt({ ...state, reportDifficulty: 'amazon-sde-2' }, [], Date.now()), /THE L4 BAR \(mid-level/);
+  assert.match(debriefPrompt({ ...state, reportDifficulty: 'mid-level' }, [], Date.now()), /THE L4 BAR \(mid-level/);
   assert.doesNotMatch(debriefPrompt({ ...state, discipline: 'lld' }, [], Date.now()), /BAR \(/);
 });
 

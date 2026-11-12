@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Composer geometry and behavior in real Chrome, with a disposable workspace.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -51,8 +52,8 @@ async function shot(name) {
 async function checkPractice(route, name) {
   await viewport(1440);
   await send('Page.navigate', { url: ORIGIN + route });
-  await until(() => evaluate("return !!document.querySelector('.pr-launch')"), `${name} launcher`);
-  await evaluate("document.querySelector('.pr-launch button.btn').click()");
+  await until(() => evaluate("return !!document.querySelector('.th-practice')"), `${name} launcher`);
+  await evaluate("document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.ui-composer')"), `${name} composer`);
   await evaluate(`
     document.querySelector('.pr-compose .ui-mode-switch[data-mode=typed]').click();
@@ -61,7 +62,7 @@ async function checkPractice(route, name) {
     && !document.querySelector('.coach-model-select button')?.disabled`), `${name} typed`);
   const metrics = await evaluate(`
     const rect = s => document.querySelector(s).getBoundingClientRect().toJSON();
-    return { header:rect('.ui-workspace-header'), bar:rect('.python-document-bar'),
+    return { header:rect('.ui-screen-header,.ui-pane-header'), bar:rect('.pr-work > .ui-pane-header'),
       shell:rect('.ui-composer'), input:rect('.ui-composer-input'), footer:rect('.ui-composer-footer'),
       overflow:document.scrollingElement.scrollHeight-innerHeight };
   `);
@@ -78,9 +79,11 @@ async function checkPractice(route, name) {
     input.value = 'one\\ntwo\\nthree\\nfour\\nfive\\nsix\\nseven';
     input.dispatchEvent(new Event('input', { bubbles:true }));
   `);
+  await evaluate('return new Promise(requestAnimationFrame)');
   const grown = await evaluate("return document.querySelector('.ui-composer').getBoundingClientRect().height");
   assert.ok(grown > idle && grown <= 270, `${name}: grown=${grown}, idle=${idle}`);
   await evaluate(`const input=document.querySelector('.ui-composer-input');input.value='';input.dispatchEvent(new Event('input'));`);
+  await evaluate('return new Promise(requestAnimationFrame)');
   const cleared = await evaluate("return document.querySelector('.ui-composer').getBoundingClientRect().height");
   assert.ok(cleared <= idle + 4, `${name}: cleared=${cleared}, idle=${idle}`);
 
@@ -100,6 +103,7 @@ async function checkPractice(route, name) {
   // Let the real scroll listener mark this as reading history before resizing input.
   await sleep(100);
   await evaluate(`const i=document.querySelector('.ui-composer-input');i.value='A long draft. '.repeat(120);i.dispatchEvent(new Event('input'));`);
+  await evaluate('return new Promise(requestAnimationFrame)');
   const scroll = await evaluate(`
     const t=document.querySelector('.pr-thread'),c=document.querySelector('.ui-composer');
     return {top:t.scrollTop,range:t.scrollHeight-t.clientHeight,bottom:t.getBoundingClientRect().bottom,
@@ -160,5 +164,5 @@ try {
   for (const process of [chrome,server]) if (process?.exitCode === null) {
     process.kill();await Promise.race([new Promise(resolve=>process.once('exit',resolve)),sleep(2000)]);
   }
-  await fs.rm(HOME,{recursive:true,force:true});await fs.rm(PROFILE,{recursive:true,force:true});
+  await fs.rm(HOME,{recursive:true,force:true});await cleanupChrome(chrome, PROFILE);
 }

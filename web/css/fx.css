@@ -18,12 +18,12 @@
   font:500 13px/1.35 var(--ui, system-ui, sans-serif);
   cursor:pointer;user-select:none;
   opacity:0;transform:translate(-50%, -14px) scale(.96);
-  transition:opacity .22s ease, transform .5s cubic-bezier(.2, 1.3, .4, 1);
+  transition:opacity 150ms ease, transform 150ms cubic-bezier(.2, 1.3, .4, 1);
 }
 .fx-toast.is-in{opacity:1;transform:translate(-50%, 0) scale(1)}
-.fx-toast.is-leaving{opacity:0;transform:translate(-50%, -8px) scale(.98);transition:opacity .2s ease, transform .25s ease}
+.fx-toast.is-leaving{opacity:0;transform:translate(-50%, -8px) scale(.98);transition:opacity 150ms ease, transform 150ms ease}
 .fx-toast.is-still,
-.fx-toast.is-still.is-leaving{transform:translate(-50%, 0);transition:opacity .2s ease}
+.fx-toast.is-still.is-leaving{transform:translate(-50%, 0);transition:opacity 150ms ease}
 
 .fx-toast-mark{
   flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;
@@ -41,7 +41,7 @@
   display:flex;flex-wrap:wrap;align-items:center;gap:0 6px;
   color:var(--ink-70);font-size:12.5px;font-variant-numeric:tabular-nums;
   max-height:0;opacity:0;overflow:hidden;
-  transition:opacity .3s ease, max-height .3s ease;
+  transition:opacity 150ms ease;
 }
 .fx-toast-meta.is-filled{max-height:40px;opacity:1}
 .fx-toast-meta b{color:var(--ink);font-weight:650}
@@ -61,7 +61,7 @@
 }
 
 @media (prefers-reduced-motion: reduce){
-  .fx-toast,.fx-toast.is-leaving{transform:translate(-50%, 0);transition:opacity .2s ease}
+  .fx-toast,.fx-toast.is-leaving{transform:translate(-50%, 0);transition:opacity 150ms ease}
   .fx-toast-mark path{animation:none !important;stroke-dashoffset:0}
   .fx-flame{animation:none !important}
 }

@@ -1,3 +1,5 @@
+import { tooltip } from '../tooltip.js';
+import { messageAction } from './conversation.js';
 import { el } from '../dom.js';
 import { icon } from './icon.js';
 import { END_OF_TURN_MS } from '../speech.js';
@@ -72,26 +74,27 @@ export function createVoicePanel({ onEdit, role = 'Interviewer', autoSend = true
 // The quiet link between the two answer modes. `target` is what it switches to.
 export function answerModeSwitch(target, onSelect) {
   const voice = target === 'voice';
-  return el('button', { class: 'btn btn--quiet btn--sm ui-mode-switch', type: 'button', dataset: { mode: target },
+  return el('button', { class: 'btn btn--quiet ui-mode-switch', type: 'button', dataset: { mode: target },
     text: voice ? 'Voice' : 'Type', 'aria-label': voice ? 'Answer by voice' : 'Type your answer', onclick: () => onSelect(target) });
 }
 
 export function micToggle(onclick) {
-  return el('button', { class: 'icon-btn voice-mic', type: 'button', onclick }, icon('mic-off'));
+  const button = el('button', { class: 'btn btn--icon voice-mic', type: 'button', onclick }, icon('mic-off', 15));
+  tooltip(button, () => button.getAttribute('aria-label')); return button;
 }
 
 export function paintMicToggle(button, on, labels = { on: 'Mute microphone', off: 'Turn on microphone' }) {
   const value = on ? 'on' : 'off';
   if (button.dataset.mic !== value) { button.dataset.mic = value; button.replaceChildren(icon(on ? 'mic' : 'mic-off')); }
   const name = on ? labels.on : labels.off;
-  if (button.title !== name) { button.title = name; button.setAttribute('aria-label', name); }
+  button.removeAttribute('title'); button.setAttribute('aria-label', name);
   button.setAttribute('aria-pressed', String(on));
 }
 
 // Replay sits on the reply it replays, revealed with the message.
 export function replayButton(getText, onReplay, role = 'Interviewer') {
-  return el('button', { class: 'icon-btn voice-replay', type: 'button', title: 'Replay', 'aria-label': `Replay ${role.toLowerCase()} reply`,
-    onclick: () => { const value = getText().trim(); if (value) onReplay(value); } }, icon('speaker', 14));
+  return messageAction(el('button', { class: 'voice-replay', type: 'button', 'aria-label': `Replay ${role.toLowerCase()} reply`,
+    onclick: () => { const value = getText().trim(); if (value) onReplay(value); } }), 'speaker', `Replay ${role.toLowerCase()} reply`);
 }
 
 // Silence must still read as received: the words went in and the interviewer chose not to answer.

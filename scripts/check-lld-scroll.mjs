@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // LLD layout regression: real Chrome/CDP, scratch home, fake interviewer only.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -36,7 +37,7 @@ try {
   await send('Page.enable'); await send('Runtime.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{throw new DOMException('No mic','NotAllowedError')}});" });
   await send('Page.navigate', { url: ORIGIN + '/#/lld' }); await until(() => evaluate("return !!document.querySelector('[data-slug=lld-locker]')"), 'LLD library');
-  await evaluate("document.querySelector('[data-slug=lld-locker]').click(); document.querySelector('#setup-lld-locker .ci-start').click()"); await until(() => evaluate("return !!document.querySelector('.ci-log') && !!window.monaco?.editor.getModels().length"), 'LLD live');
+  await evaluate("[...document.querySelectorAll('[data-slug=lld-locker] .th-problem-actions .btn')].find(b=>b.textContent==='Mock it').click(); document.querySelector('[data-slug=lld-locker] .th-setup .ci-start').click()"); await until(() => evaluate("return !!document.querySelector('.ci-log') && !!window.monaco?.editor.getModels().length"), 'LLD live');
   // Seed a long transcript through the rendered DOM: this exercises the same scroll owner
   // and keeps the check deterministic without a model, microphone, or fabricated API data.
   await evaluate("const log=document.querySelector('.ci-log'); log.insertAdjacentHTML('beforeend', '<div class=ci-msg>'+('<p>Earlier interviewer context and constraints. </p>'.repeat(260))+'</div>'); log.scrollTop=log.scrollHeight;");
@@ -61,7 +62,7 @@ try {
     await evaluate(`document.querySelector('.ci-composer .ui-mode-switch[data-mode=${value.toLowerCase()}]').click();`);
   }
   await mode('Typed');
-  await until(()=>evaluate("return !document.querySelector('.ci-send').disabled"),'typed ready');
+  await until(()=>evaluate("return !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled"),'typed ready');
   await evaluate(String.raw`
     monaco.editor.getModels()[0].setValue('# Candidate implementation\n'.repeat(200)+'print("execution output\\n"*60)');
     window.originalFetch=window.fetch; window.scrollChunks=0;
@@ -84,7 +85,7 @@ try {
   await until(()=>evaluate(`return window.scrollChunks>${held.chunk+20}`),'tokens while reading');
   assert.ok(Math.abs(await evaluate("return document.querySelector('.ci-log').scrollTop")-held.top)<=1,'reader position held through tokens and voice/type status');
   assert.deepEqual(await evaluate("return document.querySelector('.lld-document').getBoundingClientRect().toJSON()"),held.editor,'editor does not jump with transcript/composer changes');
-  await until(()=>evaluate("return window.scrollChunks===120 && !document.querySelector('.ci-send').disabled"),'stream settled');
+  await until(()=>evaluate("return window.scrollChunks===120 && !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled"),'stream settled');
   await evaluate("document.querySelector('.ci-log').focus({preventScroll:true});");
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'End',code:'End',windowsVirtualKeyCode:35});
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'End',code:'End',windowsVirtualKeyCode:35});
@@ -94,7 +95,7 @@ try {
   await send('Input.dispatchMouseEvent',{type:'mouseWheel',...editorPoint,deltaX:0,deltaY:440});await sleep(150);
   assert.ok(await evaluate('return monaco.editor.getEditors()[0].getScrollTop()>0'),'editor independently scrolls');
   assert.equal(await evaluate("return document.querySelector('.ci-log').scrollTop"),logTop,'editor scrolling leaves transcript alone');
-  await evaluate("document.querySelector('.lld-document-bar .python-run').click();");
+  await evaluate("document.querySelector('.ui-pane-header .python-run').click();");
   await until(()=>evaluate("return document.querySelector('.lld-output').textContent.includes('Exit 0')"),'Python output');
   await evaluate("const input=document.querySelector('.ci-input');input.value='A long unsent candidate explanation. '.repeat(150);input.dispatchEvent(new Event('input'));");
   await mode('Voice');await sleep(150);
@@ -108,5 +109,7 @@ try {
 
 } finally {
   socket?.close(); for (const p of [chrome, server]) if (p) { if (p.exitCode === null) p.kill(); }
-  for (const p of pending.values()) clearTimeout(p.timer); await fs.rm(HOME, { recursive:true, force:true }); await fs.rm(PROFILE, { recursive:true, force:true });
+  for (const p of pending.values()) clearTimeout(p.timer);
+  await cleanupChrome(chrome, PROFILE);
+  await fs.rm(HOME, { recursive:true, force:true, maxRetries:5, retryDelay:200 });
 }

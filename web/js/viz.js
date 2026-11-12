@@ -1,3 +1,4 @@
+import { icon } from './ui/icon.js';
 // Coach illustrations — fenced ```viz blocks, a small JSON vocabulary for the exact
 // pictures an algorithm explanation keeps needing (a graph with weights, an array
 // with two pointers, a DP grid, a tree, a linked list, a stack, a queue), drawn
@@ -1501,9 +1502,9 @@ export function drawViz(spec, { idPrefix } = {}) {
   const total = frames.length;
   let timer = null;
 
-  const prev = el('button', { type: 'button', class: 'viz-btn viz-prev', 'aria-label': 'Previous step', text: '‹' });
-  const play = el('button', { type: 'button', class: 'viz-btn viz-play', 'aria-label': 'Play steps', 'aria-pressed': 'false' });
-  const next = el('button', { type: 'button', class: 'viz-btn viz-next', 'aria-label': 'Next step', text: '›' });
+  const prev = el('button', { type: 'button', class: 'btn btn--icon viz-btn viz-prev', 'aria-label': 'Previous step' }, icon('back'));
+  const play = el('button', { type: 'button', class: 'btn btn--quiet viz-btn viz-play', 'aria-label': 'Play steps', 'aria-pressed': 'false' });
+  const next = el('button', { type: 'button', class: 'btn btn--icon viz-btn viz-next', 'aria-label': 'Next step' }, icon('forward'));
   const counter = el('span', { class: 'viz-count', 'aria-live': 'polite' });
   const noteLine = el('div', { class: 'viz-note' });
   const bar = el('div', {
@@ -1522,7 +1523,7 @@ export function drawViz(spec, { idPrefix } = {}) {
     prev.disabled = index === 0;
     next.disabled = index === total - 1;
     if ((focused === prev && prev.disabled) || (focused === next && next.disabled)) bar.focus();
-    play.textContent = timer ? '❚❚ Pause' : '▶ Play';
+    play.replaceChildren(icon(timer ? 'pause' : 'play'), document.createTextNode(timer ? 'Pause' : 'Play'));
     play.setAttribute('aria-label', timer ? 'Pause' : 'Play steps');
     play.setAttribute('aria-pressed', timer ? 'true' : 'false');
     play.disabled = total < 2;

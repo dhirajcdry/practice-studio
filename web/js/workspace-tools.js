@@ -1,3 +1,4 @@
+import { paintReceipt, receiptOutput, receiptFailed } from './ui/receipt.js';
 // Shared visible actions for practice and mocks. Every edit stays in the native undo
 // history and is acknowledged only after the workspace's normal save path completes.
 import { el, replace } from './dom.js';
@@ -8,23 +9,19 @@ export function showWorkspaceAction(host, action, { replay = false } = {}) {
   let row = [...host.querySelectorAll('[data-action-id]')].find(n => n.dataset.actionId === action.id);
   if (!row) { row = el('div', { 'data-action-id': action.id }); host.append(row); }
   const status = replay && action.status === 'pending' ? 'failed' : actionStatus(action);
-  row.className = `cmsg-receipt ui-inset ui-inset--compact is-${status}`;
-  const undo = !replay && canUndo(action) ? el('button', { class: 'btn btn--quiet btn--sm', text: 'Undo', onclick: async event => {
+
+  const undo = !replay && canUndo(action) ? el('button', { class: 'btn btn--quiet', text: 'Undo', onclick: async event => {
     const button = event.currentTarget; button.disabled = true;
     let result;
     try { result = await undoAction(action); } catch (error) { result = { ok: false, message: error.message || 'Undo could not be saved.' }; }
     row.append(el('p', { class: 'dim', text: result.message }));
     if (!result.ok) button.disabled = false;
   } }) : null;
-  const result = action.tool === 'run_code' ? action.result : null;
-  replace(row, [el('div', { class: 'ui-cluster' }, [
-    el('span', { class: 'ui-cluster-content', text: receiptSummary(action) }),
+  paintReceipt(row, { tool: action.tool, status, output: receiptOutput(action), failed: receiptFailed(action), content: [
+    el('span', { class: 'cr-text', text: receiptSummary(action) }),
     status === 'pending' ? el('span', { class: 'cr-state', text: 'Applying…' }) : null,
-    status === 'failed' ? el('span', { class: 'cr-state', text: 'Not confirmed' }) : null, undo,
-  ]), status === 'failed' && action.message ? el('p', { class: 'dim', text: action.message }) : null,
-    result ? el('details', {}, [el('summary', { text: result.timedOut ? 'Python timed out' : `Python output · exit ${result.exitCode ?? '—'}` }),
-      el('pre', { class: 'lld-output mono', text: (result.stdout || '') + (result.stderr || '') || 'No output.' })]) : null,
-  ]);
+    status === 'failed' ? el('span', { class: 'cr-state', text: action.message || 'Not confirmed' }) : null, undo,
+  ] });
   if (!replay) void applyAction(action);
 }
 

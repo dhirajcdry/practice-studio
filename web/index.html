@@ -7,13 +7,13 @@
 <title>Practice Studio — NeetCode 250</title>
 <link rel="icon" type="image/svg+xml" href="./img/favicon.svg">
 <link rel="stylesheet" href="./css/app.css">
-<link rel="stylesheet" href="./css/ui.css">
 <link rel="stylesheet" href="./css/design.css">
 <link rel="stylesheet" href="./css/lld.css">
 <link rel="stylesheet" href="./css/interview.css">
 <link rel="stylesheet" href="./css/workspace.css">
 <link rel="stylesheet" href="./css/python-editor.css">
 <link rel="stylesheet" href="./css/catalog.css">
+<link rel="stylesheet" href="./css/problem-import.css">
 <link rel="stylesheet" href="./css/roadmap.css">
 <link rel="stylesheet" href="./css/viz.css">
 <link rel="stylesheet" href="./css/coach-image.css">
@@ -27,7 +27,9 @@
   <link rel="stylesheet" href="/css/context-inspector.css">
   <link rel="stylesheet" href="/css/coaching-instructions.css">
   <link rel="stylesheet" href="/css/practice.css">
+  <link rel="stylesheet" href="/css/track-home.css">
   <link rel="stylesheet" href="/css/voice.css">
+<link rel="stylesheet" href="./css/ui.css">
 </head>
 <body>
 
@@ -36,24 +38,12 @@
     <span class="solid">Practice</span><span class="outline">Studio</span>
   </a>
 
-  <!-- Two products, not one list. Problems and Progress are both the LeetCode
-       practice loop and collapse into one menu; a system design interview shares
-       nothing with them but the app it lives in, so it keeps its own place in the bar
-       rather than hiding one click inside a menu about something else.
-       The links stay real anchors, so every route is still middle-clickable. -->
+  <!-- Three sections, one tap each. Explorer, Roadmap and Progress are views inside
+       LeetCode and switch from its own header, not from here. -->
   <nav class="topnav" aria-label="Sections">
-    <button class="navbtn" id="navbtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="navmenu">
-      <span class="mono" id="navlabel">Problems</span>
-      <svg class="navcaret" width="9" height="6" viewBox="0 0 9 6" fill="none" aria-hidden="true">
-        <path d="M1 1.4 4.5 4.6 8 1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
-    <div class="navmenu" id="navmenu" role="menu" aria-labelledby="navbtn" hidden>
-      <a href="#/" data-route="#/" role="menuitem" class="mono">Problems</a>
-      <a href="#/progress" data-route="#/progress" role="menuitem" class="mono">Progress</a>
-    </div>
-    <a class="navlink mono" href="#/design" data-route="#/design">System Design</a>
-    <a class="navlink mono" href="#/lld" data-route="#/lld">LLD</a>
+    <a class="btn btn--quiet navlink mono" id="navleetcode" href="#/" data-route="#/">LeetCode</a>
+    <a class="btn btn--quiet navlink mono" href="#/design" data-route="#/design">System Design</a>
+    <a class="btn btn--quiet navlink mono" href="#/lld" data-route="#/lld">LLD</a>
   </nav>
 
   <div class="searchwrap">

@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Reload the page while the coach is writing, and see whether the answer survives.
 //
@@ -16,13 +17,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { startScratch, requireFreePort } from './check-scratch.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const FAKE = path.join(ROOT, 'server', 'coach', 'test', 'bin', 'fake-claude.mjs');
 const PORT = 9337;
-const SERVER_PORT = 4181;
+const SERVER_PORT = Number(process.env.STUDIO_RELOAD_PORT) || 4181;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
 async function cdp() {
@@ -52,29 +54,14 @@ const problems = [];
 const ok = (what) => console.log(`  ok   ${what}`);
 const bad = (what, detail) => { problems.push(`${what} — ${detail}`); console.log(`  FAIL ${what}: ${detail}`); };
 
-const HOME = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-reload-home-'));
 const PROFILE = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-reload-profile-'));
-const realCache = path.join(os.homedir(), 'LeetCodeTutor', 'cache');
-if (await fsp.stat(realCache).then(() => true, () => false)) {
-  await fsp.cp(realCache, path.join(HOME, 'cache'), { recursive: true });
-}
 
 // A coach that writes for eight seconds — long enough to reload in the middle of.
-const server = spawn(process.execPath, ['server/index.mjs'], {
-  cwd: ROOT,
-  env: {
-    ...process.env,
-    STUDIO_HOME: HOME,
-    STUDIO_PORT: String(SERVER_PORT),
-    STUDIO_COACH_BINARY: FAKE,
-    FAKE_CLAUDE_MODE: 'slow',
-    FAKE_CLAUDE_DELAY_MS: '8000',
-  },
-  stdio: 'ignore',
+await requireFreePort(PORT);
+const { home: HOME, cleanup: cleanupScratch } = await startScratch(SERVER_PORT, 'two-sum', {
+  STUDIO_COACH_BINARY: FAKE, FAKE_CLAUDE_MODE: 'slow', FAKE_CLAUDE_DELAY_MS: '8000',
+  STUDIO_COACH_PROVIDER: 'claude', STUDIO_CODEX_BINARY: '/nonexistent',
 });
-for (let i = 0; i < 100; i += 1) {
-  try { await fetch(`${ORIGIN}/api/stats`); break; } catch { await sleep(100); }
-}
 
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${PORT}`,
@@ -118,6 +105,8 @@ try {
   const questionCount = await evaluate(`document.querySelectorAll('.coach-log .cmsg.you').length`);
   if (questionCount === 1) ok('one submission renders one question');
   else bad('one submission renders one question', `${questionCount} question cards for one submit`);
+  const jumpState = await evaluate(`(() => { const j=document.querySelector('.ui-jump-latest'); return { exists:!!j, hidden:j?.hidden }; })()`);
+  if (jumpState.exists && !jumpState.hidden) bad('jump-to-latest starts hidden'); else ok('jump-to-latest starts hidden');
 
   // The whole point: refresh, right now.
   await send('Page.reload', { ignoreCache: true });
@@ -157,12 +146,49 @@ try {
   if (turns[0]?.stopped === true) bad('a reload is not a stop', 'the turn was filed as stopped');
   else ok('a reload was not recorded as a stop');
 
+  // Open the problem again once the answer is filed. The next message continues this
+  // conversation, so the panel must show it rather than an empty "new chat" screen.
+  await send('Page.reload', { ignoreCache: true });
+  const reopened = await evaluate(`(async () => {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const read = () => { const log = document.querySelector('.coach-log'); return {
+      text: log?.textContent ?? '', questions: log?.querySelectorAll('.cmsg.you').length ?? 0,
+      replies: log?.querySelectorAll('.cmsg.reply').length ?? 0, empty: Boolean(log?.querySelector('.coach-empty')) }; };
+    for (let i = 0; i < 80; i++) { if (read().text.includes('second half')) break; await sleep(100); }
+    await sleep(600); // an adopted finished run must not add a second copy
+    return read();
+  })()`);
+  if (reopened.text.includes('why a hash map?') && reopened.text.includes('second half') && !reopened.empty) ok('reopening the problem shows the conversation it will continue');
+  else bad('reopening the problem shows the conversation it will continue', JSON.stringify({ ...reopened, text: reopened.text.slice(0, 120) }));
+  if (reopened.questions === 1 && reopened.replies === 1) ok('...drawn once');
+  else bad('the restored conversation is drawn once', `${reopened.questions} questions, ${reopened.replies} replies`);
+
+  // Ask again from there: the earlier turn stays above the new one, in the same thread.
+  const followUp = await evaluate(`(async () => {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const box = document.querySelector('.coach-compose textarea');
+    box.value = 'and the follow-up?';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+    const log = document.querySelector('.coach-log');
+    for (let i = 0; i < 300; i++) {
+      if (log.querySelectorAll('.cmsg.reply').length === 2 && (log.textContent.match(/second half/g) || []).length === 2) break;
+      await sleep(100);
+    }
+    await sleep(400);
+    return { questions: [...log.querySelectorAll('.cmsg.you')].map(n => n.textContent), replies: log.querySelectorAll('.cmsg.reply').length };
+  })()`);
+  if (followUp.questions.length === 2 && followUp.questions[0].includes('why a hash map?') && followUp.questions[1].includes('and the follow-up?') && followUp.replies === 2) ok('a follow-up lands under the earlier turn');
+  else bad('a follow-up lands under the earlier turn', JSON.stringify(followUp));
+  const filed = (await fsp.readFile(path.join(problemDir(HOME, 'two-sum'), 'chats.jsonl'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  if (filed.length === 2 && filed[0].sessionId && filed[0].sessionId === filed[1].sessionId) ok('...and both turns are one saved conversation');
+  else bad('both turns are one saved conversation', JSON.stringify(filed.map(t => t.sessionId)));
+
   close();
 } finally {
   chrome.kill();
-  server.kill();
-  await fsp.rm(HOME, { recursive: true, force: true }).catch(() => {});
-  await fsp.rm(PROFILE, { recursive: true, force: true }).catch(() => {});
+  await cleanupScratch();
+  await cleanupChrome(chrome, PROFILE);
 }
 
 if (problems.length) {

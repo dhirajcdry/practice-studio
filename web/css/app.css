@@ -20,8 +20,8 @@
   --card:#FFFFFF;
   --ink:#111111;
   --ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.5);
-  --ink-35:rgba(var(--ink-rgb),.34);
+  --ink-50:rgba(var(--ink-rgb),.68);
+  --ink-35:rgba(var(--ink-rgb),.65);
   --hair-20:rgba(var(--ink-rgb),.2);
   --hair-10:rgba(var(--ink-rgb),.11);
   --hair-06:rgba(var(--ink-rgb),.07);
@@ -69,8 +69,8 @@
   --ease-drawer:cubic-bezier(0.32, 0.72, 0, 1);   /* side sheets: iOS-like settle */
   --dur-hover:120ms;   /* colour, border, background on hover */
   --dur-turn:150ms;    /* carets, icon lifts, press feedback (movement) */
-  --dur-fade:200ms;    /* opacity fades */
-  --dur-drawer:240ms;  /* drawer and settings sheet slides (movement) */
+  --dur-fade:150ms;    /* opacity fades */
+  --dur-drawer:150ms;  /* drawer and settings sheet slides (movement) */
 }
 /* Reduced motion zeroes the movement tokens and keeps the fades. */
 body.motion-off{--dur-turn:0ms;--dur-drawer:0ms}
@@ -103,11 +103,8 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 select:not([multiple]){appearance:none;-webkit-appearance:none;cursor:pointer;
   background-image:linear-gradient(45deg,transparent 42%,currentColor 42%,currentColor 58%,transparent 58%),linear-gradient(-45deg,transparent 42%,currentColor 42%,currentColor 58%,transparent 58%);
   background-position:calc(100% - 17.5px) 55%,calc(100% - 12.5px) 55%;background-size:5.5px 5.5px;background-repeat:no-repeat}
-:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:var(--r-sm)}
-
-.mono{font-family:var(--mono);font-size:11px;letter-spacing:0;text-transform:none;font-weight:500;line-height:1.5}
-.mono.dim{color:var(--ink-50)}
-.tnum{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:var(--r-sm)}.mono{line-height:1.5}
+.mono.dim{color:var(--ink-50)}.tnum{font-variant-numeric:tabular-nums}
 
 /* boxed digits — used sparingly, for headline counts only */
 .digits{display:inline-flex;gap:3px;vertical-align:-3px}
@@ -130,53 +127,14 @@ select:not([multiple]){appearance:none;-webkit-appearance:none;cursor:pointer;
 .tag.hard{color:var(--hard);border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
 
 /* ---------------- top bar ---------------- */
-/* Section nav. One button in the topbar naming the section you are on, with the other
-   three in a menu under it; the current route is marked from main.js so neither the
-   button's label nor the tick in the menu can drift from the hash. */
+/* Section nav: three one-tap links. The current section is marked from main.js. */
 .topnav{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:6px}
-/* System design is its own product, so it sits beside the LeetCode menu rather than
-   inside it. Same height and baseline as the button next to it. */
 .navlink{
   display:inline-flex;align-items:center;height:30px;padding:0 12px;
   border:1px solid transparent;border-radius:999px;color:var(--ink-50);text-decoration:none;
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
-.navlink:hover{color:var(--ink);border-color:var(--hair-20)}
 .navlink[aria-current="page"]{color:var(--solid-fg);background:var(--solid-bg);border-color:var(--solid-edge)}
-/* When you are not in the LeetCode group the button names the group, and should not
-   compete with whichever section actually is current. */
-.navbtn.quiet{color:var(--ink-35)}
-.navbtn.quiet:hover{color:var(--ink-70)}
-.navbtn{
-  display:flex;align-items:center;gap:8px;white-space:nowrap;
-  color:var(--ink-70);padding:6px 11px;border-radius:var(--r-sm);
-  border:1px solid var(--hair-10);background:var(--card);
-}
-.navbtn:hover{color:var(--ink);border-color:var(--hair-20)}
-.navbtn[aria-expanded="true"]{color:var(--ink);border-color:var(--ink)}
-.navcaret{flex:0 0 auto;opacity:.55;transition:transform var(--dur-turn) var(--ease-out)}
-.navbtn[aria-expanded="true"] .navcaret{transform:rotate(180deg)}
-body.motion-off .navcaret{transition:none}
-@media (prefers-reduced-motion:reduce){.navcaret{transition:none}}
-
-.navmenu{
-  position:absolute;top:calc(100% + 7px);left:0;z-index:70;min-width:178px;padding:5px;
-  background:var(--card);border:1px solid var(--hair-20);border-radius:var(--r-md);box-shadow:var(--shadow-lift);
-  /* Grows from the button it hangs off. A keyboard open sets data-instant and skips it. */
-  transform-origin:top left;transition:opacity 150ms var(--ease-out),transform 150ms var(--ease-out);
-}
-@starting-style{.navmenu{opacity:0;transform:scale(0.97)}}
-@media (prefers-reduced-motion:reduce){.navmenu{transition:opacity 150ms var(--ease-out)}}
-.navmenu[data-instant]{transition:none}
-.navmenu a{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  color:var(--ink-70);text-decoration:none;padding:7px 9px;border-radius:var(--r-sm);white-space:nowrap;
-}
-.navmenu a:hover,.navmenu a:focus-visible{color:var(--ink);background:rgba(var(--ink-rgb),.05)}
-.navmenu a[aria-current="page"]{color:var(--ink);background:rgba(var(--ink-rgb),.07)}
-/* The tick, rather than the highlight alone, so the current section reads as current
-   and not merely as the row the pointer happens to be over. */
-.navmenu a[aria-current="page"]::after{content:"✓";font-size:10px;opacity:.6}
 
 .topbar{
   position:sticky;top:0;z-index:60;height:var(--topbar-h);
@@ -212,13 +170,11 @@ body.motion-off .navcaret{transition:none}
    the rest of the bar — 26.5px and 29.0px against everything else at 27.5px — because
    their mount was not a flex row and the buttons had no shared box. One box, one
    centre line, measured rather than eyeballed. */
-.setmount{display:flex;align-items:center;gap:6px}
-.setmount .set-open{
+.setmount{display:flex;align-items:center;gap:6px}.setmount .set-open{
   display:inline-flex;align-items:center;justify-content:center;
-  width:36px;height:36px;padding:0;border-radius:var(--r-md);color:var(--ink-70);
-  border:1px solid var(--hair-10);background:var(--card);
+  width:36px;
+
 }
-.setmount .set-open:hover{color:var(--ink);background:rgba(var(--ink-rgb),.06)}
 .setmount .set-open svg{display:block;width:20px;height:20px}
 .topmeta .cell{display:flex;gap:7px;align-items:center;white-space:nowrap}
 .srcdot{width:7px;height:7px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
@@ -233,16 +189,14 @@ body.motion-off .navcaret{transition:none}
   padding:9px 20px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;
 }
 .banner .bhead{color:var(--med);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.banner .btext{font-size:13.5px;color:var(--ink-70);flex:1;min-width:220px}
-.banner button.blink{color:var(--med);text-decoration:underline;text-underline-offset:3px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.banner .btext{font-size:13.5px;color:var(--ink-70);flex:1;min-width:220px}.banner button.blink{text-decoration:underline;text-underline-offset:3px;}
 
 /* ---------------- page frame ---------------- */
 main{max-width:1680px;margin:0 auto;padding:32px 28px 96px}
 main:focus{outline:none}
 /* Views update immediately: replaying an opacity entrance on every filter or
    navigation made the whole screen blink. Motion belongs to individual controls. */
-.viewhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
-.viewhead h1{font-family:var(--display);font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.15}
+
 .viewhead .sub{color:var(--ink-50);font-size:14px;margin-top:3px}
 .legend{display:flex;align-items:center;gap:14px;padding-bottom:3px;flex-wrap:wrap}
 .legend .lg{display:inline-flex;align-items:center;gap:6px}
@@ -278,26 +232,17 @@ main:focus{outline:none}
   background:inherit;border-bottom:1px solid var(--hair-10);
 }
 body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
-.fgroup{display:flex;align-items:center;gap:8px;min-width:0}
+
 .fgroup > .mono.dim{flex:0 0 auto}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
-.chip{
-  padding:5px 11px;border:1px solid var(--hair-20);border-radius:999px;
-  background:var(--card);color:var(--ink-50);white-space:nowrap;transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{
+
+  transition:background-color var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
+
 }
-.chip:hover{border-color:var(--ink);color:var(--ink)}
-.chip[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .chip.easy[aria-pressed="true"]{background:var(--easy);border-color:var(--easy)}
 .chip.medium[aria-pressed="true"]{background:var(--med);border-color:var(--med)}
 .chip.hard[aria-pressed="true"]{background:var(--hard);border-color:var(--hard)}
 .filterbar .spacer{flex:1 1 auto}
-.linkbtn{
-  color:var(--ink-50);
-  padding:5px 2px;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.linkbtn:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .countpill{display:flex;align-items:center;gap:8px;white-space:nowrap}
 
 /* ---------------- pattern sections ---------------- */
@@ -317,8 +262,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .phead .pname{font-weight:700;font-size:16px;letter-spacing:-.02em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .phead .pcount{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-50);font-variant-numeric:tabular-nums;white-space:nowrap}
 .phead .pcount b{color:var(--ink);font-weight:600}
-.mixbar{display:flex;gap:2px;width:132px;height:6px;flex:0 0 auto}
-.mixbar span{height:100%;border-radius:2px;min-width:2px}
+
 .mixbar .e{background:var(--easy)}
 .mixbar .m{background:var(--med)}
 .mixbar .h{background:var(--hard)}
@@ -367,14 +311,6 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .phero .pno{font-family:var(--mono);font-size:13px;color:var(--ink-35);font-variant-numeric:tabular-nums}
 
 .paneltoggles{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.015);align-items:center}
-.ptoggle{
-  display:inline-flex;align-items:center;gap:9px;
-  padding:7px 14px;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);color:var(--ink-70);
-  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.ptoggle:hover{border-color:var(--ink);color:var(--ink)}
-.ptoggle[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .ptoggle kbd{font-family:var(--mono);font-size:9px;border:1px solid currentColor;opacity:.5;border-radius:var(--r-sm);padding:0 4px}
 .ptoggle.miss{border-style:dashed;color:var(--ink-35)}
 .ptoggle .ptag{opacity:.7;font-style:normal;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -388,7 +324,6 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
    how it was reported. Wrapping shows all of it; these lines are arithmetic and prose,
    not code whose indentation carries meaning. */
 .desc pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
-.statehead{display:flex;align-items:center;gap:10px;padding:16px 20px 0}
 
 /* rich text rendered from sanitized HTML / markdown */
 .rich{font-family:var(--prose);font-size:15.5px;line-height:1.68;color:var(--ink-70)}
@@ -433,7 +368,7 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 /* ---------------- drawer ---------------- */
 body{--reference-scrim:rgba(var(--ink-rgb),.12)}
 body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
-.scrim{position:fixed;inset:0;z-index:70;background:var(--reference-scrim);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);opacity:0;transition:opacity var(--dur-drawer) var(--ease-drawer)}
+.scrim{position:fixed;inset:0;z-index:70;background:var(--reference-scrim);opacity:0;transition:opacity var(--dur-drawer) var(--ease-drawer)}
 .scrim.show{opacity:1}
 .drawer{
   position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(760px,80vw);
@@ -447,30 +382,21 @@ body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
 .drawer-resize:hover::after,.drawer-resize:focus-visible::after{opacity:1}
 /* Opened or closed from the keyboard (s, a, Esc): no slide, no fade. */
 :is(.drawer,.scrim).is-instant{transition:none}
-.dhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--hair-10);flex:0 0 auto;flex-wrap:wrap}
+.dhead{min-width:0}
+.dhead .dtabs{flex:none}
+.dhead .dtitle{overflow:hidden;text-overflow:ellipsis}
 .dtabs{display:flex;gap:2px;border:1px solid var(--hair-20);border-radius:var(--r-md);padding:2px;background:var(--canvas)}
-.dtab{
-  padding:5px 12px;border-radius:var(--r-sm);color:var(--ink-50);white-space:nowrap;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.dtab:hover{color:var(--ink)}
-.dtab[aria-selected="true"]{background:var(--solid-bg);color:var(--solid-fg)}
 .dhead .dtitle{flex:1;min-width:0;font-size:14px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dclose{color:var(--ink-50);border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:5px 10px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.dclose:hover{color:var(--ink);border-color:var(--ink)}
 .dbody{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;padding:18px 20px 24px}
 .dfoot{
   flex:0 0 auto;border-top:1px solid var(--hair-10);padding:9px 16px;background:rgba(var(--ink-rgb),.015);
   font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-35);line-height:1.6;
 }
 .dfoot a{color:var(--ink-50)}
-.codewrap{position:relative}
-.codewrap .copy{
+.codewrap{position:relative}.codewrap .copy{
   position:absolute;top:8px;right:8px;
-  border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:3px 8px;background:var(--card);color:var(--ink-50);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
+
 }
-.codewrap .copy:hover{color:var(--ink);border-color:var(--ink)}
 
 /* honest state blocks */
 .state{border:1px dashed var(--hair-20);border-radius:var(--r-md);background:rgba(var(--ink-rgb),.012)}
@@ -482,11 +408,6 @@ body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
 .state p{font-size:14.5px;color:var(--ink-70);max-width:62ch}
 .state p + p{margin-top:8px}
 .state .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
-.state .act{
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:6px 12px;background:var(--card);color:var(--ink-70);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.state .act:hover{border-color:var(--ink);color:var(--ink)}
 
 /* skeleton — bounded, never an infinite spinner */
 .skel{display:flex;flex-direction:column;gap:9px}
@@ -593,40 +514,17 @@ body.hide-problem .ws-probtitle{
   flex:0 1 auto;min-width:0;overflow:hidden;
   color:var(--ink-50);white-space:nowrap;
 }
-.ws-status > *{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.ws-bar .btn,.ws-bar .ws-mini,.ws-bar .ws-submit{flex:0 0 auto}
-.ws-status[data-tone="ok"]{color:var(--easy)}
+.ws-status > *{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.ws-status[data-tone="ok"]{color:var(--easy)}
 .ws-status[data-tone="warn"]{color:var(--med)}
 .ws-status[data-tone="bad"]{color:var(--hard)}
 .ws-status-why{
   font-family:var(--serif);font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--ink-50);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32ch;
-}
-.ws-retry{color:inherit;text-decoration:underline;text-underline-offset:3px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+}.ws-retry{text-decoration:underline;text-underline-offset:3px;}
 
-.ws-mini{
-  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:6px 11px;background:var(--card);color:var(--ink-50);
-  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.ws-mini:hover{color:var(--ink);border-color:var(--ink)}
-.ws-mini[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
-.ws-mini kbd{font-family:var(--mono);font-size:9px;border:1px solid currentColor;opacity:.5;border-radius:var(--r-sm);padding:0 4px}
-
-.ws-run{
-  display:inline-flex;align-items:center;gap:8px;
-  background:var(--solid-bg);color:var(--solid-fg);border:1px solid var(--solid-edge);border-radius:var(--r-md);padding:7px 14px;
-  transition:background var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.ws-run:hover{background:var(--solid-hover)}
-.ws-run kbd{font-family:var(--mono);font-size:9px;letter-spacing:.04em;border:1px solid currentColor;border-radius:var(--r-sm);padding:0 4px;opacity:.55}
-.ws-run:disabled{cursor:default}
 /* Working, not inverted. --ink-70 is a TEXT colour; using it as a background made the
    button a pale slab on every dark theme — brighter while busy than while idle, which
    is backwards. Busy is the same surface, dimmed. */
-.ws-run.busy{background:var(--solid-bg);border-color:var(--solid-edge);opacity:.65;cursor:progress}
 
 /* ---- honest one-line notice, above the code ---- */
 .ws-notice{
@@ -634,9 +532,7 @@ body.hide-problem .ws-probtitle{
 }
 .ws-notice.warn{background:var(--med-soft);border-bottom-color:rgba(var(--med-rgb),.28)}
 .ws-noticehead{color:var(--med);flex:0 0 auto;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.ws-noticebody{font-size:13px;color:var(--ink-70);flex:1 1 240px;min-width:0}
-.ws-noticex{font-family:var(--mono);font-size:15px;line-height:1;color:var(--ink-35);padding:0 3px}
-.ws-noticex:hover{color:var(--ink)}
+.ws-noticebody{font-size:13px;color:var(--ink-70);flex:1 1 240px;min-width:0}.ws-noticex{line-height:1;}
 
 /* ---- the editor itself ---- */
 .ws-host{flex:1 1 auto;min-height:150px;position:relative;overflow:hidden;background:var(--card)}
@@ -665,12 +561,9 @@ body.hide-results .ws-results{display:none}
 .rr-tutor{border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--accent-soft)}
 .rr-tutor-copy{--content-stack-gap:var(--space-1);flex:1 1 16rem;min-width:0;overflow-wrap:anywhere}
 .rr-tutor-mark{font:600 var(--text-sm)/var(--line-sm) var(--ui);color:var(--accent)}
-.rr-tutor-what{font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
-.rr-tutor .btn{flex:none}
+.rr-tutor-what{font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}.rr-tutor .btn{flex:none}
 
 .rr-empty{margin:0;padding:18px 16px;font-size:12.5px;color:var(--ink-50)}
-.rr-idle{padding:13px 16px 16px}
-.rr-idle p{font-size:13px;color:var(--ink-50);max-width:58ch;margin-top:5px}
 
 .rr-running{padding:0 0 13px}
 .rr-bar{height:2px;background:var(--hair-10);overflow:hidden}
@@ -703,9 +596,7 @@ body.hide-results .ws-results{display:none}
 .rr-summary.s-unclear .rr-dot{background:var(--med)}
 .rr-summary.s-unclear .rr-headline{color:var(--med)}
 
-.rr-case + .rr-case{border-top:1px solid var(--hair-06)}
-.rr-casehead{width:100%;display:flex;align-items:center;gap:10px;padding:8px 16px;text-align:left}
-.rr-casehead:hover{background:rgba(var(--ink-rgb),.028)}
+.rr-case + .rr-case{border-top:1px solid var(--hair-06)}.rr-casehead{width:100%;display:flex;align-items:center;text-align:left}
 .rr-caret{color:var(--ink-35);font-size:12px;line-height:1;flex:0 0 auto;transition:transform var(--dur-turn) var(--ease-out)}
 @media (prefers-reduced-motion:reduce){.rr-caret{transition:none}}
 .rr-casehead[aria-expanded="true"] .rr-caret{transform:rotate(90deg)}
@@ -721,8 +612,7 @@ body.hide-results .ws-results{display:none}
 .rr-ms{flex:0 0 auto;width:58px;text-align:right;font-size:10px;letter-spacing:.06em}
 
 .rr-casebody{padding:2px 16px 16px}
-.rr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
-.rr-field > .mono{margin-bottom:4px}
+.rr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.rr-field > .mono{margin-bottom:4px}
 .rr-field pre{
   font-family:var(--mono);font-size:12px;line-height:1.65;background:var(--card);
   border:1px solid var(--hair-10);border-radius:var(--r-md);padding:8px 10px;
@@ -777,19 +667,16 @@ body.hide-results .ws-results{display:none}
   display:inline-flex;align-items:center;gap:9px;
   background:var(--card);border:1px solid var(--hair-20);border-radius:999px;padding:9px 16px;
   color:var(--ink-70);box-shadow:var(--shadow);
-  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
+  transition:background-color var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
-.coach-launch:hover{border-color:var(--ink);color:var(--ink)}
 /* The lift is for a real pointer; a tap fires a hover that would stick. */
-@media (hover:hover) and (pointer:fine){
-  .coach-launch:hover{transform:translateY(-1px)}
+@media (hover:hover) and (pointer:fine){.coach-launch:hover{transform:translateY(-1px)}
   .coach-launch:hover:active{transform:translateY(-1px) scale(0.97)}
 }
 .coach-launch kbd{font-family:var(--mono);font-size:9px;border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:0 4px;opacity:.7}
-.coach-launch[aria-pressed="true"]{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .coach-launch[aria-pressed="true"] kbd{border-color:currentColor;opacity:.55}
-@media (prefers-reduced-motion:reduce){.coach-launch{transition:background var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease}}
+@media (prefers-reduced-motion:reduce){.coach-launch{transition:background-color var(--dur-hover) ease,color var(--dur-hover) ease,border-color var(--dur-hover) ease}}
 
 /* ---- the panel, as a third column beside the editor ---- */
 .coach{
@@ -799,10 +686,7 @@ body.hide-results .ws-results{display:none}
 body.coach-open .coach{display:flex}
 body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.82fr) minmax(0,1.06fr) minmax(300px,.86fr)}
 body.coach-open.hide-problem .pbody.with-workspace{grid-template-columns:minmax(0,1fr) minmax(320px,.5fr)}
-body.coach-open.hide-problem .ws{max-width:none}
-body.coach-open .coach-launch{display:none}
-
-.coach-hide{padding:5px 10px}
+body.coach-open.hide-problem .ws{max-width:none}body.coach-open .coach-launch{display:none}
 
 .coach-log{
   flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;
@@ -823,10 +707,7 @@ body.coach-open .coach-launch{display:none}
 .coach-empty > * + *{margin-top:13px}
 .coach-empty p{font-size:14px;line-height:1.6;color:var(--ink-50);max-width:46ch}
 .coach-starters{display:flex;gap:6px;flex-wrap:wrap}
-.coach-privacy{color:var(--ink-35);margin-top:2px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 
-.cmsg{display:block}
-.cmsg > * + *{margin-top:6px}
 /* The app speaking, not either party — an attempt closing, and why the coach is about
    to answer a question nobody typed. */
 .cmsg-note{
@@ -835,82 +716,20 @@ body.coach-open .coach-launch{display:none}
   padding:7px 0;width:100%;
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
-.cmsg-who{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.cmsg.you .cmsg-body{
-  background:rgba(var(--ink-rgb),.035);border:1px solid var(--hair-06);border-radius:var(--r-md);
-  padding:10px 13px;font-size:14px;color:var(--ink);
-}
-.cmsg.you .cmsg-body p{margin:0}
-.cmsg.you .cmsg-body .user-text{white-space:pre-wrap;overflow-wrap:anywhere}
-.cmsg.you .cmsg-body pre{white-space:pre;max-width:100%;min-width:0;margin-bottom:0}
-.cmsg.you .cmsg-body > * + *{margin-top:8px}
-.cmsg.reply .cmsg-body{font-family:var(--prose);font-size:14.5px;line-height:1.62}
-.cmsg.reply .cmsg-body > *:last-child{margin-bottom:0}
-.cmsg .state{margin-top:8px}
-.cmsg .state p{font-size:13.5px}
 
 /* ---- history: submissions and past conversations, inside the coach panel ---- */
 .coach-tabs{display:inline-flex;gap:2px}
-.coach-tab{
-  padding:4px 9px;border-radius:var(--r-sm);color:var(--ink-35);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.coach-tab:hover{color:var(--ink-70)}
-.coach-tab[aria-pressed="true"]{color:var(--ink);background:rgba(var(--ink-rgb),.05)}
 
 .coach-history{
   flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;
   padding:14px 16px 16px;display:block;   /* block: it scrolls — see css-rules.test.mjs */
 }
-.hist-section{margin:16px 0 8px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.hist-section:first-child{margin-top:0}
-.hist-item{border-top:1px solid var(--hair-06)}
-.hist-head{
-  display:flex;align-items:center;gap:6px 8px;width:100%;text-align:left;
-  padding:9px 2px;min-width:0;flex-wrap:wrap;   /* a narrow panel wraps rather than clips */
-}
-.hist-head:hover{background:rgba(var(--ink-rgb),.02)}
-.hist-when{flex:0 0 auto;font-size:10px}
-.hist-title{flex:1 1 auto;min-width:0;font-size:13px;color:var(--ink-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hist-detail{flex:0 1 auto;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis}
-.hist-body{padding:2px 2px 14px}
-.hist-code{
-  font-family:var(--mono);font-size:11.5px;line-height:1.55;
-  background:rgba(var(--ink-rgb),.035);border:1px solid var(--hair-06);border-radius:var(--r-md);
-  padding:11px 13px;overflow-x:auto;margin-bottom:8px;
-}
-.hist-link{font-size:10px;color:var(--ink-50);text-decoration:underline;text-underline-offset:3px}
-.hist-ask{
-  background:rgba(var(--ink-rgb),.035);border:1px solid var(--hair-06);border-radius:var(--r-md);
-  padding:8px 11px;font-size:13px;margin-bottom:8px;
-}
-.hist-ask p{margin:0}
-.hist-answer{font-size:13.5px;line-height:1.6;margin-bottom:14px}
-.hist-answer > *:last-child{margin-bottom:0}
-.hist-marker{font-size:10px;margin-bottom:6px}
-.hist-note{font-size:12.5px;color:var(--ink-50);padding:4px 0}
-.hist-loading{font-size:10px;padding:4px 0}
+
 /* The head and its action share a row; the head takes whatever is left. */
-.hist-row{display:flex;align-items:stretch;gap:6px}
-.hist-row .hist-head{flex:1 1 auto;min-width:0}
-.hist-resume{flex:0 0 auto;align-self:center;margin-right:2px}
-.hist-thread{padding-top:2px}
 
 /* the example cases, shown before you run so you know what "Run" will do */
-.rr-idle{display:flex;flex-direction:column;gap:9px}
-.rr-idlecases{display:flex;flex-direction:column;gap:9px}
-.rr-idlecase{display:flex;flex-direction:column;gap:5px}
 
 /* tool calls: one quiet line each, never a wall of JSON */
-.cmsg-tools:not(:empty){margin-bottom:2px}
-.cmsg-tool + .cmsg-tool{margin-top:3px}
-.cmsg-tool{
-  color:var(--ink-35);
-  padding-left:13px;position:relative;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.cmsg-tool::before{content:'';position:absolute;left:2px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--hair-20)}
 
 .coach-thinking{display:flex;align-items:center;gap:8px;color:var(--ink-35)}
 .coach-thinking i{width:5px;height:5px;border-radius:50%;background:var(--ink-35);animation:coach-pulse 1.1s ease-in-out infinite}
@@ -918,12 +737,12 @@ body.coach-open .coach-launch{display:none}
 @media (prefers-reduced-motion:reduce){.coach-thinking i{animation:none}}
 
 /* ---- composer ---- */
-.coach-identity-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+
 .coach-model-picker{min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 .coach-model-select{max-width:100%;min-width:0}
 .coach-model-picker.is-compact{max-width:220px;flex:0 1 auto}
 .coach-model-notice{font-size:12px;color:var(--hard);overflow-wrap:anywhere}
-.coach-effort-select{min-width:0;max-width:100%}
+
 .coach-model-notice[hidden]{display:none}
 .coach-input{
   width:100%;resize:none;border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);
@@ -938,27 +757,22 @@ body.coach-open .coach-launch{display:none}
 .coach-actions .vc-row{gap:6px}
 .coach-actions .vc-row .spacer{display:none}
 .coach-actions .spacer{flex:1 1 auto}
-.coach-hint{color:var(--ink-35);max-width:24ch;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.coach-send{padding:7px 13px}
+
 .coach-send.busy{background:var(--solid-bg);border-color:var(--solid-edge);opacity:.65;cursor:progress}
 
 /* ---- voice: the microphone is never subtle while it is live ---- */
 .vc{display:flex;flex-direction:column;gap:7px}
 .vc-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.vc-row .spacer{flex:1 1 auto}
-.vc-talk{
-  display:inline-flex;align-items:center;gap:8px;
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:6px 12px;background:var(--card);color:var(--ink-70);
+.vc-row .spacer{flex:1 1 auto}.vc-talk{
+  display:inline-flex;align-items:center;
+
   touch-action:none;user-select:none;-webkit-user-select:none;
-  transition:background .12s,color .12s,border-color .12s;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
+  transition:background-color .12s,color .12s,border-color .12s;
+
 }
-.vc-talk:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
-.vc-talk:disabled{color:var(--ink-35);border-style:dashed;cursor:default}
-.vc.is-recording .vc-talk{background:var(--hard);border-color:var(--hard);color:var(--on-ink)}
+.vc-talk:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}.vc-talk:disabled{cursor:default}
 
 .vc-rec{display:inline-flex;align-items:center;gap:7px;color:var(--hard)}
-.vc-rec .mono{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .vc-dot{width:8px;height:8px;border-radius:50%;background:var(--hard);animation:vc-blink 1s steps(2,start) infinite}
 @keyframes vc-blink{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.vc-dot{animation:none}}
@@ -970,8 +784,7 @@ body.coach-open .coach-launch{display:none}
    read past. */
 
 .vc-status{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;min-width:0;font-size:12px;color:var(--ink-50);line-height:1.4}
-.vc-preview{font-size:14px;line-height:1.45;color:var(--ink-70);max-height:4.35em;overflow:auto;overflow-wrap:anywhere}
-.vc-dismiss{margin-left:auto;flex:none;border:0;background:none;color:var(--ink-50);cursor:pointer;padding:0 4px;font-size:16px;line-height:1}
+.vc-preview{font-size:14px;line-height:1.45;color:var(--ink-70);max-height:4.35em;overflow:auto;overflow-wrap:anywhere}.vc-dismiss{margin-left:auto;flex:none;cursor:pointer;line-height:1}
 .vc-status[hidden],.vc-preview[hidden]{display:none}
 .vc-status .vc-statushead{color:var(--ink-50);flex:0 0 auto;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .vc-status .vc-statusbody{flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
@@ -1004,46 +817,21 @@ body.coach-open .coach-launch{display:none}
   .coach{height:auto;min-height:0}
   .coach-log{max-height:52vh;min-height:220px}
 }
-@media (max-width:700px){
-  .coach-launch{right:14px;bottom:14px}
+@media (max-width:700px){.coach-launch{right:14px;bottom:14px}
   .coach-log{padding:14px 14px 8px}
   .coach-hint{display:none}
 }
 
 /* Refinements after looking at the rendered panel at 1440 and at 860. */
 .coach-sep{width:3px;height:3px;border-radius:50%;background:var(--hair-20);flex:0 0 auto}
-.coach-hint{max-width:none;white-space:nowrap}
+
 /* The editor is the reason this screen exists; the coach gives width back to it. */
 body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minmax(0,1.12fr) minmax(300px,.8fr)}
 /* With nothing said yet, the invitation sits in the middle of the panel rather
    than clinging to the top of an empty column. */
 .coach-log:has(.coach-empty){display:flex;flex-direction:column;justify-content:center}
 
-/* ========================= Phase 4 — Run vs Submit =========================
-   Same vocabulary as everything above, spent on one job: making two actions
-   that look similar in every other tool look nothing alike here.
-
-   Run   — solid ink, a shortcut on its face, results on the grey canvas under a
-           quiet grey lane label. The thing you press fifty times an hour.
-   Submit— terracotta and outlined, no shortcut, and a verdict that arrives in a
-           white panel under a solid ink band. Deliberate, consequential, and
-           impossible to mistake for the lane below it. */
-
-.ws-submit{
-  display:inline-flex;align-items:baseline;gap:7px;white-space:nowrap;
-  background:var(--card);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-md);padding:7px 13px;
-  transition:background var(--dur-hover) ease,color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.ws-submit:hover:not(:disabled){background:var(--accent);color:var(--on-ink)}
-.ws-submit:hover:not(:disabled) .ws-submitscope{color:rgba(var(--on-ink-rgb),.72)}
-.ws-submitscope{
-  color:rgba(var(--accent-rgb),.74);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.ws-submit:disabled{cursor:default;background:var(--accent-soft)}
-.ws-submit.busy{border-style:dashed}
-@media (prefers-reduced-motion:reduce){.ws-submit{transition:background var(--dur-hover) ease,color var(--dur-hover) ease}}
+/* Run and Submit use the shared button variants in the screen header. */
 
 /* ---- the collapsed lane ---- */
 /* The pane shows one lane. The other is this: a single line saying what it holds, so a
@@ -1054,15 +842,12 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
   display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;
   padding:9px 16px 8px;border:0;border-bottom:1px solid var(--hair-10);
   background:rgba(var(--ink-rgb),.03);color:inherit;font:inherit;cursor:pointer;
-}
-.ws-stub:hover{background:rgba(var(--ink-rgb),.06)}
-.ws-stub:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+}.ws-stub:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .ws-stubmark{color:var(--ink-70);font-weight:600;letter-spacing:.2em;font-size:10px;flex:0 0 auto}
 .ws-stubline{font-size:12.5px;color:var(--ink-50);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-stub[data-tone="ok"] .ws-stubline{color:var(--easy)}
 .ws-stub[data-tone="err"] .ws-stubline{color:var(--hard)}
 .ws-stub[data-tone="warn"] .ws-stubline{color:var(--medium)}
-
 
 /* ---- the verdict panel ---- */
 /* Scoped to the workspace. As a bare `.sub` this collided with `.viewhead .sub`, the
@@ -1088,11 +873,6 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 @media (prefers-reduced-motion:reduce){.sub-progress i{transition:none}}
 .sub-runrow{display:flex;align-items:center;gap:12px;padding:13px 16px 0}
 .sub-runrow .spacer{flex:1 1 auto}
-.sub-runrow .act{
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:6px 12px;background:var(--card);color:var(--ink-70);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.sub-runrow .act:hover{border-color:var(--ink);color:var(--ink)}
 .sub-clock{color:var(--ink-50);font-size:11px;letter-spacing:.06em}
 .sub-judging .sub-msg{padding-top:9px;margin-bottom:0;font-size:12.5px;color:var(--ink-50)}
 
@@ -1120,8 +900,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 .sub-judgehead .spacer{flex:1 1 auto}
 .sub-judge .sub-msg{margin-left:0;margin-right:0}
 .sub-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.sub-detail.wide{grid-column:1 / -1}
-.sub-detail > .mono{margin-bottom:4px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.sub-detail.wide{grid-column:1 / -1}.sub-detail > .mono{margin-bottom:4px;}
 .sub-detail pre{
   font-family:var(--mono);font-size:12px;line-height:1.65;background:var(--canvas);
   border:1px solid var(--hair-10);border-radius:var(--r-md);padding:8px 10px;
@@ -1131,11 +910,6 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 
 .sub-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 16px 0;padding-top:11px;border-top:1px solid var(--hair-10)}
 .sub-foot .spacer{flex:1 1 auto}
-.sub-foot .act{
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:6px 12px;background:var(--card);color:var(--ink-70);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.sub-foot .act:hover{border-color:var(--ink);color:var(--ink)}
 .sub-link{
   color:var(--accent);
   text-decoration:underline;text-underline-offset:3px;
@@ -1146,7 +920,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 @media (max-width:700px){
   .sub-stats{grid-template-columns:minmax(0,1fr)}
   .sub-details{grid-template-columns:minmax(0,1fr)}
-  .ws-submitscope{display:none}
+
 }
 
 /* ---------------------------------------------------------------------------
@@ -1160,7 +934,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 .split{
   position:absolute;z-index:5;
   background:transparent;border:0;padding:0;
-  transition:background .12s ease;
+  transition:background-color .12s ease;
 }
 .split[hidden]{display:none}
 
@@ -1168,23 +942,19 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
   width:11px;margin-left:-5.5px;
   cursor:col-resize;
 }
-.split-row{
-  left:0;right:0;height:11px;margin-top:-5.5px;
-  cursor:row-resize;
-}
 
 /* The grip: a hairline that thickens on approach. */
 .split::after{
   content:"";position:absolute;border-radius:2px;
-  background:var(--hair-20);opacity:0;transition:opacity .12s ease,background .12s ease;
+  background:var(--hair-20);opacity:0;transition:opacity .12s ease,background-color .12s ease;
 }
 .split-col::after{left:50%;transform:translateX(-50%);top:10px;bottom:10px;width:2px}
-.split-row::after{top:50%;transform:translateY(-50%);left:14px;right:14px;height:2px}
+
+.split-row{left:0;right:0;height:11px;margin-top:-5.5px;cursor:row-resize;touch-action:none}
+.split-row::after{left:calc(50% - 20px);width:40px;top:50%;height:2px}
 
 /* The editor/results divider is the panel's own border; a short centred grip says it
    can be dragged without laying a second, thicker bar over that border. */
-.split-row::before{content:"";position:absolute;top:50%;left:50%;width:36px;height:3px;transform:translate(-50%,-50%);border-radius:2px;background:var(--hair-20)}
-.split-row:hover::before,.split-row:focus-visible::before{background:var(--ink-35)}
 
 .split:hover::after,.split:focus-visible::after{opacity:1;background:var(--ink-30)}
 .split:focus-visible{outline:none}
@@ -1211,15 +981,11 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   position:relative;
   display:flex;align-items:center;
 }
-.rec-row{display:flex;align-items:center;gap:6px}
+.rec-row{display:flex;align-items:center;gap:6px}.rec-toggle{
+  display:inline-flex;align-items:center;
 
-.rec-toggle{
-  display:inline-flex;align-items:center;gap:9px;
-  background:var(--card);border:1px solid var(--hair-20);border-radius:999px;
-  padding:8px 15px;box-shadow:var(--shadow);
-  transition:border-color var(--dur-hover) ease,box-shadow var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
+  transition:border-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
 }
-.rec-toggle:hover{border-color:var(--ink-35)}
 
 .rec-label{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;color:var(--ink-70)}
 .rec-clock{
@@ -1229,9 +995,8 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
 
 .rec-dot{
   width:9px;height:9px;border-radius:50%;
-  background:var(--ink-35);flex:0 0 auto;transition:background .14s ease;
+  background:var(--ink-35);flex:0 0 auto;transition:background-color .14s ease;
 }
-
 
 /* Live. Unmistakable, because a microphone you forgot is on is a real problem. */
 .rec.is-live .rec-toggle{border-color:var(--accent);background:var(--accent-soft)}
@@ -1250,10 +1015,10 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   font-size:12.5px;color:var(--ink-50);background:var(--card);
   border:1px solid var(--hair-10);border-radius:var(--r-md);padding:7px 11px;box-shadow:var(--shadow);
   /* Enters from the recorder above it, once per show; text updates while shown don't replay it. */
-  transform-origin:top right;transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out);
+  transform-origin:top right;transition:opacity 150ms var(--ease-out),transform 150ms var(--ease-out);
 }
 @starting-style{.rec-note{opacity:0;transform:translateY(-6%) scale(0.97)}}
-@media (prefers-reduced-motion:reduce){.rec-note{transition:opacity 180ms var(--ease-out)}}
+@media (prefers-reduced-motion:reduce){.rec-note{transition:opacity 150ms var(--ease-out)}}
 .rec-note[data-tone="ok"]{color:var(--easy)}
 .rec-note[data-tone="warn"]{color:var(--med)}
 .rec-note[data-tone="err"]{color:var(--hard);border-color:rgba(var(--hard-rgb),.3)}
@@ -1274,7 +1039,6 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   font-size:14px;line-height:1;color:var(--ink-50);
   padding:5px 7px;border:1px solid transparent;border-radius:var(--r-sm);
 }
-.set-open:hover{color:var(--ink);border-color:var(--hair-20)}
 
 .set-scrim{position:fixed;inset:0;background:rgba(var(--ink-rgb),.18);z-index:90;transition:opacity var(--dur-fade) ease}
 @starting-style{.set-scrim{opacity:0}}
@@ -1287,36 +1051,30 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   transition:transform var(--dur-drawer) var(--ease-drawer);
 }
 @starting-style{.settings{transform:translateX(100%)}}
-.set-head{
-  display:flex;align-items:center;gap:10px;
-  padding:0 16px;height:var(--topbar-h);flex:0 0 auto;
-  border-bottom:1px solid var(--hair-10);
-}
+
 .set-head .spacer{flex:1 1 auto}
 /* Block flow: this scrolls — see server/test/css-rules.test.mjs. */
-.set-body{flex:1 1 auto;overflow-y:auto;display:block;padding:18px 16px 40px}
-.set-label{margin:22px 0 10px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.set-body{min-height:0;box-sizing:border-box;flex:1 1 auto;overflow-y:auto;display:block;padding:18px 16px 40px}
+.set-label{margin:0 0 var(--space-2);font:600 11px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-70)}
 .set-label:first-child{margin-top:0}
 
 .set-cards{display:grid;grid-template-columns:1fr;gap:9px}
 .set-card{
   display:block;text-align:left;width:100%;
   border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);
-  transition:border-color var(--dur-hover) ease,background var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
+  transition:border-color var(--dur-hover) ease,background-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
 }
 .set-card:hover{border-color:var(--ink-35)}
 .set-card[aria-pressed="true"]{border-color:var(--ink);background:rgba(var(--ink-rgb),.03)}
 .set-cardname{margin-top:9px;color:var(--ink)}
-.set-cardblurb{font-size:12.5px;line-height:1.5;color:var(--ink-50);margin-top:3px}
+.set-cardblurb{font-size:12px;line-height:1.5;color:var(--ink-70);margin:var(--space-2) 0 0}
 .set-notice{margin-top:var(--space-1)}
 
-
-.set-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--hair-06)}
-.set-rowname{font-size:13.5px;color:var(--ink-70);flex:0 0 auto}
+.set-row{display:flex;align-items:center;gap:var(--space-3);min-height:36px;padding:var(--space-1) 0;border-bottom:1px solid var(--hair-10)}
+.set-rowname{font-size:13px;color:var(--ink-70);flex:1;min-width:0}
 .set-row .spacer{flex:1 1 auto}
 .set-range{flex:1 1 auto;min-width:0;accent-color:var(--ink)}
 .set-value{flex:0 0 auto;font-size:10px}
-.set-check{width:16px;height:16px;accent-color:var(--ink)}
 
 /* Reduce motion: nothing loops or moves. Colour and opacity changes still ease, because
    they explain a change of state without moving anything. */
@@ -1324,19 +1082,14 @@ body.motion-off :is(*,*::before,*::after){animation:none !important;transition-p
 
 /* Theme palettes and character live in themes.css. */
 
-body{background-image:var(--texture);background-attachment:fixed}
-
-
+body{background-image:var(--texture);background-attachment:scroll}
 
 /* Coach identity: a compact editorial masthead that makes the context legible before
    the conversation starts. It is intentionally fixed-height friendly and contains no
    live claims; the chips describe the sources available to the next question. */
-.coach-identity{flex:0 0 auto;padding:11px 14px 10px;border-bottom:1px solid var(--hair-10);background:linear-gradient(110deg,rgba(var(--ink-rgb),.035),transparent 70%)}
-.coach-eyebrow{display:block;color:var(--accent);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.coach-title{margin-top:3px;font-family:var(--serif);font-size:18px;line-height:1.12;letter-spacing:-.025em;color:var(--ink)}
+
 .coach-context{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
 .coach-context span{color:var(--ink-50);border:1px solid var(--hair-10);border-radius:999px;padding:2px 6px;white-space:nowrap;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-
 
 /* The key list in Settings — a reference, not a control panel. */
 .set-keys{display:flex;flex-direction:column;gap:1px}
@@ -1361,19 +1114,15 @@ body{background-image:var(--texture);background-attachment:fixed}
   color:var(--ink-70);box-shadow:var(--shadow);max-width:min(340px,70vw);
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
-.coach-run:hover{border-color:var(--ink);color:var(--ink)}
-.coach-run-go{
-  display:inline-flex;align-items:center;gap:9px;min-width:0;
-  border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;
-  text-transform:inherit;padding:7px 4px 7px 14px;cursor:pointer;border-radius:999px 0 0 999px;
-}
-.coach-run-x{
-  border:0;background:none;color:var(--ink-35);cursor:pointer;
-  font:inherit;font-size:15px;line-height:1;letter-spacing:0;
-  padding:0 12px 0 8px;border-radius:0 999px 999px 0;flex:0 0 auto;
-}
-.coach-run-x:hover{color:var(--ink)}
-.coach-run-go:focus-visible,.coach-run-x:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.coach-run:hover{border-color:var(--ink);color:var(--ink)}.coach-run-go{
+  display:inline-flex;align-items:center;min-width:0;
+
+  cursor:pointer;
+}.coach-run-x{
+  cursor:pointer;
+  line-height:1;
+  flex:0 0 auto;
+}.coach-run-go:focus-visible,.coach-run-x:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .coach-run-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;text-transform:none;letter-spacing:0;font-size:12px}
 .coach-run-state{color:var(--ink-35);flex:0 0 auto}
 .coach-run-dot{
@@ -1392,35 +1141,22 @@ body.coach-open .coach-runs{bottom:20px}
   display:flex;align-items:center;gap:2px;padding:6px 10px 0;
   border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.012);
 }
-.rr-tab{
-  padding:7px 12px;border-radius:var(--r-md) var(--r-md) 0 0;color:var(--ink-35);
-  border:1px solid transparent;border-bottom:none;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.rr-tab[aria-pressed="true"]{background:var(--card);border-color:var(--hair-10);color:var(--ink)}
-.rr-tab:hover{color:var(--ink-70)}
 .rr-tabmark{margin-left:auto;align-self:center;padding:0 6px;font-size:10.5px;color:var(--ink-35);cursor:default}
 .rr-pane{min-height:0}
 
 .tc{display:flex;flex-direction:column}
-.tc-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:11px 14px 0}
-.tc-tab{
-  display:inline-flex;align-items:center;gap:5px;
-  border:1px solid var(--hair-20);border-radius:var(--r-md);padding:5px 11px;
-  color:var(--ink-50);background:var(--card);
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
+.tc-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:11px 14px 0}.tc-tab{
+  display:inline-flex;align-items:center;
+
 }
-.tc-tab:hover{border-color:var(--ink-35);color:var(--ink-70)}
 .tc-tab.is-on{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .tc-tab.is-mine{border-style:dashed}
 .tc-tab.is-mine.is-on{border-style:solid}
 .tc-mark{color:var(--accent);font-weight:700}
-.tc-tab.is-on .tc-mark{color:var(--solid-fg)}
-.tc-add{
-  font-family:var(--mono);font-size:13px;line-height:1;color:var(--ink-35);
-  border:1px dashed var(--hair-20);border-radius:var(--r-md);padding:4px 10px;
+.tc-tab.is-on .tc-mark{color:var(--solid-fg)}.tc-add{
+  line-height:1;
+
 }
-.tc-add:hover{border-color:var(--ink);color:var(--ink)}
 
 .tc-panel{padding:11px 14px 13px}
 .tc-fields{display:flex;flex-direction:column;gap:8px}
@@ -1437,7 +1173,7 @@ body.coach-open .coach-runs{bottom:20px}
 .tc-input::placeholder{color:var(--ink-35)}
 .tc-foot{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .tc-origin{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.tc-run{padding:5px 14px}
+
 .tc-empty{padding:14px 4px;font-size:13px;color:var(--ink-50);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tc-notice{margin:8px 14px 0;font-size:12px;color:var(--ink-50)}
 .tc-notice.warn{color:var(--med)}
@@ -1453,11 +1189,9 @@ body.coach-open .coach-runs{bottom:20px}
 
 /* Pinned to the hero's corner so a long title wraps under it instead of pushing it down. */
 .phero{position:relative}
-.phero .row1{padding-right:56px}
+.phero .row1{padding-right:84px}
 .pnav{position:absolute;top:18px;right:14px;display:inline-flex;gap:2px}
-.pnav-btn{width:24px;height:24px;background:none;color:var(--ink-50);border-radius:var(--r-sm)}
-.pnav-btn:hover:not(:disabled){color:var(--ink);background:var(--surface-inset)}
-.pnav-btn:disabled{opacity:.35;cursor:default}
+.pnav-shuffle{display:inline-grid;place-items:center;margin-left:4px}
 .ptags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
 .paneltoggles{container-type:inline-size}
 .plinks{margin-left:auto;display:flex;gap:12px;align-items:center}
@@ -1472,7 +1206,6 @@ body.coach-open .coach-runs{bottom:20px}
    toolbar or introducing another status colour. Its sibling remains the stop action. */
 .rec-problem{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11px var(--ui);color:var(--ink-70)}
 .rec[hidden],.rec-problem[hidden],.rec-end[hidden]{display:none}
-.rec-end{font:500 11px var(--ui)}
 
 /* Press feedback: buttons give a little under the pointer. Each one's transition list
    carries transform var(--dur-turn), which reduced motion zeroes. */
@@ -1487,36 +1220,9 @@ body.coach-open .coach-runs{bottom:20px}
 .sub-verdict + .sub-msg{transition:opacity var(--dur-fade) var(--ease-out) 40ms}
 @starting-style{.sub-verdict{opacity:0;transform:translateY(6px)}.sub-verdict + .sub-msg{opacity:0}}
 
-/* ---- receipts: what the tutor did in Studio, one compact line each ----
-   One quiet list per reply, hairlines between rows: a log of actions, not a stack of cards. */
-.cmsg-receipts:empty{display:none}
-.cmsg-receipts{display:block;margin-bottom:6px;border:1px solid var(--hair-10);border-radius:var(--r-sm);background:var(--card)}
-.cmsg-receipt + .cmsg-receipt{border-top:1px solid var(--hair-06)}
-.cmsg-receipt{--content-gap:var(--space-2);
-  min-width:0;min-height:30px;
-  font:500 12px/1.45 var(--ui);color:var(--ink-70);
-}
-.cr-glyph{flex:none;width:14px;text-align:center;color:var(--accent)}
-.cr-text{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cr-state{flex:none;padding-right:3px;font:500 10.5px/1.4 var(--ui);color:var(--ink-50)}
-.cr-undo{
-  flex:none;padding:1px 8px;border:1px solid var(--hair-20);border-radius:var(--r-sm);
-  font:500 11px/1.5 var(--ui);color:var(--ink-70);background:transparent;
-}
-.cr-undo:hover{color:var(--ink);border-color:var(--ink-35)}
-.cr-undo:disabled{opacity:.6;cursor:default}
-.cr-undo:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.cr-why{flex:0 0 100%;padding:0 4px 2px 22px;font:400 11.5px/1.45 var(--ui);color:var(--ink-50);overflow-wrap:anywhere}
-.cmsg-receipt.is-pending{color:var(--ink-50)}
-.cmsg-receipt.is-pending .cr-glyph{color:var(--ink-35)}
-.cmsg-receipt.is-failed .cr-glyph,.cmsg-receipt.is-failed .cr-state{color:var(--hard)}
-.cmsg-receipt.is-undone{color:var(--ink-35)}
-.cmsg-receipt.is-undone .cr-text{text-decoration:line-through;text-decoration-color:var(--ink-35)}
-.cmsg-receipt.is-undone .cr-glyph{color:var(--ink-35)}
-
 /* ---- hover surface ---- */
 :root{--hover-pad:8px;--control-h-sm:28px;--control-h:34px}
-body .hover-surface{position:relative;border-radius:var(--r-sm);transition:background var(--dur-hover)}
+body .hover-surface{position:relative;border-radius:var(--r-sm);transition:background-color var(--dur-hover)}
 body .hover-surface:hover{background:var(--hair-06)}
 body .hover-surface:active{background:var(--hair-10)}
 body .hover-surface:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
@@ -1526,23 +1232,14 @@ body .hover-divided{border-bottom:0}
 .hover-divided:hover:before,.hover-divided:has(+ :hover):before{opacity:0}
 /* ---- control geometry ---- */
 /* Specificity protects geometry from theme typography; content rows remain content-sized. */
-body[class] :is(.ws-mini,.ws-run,.ws-submit,.chip,.btn,.act,.rec-toggle,.coach-hide,.coach-tab,.rr-tab,.set-seg button,.seg button,.rm-mode,.rm-graph-controls button,.dash-refresh,.coach-model-trigger){height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
-body[class] :is(.coach-actions,.case-actions,.submission-action-bar) :is(button,.rec-toggle){height:var(--control-h);min-height:var(--control-h);padding-block:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center}
-body[class] .icon-btn{width:var(--control-h-sm);height:var(--control-h-sm);min-height:var(--control-h-sm);padding:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:0;background:transparent;border-radius:var(--r-sm);color:var(--ink-50);box-shadow:none}
-body[class] .icon-btn:hover{background:var(--hair-06);color:var(--ink)}
-body[class] .icon-btn[aria-pressed=true]{background:var(--hair-10)}
-body[class] .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.icon-btn svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:1.6}
+
 .control-tooltip{position:fixed;z-index:10000;pointer-events:none;padding:5px 8px;border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card);color:var(--ink);box-shadow:var(--shadow);font:11px var(--ui)}
-.chat-date{display:flex;align-items:center;gap:10px;margin:8px 0 18px;font:11px var(--mono);color:var(--ink-50)}
-.chat-date:before,.chat-date:after{content:'';height:1px;flex:1;background:var(--hair-10)}
+
 /* All compact toolbar families share geometry, including nested voice controls. */
-body[class] :is(.vc-talk,.coach-model-picker select,.catalog-modes button,.catalog .seg-opt,.catalog .linkbtn,.roadmap-mode,.graph-btn,.detail-close,.tc-tab,.tc-add,.set-open,.set-step button,.ptoggle){height:var(--control-h-sm);min-height:var(--control-h-sm);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
+
 .rr-casehead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
 /* Rows choose one size for both primary and secondary actions. */
-body[class] .tc-foot :is(.ws-mini,.ws-run){height:var(--control-h-sm);min-height:var(--control-h-sm);padding-block:0}
-body[class] :is(.dz-done,.dz-send,.dzl-new,.dzl-go,.dz-pause,.dz-phase){height:var(--control-h);min-height:var(--control-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding-block:0}
-body[class] .dz-phase:focus-visible{outline-offset:-2px}
+
 .dz-phase:disabled{opacity:.45;cursor:not-allowed}
 /* The list mount owns the bleed space, so the scrolling log never gains overflow. */
 
@@ -1561,3 +1258,22 @@ body .monaco-editor .find-widget>.button.codicon-widget-close{top:7.5px;right:8p
 .set-voice .set-row{flex-wrap:wrap}
 .set-voice select{min-width:0;max-width:100%;flex:1;padding:6px 9px;min-height:32px;background:var(--card);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--radius,4px);font:inherit;font-size:13px}
 .set-voice select:disabled{opacity:.5}
+
+/* Shuffle remains mounted while the Connector finds a problem. */
+.shufflebtn[aria-busy=true],.pnav-shuffle[aria-busy=true]{cursor:progress;opacity:.65}.pnav-shuffle[aria-busy=true]{display:inline-flex;align-items:center;width:auto;}
+.pnav-shuffle .shuffle-label{font:var(--text-xs) var(--ui);white-space:nowrap}
+.pnav-shuffle .shuffle-label:empty{display:none}
+
+.set-section{margin-bottom:var(--space-6)}
+.set-body>.set-row{margin-bottom:var(--space-6)}
+.set-section>.segmented{margin-block:var(--space-1)}
+.theme-preview{display:grid;grid-template-columns:1fr 1fr;height:76px;overflow:hidden;border-radius:var(--r-sm)}
+.theme-half{--preview-paper:var(--pl-paper);--preview-ink:var(--pl-ink);--preview-accent:var(--pl-accent);display:flex;flex-direction:column;background:var(--preview-paper);padding:var(--space-2);gap:var(--space-1)}
+.theme-half.dark{--preview-paper:var(--pd-paper);--preview-ink:var(--pd-ink);--preview-accent:var(--pd-accent)}
+.theme-preview-bar{height:6px;background:var(--preview-ink);opacity:.65}
+.theme-preview-panes{display:grid;grid-template-columns:1fr 1.5fr 1fr;flex:1;gap:1px}
+.theme-preview-panes>b{background:color-mix(in srgb,var(--preview-paper) 90%,var(--preview-ink));border-top:2px solid var(--preview-accent)}
+[data-theme-preview=desk] .theme-preview-panes{gap:4px}
+[data-theme-preview=desk] .theme-preview-panes>b{border-radius:var(--r-sm);box-shadow:var(--shadow)}
+[data-theme-preview=dunes] .theme-preview-panes{gap:5px}
+[data-theme-preview=dunes] .theme-preview-panes>b{border:1px solid var(--preview-ink);box-shadow:-2px 2px 0 var(--preview-accent),2px 2px 0 var(--preview-ink)}

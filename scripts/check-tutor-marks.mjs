@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 // Tutor-mark geometry regression: real Chrome/CDP, scratch home, network disabled.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -37,7 +38,7 @@ try {
   socket.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.method==='Runtime.exceptionThrown')issues.push(m.params.exceptionDetails.exception?.description||m.params.exceptionDetails.text);});
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await send('Page.navigate', { url: `${ORIGIN}/#/lld` });
-  await until(() => evaluate("return !!document.querySelector('.pr-launch')"), 'app');
+  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'app');
   await evaluate(`const {mountPythonEditor}=await import('/js/python-editor.js');const host=document.createElement('div');host.id='mark-fixture';Object.assign(host.style,{width:'820px',height:'850px',margin:'20px'});document.querySelector('#app').replaceChildren(host);window.__mounted=mountPythonEditor(host,${JSON.stringify(Array.from({length:90},(_,i)=>`value_${i+1} = ${i+1}`).join('\n'))});await __mounted.ready;window.__editor=__mounted.raw.instance;const {createMonacoTutor}=await import('/js/coach-actions.js');window.__tutor=createMonacoTutor(__editor,monaco);`);
   const long = 'Explain this invariant carefully and keep the explanation readable. '.repeat(9) + '\n\n' + 'TOKEN_'.repeat(50);
   const geometry=()=>evaluate(`const outer=document.querySelector('.tutor-note'),body=outer?.querySelector('.tutor-note-body'),text=outer?.querySelector('.tutor-note-text');if(!body)return null;const r=n=>{const x=n.getBoundingClientRect();return {top:x.top,bottom:x.bottom,left:x.left,right:x.right,height:x.height,width:x.width}};return {outer:r(outer),body:r(body),text:text.hidden?null:r(text),viewport:r(__editor.getDomNode()),height:parseFloat(outer.style.height),next:__editor.getTopForLineNumber(15)-__editor.getScrollTop()+__editor.getDomNode().getBoundingClientRect().top,scroll:body.scrollWidth,width:body.clientWidth};`);
@@ -85,5 +86,5 @@ try {
 } finally {
   socket?.close(); chrome?.kill('SIGTERM'); server?.kill('SIGTERM');
   for (const request of pending.values()) clearTimeout(request.timer);
-  await fs.rm(PROFILE, { recursive: true, force: true }).catch(() => {}); await fs.rm(HOME, { recursive: true, force: true }).catch(() => {});
+  await cleanupChrome(chrome, PROFILE); await fs.rm(HOME, { recursive: true, force: true }).catch(() => {});
 }

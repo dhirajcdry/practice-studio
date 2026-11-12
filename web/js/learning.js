@@ -24,10 +24,10 @@ export function openLearningNotes(slug, title) {
     finally { save.disabled = !input.value.trim(); }
   } });
   const dialog = el('dialog', { class: 'rp-sheet ln-sheet', 'aria-label': 'Learning notes' });
-  dialog.append(dialogHeader({ title: 'Learning notes', subtitle: title, closeLabel: 'Close learning notes', onClose: () => dialog.close() }),
+  dialog.append(dialogHeader({ title: 'Learning notes', subtitle: title, actions: { primary: save }, closeLabel: 'Close learning notes', onClose: () => dialog.close() }),
     el('div', { class: 'rp-scroll ln-scroll' }, [
       el('section', { class: 'ln-compose' }, [el('label', { text: 'Add a note', for: 'learning-note-input' }), input,
-        el('div', { class: 'ln-actions' }, [status, save])]), content,
+        el('div', { class: 'ln-actions' }, [status])]), content,
     ]));
   input.id = 'learning-note-input';
   async function load() {

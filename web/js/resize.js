@@ -319,7 +319,9 @@ export function installResizers() {
   applyResultsHeight(resultsEl);
   requestAnimationFrame(position);
 
-  const onWindowResize = () => { applyColumns(pbody); applyResultsHeight(resultsEl); position(); };
+  let layoutFrame = 0, positionFrame = 0;
+  const onWindowResize = () => { cancelAnimationFrame(layoutFrame); layoutFrame = requestAnimationFrame(() => { applyColumns(pbody); applyResultsHeight(resultsEl); position(); }); };
+  const schedulePosition = () => { cancelAnimationFrame(positionFrame); positionFrame = requestAnimationFrame(position); };
   window.addEventListener('resize', onWindowResize);
 
   // The coach column and focus mode both appear and vanish via a body class, and the
@@ -332,12 +334,12 @@ export function installResizers() {
   observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
   // The results panel grows when a run finishes; the handle sits on its edge.
-  const ro = new ResizeObserver(() => position());
+  const ro = new ResizeObserver(schedulePosition);
   if (resultsEl) ro.observe(resultsEl);
   ro.observe(pbody);
 
   teardown = () => {
-    window.removeEventListener('resize', onWindowResize);
+    cancelAnimationFrame(layoutFrame); cancelAnimationFrame(positionFrame); window.removeEventListener('resize', onWindowResize);
     observer.disconnect();
     ro.disconnect();
     for (const fn of cleanups) fn();

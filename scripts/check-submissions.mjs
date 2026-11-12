@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { checkSidebar } from './check-sidebar.mjs';
 import { checkControls } from './check-controls.mjs';
 // Exercise saved submissions in a disposable workspace and browser profile.
@@ -286,5 +287,5 @@ try {
   server?.kill();
   await Promise.all(closing);
   await fsp.rm(scratch, { recursive: true, force: true, maxRetries: 5 });
-  await fsp.rm(profile, { recursive: true, force: true, maxRetries: 5 });
+  await cleanupChrome(chrome, profile);
 }

@@ -38,8 +38,8 @@ kill callback never fires. Pauses and completions cannot overwrite an in-flight 
 
 The `#/lld` screen uses the same interview panel, provider lifecycle, pause/resume
 handling, raw record, and report pipeline as coding interviews. It is a strict 45-minute
-L4 exercise by default with a blank Python document owned by the candidate. The library
-includes three example Python scenarios: meeting-room booking, parcel lockers,
+L4 exercise by default with a blank Python document owned by the candidate. The home
+lists three example Python scenarios: meeting-room booking, parcel lockers,
 and a vending machine. Fresh mock preparation is not limited to those examples.
 The interviewer asks one short question at a time, avoids
 proposing classes or methods, and introduces at most one persisted curveball. Typed and

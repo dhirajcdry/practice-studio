@@ -11,7 +11,7 @@ import { submissionEditor } from './editor.js';
 import { submissionPresentation, firstDifference } from './submission-presentation.js';
 
 const idOf = submission => String(submission.submissionId);
-const button = (text, onclick) => el('button', { class: 'ws-mini', type: 'button', text, onclick });
+const button = (text, onclick) => el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text, onclick });
 function tone(submission) {
   if (submission.accepted) return 'easy';
   return /Limit Exceeded/i.test(submission.verdict) ? 'medium' : 'hard';
@@ -116,7 +116,7 @@ function failureBlock(label, text, range) {
     }
     catch { copy.textContent = '!'; copy.setAttribute('aria-label', 'Copy failed'); }
   });
-  copy.className = 'icon-btn';
+  copy.className = 'btn btn--icon icon-btn';
   copy.setAttribute('aria-label', `Copy ${label.toLowerCase()}`);
   tooltip(copy, `Copy ${label.toLowerCase()}`);
   const section = el('section', { class: 'failure-block' }, [
@@ -211,7 +211,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       ]));
     }
     if (!rows.length) parts.push(el('div', { class: 'submission-empty' }, [
-      el('span', { class: 'empty-icon', text: '↗', 'aria-hidden': 'true' }),
+      el('span', { class: 'empty-icon', 'aria-hidden': 'true' }, icon('forward', 15)),
       el('h3', { text: 'No submissions yet' }),
     ]));
     rows.forEach((submission, index) => {
@@ -220,7 +220,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
         ? submission.runtimeMs - previous.runtimeMs : null;
       const rowTone = tone(submission);
       parts.push(el('button', {
-        type: 'button', class: `sidebar-record sidebar-record-summary submission-row ui-inset ui-row tone-${rowTone}`,
+        type: 'button', class: `ui-action-row sidebar-record sidebar-record-summary submission-row ui-inset ui-row tone-${rowTone}`,
         onclick: () => detail(submission),
       }, [
         el('span', { class: 'ui-row-content ui-stack' }, [
@@ -350,7 +350,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
     const index = rows.indexOf(submission);
     const previous = button('↑', () => detail(rows[index - 1]));
     const next = button('↓', () => detail(rows[index + 1]));
-    previous.className = next.className = 'icon-btn';
+    previous.className = next.className = 'btn btn--icon icon-btn';
     tooltip(previous, 'Newer submission');
     tooltip(next, 'Older submission');
     previous.disabled = index === 0;
@@ -363,10 +363,10 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     }) : 'Time unavailable';
     const sourceNode = /^https:\/\/(leetcode\.com|neetcode\.io)\//.test(submission.submissionUrl || '')
-      ? el('a', { href: submission.submissionUrl, target: '_blank', rel: 'noopener noreferrer', text: `${source} ↗` })
+      ? el('a', { href: submission.submissionUrl, target: '_blank', rel: 'noopener noreferrer', text: source })
       : el('span', { text: source });
     const parts = [el('div', { class: 'submission-navigation' }, [
-      button('‹ All', list), el('span', { class: 'spacer' }),
+      button('All submissions', list), el('span', { class: 'spacer' }),
       el('span', { text: `${index + 1} of ${rows.length}` }), previous, next,
     ]), el('div', {
       class: `submission-hero tone-${tone(submission)} ${submission.accepted ? 'accepted' : 'rejected'}`,
@@ -403,7 +403,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       root.parentElement.append(toast);
       setTimeout(() => toast.remove(), 4000);
     });
-    load.classList.add('ws-run');
+    load.classList.remove('btn--quiet'); load.classList.add('btn--secondary', 'ws-run');
     load.disabled = typeof submission.code !== 'string';
     parts.push(status, el('div', { class: 'submission-action-bar' }, [
       load, button('Ask coach', () => onAsk(submission)), button('Copy', async () => {

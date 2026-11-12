@@ -1,7 +1,6 @@
 .gi-sheet { width:min(880px,calc(100vw - var(--space-6))); }
 .gi-body { display:flex;flex-direction:column;gap:var(--space-4);font:var(--text-sm)/var(--line-md) var(--ui); }
-.gi-body h3,.gi-body p { margin:0; }
-.gi-body>.btn { align-self:flex-start; }
+.gi-body h3,.gi-body p { margin:0; }.gi-body>.btn{ align-self:flex-start; }
 .gi-rule { background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius); }
 .gi-text { white-space:pre-wrap;overflow-wrap:anywhere; }
 .gi-history { border-top:1px solid var(--hair-10);padding-top:var(--space-3); }

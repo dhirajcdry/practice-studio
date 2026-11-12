@@ -1,3 +1,4 @@
+import { cleanupChrome } from './chrome-cleanup.mjs';
 import { checkMockTime } from './mock-time-fixture.mjs';
 // The design screen mounts, and the whiteboard is really there.
 //
@@ -276,47 +277,40 @@ try {
   const library = await evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < 200; i++) {
-      const rows = [...document.querySelectorAll('.dzl-row')];
-      // The unfinished rows are upgraded to Resume as their detail calls land, so wait
-      // for the answer rather than racing it.
-      if (rows.length && rows.some((r) => r.querySelector('.dzl-go')?.textContent.trim() === 'Resume')) {
+      const lists = document.querySelectorAll('.th-problems .th-problem-list');
+      const rows = lists.length ? [...lists[0].querySelectorAll('.th-problem')] : [];
+      if (rows.length) {
         return {
           rows: rows.length,
-          actions: rows.map((r) => r.querySelector('.dzl-go')?.textContent.trim()),
-          titles: rows.map((r) => r.querySelector('.dzl-title')?.textContent.trim().slice(0, 40)),
-          metas: rows.map((r) => r.querySelector('.dzl-meta')?.textContent.trim()),
-          notes: rows.map((r) => (r.querySelector('.dzl-note')?.hidden === false
-            ? r.querySelector('.dzl-note').textContent.trim() : null)),
-          newButton: document.querySelector('.dzl-new')?.textContent.trim() ?? null,
+          actions: rows.map((r) => r.querySelector('.th-problem-actions .btn:not(.th-expand)')?.textContent.trim()),
+          outcomes: rows.map(r => r.querySelector('.th-problem-title .ui-badge')?.textContent.trim()),
+          titles: rows.map((r) => r.querySelector('.th-problem-title strong')?.textContent.trim().slice(0, 40)),
+          metas: rows.map((r) => r.querySelector('.ui-meta')?.textContent.trim()),
+          untried: document.querySelectorAll('.th-problems .th-problem-list')[1]?.querySelectorAll('.th-problem').length ?? 0,
+          newButton: document.querySelector('.th-new')?.textContent.trim() ?? null,
         };
       }
       await sleep(100);
     }
-    return { rows: document.querySelectorAll('.dzl-row').length, timedOut: true };
+    return { rows: 0, timedOut: true };
   })()`);
 
-  if (library.rows === 3) ok('the library lists all three saved interviews, newest first');
-  else bad('the library lists past interviews', JSON.stringify(library).slice(0, 200));
+  if (library.rows === 3) ok('the home lists each saved interview under its problem');
+  else bad('the home lists past interviews', JSON.stringify(library).slice(0, 200));
 
-  // Both unfinished seeds are resumable — the transcript is the interview, and a CLI
-  // thread lost to a restart is a reason to rebuild it, not a reason to refuse.
-  if (library.actions?.filter((a) => a === 'Resume').length === 2) ok('every unfinished interview offers Resume');
-  else bad('an unfinished interview can be resumed', JSON.stringify(library.actions));
+  // Open on an unfinished interview resumes it when it can be resumed (see open()),
+  // and reads it back otherwise, so the row promises only "Open".
+  if (library.outcomes.filter(o => o === 'Unfinished mock').length === 2 && library.actions.filter(a => a === 'Open mock').length === 2) ok('each unfinished interview offers Open mock');
+  else bad('an unfinished interview can be opened', JSON.stringify(library));
 
-  if (library.notes?.some((n) => n && /saved transcript/.test(n))) {
-    ok('the unfinished interview with no thread says resuming rebuilds one');
-  } else {
-    bad('a threadless interview explains what resuming will do', JSON.stringify(library.notes));
-  }
+  if (library.actions.includes('Review') && library.metas.every(m => /1 mock/.test(m))) ok('a debriefed interview offers Review, and every row counts its mocks');
+  else bad('the debriefed interview can be reviewed', JSON.stringify(library));
 
-  if (library.metas?.some((m) => /NO DEBRIEF|no debrief/.test(m)) && library.metas?.some((m) => /DEBRIEFED|debriefed/.test(m))) {
-    ok('each row says the date, level, questions and whether it was debriefed');
-  } else {
-    bad('the rows say whether they were debriefed', JSON.stringify(library.metas));
-  }
+  if (library.untried === 4) ok('the four preset topics are listed as not tried yet');
+  else bad('untried presets are listed', String(library.untried));
 
   if (library.newButton) ok(`"${library.newButton}" is one click away`);
-  else bad('a new interview can be started from the library', 'no .dzl-new');
+  else bad('a new interview can be started from the home', 'no .th-new');
 
   const libShot = await send('Page.captureScreenshot', { format: 'png' });
   if (process.env.STUDIO_SHOT) {
@@ -346,9 +340,9 @@ try {
 
   const resumed = await evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    [...document.querySelectorAll('.dzl-row')]
-      .find((row) => row.querySelector('.dzl-title')?.textContent.includes('live leaderboard'))
-      ?.querySelector('.dzl-go')?.click();
+    [...document.querySelectorAll('.th-problem')]
+      .find((row) => row.querySelector('.th-problem-title strong')?.textContent.includes('live leaderboard'))
+      ?.querySelector('.th-problem-actions .btn:not(.th-expand)')?.click();
     for (let i = 0; i < 300; i++) {
       const canvas = document.querySelector('.dz-view .dz-canvas canvas');
       if (canvas && document.querySelectorAll('.dz-log .dz-entry').length) {
@@ -403,7 +397,7 @@ try {
   }
 
   /* Layout and lifecycle regressions, using only the disposable interview. */
-  for (const theme of ['studio','desk','editorial','ink','terminal']) {
+  for (const theme of ['studio','desk','dunes']) {
     await evaluate(`import('/js/settings.js').then(m=>m.setSetting('theme', '${theme}'))`);
     await sleep(80);
     const metrics = await evaluate(`(() => {
@@ -476,7 +470,7 @@ try {
     document.querySelector('[data-mode="voice"]').click();
     await new Promise(r=>setTimeout(r,100));
     const panel=document.querySelector('.dz-voice');
-    const visible=!panel.hidden && !panel.querySelector('.vc-status').hidden && panel.querySelector('.vc-status').getBoundingClientRect().height>0;
+    const visible=!panel.hidden && !panel.querySelector('.voice-state').hidden && panel.querySelector('.voice-state').getBoundingClientRect().height>0;
     document.querySelector('[data-mode="type"]').click();
     navigator.mediaDevices.getUserMedia=original;
     return visible && !document.querySelector('.dz-type').hidden;
@@ -554,7 +548,7 @@ try {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     document.querySelector('.dz-back').click();
     for (let i = 0; i < 200; i++) {
-      const open = [...document.querySelectorAll('.dzl-go')].find((b) => b.textContent.trim() === 'Open');
+      const open = [...document.querySelectorAll('.th-problem-actions .btn')].find(b => b.textContent.trim() === 'Review');
       if (open) { open.click(); break; }
       await sleep(100);
     }
@@ -599,7 +593,7 @@ try {
   chrome.kill();
   server.kill();
   await fsp.rm(HOME, { recursive: true, force: true }).catch(() => {});
-  await fsp.rm(PROFILE, { recursive: true, force: true }).catch(() => {});
+  await cleanupChrome(chrome, PROFILE);
 }
 
 if (problems.length) {

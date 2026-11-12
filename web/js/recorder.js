@@ -97,15 +97,15 @@ export function createRecorder({ getSlug, getTitle = slug => slug, onAttemptStar
   }
 
   const toggle = el('button', {
-    class: 'rec-toggle', type: 'button',
+    class: 'btn btn--quiet rec-toggle', type: 'button',
     onclick: () => requestAction(),
   }, [dot, label, clock]);
 
 
-  const back = el('button', { class: 'rec-problem linkbtn', type: 'button', hidden: true,
+  const back = el('button', { class: 'btn btn--quiet rec-problem linkbtn', type: 'button', hidden: true,
     onclick: () => { location.hash = '#/p/' + encodeURIComponent(attemptSlug); },
   });
-  const pausedEnd = el('button', { class: 'linkbtn rec-end', type: 'button', text: 'End interview', hidden: true, onclick: stop });
+  const pausedEnd = el('button', { class: 'btn btn--quiet linkbtn rec-end', type: 'button', text: 'End interview', hidden: true, onclick: stop });
   const note = el('div', { class: 'rec-note', hidden: true });
   const root = el('div', { class: 'rec' }, [
     el('div', { class: 'rec-row' }, [back, toggle, pausedEnd]),

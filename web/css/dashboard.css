@@ -11,22 +11,10 @@
 .dash{display:flex;flex-direction:column;gap:16px}
 
 /* ---------------- head ---------------- */
-.dash-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.dash-head h1{font-family:var(--display);font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.15}
-.dash-head .sub{color:var(--ink-50);font-size:14px;margin-top:3px;max-width:64ch}
-.dash-refresh{
-  font:500 12px var(--ui);
-  border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:7px 12px;background:var(--card);color:var(--ink-50);
-}
-.dash-refresh:hover{border-color:var(--ink);color:var(--ink)}
-.dash-refresh:disabled{opacity:.5;cursor:default}
+
+.dash-head .sub{color:var(--ink-50);font-size:14px;margin-top:3px;max-width:64ch}.dash-refresh:disabled{opacity:.5;cursor:default}
 
 /* A tiny "where did this number come from" marker. Every stat carries one. */
-.dash-src{
-  color:var(--ink-35);border:1px solid var(--hair-10);border-radius:var(--r-sm);
-  padding:1px 5px;cursor:help;white-space:nowrap;flex:0 0 auto;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
 
 /* ---------------- stat row ---------------- */
 .dash-stats{
@@ -147,8 +135,8 @@
 
 /* the deliberate "not enough evidence yet" block */
 .dash-need{
-  margin-top:9px;border:1px dashed var(--hair-20);border-radius:var(--r-md);
-  padding:11px 13px;background:rgba(var(--ink-rgb),.014);
+  margin-top:var(--space-2);border:0;border-left:1px solid var(--hair-20);border-radius:0;
+  padding:var(--space-2) var(--space-3);background:transparent;
 }
 .dash-need .nhead{
   color:var(--ink-35);margin-bottom:6px;display:flex;align-items:center;gap:8px;

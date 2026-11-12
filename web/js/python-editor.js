@@ -90,7 +90,7 @@ function widgetColors(p) {
     'inputOption.activeBorder': p.accent,
     'inputOption.activeForeground': p.ink,
     'inputOption.hoverBackground': p.hoverWash,
-    'focusBorder': p.accent,
+    'focusBorder': '#00000000',
     'icon.foreground': p.dim,
     'toolbar.hoverBackground': p.hoverWash,
     'toolbar.activeBackground': p.hoverWash,
@@ -111,40 +111,6 @@ function widgetColors(p) {
 
 /** Monaco cannot read CSS variables, so each visual theme needs its own definition. */
 function defineTheme(monaco) {
-  // Terminal after dark: neutral near-black, grey text, green only where it means something.
-  monaco.editor.defineTheme('ps-terminal-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: 'D9DED9' },
-      { token: 'comment', foreground: '6B736D', fontStyle: 'italic' },
-      { token: 'string', foreground: 'E8B455' },
-      { token: 'number', foreground: 'F0A35E' },
-      { token: 'keyword', foreground: '5FD38D', fontStyle: 'bold' },
-      { token: 'type', foreground: 'A8D8B5' },
-      { token: 'predefined', foreground: 'A8D8B5' },
-      { token: 'identifier', foreground: 'D9DED9' },
-      { token: 'delimiter', foreground: '8A918B' },
-      { token: 'operator', foreground: '8A918B' },
-    ],
-    colors: {
-      'editor.background': '#141414',
-      'editor.foreground': '#D9DED9',
-      'editorGutter.background': '#141414',
-      'editorLineNumber.foreground': '#8A948D',
-      'editorLineNumber.activeForeground': '#D9DED9',
-      'editor.lineHighlightBackground': '#1B1B1B',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#5FD38D',
-      'editor.selectionBackground': '#D9DED92A',
-      ...widgetColors({
-        ground: '#0F0F0F', raised: '#202020', ink: '#D9DED9', dim: '#8A918B',
-        edge: '#363A37', accent: '#5FD38D', onAccent: '#141414',
-        match: '#5FD38D4D', matchDim: '#D9DED92A', hoverWash: '#FFFFFF12',
-      }),
-    },
-  });
-
   // Slate: the light theme's palette, re-lit. Same hue for each token so the code reads
   // the same way in both modes — only the ground and the contrast change.
   monaco.editor.defineTheme('ps-studio-dark', {
@@ -241,25 +207,14 @@ function defineTheme(monaco) {
 
   // Each generated row supplies syntax hues as well as the editor surfaces.
   const palettes = [
-    ['ps-editorial-light', 'vs', '#FBF8F2', '#28251F', '#F3EEE4', '#6D665B', '#A3432B', '#A3432B', '#1E5A8A', '#2E6B4F', '#93650B', '#A3432B33', ''],
-    ['ps-ink-light', 'vs', '#FFFFFF', '#111111', '#F4F4F4', '#666666', '#0057B8', '#0057B8', '#1E5A8A', '#2E6B4F', '#93650B', '#0057B833', 'bold'],
-    ['ps-desk-light', 'vs', '#FFFDF9', '#181818', '#F6F2EA', '#756C63', '#BD5F3C', '#A34A2A', '#2F5D7C', '#3F7A55', '#9A6A12', '#BD5F3C2E', ''],
+    ['ps-desk-light', 'vs', '#FFFDF9', '#181818', '#F6F2EA', '#756C63', '#BD5F3C', '#A34A2A', '#2F5D7C', '#3F7A55', '#8A5D0E', '#BD5F3C2E', ''],
     ['ps-desk-dark', 'vs-dark', '#211E1B', '#EEE8E0', '#2A2622', '#A3998F', '#E2875F', '#E59A78', '#8FB8D8', '#9ACB9F', '#E0B060', '#E2875F33', ''],
-    ['ps-editorial-dark', 'vs-dark', '#1E1915', '#ECE3D4', '#27211C', '#8E8172', '#E07B6E', '#D3A6E0', '#8DBFE0', '#A8CC9A', '#D9B061', '#E07B6E33', ''],
-    ['ps-ink-dark', 'vs-dark', '#141414', '#F4F4F0', '#1E1E1E', '#8A8A86', '#6E8BFF', '#9DB0FF', '#7FD1C7', '#4ED68C', '#F0B429', '#6E8BFF40', 'bold'],
-    ['ps-terminal-light', 'vs', '#FAF8F0', '#17301F', '#F0EDE0', '#606B57', '#A35F00', '#0F5C33', '#5A4A00', '#1D7A45', '#8A5A00', '#A35F0033', 'bold'],
-    ['ps-nebula-light', 'vs', '#F6F3FB00', '#1D1733', '#6B3FD412', '#7F7A8D', '#6B3FD4', '#8A2BB8', '#2160A8', '#1F7A55', '#94650C', '#6B3FD433', ''],
-    ['ps-nebula-dark', 'vs-dark', '#0B0A1A00', '#ECE8FF', '#B69CFF12', '#878498', '#B69CFF', '#E59CFF', '#7FE3FF', '#6EE7B7', '#F5C46B', '#B69CFF33', ''],
-    ['ps-horizon-light', 'vs', '#FBF6EC00', '#22180C', '#B4600A12', '#847C71', '#B4600A', '#A04E00', '#6B4A12', '#2E6B4F', '#8C5A06', '#B4600A33', ''],
-    ['ps-horizon-dark', 'vs-dark', '#08070A00', '#F3ECE0', '#FFB25C12', '#898580', '#FFB25C', '#FFB25C', '#F2D49B', '#7FD4A0', '#FFD27A', '#FFB25C33', ''],
-    ['ps-abyss-light', 'vs', '#EEF8F800', '#0B2A33', '#00808A12', '#71878C', '#00808A', '#006D77', '#1F5FA8', '#1F7A55', '#8C5A06', '#00808A33', ''],
-    ['ps-abyss-dark', 'vs-dark', '#04101A00', '#DDF6F7', '#3FF0D012', '#7B8F94', '#3FF0D0', '#5CF2DA', '#7DB8FF', '#5EE6A0', '#F2CB6C', '#3FF0D033', ''],
-    ['ps-dunes-light', 'vs', '#FBF2E800', '#2A1A10', '#C2491D12', '#887B71', '#C2491D', '#B0431C', '#2F5D7C', '#2E6B4F', '#8C5A06', '#C2491D33', ''],
-    ['ps-dunes-dark', 'vs-dark', '#08141A00', '#E9E4DA', '#FF9A6212', '#848684', '#FF9A62', '#FF9A62', '#8CC7D9', '#7FD4A0', '#F2CB6C', '#FF9A6233', ''],
+    ['ps-dunes-light', 'vs', '#FBF2E800', '#2A1A10', '#C2491D12', '#75685E', '#C2491D', '#B0431C', '#2F5D7C', '#2E6B4F', '#8C5A06', '#C2491D33', ''],
+    ['ps-dunes-dark', 'vs-dark', '#08141A00', '#E9E4DA', '#FF9A6212', '#999C99', '#FF9A62', '#FF9A62', '#8CC7D9', '#7FD4A0', '#F2CB6C', '#FF9A6233', ''],
   ];
   for (const [name, base, background, foreground, line, dim, accent, keyword, type, string, number, selection, fontStyle] of palettes) {
     const dark = base === 'vs-dark';
-    const art = name.startsWith('ps-nebula-') || name.startsWith('ps-horizon-') || name.startsWith('ps-abyss-') || name.startsWith('ps-dunes-');
+    const art = name.startsWith('ps-dunes-');
     monaco.editor.defineTheme(name, {
       base, inherit: true,
       rules: [
@@ -279,7 +234,7 @@ function defineTheme(monaco) {
         'editor.selectionBackground': selection, 'editorIndentGuide.background1': dark ? '#FFFFFF12' : '#00000012',
         'editorIndentGuide.activeBackground1': dark ? '#FFFFFF2E' : '#0000002E',
         'editorWhitespace.foreground': dark ? '#FFFFFF18' : '#00000018',
-        ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? background.slice(0, 7) : line, ink: foreground, dim,
+        ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? (dark ? '#10232A' : '#FFF9F0') : line, ink: foreground, dim,
           edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: art ? (dark ? background.slice(0, 7) : '#FFFFFF') : (dark ? background : '#FFFFFF'), match: `${accent}40`,
           matchDim: `${accent}1F`, hoverWash: dark ? '#FFFFFF12' : '#0000000D' }),
       },
@@ -425,9 +380,9 @@ export function createPythonEditorControls() {
   let stopCursor;
   const cursor = el('span', { class: 'editor-cursor', text: 'Ln 1, Col 1' });
   const label = el('span');
-  const wrapButton = el('button', { class: 'editor-tool editor-wrap', type: 'button', title: 'Wrap long lines',
+  const wrapButton = el('button', { class: 'btn btn--icon editor-tool editor-wrap', type: 'button', title: 'Wrap long lines', 'aria-label': 'Wrap long lines',
     onclick: () => { const on = wrapButton.getAttribute('aria-pressed') !== 'true'; paintWrap(on); writeWrap(on); },
-  }, [icon('wrap', 14), label]);
+  }, [icon('wrap', 14)]);
   const root = el('span', { class: 'python-editor-tools' }, [cursor, wrapButton]);
   function paintWrap(on) { wrapButton.setAttribute('aria-pressed', String(on)); label.textContent = on ? 'Wrap on' : 'Wrap off'; }
   paintWrap(readWrap());

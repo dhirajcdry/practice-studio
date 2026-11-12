@@ -31,7 +31,7 @@ test.afterEach(() => {
 
 test('legacy ids migrate to a family and explicit mode', async () => {
   for (const [legacy, theme, mode] of [
-    ['phosphor', 'terminal', 'dark'], ['paper', 'studio', 'light'],
+    ['phosphor', 'studio', 'dark'], ['paper', 'studio', 'light'],
     ['slate', 'studio', 'dark'], ['blueprint', 'studio', 'dark'],
   ]) {
     const { settings, classes } = await setup({ theme: legacy });
@@ -43,7 +43,7 @@ test('legacy ids migrate to a family and explicit mode', async () => {
 });
 
 test('valid family ids default to system and unknown ids fall back to Studio', async () => {
-  for (const theme of ['editorial', 'ink', 'desk', 'studio', 'terminal', 'unknown']) {
+  for (const theme of ['desk', 'studio', 'dunes', 'unknown']) {
     const { settings } = await setup({ theme }, true);
     assert.equal(settings.getSettings().theme, theme === 'unknown' ? 'studio' : theme);
     assert.equal(settings.getSettings().mode, 'system');
@@ -95,4 +95,15 @@ test('missing matchMedia is safe', async () => {
   delete globalThis.window.matchMedia;
   settings.apply();
   assert.equal(settings.isDark(), false);
+});
+
+
+test('every retired family falls back to Studio and preserves the saved mode', async () => {
+  for (const theme of ['editorial', 'ink', 'terminal', 'scoreboard', 'nebula', 'horizon', 'abyss']) {
+    for (const mode of ['light', 'dark', 'system']) {
+      const { settings } = await setup({ theme, mode });
+      assert.equal(settings.getSettings().theme, 'studio');
+      assert.equal(settings.getSettings().mode, mode);
+    }
+  }
 });

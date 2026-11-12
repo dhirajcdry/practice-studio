@@ -567,30 +567,30 @@ test('the design debrief is graded at the saved difficulty, which is frozen on t
   process.env.STUDIO_FAKE_PROMPT_FILE = promptFile;
   const { origin, close } = await serve(root, { reply: CLEAN });
   try {
-    await saveReportDifficulty(root, 'amazon-sde-2');
+    await saveReportDifficulty(root, 'mid-level');
     const { events } = await readStream(await post(origin, '/api/design/start', { level: 'L4' }));
     const id = events.find((e) => e.name === 'interview').payload.id;
     process.env.STUDIO_FAKE_REPLY = JSON.stringify({ signal: 'Hire', headline: 'Sound design.' });
     await readStream(await post(origin, '/api/design/done', { interviewId: id, said: 'A queue.' }));
     const prompt = await fsp.readFile(promptFile, 'utf8');
-    assert.ok(prompt.includes('Amazon SDE II (L5)'));
+    assert.ok(prompt.includes('mid-level SDE II (L4)'));
     assert.ok(!prompt.includes('DIFFICULTY: Beginner'));
 
     await saveReportDifficulty(root, 'beginner');
     const store = new DesignStore({ root });
-    assert.equal((await store.readState(id)).reportDifficulty, 'amazon-sde-2', 'a later change never regrades');
+    assert.equal((await store.readState(id)).reportDifficulty, 'mid-level', 'a later change never regrades');
     const got = await (await fetch(`${origin}/api/design/${id}`)).json();
-    assert.equal(got.reportDifficulty, 'amazon-sde-2');
-    assert.equal(got.report.difficulty, 'amazon-sde-2');
+    assert.equal(got.reportDifficulty, 'mid-level');
+    assert.equal(got.report.difficulty, 'mid-level');
     const { interviews } = await (await fetch(`${origin}/api/design`)).json();
-    assert.equal(interviews.find((x) => x.id === id).reportDifficulty, 'amazon-sde-2');
+    assert.equal(interviews.find((x) => x.id === id).reportDifficulty, 'mid-level');
     const doc = await fsp.readFile(path.join(store.dir(id), 'interview.md'), 'utf8');
-    assert.match(doc, /\*\*Report graded at\*\* Amazon SDE II difficulty/);
-    assert.match(doc, /\*\*Hire\*\* · Amazon SDE II difficulty — Sound design\./);
+    assert.match(doc, /\*\*Report graded at\*\* Mid-level difficulty/);
+    assert.match(doc, /\*\*Hire\*\* · Mid-level difficulty — Sound design\./);
 
     const followup = await readStream(await post(origin, '/api/design/ask', { interviewId: id, requestId: 'design-why-1', question: 'Why that rating?' }));
     assert.ok(followup.events.some((e) => e.name === 'done'));
-    assert.match(await fsp.readFile(promptFile, 'utf8'), /"difficulty":\s*"amazon-sde-2"/);
+    assert.match(await fsp.readFile(promptFile, 'utf8'), /"difficulty":\s*"mid-level"/);
   } finally { delete process.env.STUDIO_FAKE_REPLY; delete process.env.STUDIO_FAKE_PROMPT_FILE; await close(); }
 });
 

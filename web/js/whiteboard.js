@@ -20,3 +20,25 @@ export function loadExcalidraw() {
   return excalidrawPromise;
 }
 
+
+/** The vendored API exposes zoom and fit without changing the recorded elements. */
+export function boardTools(getApi) {
+  const level = el('span', { class: 'dim', text: '100%', 'aria-label': 'Zoom level' });
+  const zoom = delta => {
+    const api = getApi(); if (!api) return;
+    const value = Math.max(.1, Math.min(3, api.getAppState().zoom.value + delta));
+    api.updateScene({ appState: { zoom: { value } } });
+    level.textContent = `${Math.round(value * 100)}%`;
+  };
+  const tools = [
+    { variant: 'icon', icon: 'minus', ariaLabel: 'Zoom out', onClick: () => zoom(-.1) }, level,
+    { variant: 'icon', icon: 'plus', ariaLabel: 'Zoom in', onClick: () => zoom(.1) },
+    { variant: 'icon', icon: 'fit', ariaLabel: 'Fit to pane', onClick: () => {
+      const api = getApi(); if (!api) return;
+      api.scrollToContent(api.getSceneElements(), { fitToContent: true });
+      requestAnimationFrame(() => { level.textContent = `${Math.round(api.getAppState().zoom.value * 100)}%`; });
+    } },
+  ];
+  tools.sync = value => { if (Number.isFinite(value)) level.textContent = `${Math.round(value * 100)}%`; };
+  return tools;
+}

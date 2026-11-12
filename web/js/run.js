@@ -1,3 +1,5 @@
+import { icon } from './ui/icon.js';
+import { paneHeader } from './ui/headers.js';
 // The run panel: turning a POST /api/run response into something true.
 //
 // Everything above the render functions is pure and covered by tests.js. The one
@@ -260,14 +262,14 @@ function caseRow(shapedCase, index, forceOpen) {
   }
 
   const head = el('button', {
-    class: 'rr-casehead', type: 'button', 'aria-expanded': String(open), 'aria-controls': bodyId,
+    class: 'btn btn--quiet rr-casehead', type: 'button', 'aria-expanded': String(open), 'aria-controls': bodyId,
     onclick: (event) => {
       const next = body.hidden;
       body.hidden = !next;
       event.currentTarget.setAttribute('aria-expanded', String(next));
     },
   }, [
-    el('span', { class: 'rr-caret', text: '›' }),
+    el('span', { class: 'rr-caret' }, icon('forward', 15)),
     el('span', { class: 'mono dim rr-caseno', text: `Case ${index + 1}` }),
     el('span', { class: 'rr-preview', text: shapedCase.input.replace(/\s+/g, ' ').trim() }),
     shapedCase.note && shapedCase.kind === 'pass' ? el('span', { class: 'tag quiet', text: 'any order' }) : null,
@@ -284,7 +286,7 @@ function block({ tone = '', head, lines = [], traceback = null, actions = [] }) 
     ...lines.filter(Boolean).map(line => el('p', { text: line })),
     traceback ? el('pre', { class: 'rr-trace', text: traceback }) : null,
     actions.length
-      ? el('div', { class: 'acts' }, actions.map(a => el('button', { class: 'act', type: 'button', text: a.label, onclick: a.onClick })))
+      ? el('div', { class: 'acts' }, actions.map(a => el('button', { class: 'btn btn--quiet act', type: 'button', text: a.label, onclick: a.onClick })))
       : null,
   ]);
 }
@@ -363,7 +365,7 @@ const HARD_CAP_MS = 30000;
  * rendered outcome. `getCode` is called at run time so the panel always sends
  * what is on screen right now.
  */
-export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
+export function createRunPanel({ slug, getCode, onCollapse, onEvent = () => {} }) {
   // Until the first run the Result tab says what will appear there, not nothing.
   const body = el('div', { class: 'rr-body' }, el('p', { class: 'rr-empty', text: 'Run your code to see each case\u2019s output here. Runs stay on this machine.' }));
 
@@ -374,14 +376,15 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
   const cases = el('div', { class: 'rr-pane' }, editor.root);
   const results = el('div', { class: 'rr-pane', hidden: true }, body);
 
-  const tabCases = el('button', { class: 'rr-tab mono', type: 'button', 'aria-pressed': 'true', text: 'Testcase' });
-  const tabResult = el('button', { class: 'rr-tab mono', type: 'button', 'aria-pressed': 'false', text: 'Result' });
+  const tabCases = el('button', { class: 'btn btn--quiet ui-tab rr-tab', type: 'button', 'aria-pressed': 'true', text: 'Testcase' });
+  const tabResult = el('button', { class: 'btn btn--quiet ui-tab rr-tab', type: 'button', 'aria-pressed': 'false', text: 'Result' });
   // "Local run" rides on the tab row: it is what stops these results being read as
   // LeetCode's verdict, and a band of its own only pushed the cases further down.
-  const bar = el('div', { class: 'rr-tabs' }, [
-    tabCases, tabResult,
-    el('span', { class: 'rr-tabmark', text: 'Local run', title: 'Runs on this machine against the visible cases. LeetCode judges only on Submit.' }),
-  ]);
+  const bar = paneHeader({ tabs: el('div', { class: 'ui-tabs' }, [tabCases, tabResult]),
+    subtitle: el('span', { class: 'rr-tabmark', text: 'Local run' }),
+    tools: onCollapse ? [{ variant: 'icon', icon: 'chevron', ariaLabel: 'Collapse results', onClick: onCollapse }] : [],
+  });
+  bar.classList.add('rr-tabs');
 
   function showTab(which) {
     const onResult = which === 'result';
@@ -409,7 +412,7 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
         el('span', { class: 'mono', text: 'Running' }),
         clock,
         el('span', { class: 'spacer' }),
-        el('button', { class: 'act', type: 'button', text: 'Stop', onclick: () => stop('cancelled') }),
+        el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Stop', onclick: () => stop('cancelled') }),
       ]),
     ]));
     ticker = setInterval(() => {
@@ -499,7 +502,7 @@ export function createRunPanel({ slug, getCode, onEvent = () => {} }) {
           ]),
           last
             ? el('button', {
-              class: 'btn btn--secondary btn--sm', type: 'button', text: 'Show your last run',
+              class: 'btn btn--secondary', type: 'button', text: 'Show your last run',
               onclick: () => renderRunResult(body, last, { onRerun: run }),
             })
             : null,

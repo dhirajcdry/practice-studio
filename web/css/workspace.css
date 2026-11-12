@@ -10,25 +10,25 @@ body.ws-wide .view{position:relative}
 body .topbar{background:var(--canvas);box-shadow:none;padding-inline:24px;gap:22px}
 body .wordmark .solid,body .wordmark .outline{font-family:var(--ui);font-size:16px;letter-spacing:-.04em}
 body .wordmark .outline{color:var(--ink-50);-webkit-text-stroke:0;font-weight:500}
-body .navbtn,body .navlink{font:500 12px var(--ui);text-transform:none;letter-spacing:0;border:0;border-radius:var(--r-sm);background:transparent;height:30px;padding:0 11px}
-body .navbtn .mono,body .navmenu a.mono{font:500 12px var(--ui);text-transform:none;letter-spacing:0}
-body .navbtn:not(.quiet),body .navlink[aria-current="page"]{background:rgba(var(--ink-rgb),.07);color:var(--ink);border-color:transparent}
+
+/* .topnav outranks the shared `body .btn.btn` reset, which otherwise erases the mark. */
+body .topnav .navlink[aria-current="page"]{background:rgba(var(--ink-rgb),.07);color:var(--ink);border-color:transparent}
 body .topmeta #srcLabel{font:500 11px var(--mono);letter-spacing:.04em;text-transform:none}
 body.ws-wide .searchbox{background:var(--card);border-color:var(--hair-10);border-radius:var(--r-sm);max-width:400px}
-body.ws-wide .rec-toggle{box-shadow:none}
 .workspace-rail{display:none}
 .workspace-rail button{position:relative;width:44px;height:48px;display:flex;align-items:center;justify-content:center;color:var(--ink-35)}
 .workspace-rail button:hover{color:var(--ink);background:var(--surface-inset)}
 .workspace-rail button[aria-pressed="true"]{color:var(--accent)}
 .workspace-rail button[aria-pressed="true"]::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:2px;background:var(--accent)}
 .workspace-rail svg{width:20px;height:20px}
+.workspace-rail svg path{fill:none;stroke:currentColor}
 .workspace-rail button span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .workspace-rail button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 
 /* Shared coding typography is compact and legible. Prose lives in the statement
    and conversation; only source code and measured values use monospace. */
 body.ws-wide .pbody.with-workspace{gap:0}
-body.ws-wide .card{border:0;border-radius:0;box-shadow:none;background-image:none;outline:none;backdrop-filter:none}
+body.ws-wide .card{border:0;border-radius:0;box-shadow:none;background-image:none;outline:none;}
 body.ws-wide .card::after{content:none}
 body.ws-wide .pcol{background:var(--canvas)}
 body.ws-wide .pcol>.card{background:transparent}
@@ -43,7 +43,6 @@ body.ws-wide .tag.medium{color:var(--med);background:var(--med-soft)}
 body.ws-wide .tag.hard{color:var(--hard);background:var(--hard-soft)}
 /* The toggles close the hero, so they share its surface: no rule above them. */
 body.ws-wide .paneltoggles{padding:0 20px 16px;border-top:0;background:transparent;border-bottom:1px solid var(--hair-10);gap:8px}
-body.ws-wide .ptoggle{font:11px/1 var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm);height:26px;padding:0 9px;border-color:var(--hair-10)}
 body.ws-wide .desc{padding:20px;font:13px/1.75 var(--prose)}
 body.ws-wide .desc pre{padding:14px;font-size:12px;border:1px solid var(--hair-10);border-radius:var(--r-sm);box-shadow:none;background:var(--card)}
 body.ws-wide .ws{border-inline:1px solid var(--hair-10);background:var(--card)}
@@ -57,36 +56,27 @@ body.ws-wide .ws-title{display:none}
 body.ws-wide .ws-probtitle{font:500 12px var(--ui);max-width:28ch}
 body.ws-wide .ws-status{font:11px var(--ui);letter-spacing:0}
 body.ws-wide .ws-status-why{font:10px var(--ui)}
-body.ws-wide .ws-mini,body.ws-wide .ws-run,body.ws-wide .ws-submit{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;padding:5px 10px;border-radius:var(--r-sm);box-shadow:none}
-body.ws-wide .ws-mini{border-color:var(--hair-10)}
 /* "Problem" is a pane switch, not an action: shown-state is a quiet fill, so Run stays
    the one solid button in the bar. */
 body.ws-wide .prob-toggle[aria-pressed="true"]{background:rgba(var(--ink-rgb),.07);border-color:var(--hair-20);color:var(--ink)}
-body.ws-wide .ws-run{background:var(--solid-bg);color:var(--solid-fg);border-color:var(--solid-edge)}
-body.ws-wide .ws-submit{background:transparent;color:var(--accent);border-color:var(--hair-10)}
-body.ws-wide .ws-mini kbd,body.ws-wide .ws-run kbd{font-size:9px;letter-spacing:0;border:0;padding:0;margin-left:2px}
+
 body.ws-wide .ws-results{background:var(--card)}
-body.ws-wide .rr-tabmark{font:11px var(--ui)}
-body.ws-wide .rr-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;padding:7px 10px;border-radius:0;border:0;border-bottom:2px solid transparent}
-body.ws-wide .rr-tab[aria-pressed="true"]{border-bottom-color:var(--accent);background:transparent}
+body.ws-wide .rr-tabmark{font:11px var(--ui)}body.ws-wide .rr-tab[aria-pressed="true"]{border-bottom-color:var(--accent);}
 body.ws-wide .rr-summary{font:500 13px var(--ui)}
-body.ws-wide .tc-tab{font:11px var(--ui);letter-spacing:0;border-radius:var(--r-sm)}
 /* One solid button per bar. The selected case and the case editor's own Run are
    quiet, so the toolbar's Run stays the obvious action. */
 body.ws-wide .tc-tab.is-on{background:rgba(var(--ink-rgb),.08);border-color:var(--hair-20);color:var(--ink)}
 body.ws-wide .tc-tab.is-on .tc-mark{color:inherit}
-body.ws-wide .ws-run.tc-run{background:transparent;color:var(--ink);border-color:var(--hair-20)}
-body.ws-wide .ws-run.tc-run:hover{border-color:var(--ink-35)}
+
 body.ws-wide .tc-label,body.ws-wide .tc-origin{font:11px var(--ui);letter-spacing:0;text-transform:none}
 /* Read-only is said by the note under the fields; a dashed edge read as a drop zone. */
 body.ws-wide .tc-input[readonly]{border-style:solid;border-color:var(--hair-10)}
 /* File-level tools ride in the file row: quiet until hovered, away from Run and Submit. */
-.editor-meta:has(.editor-tool){gap:var(--space-3);padding-right:var(--space-2)}
-.editor-tool[hidden],body.coach-open .editor-open-sidebar{display:none}
+.editor-meta:has(.editor-tool){gap:var(--space-3);padding-right:var(--space-2)}.editor-tool[hidden],body.coach-open .editor-open-sidebar{display:none}
 
 /* One row of buttons: 28px controls in a 40px bar. Height here comes out of the editor. */
 body.ws-wide .ws>.ws-bar{min-height:40px;flex-shrink:0;padding:6px 12px 6px 16px;gap:8px;border-top:1px solid var(--hair-10);border-bottom:0;align-items:center}
-body.ws-wide .ws>.ws-bar button{display:inline-flex;align-items:center;gap:6px;height:28px;min-height:0;padding:0 12px}
+
 body.ws-wide .ws>.ws-bar .ws-status{color:var(--ink-70)}
 
 /* A live summary, inspired by Daybound's state-before-detail hierarchy. These are
@@ -104,16 +94,9 @@ body.ws-wide .coach-title{display:none}
 body.ws-wide .coach-context{margin-top:7px;gap:10px}
 body.ws-wide .coach-context span{font:10px var(--ui);letter-spacing:0;text-transform:none;border:0;padding:0;color:var(--ink-50)}
 body.ws-wide .coach-context span+span::before{content:"·";padding-right:10px;color:var(--ink-35)}
-body.ws-wide .coach-tab{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm);padding:4px 8px}
 body.ws-wide .coach-state{font:10px var(--ui);letter-spacing:0}
 body.ws-wide .coach-log{padding:20px 18px}
 body.ws-wide .coach-log>*+*{margin-top:24px}
-body.ws-wide .cmsg-who{font:600 10px var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--ink-50)}
-body.ws-wide .cmsg.you .cmsg-body{font:12px/1.7 var(--ui);border:1px solid var(--hair-10);border-radius:var(--r-sm);background:var(--card);padding:11px 13px}
-body.ws-wide .cmsg.reply .cmsg-body{font:13px/1.8 var(--prose)}
-body.ws-wide .vc-talk{font:11px var(--ui);letter-spacing:0;text-transform:none;border-radius:var(--r-sm)}
-body.ws-wide .coach-starters{display:grid;gap:8px}
-body.ws-wide .coach-starters button{font:12px var(--ui);letter-spacing:0;text-transform:none;text-align:left;padding:11px 12px;border-radius:var(--r-sm);border:1px solid var(--hair-10);background:var(--card)}
 body.ws-wide .coach-empty{padding-top:8px}
 
 /* The layout is integrated, dense, edge-to-edge. The activity rail and the result
@@ -160,16 +143,11 @@ body.ws-wide .coach{border-left:1px solid var(--hair-20)}
 body.ws-wide .coach-identity,body.ws-wide .coach-bar{flex-shrink:0}
 body.ws-wide .coach-identity{background:var(--card);padding:16px 18px 14px}
 body.ws-wide .coach-context span{color:var(--ink-70);font-size:11px}
-body.ws-wide .coach-tab{font-size:12px;min-height:30px;padding:6px 10px;color:var(--ink-70)}
-body.ws-wide .coach-tab[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(var(--ink-rgb),.09)}
 body.ws-wide .coach-state{color:var(--ink-70);font-size:11px}
 body.ws-wide .coach-log,body.ws-wide .coach-log:has(.coach-empty){display:block;min-height:0;max-height:none}
 body.ws-wide .coach-empty{padding:0}
-body.ws-wide .coach-starters{display:grid;grid-template-columns:1fr;gap:10px}
-body.ws-wide .coach-starters button{color:var(--ink-70);min-height:42px;padding:11px 14px;border-color:var(--hair-20);background:var(--card);line-height:1.5}
-body.ws-wide .coach-starters button:hover{color:var(--ink);border-color:var(--accent);background:var(--accent-soft)}
 body.ws-wide .coach-input::placeholder{color:var(--ink-50)}
-body.ws-wide .cmsg-who{color:var(--ink-70)}
+
 @media(min-width:1081px){
   body.ws-wide.coach-open .pbody>.coach{grid-column:auto;grid-row:auto}
 }
@@ -179,13 +157,10 @@ body.ws-wide .cmsg-who{color:var(--ink-70)}
   body.ws-wide .ws>.ws-bar .ws-status{order:0;flex-basis:100%}
 }
 
-body.ws-wide .coach-hide{min-height:32px;padding:6px 10px}
-
 /* Empty evidence never consumes writing space, including flex-based themes. */
 
 body.ws-wide .tag.pattern{color:var(--accent);background:var(--accent-soft)}
 body.ws-wide .ptags .tag.quiet{color:var(--ink-70)}
-body.ws-wide .ws>.ws-bar .recmount .rec-toggle{height:28px;padding:0 10px;font:500 11px var(--ui);letter-spacing:0;text-transform:none}
 
 /* ---- the tutor's hands: marks, notes and edits in the editor (coach-actions.js) ----
    Tones: hint = accent, bug = --hard, good = --easy. A tint across the line and a bar in
@@ -224,14 +199,17 @@ body.motion-off .monaco-editor .tutor-flash{animation:none;background:rgba(var(-
   flex:none;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;
   border:1px solid rgba(var(--accent-rgb),.35);border-radius:var(--r-sm);background:var(--accent-soft);
   color:var(--accent);font:500 11px/1 var(--ui);white-space:nowrap;
-}
-.tutor-chip[hidden]{display:none}
-.tutor-chip:hover{border-color:var(--accent)}
-.tutor-chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.tutor-chip-x{font-size:13px;line-height:1;opacity:.7}
+}.tutor-chip[hidden]{display:none}.tutor-chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
 .tutor-chip:hover .tutor-chip-x{opacity:1}
 
 /* A case the tutor added: its own tab glyph, and its reason under the fields. */
 .tc-mark-coach{font-weight:400;font-size:10px}
 .tc-why{display:flex;gap:8px;align-items:baseline;margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0;font:12px/1.5 var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
 .tc-why-who{flex:none;font:600 10px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+
+.editor-meta,.editor-meta:has(.editor-tool){gap:6px;max-width:none;flex:1;min-width:0;padding-right:6px}
+.editor-file{flex:none;padding-inline:10px}
+.editor-path{margin-left:auto;flex:0 1 auto}
+.editor-meta>.python-editor-tools,.editor-meta>.btn{flex:none}
+body.ws-wide .pcol>.card>.ptags{margin:0;padding:8px 12px}
