@@ -513,18 +513,21 @@ the shared reading width. Receipts use `.ui-receipt`; successful output starts c
 
 `#/lld` and `#/design` share `web/js/track-home.js` and `web/css/track-home.css`, fed by
 `GET /api/track-home?discipline=` (`server/learning/track-home.mjs`) plus the track's own
-interview and practice lists. One 1040px reading column, in this order:
+interview and practice lists. The page is deliberately small: two boxes and a list, on one
+centred 1000px column.
 
-1. **Next session**: the first practice suggestion of the latest graded mock (title, why,
-   fix), its "move up" line, Practise this / Open the report, and the other suggestions.
-2. **Skills**: rubric rows by graded-mock columns (latest eight, oldest left) plus an
-   Overall row. A cell without evidence is a dash. One graded mock is labelled a single
-   reading, not a trend; tallies count only rated reports. No averages or percentages.
-3. **Problems**: one row per problem, most recent activity first, then catalog problems
-   not tried yet. Mocks without a structured report say "Feedback, not graded".
+- **Practise** and **Mock** sit side by side. Each offers one open choice (bring your own
+  problem / surprise me), selected by default, and three catalog problems; Show others
+  rotates them. Mock suggests problems not sat yet, Practise the ones already mocked.
+  Mock also holds the shared setup (length, answer mode, level, model) and Start mock;
+  Practise has Start practising. Choosing a problem never moves the Start button.
+- **What you've done** lists every mock and practice session, newest first, one line each:
+  title, Mock or Practice, the score if the mock has one (Unfinished if it was left open),
+  and the date. The row opens it. A finished mock also offers Practise it.
 
-New mock setup and open practice live behind the header actions. A page visit never
-starts a model turn. The learner disclosure stays last.
+Keep it this light. No skill scorecards, drills, grouped problem lists, rings, meters or
+counts here; reports hold that detail. A session without a score shows none. A page
+visit never starts a model turn.
 
 ### Settings, library rows and paint cost
 
@@ -535,11 +538,8 @@ and 24px between sections. Theme miniatures show pane geometry in light and dark
 without requesting the painting. Quiet prompt rows are content actions: 32px minimum,
 13px type, 2px apart, no border. They are not 28px toolbar controls.
 
-Design and LLD saved mocks are listed under their problem on the track home (see
-"Track homes"): a title, outcome badge and dot-separated relative metadata, one
-contextual action (Open mock / Continue practice / Review / Mock it), and a detail with
-each attempt plus Mock it again, Practise untimed and Learning notes. Open retains
-resumption for unfinished interviews. Coding history retains its Open
+Design and LLD saved mocks are listed on the track home (see "Track homes"). Opening an
+unfinished one resumes it. Coding history retains its Open
 and resume behavior; practice branching is supported only for LLD and system design.
 Reference drawers retain Solution / Article tabs and shortcuts with a separate close rail.
 

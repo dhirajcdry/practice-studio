@@ -146,11 +146,11 @@ export function initLLD(host) {
         discipline: 'lld', title: 'Low-level design',
         loadInterviews: async () => ({ interviews }),
         openInterview: item => { location.hash = `#/lld/${item.slug}/${item.id}`; },
-        createNewMock: () => createInterviewSetup({ slug: 'lld-new-mock', discipline: 'lld', label: 'Mock interview', description: 'A fresh problem chosen from your history. Defend your design, then review the feedback.', startLabel: 'Start the mock', onStart: async state => {
-          const { problem } = await interviewJson('/api/mock/prepare', { discipline: 'lld', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId });
-          if (!gone) await workspace(problem, { ...state, slug: problem.slug, title: problem.title });
-        } }),
-        startMock: (problem, state) => workspace(entries.find(entry => entry.slug === problem.slug) || { ...problem, discipline: 'lld' }, state),
+        startMock: async (problem, state) => {
+          if (problem) return workspace(entries.find(entry => entry.slug === problem.slug) || { ...problem, discipline: 'lld' }, state);
+          const prepared = (await interviewJson('/api/mock/prepare', { discipline: 'lld', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
+          if (!gone) await workspace(prepared, { ...state, slug: prepared.slug, title: prepared.title });
+        },
       });
     } catch (error) { replace(view, [notice, el('a', { href: '#/lld', text: 'Back to LLD' })]); fail(error); }
   }

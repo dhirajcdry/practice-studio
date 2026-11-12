@@ -112,16 +112,13 @@ export async function runVisualAudit({ origin, target, output }) {
   `;
   const lldSelection = {
     url: '/#/lld',
-    // The seeded saved-practice list loads independently of the scenario cards.
-    // Wait for it before clicking: inserting it afterward moves the selected
-    // scenario after its scrollIntoView has already run.
-    setup: `for (let i=0; i<100 && (!document.querySelector('[data-slug="lld-locker"]') || !document.querySelector('.pr-saved-row')); i++) await sleep(50);
-      need('.pr-saved-row'); await document.fonts.ready; await new Promise(requestAnimationFrame);
-      need('[data-slug="lld-locker"]').click();`,
-    ready: '#setup-lld-locker .ci-start',
-    assert: `const card=need('[data-slug="lld-locker"]'), setup=need('#setup-lld-locker'), start=need('#setup-lld-locker .ci-start');
-      const a=card.getBoundingClientRect(), b=setup.getBoundingClientRect(), c=start.getBoundingClientRect();
-      if (card.getAttribute('aria-expanded') !== 'true' || setup.previousElementSibling !== card || b.top<a.bottom || b.top-a.bottom>16) throw Error('LLD selection must show setup directly below its card');
+    // The track home renders after its three saved-record requests; wait for the row
+    // before opening it, so a late insert cannot move it after scrollIntoView.
+    setup: `for (let i=0; i<100 && !document.querySelector('.th-box--mock .th-pick[data-slug]'); i++) await sleep(50);
+      await document.fonts.ready; await new Promise(requestAnimationFrame);
+      need('.th-box--mock .th-pick[data-slug]').click();`,
+    ready: '.th-box--mock .th-pick[data-slug][aria-pressed="true"]',
+    assert: `const c=need('.th-box--mock .ci-start').getBoundingClientRect();
       if (c.left<0 || c.right>innerWidth || c.top<0 || c.bottom>innerHeight) throw Error('LLD Start is outside the viewport');`,
   };
   const editorEdges = {
@@ -299,10 +296,10 @@ export async function runVisualAudit({ origin, target, output }) {
     practiceTimerPaused: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-timer', setup: `for(let i=0;i<100&&need('.pr-timer button').disabled;i++)await sleep(50);if(need('.pr-timer-label').textContent==='Elapsed')need('.pr-timer button').click();for(let i=0;i<100&&need('.pr-timer-label').textContent!=='Paused';i++)await sleep(50);`, assert: `if(need('.pr-timer-label').textContent!=='Paused')throw Error('Timer not paused');` },
     learningNotes: { url: '/#/lld', setup: `(await import('/js/learning.js')).openLearningNotes('lld-locker','Locker system');`, ready: '.ln-sheet[open] .ln-evidence' },
     learningNotesNarrow: { url: '/#/lld', width: 390, setup: `(await import('/js/learning.js')).openLearningNotes('lld-locker','A much longer problem title: reservations, ownership, and concurrent allocation');`, ready: '.ln-sheet[open] .ln-evidence' },
-    lldLibrary: { url: '/#/lld', ready: '.th-problem' },
-    lldProblemOpen: { url: '/#/lld', setup: `need('.th-problem .th-expand').click();`, ready: '.th-problem-detail:not([hidden]) .th-detail-actions' },
-    lldNewMock: { url: '/#/lld', setup: `need('.th-new').click();`, ready: '.th-start:not([hidden]) .ci-start' },
-    lldMockNarrow: { url: '/#/lld', width: 390, setup: `need('.th-new').click();`, ready: '.th-start:not([hidden]) .ci-start', assert: `need('.th-start [aria-label="Answer mode: Voice"]'); need('.th-start [aria-label^="Target level:"]');` },
+    lldLibrary: { url: '/#/lld', ready: '.th-box--mock .th-pick[data-slug]' },
+    lldNarrow: { url: '/#/lld', width: 390, ready: '.th-box--mock .th-pick[data-slug]' },
+    lldNewMock: { url: '/#/lld', ready: '.th-box--mock .ci-start' },
+    lldMockNarrow: { url: '/#/lld', width: 390, ready: '.th-box--mock .ci-start', assert: `need('.th-box--mock [aria-label="Answer mode: Voice"]'); need('.th-box--mock [aria-label^="Target level:"]');` },
     lldContextNarrow: { url: '/#/lld', width: 390, setup: `need('.learner-context summary').click();`, ready: '.learner-context > div:not([hidden])', assert: `if (!need('.learner-context').open) throw Error('Learning context did not expand');` },
     lldSelected: lldSelection,
     lldSelectedNarrow: { ...lldSelection, width: 390 },
@@ -377,9 +374,9 @@ export async function runVisualAudit({ origin, target, output }) {
       if (counts.reduce((a,b) => a+b, 0) !== ${collectionCount}) throw Error('Roadmap must include all ${collectionCount} collection problems');` },
     roadmap: { url: '/#/roadmap', ready: '.roadmap' },
     progress: { url: '/#/progress', ready: '.dash-card' },
-    design: { url: '/#/design', ready: '.th-problems' },
-    designSetup: { url: '/#/design', setup: `need('.th-new').click();`, ready: '.th-start .ci-start', assert: `need('.th-start [aria-label="Answer mode: Voice"]'); need('[aria-label="System design problem: Choose for me · unseen"]');` },
-    designSetupNarrow: { url: '/#/design', width: 390, setup: `need('.th-new').click();`, ready: '.th-start .ci-start' },
+    design: { url: '/#/design', ready: '.th-item' },
+    designSetup: { url: '/#/design', ready: '.th-box--mock .ci-start', assert: `need('.th-box--mock [aria-label="Answer mode: Voice"]');` },
+    designSetupNarrow: { url: '/#/design', width: 390, ready: '.th-box--mock .ci-start' },
     problem: { url: problem, ready: '.ui-screen-header .ws-run', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
     chat: { url: problem, setup: coach, ready: '.recent-chat', assert: historySpacing },
     chatNarrow: { url: problem, setup: `${coach} need('.recent-chats').style.width='260px'; need('.recent-title').textContent='I am struggling to understand how these overlapping intervals should merge, especially when the new interval spans several existing intervals.';`, ready: '.recent-chat', assert: historySpacing },
@@ -450,7 +447,7 @@ export async function runVisualAudit({ origin, target, output }) {
           await send('Page.navigate', { url: 'about:blank' });
           await until("location.href === 'about:blank' && document.readyState === 'complete'", 'blank page');
           await send('Page.navigate', { url: `${origin}${config.url}` });
-          await until("document.readyState === 'complete' && document.querySelector('.catalog,.ws,.roadmap,.dash-card,.th-problems,.dz-view,.lld-view,.pr-view,.problem-import')", 'view');
+          await until("document.readyState === 'complete' && document.querySelector('.catalog,.ws,.roadmap,.dash-card,.th,.dz-view,.lld-view,.pr-view,.problem-import')", 'view');
           await evaluate(`const settings = await import('/js/settings.js');
             settings.setSetting('theme', ${JSON.stringify(theme)}); settings.setSetting('mode', ${JSON.stringify(mode)});
             settings.setSetting('motion', false); settings.setSetting('celebrations', false);

@@ -277,17 +277,17 @@ try {
   const library = await evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < 200; i++) {
-      const lists = document.querySelectorAll('.th-problems .th-problem-list');
-      const rows = lists.length ? [...lists[0].querySelectorAll('.th-problem')] : [];
+      const rows = [...document.querySelectorAll('.th-item')];
       if (rows.length) {
         return {
           rows: rows.length,
-          actions: rows.map((r) => r.querySelector('.th-problem-actions .btn:not(.th-expand)')?.textContent.trim()),
-          outcomes: rows.map(r => r.querySelector('.th-problem-title .ui-badge')?.textContent.trim()),
-          titles: rows.map((r) => r.querySelector('.th-problem-title strong')?.textContent.trim().slice(0, 40)),
-          metas: rows.map((r) => r.querySelector('.ui-meta')?.textContent.trim()),
-          untried: document.querySelectorAll('.th-problems .th-problem-list')[1]?.querySelectorAll('.th-problem').length ?? 0,
-          newButton: document.querySelector('.th-new')?.textContent.trim() ?? null,
+          kinds: rows.map((r) => r.querySelector('.th-item-kind')?.textContent.trim()),
+          outcomes: rows.map((r) => r.querySelector('.th-pill')?.textContent.trim() ?? null),
+          again: rows.filter((r) => r.querySelector('.th-again')).length,
+          boxes: [...document.querySelectorAll('.th-pair .th-box h2')].map(n => n.textContent.trim()),
+          picks: document.querySelectorAll('.th-box--mock .th-pick[data-slug]').length,
+          surprise: document.querySelector('.th-box--mock .th-pick:not([data-slug])')?.getAttribute('aria-pressed'),
+          newButton: document.querySelector('.th-box--mock .ci-start')?.textContent.trim() ?? null,
         };
       }
       await sleep(100);
@@ -295,22 +295,22 @@ try {
     return { rows: 0, timedOut: true };
   })()`);
 
-  if (library.rows === 3) ok('the home lists each saved interview under its problem');
-  else bad('the home lists past interviews', JSON.stringify(library).slice(0, 200));
+  if (library.rows === 3 && library.kinds.every(k => k === 'Mock')) ok('the home lists each saved interview once');
+  else bad('the home lists past interviews', JSON.stringify(library).slice(0, 300));
 
   // Open on an unfinished interview resumes it when it can be resumed (see open()),
-  // and reads it back otherwise, so the row promises only "Open".
-  if (library.outcomes.filter(o => o === 'Unfinished mock').length === 2 && library.actions.filter(a => a === 'Open mock').length === 2) ok('each unfinished interview offers Open mock');
-  else bad('an unfinished interview can be opened', JSON.stringify(library));
+  // and reads it back otherwise, so the row promises only that it is unfinished.
+  if (library.outcomes.filter(o => o === 'Unfinished').length === 2) ok('each unfinished interview says so');
+  else bad('an unfinished interview is marked', JSON.stringify(library));
 
-  if (library.actions.includes('Review') && library.metas.every(m => /1 mock/.test(m))) ok('a debriefed interview offers Review, and every row counts its mocks');
-  else bad('the debriefed interview can be reviewed', JSON.stringify(library));
+  if (library.again === 1) ok('only the debriefed interview offers practice from it');
+  else bad('the debriefed interview offers practice', JSON.stringify(library));
 
-  if (library.untried === 4) ok('the four preset topics are listed as not tried yet');
-  else bad('untried presets are listed', String(library.untried));
+  if (library.boxes.join() === 'Practise,Mock' && library.picks === 3 && library.surprise === 'true') ok('Practise and Mock each offer a few problems, with "surprise me" chosen');
+  else bad('the two boxes render', JSON.stringify(library));
 
   if (library.newButton) ok(`"${library.newButton}" is one click away`);
-  else bad('a new interview can be started from the home', 'no .th-new');
+  else bad('a new interview can be started from the home', 'no .th-box--mock .ci-start');
 
   const libShot = await send('Page.captureScreenshot', { format: 'png' });
   if (process.env.STUDIO_SHOT) {
@@ -340,9 +340,9 @@ try {
 
   const resumed = await evaluate(`(async () => {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    [...document.querySelectorAll('.th-problem')]
-      .find((row) => row.querySelector('.th-problem-title strong')?.textContent.includes('live leaderboard'))
-      ?.querySelector('.th-problem-actions .btn:not(.th-expand)')?.click();
+    const live = [...document.querySelectorAll('.th-item')]
+      .find((row) => row.querySelector('.th-item-title')?.textContent.includes('live leaderboard'));
+    live?.querySelector('.th-item-open')?.click();
     for (let i = 0; i < 300; i++) {
       const canvas = document.querySelector('.dz-view .dz-canvas canvas');
       if (canvas && document.querySelectorAll('.dz-log .dz-entry').length) {
@@ -548,7 +548,7 @@ try {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     document.querySelector('.dz-back').click();
     for (let i = 0; i < 200; i++) {
-      const open = [...document.querySelectorAll('.th-problem-actions .btn')].find(b => b.textContent.trim() === 'Review');
+      const open = [...document.querySelectorAll('.th-item')].find(r => r.querySelector('.th-again'))?.querySelector('.th-item-open');
       if (open) { open.click(); break; }
       await sleep(100);
     }

@@ -254,7 +254,7 @@ test('content surfaces do not override shared inset geometry', () => {
   const surfaces = new Set(['.recent-chat', '.submission-row', '.sidebar-record-summary',
     '.submission-card', '.rr-tutor', '.state', '.ws-notice', '.ci-setup', '.ci-live-header',
     '.ci-notice', '.ci-paused', '.ci-score-hero', '.ci-empty-session', '.set-card',
-    '.set-themes .set-card', '.th-problem', '.cmsg-receipt', '.detail-problem']);
+    '.set-themes .set-card', '.th-item', '.cmsg-receipt', '.detail-problem']);
   const offenders=[];
   for (const file of fs.readdirSync(WEB_CSS).filter(f=>f.endsWith('.css') && f!=='ui.css')) {
     const css=fs.readFileSync(path.join(WEB_CSS,file),'utf8').replace(/\/\*[\s\S]*?\*\//g,'');

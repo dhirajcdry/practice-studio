@@ -310,8 +310,8 @@ try {
   await designStore.create(sourceId,{prompt:'Design a URL-shortening service.',topicSlug:'design-url-shortener',startedAt:Date.now()-60000,endedAt:Date.now(),debriefed:true,phase:'wrapup',level:'L4',minutes:45});
   await designStore.writeScene(sourceId,0,designSnapshot.elements);
   await designStore.appendTurn(sourceId,{kind:'debrief',asked:'Review reservation atomicity.'});
-  await evaluate("location.hash='#/design'"); await until(()=>evaluate("return !!document.querySelector('[data-slug=design-url-shortener] .th-expand')"),'design source mock');
-  await evaluate(`document.querySelector('[data-slug=design-url-shortener] .th-expand').click(); [...document.querySelectorAll('[data-slug=design-url-shortener] .th-history .btn')].find(b=>b.textContent==='Practise from it').click();`);
+  await evaluate("location.hash='#/design'"); await until(()=>evaluate("return !!document.querySelector('.th-item[data-slug=design-url-shortener] .th-again')"),'design source mock');
+  await evaluate(`document.querySelector('.th-item[data-slug=design-url-shortener] .th-again').click();`);
   await until(()=>evaluate("return !!document.querySelector('.pr-board .excalidraw') && !!document.querySelector('.pr-source-link')"),'practice from design mock');
   const designBranch = await evaluate("const p=location.hash.split('/');return await(await fetch('/api/practice/'+p[3]+'/'+p[4])).json();");
   assert.deepEqual(designBranch.elements,designSnapshot.elements,'copied whiteboard retains every element');
@@ -349,7 +349,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
   await evaluate("location.hash='#/lld'");
   await until(()=>evaluate("return !!document.querySelector('.th-practice')"),'practice launcher');
-  assert.equal(await evaluate("return document.querySelector('.th-practice').textContent.trim()"),'Untimed practice');
+  assert.equal(await evaluate("return document.querySelector('.th-practice').textContent.trim()"),'Start practising');
   await evaluate("document.querySelector('.th-practice').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-empty') && !!window.monaco?.editor.getModels().length"),'blank practice');
   assert.match(await evaluate("return document.querySelector('.pr-empty').textContent"),/What would you like to work on/);

@@ -168,16 +168,11 @@ function mountLibrary(host, { onNew, onOpen }) {
       })) };
     },
     openInterview: item => onOpen(item.id),
-    createNewMock: () => {
-      const topicSelect = createSelect({ label: 'System design problem', value: '', options: [['', 'Choose for me · unseen'], ['Design a URL-shortening service.', 'URL shortener'], ['Design a messaging service for one-to-one conversations.', 'Messaging'], ['Design a cloud file-storage service.', 'File storage'], ['Design a personalized news-feed service.', 'News feed']] });
-      const mock = createInterviewSetup({ slug: 'design-new-mock', discipline: 'design', label: 'Mock interview', description: 'Let the interviewer choose a fresh problem using your history, or pick a topic.', startLabel: 'Begin interview', onStart: async state => {
-        const problem = topicSelect.value ? null : (await callJson('/api/mock/prepare', { discipline: 'design', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
-        onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: problem?.statement || topicSelect.value, problemSlug: problem?.slug, requestId: state.startRequestId });
-      } });
-      return { root: el('div', { class: 'ui-stack' }, [topicSelect, mock.root]), dispose() { topicSelect.dispose(); mock.dispose(); } };
+    startMock: async (problem, state) => {
+      const chosen = problem || (await callJson('/api/mock/prepare', { discipline: 'design', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
+      onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: chosen.statement,
+        problemSlug: presets.has(chosen.slug) ? undefined : chosen.slug, requestId: state.startRequestId });
     },
-    startMock: (problem, state) => onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode,
-      prompt: problem.statement, problemSlug: presets.has(problem.slug) ? undefined : problem.slug, requestId: state.startRequestId }),
   });
 }
 

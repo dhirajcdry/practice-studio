@@ -72,11 +72,12 @@ holds the floor. No event can trigger a submission or run code.
 
 ## Python low-level design
 
-Open **LLD** and choose **Start a new mock**. The selected coach model prepares a
-fresh Python OOD problem using the learner's recorded history, prior assessments,
-saved notes, target level and duration. The sample cards remain available for deliberate
-practice; they are not the question bank. System Design's **Start a new mock** defaults
-to **Choose for me · unseen** and uses the same preparation service.
+Open **LLD**. In the **Mock** box, **Surprise me with a fresh problem** is chosen by
+default: the selected coach model prepares a fresh Python OOD problem using the learner's
+recorded history, prior assessments, saved notes, target level and duration. The sample
+problems listed under it remain available for deliberate practice; they are not the
+question bank. System Design's **Mock** box works the same way and uses the same
+preparation service.
 
 Preparation checks recorded identities, titles, statements and semantic family IDs,
 including legacy design sessions. A rejected repeat requires an explicit retry; there

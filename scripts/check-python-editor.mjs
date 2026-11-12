@@ -214,10 +214,8 @@ try {
   await evaluate("monaco.editor.getModels()[0].setValue('# Changed in independent practice');");
   await until(() => evaluate("return document.querySelector('.pr-save').textContent==='Saved'"),'branch saves independently');
   assert.equal(await evaluate("return (await(await fetch('/api/lld/lld-locker/1760000000000-00000010/code')).json()).code"),'# Candidate design\n','original mock code is unchanged');
-  await evaluate("location.hash='#/lld'"); await until(()=>evaluate("return !!document.querySelector('[data-slug=lld-locker] .th-expand')"),'history branch action');
-  await evaluate("document.querySelector('[data-slug=lld-locker] .th-expand').click()");
-  await until(()=>evaluate("return [...document.querySelectorAll('[data-slug=lld-locker] .th-history .btn')].some(n=>n.textContent==='Practise from it')"),'history practice action');
-  await evaluate("[...document.querySelectorAll('[data-slug=lld-locker] .th-history .btn')].find(n=>n.textContent==='Practise from it').click()");
+  await evaluate("location.hash='#/lld'"); await until(()=>evaluate("return !!document.querySelector('.th-item[data-slug=lld-locker] .th-again')"),'history branch action');
+  await evaluate("document.querySelector('.th-item[data-slug=lld-locker] .th-again').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-source-link')"),'branch from history');
   await until(()=>evaluate("return !!document.querySelector('.pr-editor .monaco-editor') && document.querySelector('.pr-save').textContent==='Saved'"),'history branch saved before navigation');
 
