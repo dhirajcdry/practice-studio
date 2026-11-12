@@ -19,6 +19,7 @@
 import { sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { buildStats } from './aggregate.mjs';
+import { handleGetTracker, handleResetTracker, handleRestoreTracker } from './tracker.mjs';
 
 export async function handleGetStats(req, res, ctx) {
   const root = ctx?.homeRoot ?? ctx?.paths?.HOME_ROOT ?? HOME_ROOT;
@@ -37,6 +38,9 @@ export async function handleGetStats(req, res, ctx) {
 
 export const routes = {
   'GET /api/stats': handleGetStats,
+  'GET /api/tracker': handleGetTracker,
+  'POST /api/tracker/reset': handleResetTracker,
+  'POST /api/tracker/restore': handleRestoreTracker,
 };
 
 export default routes;

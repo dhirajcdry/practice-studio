@@ -38,8 +38,8 @@ const CATALOG = {
   ],
 };
 
-test('the route table exports exactly the contract endpoint', () => {
-  assert.deepEqual(Object.keys(routes), ['GET /api/stats']);
+test('the route table exports stats and tracker endpoints', () => {
+  assert.deepEqual(Object.keys(routes), ['GET /api/stats', 'GET /api/tracker', 'POST /api/tracker/reset', 'POST /api/tracker/restore']);
   assert.equal(routes['GET /api/stats'], handleGetStats);
 });
 
