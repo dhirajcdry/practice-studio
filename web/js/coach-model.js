@@ -1,6 +1,7 @@
 import { tooltip } from './tooltip.js';
-import { el } from './dom.js';
+import { el, replace } from './dom.js';
 import { createMenu } from './ui/menu.js';
+import { modelMark } from './ui/model-mark.js';
 
 let snapshot = null;
 let loading = null;
@@ -55,8 +56,9 @@ export function createCoachModelPicker({ compact = false, onPending = () => {} }
     if (!snapshot || button.disabled) return;
     pendingModel = null;
     const selected = `${snapshot.selected.provider}:${snapshot.selected.model}`;
-    const groups = snapshot.providers.map(provider => ({ label: provider.label, options: provider.models.map(model => ({
+    const groups = snapshot.providers.map(provider => ({ label: provider.label, icon: () => modelMark(provider.id), options: provider.models.map(model => ({
       value: `${provider.id}:${model.id}`, label: model.label, checked: selected === `${provider.id}:${model.id}`,
+      hint: selected === `${provider.id}:${model.id}` && snapshot.selected.reasoningEffort ? effortLabel(snapshot.selected.reasoningEffort) : undefined,
     })) }));
     if (!groups.some(group => group.options.some(item => item.value === selected))) groups.unshift({ label: 'Current', options: [{ value: selected, label: `${snapshot.selected.model} · unavailable`, disabled: true }] });
     menu.setAttribute('aria-label', 'Coach model');
@@ -84,7 +86,10 @@ export function createCoachModelPicker({ compact = false, onPending = () => {} }
     const entry = snapshot.providers.find(p => p.id === provider)?.models.find(m => m.id === model);
     const efforts = effortsFor(provider, model);
     const effort = reasoningEffort ? `${effortLabel(reasoningEffort)}${efforts.includes(reasoningEffort) ? '' : ' (unavailable)'}` : efforts.length ? 'Default' : '';
-    button.textContent = `${entry?.label || `${model} · unavailable`}${effort ? ` · ${effort}` : ''}`;
+    // The mark says whose model it is; the text stays exactly what it was without one.
+    replace(button, [modelMark(provider),
+      el('span', { class: 'coach-model-name', text: entry?.label || `${model} · unavailable` }),
+      effort ? el('span', { class: 'coach-model-effort', text: ` · ${effort}` }) : null]);
     button.setAttribute('aria-label', `Coach model: ${button.textContent}`);
     button.removeAttribute('title');
     button.disabled = busy || saving;

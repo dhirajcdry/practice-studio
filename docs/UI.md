@@ -509,6 +509,15 @@ speaker run, `.ui-message-actions`, and a bounded reading body. User bubbles sta
 the shared reading width. Receipts use `.ui-receipt`; successful output starts collapsed and failed runs expand it. Composer Send is a 28px control, while setup actions remain 34px.
 
 
+### Model marks
+
+Wherever a coach model is named, its provider's mark comes from `modelMark(providerId)`
+in `web/js/ui/model-mark.js`: the shared picker button (`createCoachModelPicker`) and
+its menu headings today. Marks are single-path glyphs filled with `currentColor`, so
+themes colour them like the adjacent text; never hard-code a brand colour. A new
+provider adds one entry to that file, and an unknown provider gets the neutral spark.
+Menus accept `icon` on an item or group as text or as a function returning a fresh node.
+
 ### Track homes
 
 `#/lld` and `#/design` share `web/js/track-home.js` and `web/css/track-home.css`, fed by

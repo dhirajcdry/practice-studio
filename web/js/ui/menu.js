@@ -27,6 +27,8 @@ export function createMenu({ anchor, label, items = [], groups = [], onSelect = 
     buttons.forEach((button, i) => { button.tabIndex = i === index ? 0 : -1; });
     buttons[index]?.focus({ preventScroll: true }); buttons[index]?.scrollIntoView({ block: 'nearest' });
   }
+  // An icon is text, or a function returning a fresh node (a node can only live in one place).
+  const glyph = icon => !icon ? null : el('span', { class: 'ui-menu-icon', 'aria-hidden': 'true' }, typeof icon === 'function' ? icon() : String(icon));
   function render() {
     flat = []; buttons = [];
     const option = item => {
@@ -36,13 +38,13 @@ export function createMenu({ anchor, label, items = [], groups = [], onSelect = 
         ...(role === 'menuitemradio' ? { 'aria-checked': String(Boolean(item.checked)) } : {}),
         onclick: () => { if (item.disabled) return; close(true); onSelect(item); },
         onfocus: () => { active = index; },
-      }, [item.icon ? el('span', { class: 'ui-menu-icon', text: item.icon, 'aria-hidden': 'true' }) : null,
+      }, [glyph(item.icon),
         el('span', { class: 'ui-menu-label', text: item.label }), item.hint ? el('span', { class: 'ui-menu-hint', text: item.hint }) : null,
         el('span', { class: 'ui-menu-check', 'aria-hidden': 'true', text: item.checked ? '✓' : '' })]);
       buttons.push(button); return button;
     };
     replace(root, data.groups.length ? data.groups.map(group => el('div', { role: 'group', 'aria-label': group.label }, [
-      group.label ? el('div', { class: 'ui-menu-heading', text: group.label }) : null, ...(group.options || group.items || []).map(option),
+      group.label ? el('div', { class: 'ui-menu-heading' }, [glyph(group.icon), el('span', { text: group.label })]) : null, ...(group.options || group.items || []).map(option),
     ])) : data.items.map(option));
   }
   function close(restore = true) {
