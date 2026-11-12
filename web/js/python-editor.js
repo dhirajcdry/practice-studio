@@ -234,6 +234,11 @@ function defineTheme(monaco) {
         'editor.selectionBackground': selection, 'editorIndentGuide.background1': dark ? '#FFFFFF12' : '#00000012',
         'editorIndentGuide.activeBackground1': dark ? '#FFFFFF2E' : '#0000002E',
         'editorWhitespace.foreground': dark ? '#FFFFFF18' : '#00000018',
+        // Sticky scroll pins scope headers over the code and defaults to the editor
+        // background. Art themes make that transparent, so the pinned lines drew
+        // straight over the real ones. The band must be solid, hovered or not.
+        'editorStickyScroll.background': background.slice(0, 7),
+        'editorStickyScrollHover.background': art ? (dark ? '#10232A' : '#FFF9F0') : line,
         ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? (dark ? '#10232A' : '#FFF9F0') : line, ink: foreground, dim,
           edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: art ? (dark ? background.slice(0, 7) : '#FFFFFF') : (dark ? background : '#FFFFFF'), match: `${accent}40`,
           matchDim: `${accent}1F`, hoverWash: dark ? '#FFFFFF12' : '#0000000D' }),
