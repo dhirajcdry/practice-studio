@@ -3,7 +3,7 @@ import { paintReceipt, receiptOutput, receiptFailed, toolReceipt } from './ui/re
 import { conversationMessage, bindConversation, conversationSeparator, messageAction, thinkingRow, conversationText } from './ui/conversation.js';
 import { paneHeader } from './ui/headers.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
-import { claimActionKey, hasOpenOverlay } from './keyboard.js';
+import { claimActionKey, hasOpenOverlay, isTextEntry } from './keyboard.js';
 import { activeInterview } from './interview.js';
 import { createInterviews } from './interviews.js';
 import { readSidebar, saveSidebar } from './sidebar-state.js';
@@ -43,6 +43,9 @@ import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft } from './dra
 import {
   startRun, runFor, watch, stopRun, markSeen, dismissRun, runsElsewhere, onRunsChange, adopt,
 } from './coachruns.js';
+
+// Keys that scroll the focused conversation; they must not reach the global map.
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 const OPEN_KEY = 'studio.coach.open.v1';
 
@@ -1005,10 +1008,14 @@ export function createCoachPanel(entry) {
 
   /* ---- keyboard ---- */
 
-  // main.js owns a global map (j/k/s/a/Enter) that would fire while typing here,
-  // exactly as it would in the editor. This is where that map stops.
+  // main.js owns a global map (j/k/s/a/r, /, Esc). It must stop while typing here,
+  // and arrow/page keys must scroll the conversation rather than change problem.
+  // Everything else bubbles: stopping every key used to leave all shortcuts dead
+  // after any click in this panel (the conversation is focusable), until you
+  // happened to click somewhere else.
   root.addEventListener('keydown', (event) => {
-    event.stopPropagation();
+    if (isTextEntry(event.target)
+      || (log.contains(event.target) && SCROLL_KEYS.has(event.key))) event.stopPropagation();
     // Interviews and submissions remain inside this root, alongside a hidden Chat
     // composer. Only a gesture in the visible Chat composer can send its draft.
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === 'Enter'

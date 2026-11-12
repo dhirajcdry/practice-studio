@@ -165,6 +165,35 @@ try {
       : `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);
   }
   if (!failed) console.log('shortcuts ok — dialogs isolate pane, recorder and navigation keys, including lost focus');
+
+  // A click anywhere in the coach panel used to leave every global shortcut dead:
+  // the panel stopped all keydowns, and its conversation is focusable. Only typing
+  // and the conversation's scroll keys may stay inside it.
+  await send('Page.navigate', { url: `${ORIGIN}/#/p/contains-duplicate` });
+  await sleep(2800);
+  const coachKeys = await evaluate(`(async () => {
+    window.dispatchEvent(new Event('studio:open-coach'));
+    await new Promise(r => setTimeout(r, 400));
+    const log = document.querySelector('.coach-log'), input = document.querySelector('.coach-compose textarea');
+    if (!log || !input) throw Error('coach panel did not open');
+    const press = (target, key, code) => {
+      const hash = location.hash;
+      target.focus();
+      target.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }));
+      const moved = location.hash !== hash;
+      history.replaceState(null, '', hash);
+      return moved;
+    };
+    return {
+      logJ: press(log, 'j', 'KeyJ'),
+      logArrow: press(log, 'ArrowDown', 'ArrowDown'),
+      inputJ: press(input, 'j', 'KeyJ'),
+    };
+  })()`);
+  if (!coachKeys?.logJ) { failed = true; console.error('DEAD: j after focusing the coach conversation'); }
+  if (coachKeys?.logArrow) { failed = true; console.error('LEAK: ArrowDown in the coach conversation changed problem'); }
+  if (coachKeys?.inputJ) { failed = true; console.error('LEAK: typing j in the coach box changed problem'); }
+  if (!failed) console.log('shortcuts ok — the coach panel keeps only typing and scrolling keys');
   close();
 } catch (err) {
   failed = true;
