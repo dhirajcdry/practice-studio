@@ -134,16 +134,11 @@ export function isThinEvidence(stats) {
 
 /* ============================================================ small builders */
 
-function card(title, { note = null, body = null, headerExtra = null } = {}) {
-  const head = el('header', {}, [
-    el('div', { class: 'hgroup' }, [
-      el('h2', { text: title }),
-      
-      note ? el('span', { class: 'note', text: note }) : null,
-    ]),
-    headerExtra,
+function card(title, { note = null, body = null } = {}) {
+  return el('section', { class: 'dash-sec' }, [
+    el('header', {}, [el('h2', { text: title }), note ? el('span', { class: 'note', text: note }) : null]),
+    body,
   ]);
-  return el('section', { class: 'dash-card' }, [head, body]);
 }
 
 function meter({ solved, attempted, total }) {
@@ -151,39 +146,18 @@ function meter({ solved, attempted, total }) {
   return el('div', {
     class: 'dash-meter',
     role: 'img',
-    'aria-label': `${solved} solved and ${Math.max(0, attempted - solved)} attempted of ${total}`,
+    'aria-label': `${solved} solved and ${Math.max(0, attempted - solved)} in progress of ${total}`,
   }, [
     widths.solved > 0 ? el('i', { class: 'solved', style: `width:${widths.solved}%` }) : null,
     widths.tried > 0 ? el('i', { class: 'tried', style: `width:${widths.tried}%` }) : null,
   ]);
 }
 
-function statCell({ value, suffix = null, label, dim = false }) {
-  return el('div', { class: 'dash-stat', role: 'listitem' }, [
-    el('div', { class: dim ? 'v none' : 'v' }, [
-      String(value),
-      suffix ? el('small', { text: ` ${suffix}` }) : null,
-    ]),
-    el('div', { class: 'mono l' }, [label]),
-  ]);
-}
-
-/**
- * The block that stands in for a statistic there is not enough evidence for.
- * It states the shortfall as a fraction, shows it as a bar, and says what produces the
- * missing samples — so it is actionable rather than merely apologetic.
- */
-function needMore({ have, need, what, how }) {
-  const filled = need > 0 ? Math.min(100, (have / need) * 100) : 0;
-  return el('div', { class: 'dash-need' }, [
-    el('div', { class: 'nhead' }, [
-      `${have} of ${need} needed`,
-      el('span', { class: 'nbar' }, el('i', { style: `width:${filled}%` })),
-    ]),
-    el('p', { text: what }),
-    how ? el('p', { class: 'how', text: how }) : null,
-  ]);
-}
+const meterKey = () => el('div', { class: 'dash-meterkey' }, [
+  el('span', {}, [el('i', { class: 'solved' }), 'Solved']),
+  el('span', {}, [el('i', { class: 'tried' }), 'In progress']),
+  el('span', {}, [el('i', { class: 'rest' }), 'Not started']),
+]);
 
 /* ============================================================ sections */
 
@@ -193,66 +167,17 @@ function headSection(stats, { onRefresh, busy }) {
   ] }, status: leetcodeViews('progress') });
 }
 
-function truthSection(stats) {
-  const { workspace, totals, signals } = stats;
-  const missing = [];
-  if (signals.thinkingTime.samples === 0) {
-    missing.push('how long you think before typing — no samples yet');
-  }
-  if (totals.revealedSolution === 0) {
-    missing.push('how often you reveal a solution before solving — no reveals are recorded yet');
-  }
-  if (signals.attemptsPerSolved.samples < signals.attemptsPerSolved.minSamples) {
-    missing.push(`attempts per solved problem — that needs ${signals.attemptsPerSolved.minSamples} solved problems with saved code, you have ${signals.attemptsPerSolved.samples}`);
-  }
-
-  return el('div', { class: 'dash-truth' }, [
-    el('h2', { text: 'What your data shows' }),
-    el('p', {}, [
-      'Curriculum: ',
-      el('b', { text: `${stats.curriculum.problems} problems across ${stats.curriculum.patterns} patterns` }),
-      '. Your practice: ',
-      el('b', { text: `${workspace.eventsRead} practice action${workspace.eventsRead === 1 ? '' : 's'}` }),
-      ` recorded across ${workspace.problemDirs} problem${workspace.problemDirs === 1 ? '' : 's'}.`,
+/** The whole curriculum as one bar, and the three counts it is made of. */
+function overallSection(stats) {
+  const all = stats.lists.neetcode250;
+  const solved = Math.max(0, Math.min(all.accepted, all.total));
+  const started = Math.max(solved, Math.min(all.attempted, all.total));
+  const count = (value, label) => el('span', {}, [el('b', { text: String(value) }), ` ${label}`]);
+  return el('section', { class: 'dash-overall' }, [
+    meter({ solved: all.accepted, attempted: all.attempted, total: all.total }),
+    el('div', { class: 'dash-counts' }, [
+      count(solved, 'solved'), count(started - solved, 'in progress'), count(all.total - started, 'not started'),
     ]),
-    missing.length
-      ? el('div', {}, [
-        el('p', { text: 'Not enough practice data yet for:' }),
-        el('ul', {}, missing.map((text) => el('li', { text }))),
-        el('p', { text: 'These signals appear as you practice.' }),
-      ])
-      : null,
-  ]);
-}
-
-function statsSection(stats) {
-  const { totals, lists, workspace, activity } = stats;
-  return el('div', { class: 'dash-stats', role: 'list' }, [
-    statCell({
-      value: totals.accepted,
-      label: 'Solved',
-      dim: totals.accepted === 0,
-    }),
-    statCell({
-      value: totals.attempted,
-      label: 'Touched',
-      dim: totals.attempted === 0,
-    }),
-    statCell({
-      value: totals.attemptFiles,
-      label: totals.attemptFiles === 1 ? 'Saved run' : 'Saved runs',
-      dim: totals.attemptFiles === 0,
-    }),
-    statCell({
-      value: activity.length,
-      label: activity.length === 1 ? 'Day active' : 'Days active',
-      dim: activity.length === 0,
-    }),
-    statCell({
-      value: workspace.eventsRead,
-      label: workspace.eventsRead === 1 ? 'Practice action' : 'Practice actions',
-      dim: workspace.eventsRead === 0,
-    }),
   ]);
 }
 
@@ -262,153 +187,82 @@ function listsSection(stats) {
     ['NeetCode 150', stats.lists.neetcode150],
     ['NeetCode 250', stats.lists.neetcode250],
   ];
-  const body = el('div', { class: 'dash-lists' }, rows.map(([name, data]) => {
-    const percent = pctOf(data.accepted, data.total);
-    // A percentage under 1 is written as "under 1%" rather than "0%" — rounding a real
-    // solve down to zero would erase it.
-    const percentText = percent === null
-      ? null
-      : percent === 0 ? '0%'
-        : percent < 1 ? 'under 1%'
-          : `${percent.toFixed(percent < 10 ? 1 : 0)}%`;
-    return el('div', { class: 'dash-listrow' }, [
+  return card('Lists', {
+    body: el('div', { class: 'dash-lists' }, rows.map(([name, data]) => el('div', { class: 'dash-listrow' }, [
       el('div', { class: 'top' }, [
         el('span', { class: 'name', text: name }),
-        el('span', { class: 'count' }, [
-          el('b', { text: String(data.accepted) }),
-          ` / ${data.total} solved`,
-          percentText ? el('span', { style: 'color:var(--ink-35)', text: ` (${percentText})` }) : null,
-          data.attempted > data.accepted ? ` · ${data.attempted - data.accepted} touched` : '',
-        ]),
+        el('span', { class: 'count', text: `${data.accepted} / ${data.total}` }),
       ]),
       meter({ solved: data.accepted, attempted: data.attempted, total: data.total }),
-    ]);
-  }));
-
-  return card('List progress', {
-    body: el('div', {}, [
-      body,
-      el('div', { class: 'dash-listrow', style: 'border-top:1px solid var(--hair-10)' },
-        el('div', { class: 'dash-meterkey mono dim', style: 'margin-top:0' }, [
-          el('span', {}, [el('i', { class: 'solved' }), 'Solved']),
-          el('span', {}, [el('i', { class: 'tried' }), 'Touched, not solved']),
-          el('span', {}, [el('i', { class: 'rest' }), 'Not started']),
-        ])),
-    ]),
+    ]))),
   });
+}
+
+/** The pattern of the problem touched most recently, if it is one of the curriculum's. */
+function workingOn(stats) {
+  let latest = null;
+  for (const problem of stats.problems || []) {
+    if (problem.lastAt && problem.pattern && (!latest || String(problem.lastAt) > String(latest.lastAt))) latest = problem;
+  }
+  const pattern = latest && stats.patterns.find((p) => p.name === latest.pattern);
+  return pattern && pattern.accepted < pattern.total ? pattern.name : null;
 }
 
 function patternsSection(stats) {
   if (!stats.patterns.length) {
-    return card('Coverage by pattern', {
-      body: el('div', { class: 'dash-quiet' }, 'The problem catalog is not loaded, so there are no patterns to measure against.'),
-    });
+    return card('Patterns', { body: el('p', { class: 'dash-quiet', text: 'The problem catalog is not loaded.' }) });
   }
 
-  const withWork = stats.patterns.filter((p) => p.attempted > 0).length;
+  const withWork = stats.patterns.filter((p) => p.attempted > 0 || p.accepted > 0).length;
+  const current = workingOn(stats);
+  const next = stats.patterns.find((p) => p.attempted === 0 && p.accepted === 0)?.name;
   const list = el('ul', { class: 'dash-patterns' }, stats.patterns.map((pattern, index) => {
-    const zero = pattern.attempted === 0 && pattern.accepted === 0;
-    return el('li', {}, el('div', {
-      class: zero ? 'dash-prow zero' : 'dash-prow',
-      title: `${pattern.name}: ${pattern.accepted} solved, ${pattern.attempted} touched, ${pattern.total} in the NeetCode 250`,
-    }, [
+    const solved = Math.max(0, Math.min(pattern.accepted, pattern.total));
+    const started = Math.max(solved, Math.min(pattern.attempted, pattern.total));
+    const cells = [];
+    for (let i = 0; i < pattern.total; i += 1) cells.push(el('i', { class: i < solved ? 'solved' : i < started ? 'tried' : null }));
+    const tag = pattern.name === current ? 'Working on' : pattern.name === next ? 'Next up' : '';
+    return el('li', { class: started === 0 ? 'dash-prow zero' : 'dash-prow' }, [
       el('span', { class: 'pidx', text: String(index + 1).padStart(2, '0') }),
       el('span', { class: 'pname', text: pattern.name }),
-      meter({ solved: pattern.accepted, attempted: pattern.attempted, total: pattern.total }),
-      el('span', { class: 'pcount' }, [el('b', { text: String(pattern.accepted) }), ` / ${pattern.total}`]),
-    ]));
+      el('span', { class: 'pcells', role: 'img', 'aria-label': `${solved} solved and ${started - solved} in progress of ${pattern.total}` }, cells),
+      el('span', { class: 'pcount', text: `${solved} / ${pattern.total}` }),
+      el('span', { class: tag === 'Working on' ? 'ptag now' : 'ptag', text: tag }),
+    ]);
   }));
 
-  return card('Coverage by pattern', {
+  return card('Patterns', {
     note: `${withWork} of ${stats.patterns.length} started`,
-    body: el('div', {}, [
-      el('div', { class: 'dash-quiet', style: 'font-style:normal;padding-bottom:10px' },
-        'The 18 patterns are the curriculum spine. A pattern at 0 is a pattern you have not started — that is a real fact about coverage, not missing data.'),
-      list,
-    ]),
+    body: el('div', {}, [list, meterKey()]),
   });
 }
 
+function habitRow(label, signal, value) {
+  const short = Math.max(1, signal.minSamples - signal.samples);
+  return el('div', { class: 'dash-habit' }, [
+    el('span', { text: label }),
+    signal.meaningful ? el('b', { text: value() }) : el('span', { class: 'need', text: `Needs ${short} more` }),
+  ]);
+}
+
 function signalsSection(stats) {
-  const { signals } = stats;
-
-  const thinking = el('div', { class: 'dash-signal' }, [
-    el('div', { class: 'shead' }, [
-      el('span', { class: 'sname', text: signals.thinkingTime.label }),
+  const { thinkingTime, reveals, attemptsPerSolved } = stats.signals;
+  const byPattern = thinkingTime.meaningful ? thinkingTime.byPattern.filter((row) => row.medianMs !== null) : [];
+  return card('Habits', {
+    body: el('div', { class: 'dash-habits' }, [
+      habitRow(thinkingTime.label, thinkingTime, () => `${fmtDurationMs(thinkingTime.medianMs)} median`),
+      ...byPattern.map((row) => el('div', { class: 'dash-habit sub' }, [
+        el('span', { text: row.pattern }), el('span', { text: fmtDurationMs(row.medianMs) }),
+      ])),
+      habitRow(reveals.label, reveals, () => `${reveals.revealedBeforeSolve} of ${reveals.samples}`),
+      habitRow(attemptsPerSolved.label, attemptsPerSolved, () => `${attemptsPerSolved.median} median · ${attemptsPerSolved.mean.toFixed(1)} mean`),
     ]),
-    el('div', { class: 'swhat', text: 'How long you read a problem before you start typing.' }),
-    signals.thinkingTime.meaningful
-      ? el('div', {}, [
-        el('div', { class: 'sval', text: `median ${fmtDurationMs(signals.thinkingTime.medianMs)}` }),
-        signals.thinkingTime.byPattern.length
-          ? el('ul', { class: 'dash-patterns', style: 'margin-top:8px' },
-            signals.thinkingTime.byPattern.map((row) => el('li', {}, el('div', { class: 'dash-prow', style: 'padding-left:0;padding-right:0' }, [
-              el('span', { class: 'pidx', text: '' }),
-              el('span', { class: 'pname', text: row.pattern }),
-              el('span', { class: 'pcount', text: `${row.samples} sample${row.samples === 1 ? '' : 's'}` }),
-              el('span', { class: 'pcount' }, row.medianMs === null
-                ? el('span', { class: 'mono dim', text: 'too few' })
-                : el('b', { text: fmtDurationMs(row.medianMs) })),
-            ]))))
-          : null,
-      ])
-      : needMore({
-        have: signals.thinkingTime.samples,
-        need: signals.thinkingTime.minSamples,
-        what: signals.thinkingTime.samples === 0
-          ? 'No samples yet.'
-          : `${signals.thinkingTime.samples} measurement so far. One reading is not a habit, so no median is shown.`,
-        how: 'Starts filling in once you type on a problem.',
-      }),
-  ]);
-
-  const revealed = el('div', { class: 'dash-signal' }, [
-    el('div', { class: 'shead' }, [
-      el('span', { class: 'sname', text: signals.reveals.label }),
-    ]),
-    el('div', { class: 'swhat', text: 'Problems where you opened the solution before solving.' }),
-    signals.reveals.meaningful
-      ? el('div', { class: 'sval' }, `${signals.reveals.revealedBeforeSolve} of ${signals.reveals.samples} problems`)
-      : needMore({
-        have: signals.reveals.samples,
-        need: signals.reveals.minSamples,
-        what: stats.totals.revealedSolution === 0
-          ? 'No solution has been revealed on record. That is a real zero, not missing data — but with this few problems it is not yet evidence of anything either way.'
-          : `${signals.reveals.revealedBeforeSolve} reveal before a solve, across ${signals.reveals.samples} problem${signals.reveals.samples === 1 ? '' : 's'}. Too few to call it a rate.`,
-        how: 'Recorded whenever you open the reference solution for a problem you have not solved yet.',
-      }),
-  ]);
-
-  const attempts = el('div', { class: 'dash-signal' }, [
-    el('div', { class: 'shead' }, [
-      el('span', { class: 'sname', text: signals.attemptsPerSolved.label }),
-    ]),
-    el('div', { class: 'swhat', text: 'Saved runs per problem with an accepted verdict.' }),
-    signals.attemptsPerSolved.meaningful
-      ? el('div', { class: 'sval', text: `${signals.attemptsPerSolved.median} median · ${signals.attemptsPerSolved.mean.toFixed(1)} mean` })
-      : needMore({
-        have: signals.attemptsPerSolved.samples,
-        need: signals.attemptsPerSolved.minSamples,
-        // Stated from the two counts on disk, so this sentence is true of whatever
-        // workspace is being read rather than of the one it was written against.
-        what: signals.attemptsPerSolved.samples === 0
-          ? `No problem has both a recorded solve and saved code: ${stats.totals.accepted} problem${stats.totals.accepted === 1 ? '' : 's'} with an accepted verdict, ${stats.workspace.withAttempts} with saved attempts, and no overlap between them.`
-          : `${signals.attemptsPerSolved.samples} solved problem with saved attempts. An average of one number is that number.`,
-        how: 'Fills in as you run code and solve problems.',
-      }),
-  ]);
-
-  return card('Weakness view', {
-    note: 'Time to start, solution reveals, and attempts per solve',
-    body: el('div', {}, [thinking, revealed, attempts]),
   });
 }
 
 function activitySection(stats) {
   if (!stats.activity.length) {
-    return card('Activity', {
-      body: el('div', { class: 'dash-quiet' }, 'No dated activity on record yet. Days appear here as soon as anything is logged or any code is run.'),
-    });
+    return card('Last 14 days', { body: el('p', { class: 'dash-quiet', text: 'No dated activity yet.' }) });
   }
 
   // Fourteen days ending on the most recent recorded day — a window anchored to the data,
@@ -421,34 +275,26 @@ function activitySection(stats) {
     const day = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i);
     const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
     const hit = byDate.get(key);
-    const total = hit ? hit.events + hit.attempts : 0;
-    days.push({ key, total, hit });
+    // A day on record is drawn even when it carries no counted actions or runs.
+    days.push({ day, on: Boolean(hit), total: hit ? hit.events + hit.attempts : 0 });
   }
+  const peak = Math.max(...days.map((d) => d.total));
+  const active = days.filter((d) => d.on).length;
+  const short = (date) => date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 
-  return card('Last 14 recorded days', {
-    note: `${stats.activity.length} active day${stats.activity.length === 1 ? '' : 's'} total`,
-    body: el('div', { class: 'dash-strip' }, [
-      el('div', { class: 'dash-days' }, days.map((day) => el('div', {
-        class: 'dash-day',
-        title: day.hit
-          ? `${day.key} · ${day.hit.events} practice action${day.hit.events === 1 ? '' : 's'}, ${day.hit.attempts} saved run${day.hit.attempts === 1 ? '' : 's'}, ${day.hit.problems} problem${day.hit.problems === 1 ? '' : 's'}`
-          : `${day.key} · nothing recorded`,
-      }, [
-        el('div', { class: `box${day.total >= 3 ? ' f2' : day.total >= 1 ? ' f1' : ''}` }),
-        el('div', { class: 'd', text: day.key.slice(8) }),
-      ]))),
-      el('div', { class: 'dash-legend' }, [
-        el('span', { class: 'mono dim' }, [el('span', { class: 'sw' }), 'none']),
-        el('span', { class: 'mono dim' }, [el('span', { class: 'sw', style: 'background:rgba(0,0,0,.22)' }), '1–2']),
-        el('span', { class: 'mono dim' }, [el('span', { class: 'sw', style: 'background:var(--ink)' }), '3+']),
-      ]),
+  return card('Last 14 days', {
+    note: `${stats.activity.length} active day${stats.activity.length === 1 ? '' : 's'} in all`,
+    body: el('div', {}, [
+      el('div', { class: 'dash-days', role: 'img', 'aria-label': `Active on ${active} of the 14 days up to ${short(end)}` },
+        days.map((d) => el('i', d.on ? { class: 'on', style: `height:${Math.max(12, peak ? Math.round((d.total / peak) * 100) : 0)}%` } : {}))),
+      el('div', { class: 'dash-dayends' }, [el('span', { text: short(days[0].day) }), el('span', { text: short(end) })]),
     ]),
   });
 }
 
 function recentSection(stats, now) {
   if (!stats.recent.length) {
-    return card('Recent activity', {
+    return card('Recent', {
       body: el('div', { class: 'dash-quiet' },
         stats.workspace.eventsRead === 0
           ? 'No activity yet. Open a problem, type, run tests, or ask the coach to get started.'
@@ -456,7 +302,7 @@ function recentSection(stats, now) {
     });
   }
 
-  return card('Recent activity', {
+  return card('Recent', {
     note: `${stats.recent.length} shown`,
     body: el('ul', { class: 'dash-recent' }, stats.recent.map((event) => el('li', {}, [
       el('span', { class: 'when', text: `${fmtDay(event.at, now) ?? ''} ${String(event.at).slice(11, 16)}`.trim() }),
@@ -485,7 +331,7 @@ function problemsSection(stats, now) {
         problem.inCatalog ? null : el('span', { class: 'tag quiet', style: 'margin-left:8px', text: 'off-list' }),
       ]),
       el('td', {}, el('span', { class: 'mono dim', style: 'letter-spacing:.06em', text: problem.pattern ?? '—' })),
-      el('td', {}, el('span', { class: `tag ${meta.cls}`, title: meta.evidence, text: meta.label })),
+      el('td', {}, el('span', { class: `tag ${meta.cls}`, text: meta.label })),
       el('td', {}, el('span', { class: problem.attempts ? 'num' : 'num zero', text: String(problem.attempts) })),
       el('td', {}, el('span', { class: problem.events ? 'num' : 'num zero', text: String(problem.events) })),
       el('td', {}, el('span', { class: 'num', text: problem.lastAt ? (fmtDay(problem.lastAt, now) ?? '—') : '—' })),
@@ -508,7 +354,7 @@ function problemsSection(stats, now) {
 
 function warningsSection(stats) {
   if (!stats.warnings.length) return null;
-  return el('section', { class: 'dash-card' }, el('div', { class: 'dash-warn' }, [
+  return el('section', { class: 'dash-sec' }, el('div', { class: 'dash-warn' }, [
     el('b', { text: 'Read with caveats' }),
     el('ul', {}, stats.warnings.map((warning) => el('li', { text: warning.includes('NeetCode 250')
       ? warning.replace(/problem folder/g, 'saved problem').replace(/ on disk/g, '')
@@ -529,7 +375,6 @@ function nothingRecordedState(stats) {
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-empty' }, [
     el('h3', { text: 'No practice recorded yet' }),
     el('p', { text: `${stats.workspace.problemDirs} problems saved, with no practice actions, saved runs, or accepted verdicts yet.` }),
-    el('p', { text: 'The coverage figures below are still exact — they come from the catalog, not from your practice.' }),
   ]));
 }
 
@@ -607,44 +452,28 @@ function renderInto(mountEl, stats, { onRefresh, busy, now }) {
     stats.totals.attemptFiles === 0 &&
     stats.totals.accepted === 0;
 
-  // With no workspace there is nothing to fill a second column with, and a two-column
-  // layout with one side blank reads as a page that failed to load rather than as a page
-  // that has nothing to report. So that case goes single-column on purpose.
-  const body = stats.workspace.exists
-    ? [
-      statsSection(stats),
-      isThinEvidence(stats) && !nothingAtAll ? truthSection(stats) : null,
-      // Two columns of roughly equal weight: the weakness view leads the left, and the
-      // 18-row pattern table — the tallest thing here — balances it on the right.
-      el('div', { class: 'dash-grid' }, [
-        el('div', { class: 'dash-col' }, [
-          signalsSection(stats),
-          activitySection(stats),
-          recentSection(stats, now),
-        ]),
-        el('div', { class: 'dash-col' }, [
-          listsSection(stats),
-          patternsSection(stats),
-        ]),
-      ]),
-      // Seven columns of evidence want the full width, not half of it.
-      problemsSection(stats, now),
-    ]
-    : [listsSection(stats), patternsSection(stats)];
-
+  const hasRecord = stats.workspace.exists;
   const view = el('div', { class: 'dash view' }, [
     headSection(stats, { onRefresh, busy }),
-
-    !stats.workspace.exists ? noWorkspaceState() : null,
-    nothingAtAll ? nothingRecordedState(stats) : null,
-
-    ...body,
-
-    warningsSection(stats),
-
-    el('div', { class: 'dash-foot' }, [
-      `${stats.workspace.eventsRead} practice actions recorded`,
-      stats.workspace.skippedLines ? ' · Some saved activity could not be read' : '',
+    el('div', { class: 'dash-body' }, [
+      !hasRecord ? noWorkspaceState() : null,
+      nothingAtAll ? nothingRecordedState(stats) : null,
+      overallSection(stats),
+      // Patterns are the page: what is done, what is under way, what comes next.
+      el('div', { class: 'dash-layout' }, [
+        el('div', { class: 'dash-main' }, [patternsSection(stats), hasRecord ? recentSection(stats, now) : null]),
+        el('aside', { class: 'dash-side' }, [
+          listsSection(stats),
+          hasRecord ? activitySection(stats) : null,
+          hasRecord ? signalsSection(stats) : null,
+        ]),
+      ]),
+      hasRecord ? problemsSection(stats, now) : null,
+      warningsSection(stats),
+      el('div', { class: 'dash-foot' }, [
+        `${stats.workspace.eventsRead} practice actions recorded`,
+        stats.workspace.skippedLines ? ' · Some saved activity could not be read' : '',
+      ]),
     ]),
   ]);
 

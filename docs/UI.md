@@ -538,12 +538,27 @@ Keep it this light. No skill scorecards, drills, grouped problem lists, rings, m
 counts here; reports hold that detail. A session without a score shows none. A page
 visit never starts a model turn.
 
+### Progress
+
+`#/progress` (`web/js/dashboard.js`, `web/css/dashboard.css`) is one 1200px column. A
+single bar and three counts cover the whole NeetCode 250. Patterns lead: one row per
+pattern with one square per problem (solved, in progress, not started), "Working on"
+for the pattern touched most recently and "Next up" for the first untouched one. Lists,
+the last 14 recorded days and Habits sit in a side column that drops below when narrow;
+Recent and Saved problems follow. A signal without enough samples is one line ("Needs 3
+more"), never a paragraph or a card. In Twin Suns the column is a solid board.
+
 ### Settings, library rows and paint cost
 
+Settings is a centred dialog (860 × 620, full screen under 720px) over a dark scrim,
+never an edge drawer. A rail of sections (Coach, Practice, Voice, Appearance, Editor,
+Shortcuts) is a vertical tablist that becomes a scrolling strip when narrow; one page
+shows at a time and the last one used reopens. `openSettings('<section>')` opens a
+named page. Every setting is a `settingRow`: name and one 12px line of explanation on
+the left, its control on the right, hairlines between rows. A new setting joins the
+page it belongs to; it does not get its own heading and paragraph.
 Settings use `ui/segmented.js` with 28px padded options and a filled selection.
-Native checkbox semantics remain on the shared `.ui-switch` (role `switch`). Sections
-use an 11px uppercase label, an 8px content gap, 36px minimum rows, 12px helper text,
-and 24px between sections. Theme miniatures show pane geometry in light and dark
+Native checkbox semantics remain on the shared `.ui-switch` (role `switch`). Theme miniatures show pane geometry in light and dark
 without requesting the painting. Quiet prompt rows are content actions: 32px minimum,
 13px type, 2px apart, no border. They are not 28px toolbar controls.
 

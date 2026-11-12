@@ -161,8 +161,20 @@ function themeCard(theme, onPick) {
 
 function keyRow(keys, what) {
   return el('div', { class: 'set-keyrow' }, [
-    el('kbd', { class: 'mono', text: keys }),
     el('span', { class: 'set-keywhat', text: what }),
+    el('kbd', { class: 'mono', text: keys }),
+  ]);
+}
+
+/** One setting: its name and a line of explanation on the left, its control on the right. */
+function settingRow(name, hint, control, { tag = 'div', extra = null } = {}) {
+  return el(tag, { class: 'set-row' }, [
+    el('span', { class: 'set-rowtext' }, [
+      el('span', { class: 'set-rowname', text: name }),
+      hint ? el('span', { class: 'set-rowhint', text: hint }) : null,
+      extra,
+    ]),
+    el('span', { class: 'set-control' }, control),
   ]);
 }
 
@@ -214,7 +226,7 @@ function createReportDifficultyControl() {
 let trackerSaving = false;
 function createTrackerControl() {
   let loaded = false, resetAt = null;
-  const notice = el('p', { class: 'set-cardblurb', role: 'status', hidden: true });
+  const notice = el('p', { class: 'set-rowhint set-status', role: 'status', hidden: true });
   const say = text => { notice.textContent = text; notice.hidden = !text; };
   // Reset arms on the first click and acts on the second, like the editor's Reset.
   // Undo appears only once a reset exists, so it can't be hit by the same gesture.
@@ -225,9 +237,9 @@ function createTrackerControl() {
     disarm(); void change('reset');
   } });
   reset.addEventListener('blur', () => { if (armed) disarm(); });
-  const since = el('span', { class: 'set-cardblurb tracker-since' });
+  const since = el('span', { class: 'set-rowhint tracker-since' });
   const restore = el('button', { class: 'btn btn--quiet tracker-restore-all', type: 'button', text: 'Undo reset', disabled: true, onclick: () => change('restore') });
-  const restoreRow = el('div', { class: 'set-row', hidden: true }, [since, restore]);
+  const restoreRow = el('div', { class: 'set-row', hidden: true }, [el('span', { class: 'set-rowtext' }, since), el('span', { class: 'set-control' }, restore)]);
   const paint = () => {
     reset.textContent = armed ? 'Click again to reset' : 'Reset all tracker progress';
     reset.disabled = !loaded || trackerSaving;
@@ -251,10 +263,8 @@ function createTrackerControl() {
     if (!response.ok) throw Error('Could not load tracker. Reopen Settings to retry.');
     const result = await response.json(); resetAt = result.resetAt || null; loaded = true; paint();
   }).catch(error => say(error.message));
-  return el('section', { class: 'set-section', 'aria-label': 'Problem tracker' }, [
-    el('div', { class: 'mono dim set-label', text: 'Problem tracker' }),
-    el('p', { class: 'set-cardblurb', text: 'Start a fresh round across all problems. Only tracker progress resets; all saved work, history, practice reports, and your streak stay intact.' }),
-    el('div', { class: 'set-row' }, [reset]),
+  return el('section', { class: 'set-group', 'aria-label': 'Problem tracker' }, [
+    settingRow('Problem tracker', 'Start a fresh round across all problems. Only tracker progress resets; saved work, history, reports and your streak stay.', reset),
     restoreRow, notice,
   ]);
 }
@@ -277,7 +287,15 @@ export function closeSettings() {
   opener = null;
 }
 
-export function openSettings() {
+const SECTION_KEY = 'studio.settings-section.v1';
+const SECTIONS = [['coach', 'Coach'], ['practice', 'Practice'], ['voice', 'Voice'], ['appearance', 'Appearance'], ['editor', 'Editor'], ['keys', 'Shortcuts']];
+function savedSection() {
+  try { const id = localStorage.getItem(SECTION_KEY); return SECTIONS.some(([s]) => s === id) ? id : 'coach'; }
+  catch { return 'coach'; }
+}
+
+/** Opens on the section last used, or on `section` when a caller names one. */
+export function openSettings(section) {
   if (panel) { closeSettings(); return; }
 
   opener = document.activeElement;
@@ -303,21 +321,11 @@ export function openSettings() {
       setSetting('codeSize', value);
     },
   });
-
-  const motion = el('input', {
-    type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': 'Animations',
-    ...(current.motion ? { checked: 'checked' } : {}),
-    onchange: (event) => setSetting('motion', event.target.checked),
-  });
-  const toggle = (key, label) => el('label', { class: 'set-row' }, [
-    el('span', { class: 'set-rowname', text: label }),
-    el('span', { class: 'spacer' }),
-    el('input', {
-      type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': label,
-      ...(current[key] ? { checked: 'checked' } : {}),
-      onchange: (event) => setSetting(key, event.target.checked),
-    }),
-  ]);
+  const switchRow = (name, hint, checked, onChange) => settingRow(name, hint, el('input', {
+    type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': name,
+    ...(checked ? { checked: 'checked' } : {}), onchange: event => onChange(event.target.checked),
+  }), { tag: 'label' });
+  const toggle = (key, name, hint) => switchRow(name, hint, current[key], value => setSetting(key, value));
 
   const voicePrefs = voicePreferences();
   const voiceEngine = createSelect({ label: 'Speech output', value: voicePrefs.engine, options: [['natural','Natural (on-device)'], ['system','System']], onChange: event => {
@@ -327,6 +335,7 @@ export function openSettings() {
   const voicePicker = createSelect({ label: 'Natural voice', value: voicePrefs.voice, options: NATURAL_VOICES, onChange: event => {
     saveVoicePreferences({ voice: event.target.value }); voicePreview?.cancel();
   }});
+  voicePicker.disabled = voicePrefs.engine === 'system';
   const speedValue = el('span', { class: 'mono dim set-value', text: `${voicePrefs.speed.toFixed(1)}×` });
   const voiceSpeed = el('input', { type: 'range', min: '0.5', max: '2', step: '0.1', value: String(voicePrefs.speed),
     class: 'set-range', 'aria-label': 'Speech speed', oninput: event => {
@@ -337,58 +346,52 @@ export function openSettings() {
     voicePreview ??= createSpeaker(); voicePreview.cancel();
     voicePreview.say('Let’s walk through your approach. What would you try first?');
   } });
-  const voiceSection = el('section', { class: 'set-voice', 'aria-label': 'Voice' }, [
-    el('div', { class: 'mono dim set-label', text: 'Voice' }),
-    el('label', { class: 'set-row' }, [el('span', { class: 'set-rowname', text: 'Speech output' }), voiceEngine]),
-    el('div', { class: 'set-row' }, [voicePicker, preview]),
-    el('label', { class: 'set-row' }, [el('span', { class: 'set-rowname', text: 'Speed' }), voiceSpeed, speedValue]),
-    el('label', { class: 'set-row' }, [
-      el('span', { class: 'set-rowname', text: 'Send when I pause' }),
-      el('span', { class: 'spacer' }),
-      el('input', { type: 'checkbox', role: 'switch', class: 'ui-switch set-check', 'aria-label': 'Send when I pause',
-        ...(autoSendEnabled() ? { checked: 'checked' } : {}), onchange: event => saveAutoSend(event.target.checked) }),
-    ]),
-    el('p', { class: 'set-cardblurb', text: 'Natural voices run on this Mac. If unavailable, the system voice is used.' }),
-  ]);
   coachPicker = createCoachModelPicker();
   const reportDifficulty = createReportDifficultyControl();
-  panel = el('aside', { class: 'settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings' }, [
-    dialogHeader({ title: 'Settings', onClose: closeSettings, closeLabel: 'Close settings' }),
-    el('div', { class: 'set-body' }, [
+  const opens = (label, className, open) => el('button', { class: `btn btn--secondary ${className}`, type: 'button', text: label, onclick: () => { closeSettings(); void open(); } });
+
+  const pages = {
+    coach: [
+      el('div', { class: 'set-group' }, [
+        settingRow('Model', 'Answers new replies in coding, LLD and system design. Each provider uses its own sign-in and limits.', coachPicker.root),
+        settingRow('Pictures', 'Painted by Codex in 30–60 seconds from your ChatGPT image allowance. Ask first shows a button; Off keeps the description. Illustrations are always instant and free.', pictureSeg),
+        settingRow('Coaching instructions', 'How the coach teaches. It can refine them, and every change can be undone.', opens('Open', 'set-open-instructions', openCoachingInstructions)),
+        settingRow('What was sent?', 'The exact context of recent turns.', opens('View', 'set-open-context', openContextInspector)),
+      ]),
+    ],
+    practice: [
+      el('div', { class: 'set-group' }, [
+        settingRow('Report difficulty', "Beginner grades a step below the mid-level (SDE II / L4) bar while you're learning. Saved reports keep the difficulty they were graded at.", reportDifficulty.seg, { extra: reportDifficulty.notice }),
+        settingRow('Shuffle picks from', null, shuffleSourceControl()),
+      ]),
       createTrackerControl(),
-      el('div', { class: 'mono dim set-label', text: 'Coach' }),
-      coachPicker.root,
-      el('button', {class:'btn btn--quiet',type:'button',text:'Coaching instructions',onclick:()=>{closeSettings();void openCoachingInstructions();}}),
-      el('button', {class:'btn btn--quiet',type:'button',text:'What was sent?',onclick:()=>{closeSettings();void openContextInspector();}}),
-      el('p', { class: 'set-cardblurb', text: 'Applies to new replies across all three disciplines. Each provider uses its own sign-in and limits. Coaches maintain notes through shared Studio tools.' }),
-      el('div', { class: 'mono dim set-label', text: 'Coach pictures' }), pictureSeg,
-      el('p', { class: 'set-cardblurb', text: 'Illustrations are drawn here instantly and cost nothing. Pictures are painted by Codex in about 30–60 seconds and use your ChatGPT image allowance. Auto paints as soon as the coach asks for one; Ask first shows a button; Off shows only the description.' }),
-      el('div', { class: 'mono dim set-label', text: 'Report difficulty' }), reportDifficulty.seg, reportDifficulty.notice,
-      el('p', { class: 'set-cardblurb', text: "Used when a mock's report is written. Beginner grades a step below the mid-level (SDE II / L4) bar while you're learning; Mid-level grades at the full bar. Saved reports keep the difficulty they were graded at." }),
-      voiceSection,
-      el('label', { class: 'set-row' }, [
-        el('span', { class: 'set-rowname', text: 'Shuffle picks from' }), shuffleSourceControl(),
+    ],
+    voice: [
+      el('section', { class: 'set-group set-voice', 'aria-label': 'Voice' }, [
+        settingRow('Speech output', 'Natural voices run on this Mac. If one is unavailable, the system voice is used.', voiceEngine),
+        settingRow('Voice', null, [voicePicker, preview]),
+        settingRow('Speed', null, [voiceSpeed, speedValue], { tag: 'label' }),
+        switchRow('Send when I pause', 'Off means you send each answer with the arrow.', autoSendEnabled(), saveAutoSend),
       ]),
-      el('div', { class: 'mono dim set-label', text: 'Appearance' }), modeSeg,
-      el('div', { class: 'mono dim set-label', text: 'Theme' }),
-      themeCards,
-      el('div', { class: 'mono dim set-label', text: 'Editor' }),
-      el('label', { class: 'set-row' }, [
-        el('span', { class: 'set-rowname', text: 'Code size' }),
-        size,
-        sizeValue,
+    ],
+    appearance: [
+      el('div', { class: 'set-group' }, [settingRow('Mode', null, modeSeg)]),
+      el('div', { class: 'set-group' }, [el('div', { class: 'set-label', text: 'Theme' }), themeCards]),
+      el('div', { class: 'set-group' }, [
+        toggle('motion', 'Animations'),
+        toggle('celebrations', 'Celebrations', 'A full-page moment when a submission is accepted.'),
       ]),
-      el('label', { class: 'set-row' }, [
-        el('span', { class: 'set-rowname', text: 'Animations' }),
-        el('span', { class: 'spacer' }),
-        motion,
+    ],
+    editor: [
+      el('div', { class: 'set-group' }, [
+        settingRow('Code size', null, [size, sizeValue], { tag: 'label' }),
+        toggle('typingFx', 'Typing effects', 'Each character reveals itself as you type.'),
+        toggle('typingSparks', 'Sparks', 'A few sparks and a soft glow at the caret.'),
       ]),
-      toggle('typingFx', 'Typing effects: each character reveals itself as you type'),
-      toggle('typingSparks', 'Sparks too: a few sparks and a soft glow at the caret'),
-      toggle('celebrations', 'Celebrate accepted submissions'),
-      el('div', { class: 'mono dim set-label', text: 'Keys' }),
-      // Listed, not configurable. A shortcut you can rebind is a shortcut you have to
-      // remember twice; what this is for is answering "what was it again".
+    ],
+    // Listed, not configurable. A shortcut you can rebind is a shortcut you have to
+    // remember twice; what this is for is answering "what was it again".
+    keys: [
       el('div', { class: 'set-keys' }, [
         ...CHORDS.map((c) => keyRow(c.label, `Show or hide ${c.what}`)),
         keyRow('⌘← · ⌘→', 'Move to the previous or next problem'),
@@ -396,23 +399,47 @@ export function openSettings() {
         keyRow("⌘'", 'Run the example cases here'),
         keyRow('⌘S', 'Save to disk now'),
       ]),
-    ]),
-  ]);
+    ],
+  };
 
-  scrim = el('div', { class: 'set-scrim', onclick: closeSettings });
-  const body = panel.querySelector('.set-body');
-  let section = null;
-  for (const node of [...body.children]) {
-    if (node.matches('.set-label')) {
-      section = el('section', { class: 'set-section', 'aria-label': node.textContent });
-      body.insertBefore(section, node); section.append(node);
-    } else if (node.matches('section')) {
-      node.classList.add('set-section'); section = null;
-    } else if (section) section.append(node);
+  const body = el('div', { class: 'set-body' });
+  const tabs = SECTIONS.map(([id, label]) => el('button', {
+    type: 'button', class: 'btn btn--quiet set-nav-item', role: 'tab', id: `set-tab-${id}`, 'aria-controls': `set-page-${id}`,
+    dataset: { setTab: id }, text: label, onclick: () => show(id),
+  }));
+  const panels = SECTIONS.map(([id]) => el('div', {
+    class: 'set-page', role: 'tabpanel', id: `set-page-${id}`, 'aria-labelledby': `set-tab-${id}`, dataset: { setPage: id },
+  }, pages[id]));
+  function show(id, { focus = false } = {}) {
+    SECTIONS.forEach(([section], index) => {
+      const active = section === id;
+      tabs[index].setAttribute('aria-selected', String(active));
+      tabs[index].tabIndex = active ? 0 : -1;
+      panels[index].hidden = !active;
+      if (active && focus) tabs[index].focus();
+    });
+    body.scrollTop = 0;
+    try { localStorage.setItem(SECTION_KEY, id); } catch { /* forgets */ }
   }
+  const nav = el('nav', { class: 'set-nav', role: 'tablist', 'aria-label': 'Settings sections', 'aria-orientation': 'vertical',
+    onkeydown: (event) => {
+      const at = tabs.indexOf(document.activeElement);
+      const to = { ArrowDown: at + 1, ArrowRight: at + 1, ArrowUp: at - 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key];
+      if (at < 0 || to === undefined) return;
+      event.preventDefault();
+      show(SECTIONS[(to + tabs.length) % tabs.length][0], { focus: true });
+    },
+  }, tabs);
+  body.append(...panels);
+
+  panel = el('aside', { class: 'settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Settings' }, [
+    dialogHeader({ title: 'Settings', onClose: closeSettings, closeLabel: 'Close settings' }),
+    el('div', { class: 'set-layout' }, [nav, body]),
+  ]);
+  scrim = el('div', { class: 'set-scrim', onclick: closeSettings });
   document.body.append(scrim, panel);
   document.body.classList.add('settings-open');
-  panel.querySelector('button').focus();
+  show(SECTIONS.some(([id]) => id === section) ? section : savedSection(), { focus: true });
 }
 
 /** Sun and moon, drawn rather than typed — an emoji is a different font on every OS. */
@@ -481,8 +508,7 @@ export function installSettingsButton(mountEl) {
 
   mountEl.append(dayNight);
   mountEl.append(el('button', {
-    class: 'btn btn--icon set-open set-settings', type: 'button', title: 'Settings — theme and editor',
-    'aria-label': 'Settings',
+    class: 'btn btn--icon set-open set-settings', type: 'button', title: 'Settings',     'aria-label': 'Settings',
     onclick: openSettings,
   }, settingsGlyph()));
 }
@@ -500,7 +526,7 @@ document.addEventListener('keydown', (event) => {
   // Keep keyboard focus inside the modal while the background is covered.
   if (event.key === 'Tab' && panel) {
     const controls = [...panel.querySelectorAll('button,select,input,[tabindex="0"]')]
-      .filter(node => !node.disabled && node.getClientRects().length);
+      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
     const edge = event.shiftKey ? controls[0] : controls.at(-1);
     if (document.activeElement === edge) {
       event.preventDefault();

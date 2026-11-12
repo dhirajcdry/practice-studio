@@ -1040,41 +1040,67 @@ body.is-splitting iframe,body.is-splitting .monaco-editor{pointer-events:none}
   padding:5px 7px;border:1px solid transparent;border-radius:var(--r-sm);
 }
 
-.set-scrim{position:fixed;inset:0;background:rgba(var(--ink-rgb),.18);z-index:90;transition:opacity var(--dur-fade) ease}
+/* A centred dialog: sections on a rail, one page of rows at a time. The scrim is the
+   dark end of whichever palette is showing, so it dims in both appearances. */
+body{--set-scrim:rgba(var(--ink-rgb),.34)}
+body.is-dark{--set-scrim:rgba(var(--on-ink-rgb),.62)}
+.set-scrim{position:fixed;inset:0;background:var(--set-scrim);z-index:90;transition:opacity var(--dur-fade) ease}
 @starting-style{.set-scrim{opacity:0}}
 .settings{
-  position:fixed;top:0;right:0;z-index:91;
-  width:min(420px,94vw);height:100vh;
-  background:var(--card);border-left:1px solid var(--hair-20);box-shadow:var(--shadow-lift);
-  display:flex;flex-direction:column;
-  /* Slides in from the edge it lives on. Closing stays instant. */
-  transition:transform var(--dur-drawer) var(--ease-drawer);
+  position:fixed;inset:0;margin:auto;z-index:91;box-sizing:border-box;
+  width:min(860px,calc(100vw - 48px));height:min(620px,calc(100dvh - 48px));
+  background:var(--card);color:var(--ink);border:var(--float-border);border-radius:var(--float-radius);box-shadow:var(--float-shadow);
+  display:flex;flex-direction:column;overflow:hidden;font-family:var(--ui);
+  /* Settles into place. Closing stays instant. */
+  transition:opacity var(--dur-fade) ease,transform var(--dur-drawer) var(--ease-drawer);
 }
-@starting-style{.settings{transform:translateX(100%)}}
+@starting-style{.settings{opacity:0;transform:translateY(8px)}}
+.settings .ui-dialog-header{padding-inline:var(--space-5) var(--space-3)}
+.set-layout{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:188px minmax(0,1fr)}
 
-.set-head .spacer{flex:1 1 auto}
+.set-nav{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--space-3) var(--space-2);border-right:1px solid var(--hair-10);background:var(--hair-06)}
+/* Shared quiet buttons, laid out as a list: full width, read from the left. */
+body .settings .btn.set-nav-item{justify-content:flex-start;width:100%;padding:0 var(--space-3);color:var(--ink-70)}
+body .settings .btn.set-nav-item:hover{color:var(--ink)}
+body .settings .btn.set-nav-item[aria-selected="true"]{background:var(--card);color:var(--ink);font-weight:600}
+body .settings .btn.set-nav-item:focus-visible{outline-offset:-2px}
+
 /* Block flow: this scrolls — see server/test/css-rules.test.mjs. */
-.set-body{min-height:0;box-sizing:border-box;flex:1 1 auto;overflow-y:auto;display:block;padding:18px 16px 40px}
-.set-label{margin:0 0 var(--space-2);font:600 11px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-70)}
-.set-label:first-child{margin-top:0}
+.set-body{min-width:0;min-height:0;box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;display:block;padding:var(--space-3) var(--space-6) var(--space-6)}
+.set-group{margin:0}
+.set-group+.set-group{margin-top:var(--space-5)}
+.set-label{margin:0 0 var(--space-3);font:500 var(--text-sm)/1.4 var(--ui);color:var(--ink)}
 
-.set-cards{display:grid;grid-template-columns:1fr;gap:9px}
+.set-row{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-6);min-height:36px;padding:var(--space-3) 0}
+.set-row~.set-row{border-top:1px solid var(--hair-10)}
+.set-rowtext{display:flex;flex-direction:column;gap:2px;flex:1 1 240px;min-width:0}
+.set-rowname{font:500 var(--text-sm)/1.4 var(--ui);color:var(--ink)}
+.set-rowhint{margin:0;font-size:12px;line-height:1.5;color:var(--ink-70);max-width:54ch}
+.set-status{padding-bottom:var(--space-2)}
+.set-control{display:flex;align-items:center;justify-content:flex-end;flex:0 1 auto;gap:var(--space-2);min-width:0;max-width:100%}
+.set-notice{margin-top:var(--space-1)}
+.set-range{flex:0 1 180px;width:180px;min-width:0;accent-color:var(--accent)}
+.set-value{flex:0 0 auto;min-width:34px;text-align:right;font-size:11px}
+
+.set-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3)}
 .set-card{
   display:block;text-align:left;width:100%;
   border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);
   transition:border-color var(--dur-hover) ease,background-color var(--dur-hover) ease,transform var(--dur-turn) var(--ease-out);
 }
 .set-card:hover{border-color:var(--ink-35)}
-.set-card[aria-pressed="true"]{border-color:var(--ink);background:rgba(var(--ink-rgb),.03)}
+.set-card[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .set-cardname{margin-top:9px;color:var(--ink)}
-.set-cardblurb{font-size:12px;line-height:1.5;color:var(--ink-70);margin:var(--space-2) 0 0}
-.set-notice{margin-top:var(--space-1)}
+.set-cardblurb{font-size:12px;line-height:1.5;color:var(--ink-70);margin:var(--space-1) 0 0}
 
-.set-row{display:flex;align-items:center;gap:var(--space-3);min-height:36px;padding:var(--space-1) 0;border-bottom:1px solid var(--hair-10)}
-.set-rowname{font-size:13px;color:var(--ink-70);flex:1;min-width:0}
-.set-row .spacer{flex:1 1 auto}
-.set-range{flex:1 1 auto;min-width:0;accent-color:var(--ink)}
-.set-value{flex:0 0 auto;font-size:10px}
+@media(max-width:720px){
+  .settings{width:100vw;height:100dvh;border:0;border-radius:0}
+  .set-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  body .settings .btn.set-nav-item{width:auto}
+  .set-nav{flex-direction:row;overflow-x:auto;padding:var(--space-2) var(--space-3);border-right:0;border-bottom:1px solid var(--hair-10)}
+  .set-body{padding-inline:var(--space-4)}
+  .set-cards{grid-template-columns:minmax(0,1fr)}
+}
 
 /* Reduce motion: nothing loops or moves. Colour and opacity changes still ease, because
    they explain a change of state without moving anything. */
@@ -1092,14 +1118,14 @@ body{background-image:var(--texture);background-attachment:scroll}
 .coach-context span{color:var(--ink-50);border:1px solid var(--hair-10);border-radius:999px;padding:2px 6px;white-space:nowrap;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 
 /* The key list in Settings — a reference, not a control panel. */
-.set-keys{display:flex;flex-direction:column;gap:1px}
-.set-keyrow{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair-06)}
+.set-keys{display:flex;flex-direction:column}
+.set-keyrow{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);min-height:36px;border-bottom:1px solid var(--hair-10)}
 .set-keyrow:last-child{border-bottom:0}
 .set-keyrow kbd{
-  flex:0 0 46px;font-size:11px;letter-spacing:.04em;color:var(--ink-70);
-  border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:2px 0;text-align:center;
+  flex:none;min-width:30px;font-size:11px;letter-spacing:.04em;color:var(--ink-70);
+  border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:2px var(--space-2);text-align:center;
 }
-.set-keywhat{font-size:13px;color:var(--ink-50)}
+.set-keywhat{font-size:13px;color:var(--ink)}
 
 /* ---- turns still running on other problems ---- */
 .coach-runs{
@@ -1199,7 +1225,6 @@ body.coach-open .coach-runs{bottom:20px}
 @container (max-width:400px){.plinks{margin-left:0;flex-basis:100%}}
 .plink{font:11px var(--ui);color:var(--ink-50);text-decoration:none}
 .plink:hover{color:var(--ink)}
-.set-head>.mono,.set-label{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;color:var(--ink-50)}
 .set-cardname{font:600 13px var(--ui);letter-spacing:0;text-transform:none}
 
 /* The return link names the attempt while browsing elsewhere, without growing the
@@ -1254,19 +1279,12 @@ body .hover-divided{border-bottom:0}
    Monaco's own rule, which loads after this sheet. */
 body .monaco-editor .find-widget>.button.codicon-widget-close{top:7.5px;right:8px}
 
-/* Voice follows the settings controls and theme tokens. */
-.set-voice .set-row{flex-wrap:wrap}
-.set-voice select{min-width:0;max-width:100%;flex:1;padding:6px 9px;min-height:32px;background:var(--card);color:var(--ink);border:1px solid var(--hair-20);border-radius:var(--radius,4px);font:inherit;font-size:13px}
-.set-voice select:disabled{opacity:.5}
 
 /* Shuffle remains mounted while the Connector finds a problem. */
 .shufflebtn[aria-busy=true],.pnav-shuffle[aria-busy=true]{cursor:progress;opacity:.65}.pnav-shuffle[aria-busy=true]{display:inline-flex;align-items:center;width:auto;}
 .pnav-shuffle .shuffle-label{font:var(--text-xs) var(--ui);white-space:nowrap}
 .pnav-shuffle .shuffle-label:empty{display:none}
 
-.set-section{margin-bottom:var(--space-6)}
-.set-body>.set-row{margin-bottom:var(--space-6)}
-.set-section>.segmented{margin-block:var(--space-1)}
 .theme-preview{display:grid;grid-template-columns:1fr 1fr;height:76px;overflow:hidden;border-radius:var(--r-sm)}
 .theme-half{--preview-paper:var(--pl-paper);--preview-ink:var(--pl-ink);--preview-accent:var(--pl-accent);display:flex;flex-direction:column;background:var(--preview-paper);padding:var(--space-2);gap:var(--space-1)}
 .theme-half.dark{--preview-paper:var(--pd-paper);--preview-ink:var(--pd-ink);--preview-accent:var(--pd-accent)}

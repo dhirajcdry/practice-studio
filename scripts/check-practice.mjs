@@ -327,7 +327,7 @@ try {
   const exact=await evaluate(`return (await(await fetch('/api/coach/context?id=${latest.id}')).json()).request;`);
   assert.equal(exact.input.promptCharacters,exact.prompt.length);
   assert.match(exact.systemPrompt,/untimed practice/);
-  await evaluate("(await import('/js/settings.js')).openSettings();[...document.querySelectorAll('.settings button')].find(b=>b.textContent==='What was sent?').click();");
+  await evaluate("(await import('/js/settings.js')).openSettings();document.querySelector('.settings .set-open-context').click();");
   await until(()=>evaluate("return !!document.querySelector('.ci-request')"),'context inspector list');
   await evaluate("document.querySelector('.ci-request').click()");
   await until(()=>evaluate("return !!document.querySelector('.ci-source')"),'context inspector detail');

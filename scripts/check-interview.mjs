@@ -388,7 +388,7 @@ try {
     window.releaseDifficulty = null;
     const gate = new Promise(resolve => { window.releaseDifficulty = resolve; });
     window.fetch = async (...args) => { if (args[0] === '/api/report/difficulty') await gate; return window.fetchBeforeDifficulty(...args); };
-    (await import('/js/settings.js')).openSettings();
+    (await import('/js/settings.js')).openSettings('practice');
   `);
   await until(() => evaluate(`return !!${difficultySeg};`), 'report difficulty control');
   assert.deepEqual(await evaluate(`return ${difficultyButtons};`), [
@@ -410,7 +410,7 @@ try {
         const body = document.querySelector('.set-body'), seg = ${difficultySeg}, b = body.getBoundingClientRect(), s = seg.getBoundingClientRect();
         const heights = [...seg.children].map(n => n.getBoundingClientRect().height);
         // Compare, not absolute: other Settings rows have their own overflow in some themes.
-        const notice = document.querySelector('.settings .set-notice'), blurb = notice.nextElementSibling;
+        const blurb = seg.closest('.set-row').querySelector('.set-rowhint');
         const scrollWith = body.scrollWidth; seg.style.display = 'none'; blurb.style.display = 'none'; const scrollWithout = body.scrollWidth; seg.style.display = ''; blurb.style.display = '';
         return { width: ${width}, theme: ${JSON.stringify(theme)}, inside: s.left >= b.left && s.right <= b.right && blurb.getBoundingClientRect().right <= b.right, noBodyOverflow: scrollWith === scrollWithout, noSegOverflow: seg.scrollWidth <= seg.clientWidth, oneRow: new Set([...seg.children].map(n => n.getBoundingClientRect().top)).size === 1, sameHeight: Math.max(...heights) - Math.min(...heights) <= .5 };
       `);
@@ -435,7 +435,7 @@ try {
   await until(async () => await difficultyOnServer() === 'mid-level', 'click saves the difficulty');
   await difficultyLoaded();
   assert.equal(await evaluate("return document.querySelector('.settings .set-notice').hidden;"), true, 'a successful save clears the error');
-  await evaluate("(await import('/js/settings.js')).closeSettings(); (await import('/js/settings.js')).openSettings();");
+  await evaluate("(await import('/js/settings.js')).closeSettings(); (await import('/js/settings.js')).openSettings('practice');");
   await difficultyLoaded();
   assert.deepEqual((await evaluate(`return ${difficultyButtons};`)).map(b => b.pressed), ['false', 'true'], 'the choice persists across reopening');
   await evaluate("(await import('/js/settings.js')).closeSettings();");

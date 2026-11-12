@@ -1,168 +1,88 @@
-/* Practice Studio — Phase 6, the progress dashboard.
-   Same design language as app.css and the approved dashboard-v3: light canvas,
-   white cards, serif display, UI labels, boxed digits, one
-   accent. Everything here is namespaced `dash-` so it cannot collide with the
-   shared sheet, which another agent is editing.
+/* The progress page. Everything here is namespaced `dash-`.
 
-   One visual rule specific to this screen: a number the data cannot support is
-   never drawn as a number. It is drawn as a dashed, quiet "needs more evidence"
-   block, which is a deliberate state rather than a broken one. */
+   One rule specific to this screen: a number the data cannot support is never drawn
+   as a number. It is one quiet line saying how many more samples it needs. */
 
-.dash{display:flex;flex-direction:column;gap:16px}
+.dash{display:flex;flex-direction:column}
+.dash-refresh:disabled{opacity:.5;cursor:default}
 
-/* ---------------- head ---------------- */
+/* One bounded column. Patterns lead; lists, days and habits sit beside them. */
+.dash-body{box-sizing:border-box;width:100%;max-width:1200px;margin:0 auto;padding:var(--space-7) var(--space-6) var(--space-8);display:flex;flex-direction:column;gap:var(--space-7)}
+/* Over a painting the column is a solid board: text never sits on the art. */
+body.theme-art .dash-body{margin-block:var(--space-5);background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow)}
+.dash-layout{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--space-7) var(--space-8)}
+.dash-main{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:var(--space-7)}
+.dash-side{flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:var(--space-7)}
 
-.dash-head .sub{color:var(--ink-50);font-size:14px;margin-top:3px;max-width:64ch}.dash-refresh:disabled{opacity:.5;cursor:default}
+.dash-sec{min-width:0}
+.dash-sec>header{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);padding-bottom:var(--space-3)}
+.dash-sec>header h2{margin:0;font:600 var(--text-md)/1.4 var(--title-font);color:var(--ink)}
+.dash-sec>header .note{color:var(--ink-70);font:400 12px/1.4 var(--ui);white-space:nowrap}
 
-/* A tiny "where did this number come from" marker. Every stat carries one. */
-
-/* ---------------- stat row ---------------- */
-.dash-stats{
-  display:grid;grid-template-columns:repeat(5,1fr);
-  background:var(--card);border-radius:var(--r-md);box-shadow:var(--shadow);
-  border:1px solid var(--hair-10);overflow:hidden;
-}
-.dash-stat{padding:14px var(--content-rail) 12px;border-left:1px solid var(--hair-10);min-width:0}
-.dash-stat:first-child{border-left:0}
-.dash-stat .v{
-  font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.03em;
-  line-height:1.15;font-variant-numeric:tabular-nums;
-}
-.dash-stat .v small{font-size:.5em;font-weight:500;color:var(--ink-50)}
-.dash-stat .v.none{color:var(--ink-35)}
-.dash-stat .l{margin-top:3px;color:var(--ink-50);display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
-@media (max-width:860px){
-  .dash-stats{grid-template-columns:repeat(3,1fr)}
-  .dash-stat:nth-child(4){border-left:0}
-  .dash-stat:nth-child(n+4){border-top:1px solid var(--hair-10)}
-}
-@media (max-width:560px){
-  .dash-stats{grid-template-columns:repeat(2,1fr)}
-  .dash-stat:nth-child(odd){border-left:0}
-  .dash-stat:nth-child(even){border-left:1px solid var(--hair-10)}
-  .dash-stat:nth-child(n+3){border-top:1px solid var(--hair-10)}
-}
-
-/* ---------------- cards ---------------- */
+/* Loading, error and empty states keep the boxed card. */
 .dash-card{
-  background:var(--card);border-radius:var(--r-md);box-shadow:var(--shadow);
-  border:1px solid var(--hair-10);overflow:hidden;
+  background:var(--surface-card-bg);border-radius:var(--surface-card-radius);
+  border:var(--surface-card-border);overflow:hidden;
 }
-.dash-card > header{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:12px var(--content-rail);border-bottom:1px solid var(--hair-10);flex-wrap:wrap;
-}
-.dash-card > header .hgroup{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
-.dash-card > header h2{font-weight:700;font-size:15px;letter-spacing:-.02em}
-.dash-card > header .note{color:var(--ink-35);white-space:nowrap;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.dash-pad{padding:14px var(--content-rail)}
+.dash>.dash-card{width:min(1152px,calc(100% - 2 * var(--space-6)));margin:var(--space-7) auto 0}
+.dash-pad{padding:var(--space-4)}
 
-.dash-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
-.dash-col{display:flex;flex-direction:column;gap:16px;min-width:0}
-@media (max-width:900px){ .dash-grid{grid-template-columns:1fr} }
+/* ---------------- the whole curriculum ---------------- */
+.dash-overall{display:flex;flex-direction:column;gap:var(--space-3)}
+.dash-overall .dash-meter{height:14px}
+.dash-counts{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-6);font-size:var(--text-md);color:var(--ink-70)}
+.dash-counts b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
 
-/* ---------------- the honest header block ---------------- */
-.dash-truth{
-  border:1px solid rgba(var(--med-rgb),.28);background:var(--med-soft);
-  border-radius:var(--r-md);padding:14px var(--content-rail);
-}
-.dash-truth h2{
-  color:var(--med);margin-bottom:7px;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.dash-truth p{font-size:14.5px;color:var(--ink-70);max-width:72ch}
-.dash-truth p + p{margin-top:7px}
-.dash-truth b{font-weight:700;color:var(--ink)}
-.dash-truth ul{margin:9px 0 0 18px}
-.dash-truth li{font-size:14px;color:var(--ink-70);margin:4px 0;max-width:70ch}
-
-/* ---------------- coverage meters ---------------- */
-.dash-lists{display:flex;flex-direction:column;gap:0}
-.dash-listrow{padding:12px var(--content-rail);border-top:1px solid var(--hair-10)}
-.dash-listrow:first-child{border-top:0}
-.dash-listrow .top{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap}
-.dash-listrow .name{font-weight:700;font-size:14.5px;letter-spacing:-.01em;flex:1;min-width:0}
-.dash-listrow .count{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-50);font-variant-numeric:tabular-nums;white-space:nowrap}
-.dash-listrow .count b{color:var(--ink);font-weight:600}
-
-.dash-meter{
-  height:8px;border-radius:var(--r-sm);background:rgba(var(--ink-rgb),.055);
-  overflow:hidden;display:flex;
-}
+/* ---------------- meters ---------------- */
+.dash-meter{height:4px;border-radius:var(--r-sm);background:var(--hair-10);overflow:hidden;display:flex}
 .dash-meter i{display:block;height:100%}
-.dash-meter i.solved{background:rgba(var(--ink-rgb),.62)}
-.dash-meter i.tried{background:rgba(var(--ink-rgb),.22)}
-.dash-meterkey{display:flex;gap:14px;flex-wrap:wrap;margin-top:7px}
+.dash-meter i.solved,.dash-meterkey i.solved,.dash-patterns .pcells i.solved{background:var(--accent)}
+.dash-meter i.tried,.dash-meterkey i.tried,.dash-patterns .pcells i.tried{background:rgba(var(--accent-rgb),.4)}
+.dash-meterkey{display:flex;gap:var(--space-5);flex-wrap:wrap;padding-top:var(--space-4);border-top:1px solid var(--hair-10);color:var(--ink-70);font-size:12px}
 .dash-meterkey span{display:inline-flex;align-items:center;gap:6px}
-.dash-meterkey i{width:10px;height:8px;border-radius:2px;display:inline-block;flex:0 0 auto}
-.dash-meterkey i.solved{background:rgba(var(--ink-rgb),.62)}
-.dash-meterkey i.tried{background:rgba(var(--ink-rgb),.22)}
-.dash-meterkey i.rest{background:rgba(var(--ink-rgb),.055);border:1px solid var(--hair-10)}
+.dash-meterkey i{width:10px;height:10px;border-radius:2px;background:var(--hair-10);flex:none}
 
-/* ---------------- pattern table ---------------- */
-.dash-patterns{list-style:none}
-.dash-patterns li{border-top:1px solid var(--hair-06)}
-.dash-patterns li:first-child{border-top:0}
-/* The name column gets whatever is left: "2-D Dynamic Programming" must never be
-   truncated to make room for a meter that is mostly empty track. */
+.dash-lists{display:flex;flex-direction:column;gap:var(--space-4)}
+.dash-listrow .top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);margin-bottom:6px;font-size:var(--text-sm)}
+.dash-listrow .count{color:var(--ink-70);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------------- patterns: one square per problem ---------------- */
+.dash-patterns{list-style:none;margin:0;padding:0}
 .dash-prow{
-  display:grid;grid-template-columns:22px minmax(150px,1fr) minmax(56px,190px) 52px;
-  align-items:center;gap:10px;padding:9px var(--content-rail);
+  display:grid;grid-template-columns:22px minmax(120px,210px) minmax(0,1fr) 56px 76px;
+  align-items:center;gap:var(--space-4);min-height:44px;border-top:1px solid var(--hair-10);font-size:var(--text-sm);
 }
-.dash-prow.zero .pname{color:var(--ink-50);font-weight:600}
-.dash-prow:hover{background:rgba(var(--ink-rgb),.025)}
-.dash-prow .pidx{font-family:var(--mono);font-size:11px;color:var(--ink-35);font-variant-numeric:tabular-nums;text-align:right}
-.dash-prow .pname{font-size:14px;font-weight:700;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dash-prow .pcount{font-family:var(--mono);font-size:11px;color:var(--ink-50);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-.dash-prow .pcount b{color:var(--ink);font-weight:600}
-.dash-prow.zero .pcount{color:var(--ink-35)}
-.dash-prow .dash-meter{height:6px}
+.dash-prow .pidx{color:var(--ink-50);font-size:12px;font-variant-numeric:tabular-nums}
+.dash-prow .pname{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-prow.zero .pname{color:var(--ink-70)}
+.dash-prow .pcells{display:flex;gap:3px;min-width:0}
+.dash-prow .pcells i{flex:1 1 0;max-width:18px;height:14px;border-radius:2px;background:var(--hair-10)}
+.dash-prow .pcount{color:var(--ink-70);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.dash-prow .ptag{color:var(--ink-70);font-size:12px;text-align:right;white-space:nowrap}
+.dash-prow .ptag.now{color:var(--accent)}
 @media (max-width:640px){
-  .dash-prow{grid-template-columns:24px minmax(0,1fr) 58px;gap:10px}
-  .dash-prow .dash-meter{display:none}
+  .dash-prow{grid-template-columns:minmax(0,1fr) 56px;gap:var(--space-1) var(--space-3);padding:var(--space-2) 0}
+  .dash-prow .pidx,.dash-prow .ptag:empty{display:none}
+  .dash-prow .pcells{grid-column:1 / -1;grid-row:2}
+  .dash-prow .ptag{grid-column:1 / -1;text-align:left}
 }
 
-/* ---------------- signals / weakness view ---------------- */
-.dash-signal{padding:13px var(--content-rail);border-top:1px solid var(--hair-10)}
-.dash-signal:first-child{border-top:0}
-.dash-signal .shead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:5px}
-.dash-signal .sname{font-weight:700;font-size:14.5px;letter-spacing:-.01em;flex:1;min-width:0}
-.dash-signal .swhat{font-size:13px;color:var(--ink-50);max-width:66ch;line-height:1.55}
-.dash-signal .sval{
-  font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums;margin-top:8px;
-}
+/* ---------------- habits ---------------- */
+.dash-habit{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4);padding:10px 0;border-top:1px solid var(--hair-10);font-size:var(--text-sm)}
+.dash-habit b{font-weight:600;white-space:nowrap}
+.dash-habit .need{color:var(--ink-70);white-space:nowrap}
+.dash-habit.sub{padding:var(--space-1) 0 var(--space-1) var(--space-4);border-top:0;color:var(--ink-70);font-size:12px}
 
-/* the deliberate "not enough evidence yet" block */
-.dash-need{
-  margin-top:var(--space-2);border:0;border-left:1px solid var(--hair-20);border-radius:0;
-  padding:var(--space-2) var(--space-3);background:transparent;
-}
-.dash-need .nhead{
-  color:var(--ink-35);margin-bottom:6px;display:flex;align-items:center;gap:8px;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
-}
-.dash-need .nbar{flex:0 0 62px;height:5px;border-radius:2px;background:rgba(var(--ink-rgb),.08);overflow:hidden}
-.dash-need .nbar i{display:block;height:100%;background:var(--ink-35)}
-.dash-need p{font-size:13.5px;color:var(--ink-70);max-width:64ch}
-.dash-need p + p{margin-top:5px}
-.dash-need .how{font-size:13px;color:var(--ink-50);margin-top:6px}
-
-/* ---------------- activity strip ---------------- */
-.dash-strip{padding:14px var(--content-rail);display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
-.dash-days{display:flex;gap:4px;align-items:flex-end;flex-wrap:wrap}
-.dash-day{width:22px;display:flex;flex-direction:column;align-items:center;gap:4px}
-.dash-day .box{width:16px;height:16px;border:1px solid var(--hair-20);border-radius:var(--r-sm);background:var(--card)}
-.dash-day .box.f1{background:rgba(var(--ink-rgb),.22);border-color:rgba(var(--ink-rgb),.28)}
-.dash-day .box.f2{background:rgba(var(--ink-rgb),.62);border-color:rgba(var(--ink-rgb),.62)}
-.dash-day .d{font-family:var(--mono);font-size:8px;letter-spacing:.04em;color:var(--ink-35)}
-.dash-legend{display:flex;gap:12px;align-items:center;margin-left:auto;flex-wrap:wrap}
-.dash-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid var(--hair-20);vertical-align:-1px;margin-right:5px}
+/* ---------------- the last fourteen days ---------------- */
+.dash-days{display:flex;align-items:flex-end;gap:var(--space-1);height:64px}
+.dash-days i{flex:1 1 0;height:3px;border-radius:2px;background:var(--hair-10)}
+.dash-days i.on{background:var(--accent)}
+.dash-dayends{display:flex;justify-content:space-between;padding-top:6px;color:var(--ink-70);font-size:12px}
 
 /* ---------------- lists of things that happened ---------------- */
 .dash-recent{list-style:none}
-.dash-recent li{border-top:1px solid var(--hair-06);display:flex;gap:12px;align-items:baseline;padding:9px var(--content-rail)}
-.dash-recent li:first-child{border-top:0}
+.dash-recent{margin:0;padding:0}
+.dash-recent li{border-top:1px solid var(--hair-10);display:flex;gap:12px;align-items:baseline;padding:10px 0}
 .dash-recent .when{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-35);flex:0 0 96px;white-space:nowrap}
 .dash-recent .what{flex:1;font-size:14px;min-width:0}
 .dash-recent .what b{font-weight:600}
@@ -178,11 +98,11 @@
 table.dash-table{width:100%;border-collapse:collapse;min-width:620px}
 table.dash-table th{
   color:var(--ink-50);text-align:left;
-  padding:9px 14px;border-bottom:1px solid var(--hair-20);white-space:nowrap;
+  padding:9px 14px 9px 0;border-bottom:1px solid var(--hair-10);white-space:nowrap;
   font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 table.dash-table td{
-  padding:10px 14px;border-bottom:1px solid var(--hair-06);font-size:14px;vertical-align:middle;white-space:nowrap;
+  padding:10px 14px 10px 0;border-bottom:1px solid var(--hair-10);font-size:14px;vertical-align:middle;white-space:nowrap;
 }
 table.dash-table tr:last-child td{border-bottom:0}
 table.dash-table .name{font-weight:600;letter-spacing:-.01em}
@@ -204,10 +124,10 @@ table.dash-table .evid{font-family:var(--mono);font-size:10px;letter-spacing:.06
 .dash-empty b{font-weight:600;color:var(--ink)}
 .dash-empty ul{margin:9px 0 0 18px}
 .dash-empty li{font-size:14px;color:var(--ink-70);margin:5px 0}
-.dash-quiet{padding:14px var(--content-rail);color:var(--ink-50);font-size:14px;font-style:italic;max-width:70ch}
+.dash-quiet{margin:0;color:var(--ink-70);font-size:var(--text-sm);max-width:70ch}
 
 .dash-warn{
-  border-top:1px solid var(--hair-10);padding:11px var(--content-rail);
+  border-top:1px solid var(--hair-10);padding:11px 0;
   font-size:13px;color:var(--ink-50);line-height:1.6;
 }
 .dash-warn b{color:var(--med);display:block;margin-bottom:4px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -225,6 +145,5 @@ table.dash-table .evid{font-family:var(--mono);font-size:10px;letter-spacing:.06
 .dash-selftest .bad{color:var(--hard);font-weight:700}
 
 @media (max-width:700px){
-  .dash-head h1{font-family:var(--display);font-size:23px}
-  .dash{--content-rail:var(--space-3)}
+  .dash-body{padding:var(--space-5) var(--space-4) var(--space-7)}
 }

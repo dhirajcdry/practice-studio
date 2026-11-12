@@ -43,7 +43,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN + '/#/lld' });
   await until(()=>evaluate("return !!document.querySelector('.th-practice')"),'page');
-  await evaluate("(await import('/js/settings.js')).openSettings();[...document.querySelectorAll('.settings button')].find(b=>b.textContent==='Coaching instructions').click();");
+  await evaluate("(await import('/js/settings.js')).openSettings();document.querySelector('.settings .set-open-instructions').click();");
   await until(()=>evaluate("return document.querySelector('.gi-body')?.textContent.includes('No saved coaching instructions')"),'empty instructions');
   const click = async text => evaluate(`const b=[...document.querySelectorAll('.gi-sheet button')].find(b=>b.textContent===${JSON.stringify(text)});if(!b)throw Error('Missing button');b.click();`);
   await click('Add instruction');
