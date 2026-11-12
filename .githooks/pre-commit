@@ -1,0 +1,3 @@
+#!/bin/sh
+# This repo is PUBLIC. Blocks personal data in staged changes. See scripts/privacy-scan.mjs.
+exec node "$(git rev-parse --show-toplevel)/scripts/privacy-scan.mjs" --staged
