@@ -162,7 +162,6 @@ body .ui-toolbar{padding:var(--space-2) var(--space-3);min-height:calc(var(--con
    Normal flow reserves its height; there is no overlay/inset synchronization. */
 body[class] .ui-composer{box-sizing:border-box;flex:none;min-width:0;display:flex;flex-direction:column;position:static;margin:var(--space-2);padding:var(--space-2);border:var(--float-border);border-radius:var(--float-radius);background:var(--card);box-shadow:none;font:var(--text-sm)/var(--line-md) var(--ui);max-height:50%;overflow:hidden;overscroll-behavior:contain}
 .ui-composer-body{min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain}
-body[class] .ui-composer:focus-within{border-color:var(--accent)}
 body[class] .ui-composer textarea.ui-composer-input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:var(--space-8);max-height:min(calc(var(--space-8) * 4 + var(--space-5)),20dvh);margin:0;padding:var(--space-2);border:0;border-radius:0;outline:none;box-shadow:none;resize:none;background:transparent;color:var(--ink);font:var(--text-sm)/1.6 var(--ui);overflow-y:auto}
 body[class] .ui-composer textarea.ui-composer-input::placeholder{color:var(--ink-50)}
 .ui-composer-footer{flex:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-1) var(--space-2);min-width:0;margin-top:var(--space-1)}
@@ -295,7 +294,17 @@ body[class] .ui-jump-latest.ui-jump-latest[hidden]{display:none}
 body .coach-starters,.rp-ask-starters{display:flex;flex-direction:column;gap:2px}
 :root,body{--well:color-mix(in srgb,var(--card) 88%,var(--canvas));--receipt-rule:2px solid var(--hair-10);--composer-radius:calc(var(--r-sm) + 2px)}
 body[class] .ui-composer{border:1px solid var(--hair-20);border-radius:var(--composer-radius);background:var(--well)}
-body[class] .ui-composer:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+/* Focus is a quiet lift, not a ring around a ring: the edge warms toward the accent, a soft
+   halo spreads from it, and the surface comes forward. The caret says where typing goes. */
+body[class] .ui-composer{transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease}
+body[class] .ui-composer:focus-within{outline:none;border-color:color-mix(in srgb,var(--accent) 55%,var(--hair-20));background:var(--card);box-shadow:var(--focus-halo)}
+/* Send is a quiet neutral chip until there is something to send, then takes the accent. */
+body[class] .ui-composer .ui-composer-send{transition:background-color .16s ease,color .16s ease,border-color .16s ease}
+body[class] .ui-composer .ui-composer-send:disabled{opacity:1;background:var(--surface-inset);border-color:transparent;color:var(--ink-35);box-shadow:none}
+/* The footer's settings recede until the box is in use. A live microphone never dims. */
+.ui-composer :is(.ui-composer-options,.ui-dictation){transition:opacity .16s ease}
+.ui-composer:not(:hover,:focus-within) :is(.ui-composer-options,.ui-dictation:not(:has([aria-pressed="true"]))){opacity:.55}
+@media(prefers-reduced-motion:reduce){body[class] .ui-composer,body[class] .ui-composer .ui-composer-send,.ui-composer :is(.ui-composer-options,.ui-dictation){transition:none}}
 body[class] .ui-composer textarea.ui-composer-input{min-height:38.4px;max-height:195.2px;font:400 14px/1.6 var(--ui)}
 body[class] .ui-composer-send{width:var(--control-sm);height:var(--control-sm);min-height:var(--control-sm);border-radius:var(--r-sm)}
 body .voice-transcript{font:400 14px/1.6 var(--ui)}

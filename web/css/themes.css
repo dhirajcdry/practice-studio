@@ -5,7 +5,7 @@ body.theme-studio{
   --row-radius:var(--r-sm);--row-hover-bg:var(--hair-06);--row-gap:var(--space-2);--row-border:var(--surface-card-border);
   --tab-radius:var(--r-sm);--tab-active-bg:transparent;--tab-active-fg:var(--ink);--tab-active-indicator:inset 0 -2px 0 var(--accent);
   --tab-active-shadow:0 0 0 transparent;--chip-radius:var(--r-sm);--chip-border:0;--chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
-  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);
+  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);--focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);
   --verdict-easy:#246044;--verdict-hard:#B33A1A;--verdict-med:#795400;--ink-rgb:17,17,17;--on-ink-rgb:243,244,246;
   --on-ink:#F3F4F6;--canvas:#F3F4F6;--card:#FFFFFF;--ink:#111111;--ink-70:rgba(var(--ink-rgb),.72);
   --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
@@ -38,7 +38,7 @@ body.theme-desk{
   --row-gap:var(--space-2);--row-border:var(--surface-card-border);--tab-radius:var(--r-sm);--tab-active-bg:transparent;
   --tab-active-fg:var(--ink);--tab-active-indicator:inset 0 -2px 0 var(--accent);--tab-active-shadow:0 0 0 transparent;
   --chip-radius:var(--r-sm);--chip-border:0;--chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
-  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);
+  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);--focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);
   --verdict-easy:#356747;--verdict-hard:#B4432A;--verdict-med:#805700;--ink-rgb:24,24,24;--on-ink-rgb:246,244,240;
   --on-ink:#F6F4F0;--canvas:#F6F4F0;--card:#FFFDF9;--ink:#181818;--ink-70:rgba(var(--ink-rgb),.72);
   --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
@@ -74,7 +74,7 @@ body.theme-dunes{
   --row-hover-bg:var(--hair-06);--row-gap:var(--space-2);--row-border:var(--surface-card-border);
   --tab-radius:var(--r-sm);--tab-active-bg:transparent;--tab-active-fg:var(--ink);--tab-active-indicator:inset 0 -2px 0 var(--accent);
   --tab-active-shadow:0 0 0 transparent;--chip-radius:var(--r-sm);--chip-border:0;--chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
-  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);
+  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);--focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);
   --verdict-easy:#246044;--verdict-hard:#B33A1A;--verdict-med:#795400;--ink-rgb:42,26,16;--on-ink-rgb:251,242,232;
   --on-ink:#FBF2E8;--canvas:#FBF2E8;--card:#FFF9F0;--ink:#2A1A10;--ink-70:rgba(var(--ink-rgb),.72);
   --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
