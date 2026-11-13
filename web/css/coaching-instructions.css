@@ -1,10 +1,16 @@
 .gi-sheet { width:min(880px,calc(100vw - var(--space-6))); }
 .gi-body { display:flex;flex-direction:column;gap:var(--space-4);font:var(--text-sm)/var(--line-md) var(--ui); }
-.gi-body h3,.gi-body p { margin:0; }.gi-body>.btn{ align-self:flex-start; }
+.gi-body h3,.gi-body p { margin:0; }.gi-body h3{ font:var(--title-weight,600) var(--text-md)/var(--line-sm) var(--title-font,var(--ui)); }.gi-body>.btn{ align-self:flex-start; }
 .gi-rule { background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius); }
 .gi-text { white-space:pre-wrap;overflow-wrap:anywhere; }
 .gi-history { border-top:1px solid var(--hair-10);padding-top:var(--space-3); }
-.gi-history summary { cursor:pointer; }
+.gi-history summary { display:flex;align-items:center;gap:var(--space-2);list-style:none;cursor:pointer; }
+.gi-history summary::-webkit-details-marker { display:none; }
+.gi-history summary>svg { flex:none;color:var(--ink-50);transform:rotate(-90deg); }
+.gi-history[open] summary>svg { transform:none; }
+.gi-history summary:focus-visible { outline:2px solid var(--accent);outline-offset:2px; }
+/* A details element does not lay its content out as a stack, so the parts space themselves. */
+.gi-history[open]>summary,.gi-history>p,.gi-history>.gi-versions { margin-bottom:var(--space-3); }
 .gi-versions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4); }
 .gi-version-rule { overflow-wrap:anywhere;white-space:pre-wrap; }
 .gi-version-rule+.gi-version-rule { margin-top:var(--space-3); }

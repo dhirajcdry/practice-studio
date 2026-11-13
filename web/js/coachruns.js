@@ -148,10 +148,11 @@ function consume(run, open) {
     signal: run.controller.signal,
     onRun: (info) => {
       run.serverId = info.id;
+      if (info.startedAt) run.startedAt = info.startedAt;
       if (run.seen || run.dismissed) seenRuns.remember(info.id);
     },
     onToken: (chunk) => { run.text += chunk; emit(run, 'token'); },
-    onTool: (name, summary) => { run.tools.push({ name, summary }); emit(run, 'tool'); },
+    onTool: (name, summary, data = {}) => { run.tools.push({ name, summary, display: data.display, at: data.at }); emit(run, 'tool'); },
     onAction: (action) => {
       const id = String(action.id);
       run.actions.set(id, mergeAction(run.actions.get(id), action));
@@ -189,6 +190,8 @@ function consume(run, open) {
     }
 
     run.result = result;
+    run.endedAt = result.at || new Date().toISOString();
+    run.durationMs = result.durationMs ?? Math.max(0, Date.parse(run.endedAt) - Date.parse(run.startedAt));
     run.done = true;
     emit(run, 'done');
     // Nobody is watching: the answer waits in the registry until the panel comes back,

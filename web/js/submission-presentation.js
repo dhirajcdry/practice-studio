@@ -33,3 +33,27 @@ export function firstDifference(expected, actual) {
   }
   return { start, endExpected, endActual };
 }
+
+/**
+ * For long answers: the one value where the two first part ways, widened to that whole
+ * value (a number, a word, `null`) so the mark never starts or stops inside one.
+ * Null when they are identical.
+ */
+export function firstDifferingValue(expected, actual) {
+  let at = 0;
+  while (at < expected.length && at < actual.length && expected[at] === actual[at]) at++;
+  if (at === expected.length && at === actual.length) return null;
+  const boundary = character => character === undefined || /[\s,[\]{}():]/.test(character);
+  // Between values (one answer simply has more of them) there is no shared value to
+  // widen to, so the mark starts where they part.
+  const within = !(boundary(expected[at]) && boundary(actual[at]));
+  let start = at;
+  if (within) while (start > 0 && !boundary(expected[start - 1])) start--;
+  const end = text => {
+    let stop = Math.min(at, text.length);
+    if (!within && stop < text.length) stop++;
+    while (stop < text.length && !boundary(text[stop])) stop++;
+    return stop;
+  };
+  return { start, endExpected: end(expected), endActual: end(actual) };
+}

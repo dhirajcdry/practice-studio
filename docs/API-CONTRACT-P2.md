@@ -283,3 +283,12 @@ this at human pace is the entire reason it is safe to use.
 On a verdict, the server logs a `submitted` and a `verdict` session event, saves the
 submitted code beside it, and records the verdict in `meta.json` — that is what makes the
 dashboard's solve data real rather than hand-backfilled.
+
+### Conversation activity (optional)
+
+Practice exchanges and mock terminal turns may include an additive `activity` array. Each
+entry is a normalized display receipt such as `{ tool, effect, ms }`; legacy `tools`
+strings remain unchanged and are normalized only in response history. Mock terminal turns
+retain their `requestId`, while raw `tool_action` records remain separate append-only
+evidence with the same request identity. Clients may associate buffered actions with the
+matching terminal turn, but must not rewrite either record.

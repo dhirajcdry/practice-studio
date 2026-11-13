@@ -117,10 +117,13 @@ try {
     await until(() => evaluate("return document.querySelector('.pr-save').textContent==='Saved'"), 'agent fixture saved');
     await evaluate(`const {streamInterviewRequest}=await import('/js/interview-transport.js');
       const {showWorkspaceAction}=await import('/js/workspace-tools.js');
+      const {createWorkspaceReply}=await import('/js/ui/workspace-turn.js');
       const [, , , slug, id]=location.hash.split('/');
+      const reply=createWorkspaceReply(); document.querySelector('.pr-thread').append(reply.node);
       await streamInterviewRequest('/api/practice/ask',{slug,id,requestId:crypto.randomUUID(),question:'Please implement this fixture and save the lesson.'}, (name,value)=>{
-        if(name==='action') showWorkspaceAction(document.querySelector('.pr-thread'),value);
-      });`);
+        if(name==='action') showWorkspaceAction(reply,value);
+      });
+      reply.finish();`);
     assert.match(await evaluate('return monaco.editor.getModels()[0].getValue()'), /print\('agent check'\)/, `${provider} edits the mounted workspace`);
     const practice = await (await fetch(origin + '/api/practice/' + practiceHash.split('/').slice(3).join('/'))).json();
     assert.match(practice.code, /agent check/, 'acknowledged code is saved');
@@ -182,8 +185,10 @@ try {
   await fetch(origin+'/api/interview/resume',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slug:'lld-locker',interviewId:'1760000000000-00000009'})});
   // Two turns use one native Codex conversation; both must bind the current tools.
   for (let turn=0;turn<2;turn++) {
-    await evaluate(`const {streamInterviewRequest}=await import('/js/interview-transport.js'); const {showWorkspaceAction}=await import('/js/workspace-tools.js');
-      await streamInterviewRequest('/api/interview/turn',{slug:'lld-locker',interviewId:'1760000000000-00000009',said:'Please implement this fixture and run it.',code:monaco.editor.getModels()[0].getValue(),requestId:crypto.randomUUID()},(name,value)=>{if(name==='action')showWorkspaceAction(document.querySelector('.ci-log'),value)});`);
+    await evaluate(`const {streamInterviewRequest}=await import('/js/interview-transport.js'); const {showWorkspaceAction}=await import('/js/workspace-tools.js'); const {createWorkspaceReply}=await import('/js/ui/workspace-turn.js');
+      const reply=createWorkspaceReply(); document.querySelector('.ci-log').append(reply.node);
+      await streamInterviewRequest('/api/interview/turn',{slug:'lld-locker',interviewId:'1760000000000-00000009',said:'Please implement this fixture and run it.',code:monaco.editor.getModels()[0].getValue(),requestId:crypto.randomUUID()},(name,value)=>{if(name==='action')showWorkspaceAction(reply,value)});
+      reply.finish();`);
     assert.match(await evaluate('return monaco.editor.getModels()[0].getValue()'),/agent check/,'Codex mock conversation can edit');
     await evaluate("const rows=[...document.querySelectorAll('[data-action-id]')];rows.reverse().find(n=>n.textContent.includes('Edited your code')&&n.querySelector('button'))?.querySelector('button').click()");
     await until(()=>evaluate("return monaco.editor.getModels()[0].getValue()==='# Agent fixture\\npass\\n' && document.querySelector('.lld-notice').textContent==='Saved to disk'"),'mock edit undone');

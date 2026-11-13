@@ -102,6 +102,7 @@ try {
   })()`);
   if (asked !== 'streaming') throw new Error(`the coach never started: ${asked}`);
   ok('the coach is mid-answer');
+  if (!await evaluate(`Boolean(document.querySelector('.coach-log .ui-turn') && document.querySelector('.ui-thread-strip'))`)) throw Error('Missing shared turn or thread strip');
   const questionCount = await evaluate(`document.querySelectorAll('.coach-log .cmsg.you').length`);
   if (questionCount === 1) ok('one submission renders one question');
   else bad('one submission renders one question', `${questionCount} question cards for one submit`);

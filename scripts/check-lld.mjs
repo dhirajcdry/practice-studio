@@ -99,7 +99,7 @@ try {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
   assert.equal(await evaluate("return document.querySelector('.th-box--mock [data-slug=\"lld-locker\"]').getAttribute('aria-pressed');"), 'true', 'keyboard chooses the problem');
   await evaluate("document.querySelector('.th-box--mock .ci-start').click();");
-  await until(() => evaluate("return !!document.querySelector('.ci-log .cmsg') && !!window.monaco?.editor.getModels().length;"), 'LLD opening');
+  await until(() => evaluate("return !!document.querySelector('.ci-log .ui-turn') && !!window.monaco?.editor.getModels().length;"), 'LLD opening');
   assert.equal(await evaluate("return document.querySelector('.ui-workspace-header h1').textContent;"), 'Locker system', 'Start opens the chosen problem');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), '', 'candidate starts with blank Python');
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'voice', 'sample mock also defaults to voice');
@@ -126,7 +126,7 @@ try {
   assert.match(await evaluate("return document.querySelector('.lld-output').textContent;"), /Exit 0/);
   const previousPage = await evaluate('return performance.timeOrigin;');
   await send('Page.reload', { ignoreCache: true });
-  await until(() => evaluate(`return performance.timeOrigin !== ${previousPage} && !!window.monaco?.editor.getModels().length && !!document.querySelector('.ci-log .cmsg');`), 'restored workspace');
+  await until(() => evaluate(`return performance.timeOrigin !== ${previousPage} && !!window.monaco?.editor.getModels().length && !!document.querySelector('.ci-log .ui-turn');`), 'restored workspace');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), code, 'saved Python survives reload');
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'typed', 'changed mode survives reload');
   await evaluate("const b = document.querySelector('.ci-pause[aria-label=\"Resume interview\"]'); if (b && !b.hidden) b.click();");
@@ -151,7 +151,7 @@ try {
   await evaluate("location.hash='#/lld';");
   await until(() => evaluate("return !!document.querySelector('.th-box--mock .ci-start');"), 'adaptive setup');
   await evaluate("document.querySelector('.th-box--mock .ci-start').click();");
-  await until(() => evaluate("return document.querySelector('.ui-workspace-header h1')?.textContent==='Museum ticket reservations' && !!document.querySelector('.ci-log .cmsg');"), 'adaptive problem opening');
+  await until(() => evaluate("return document.querySelector('.ui-workspace-header h1')?.textContent==='Museum ticket reservations' && !!document.querySelector('.ci-log .ui-turn');"), 'adaptive problem opening');
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'voice');
   assert.equal(await evaluate("return monaco.editor.getModels().find(m=>!m.isDisposed())?.getValue();"), '', 'generated mock starts blank');
   const generated = await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1'));");

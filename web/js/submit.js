@@ -27,7 +27,7 @@
 // problems: NeetCode"). The same panel shows them, told apart by `target: 'neetcode'`:
 // its own scope, links and failure states, and the same three rules.
 
-import { el, clear, replace } from './dom.js';
+import { el, clear, replace, dataText } from './dom.js';
 import { submitCode, neetcodeSubmitBlocker } from './api.js';
 
 const LOGIN_URL = 'https://leetcode.com/accounts/login/';
@@ -441,7 +441,7 @@ function stat(label, value, sub = '') {
 function detailBlock(detail) {
   return el('div', { class: 'sub-detail' + (detail.wide ? ' wide' : '') + (detail.bad ? ' bad' : '') }, [
     el('div', { class: 'mono dim', text: detail.label }),
-    el('pre', { text: detail.value }),
+    el('pre', {}, dataText(detail.value)),
   ]);
 }
 
@@ -477,16 +477,16 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
           }
         } });
         return el('div', {}, [
-          el('div', { class: 'acts' }, [handlers.getCode ? copy : null, linkOut(shaped.problemUrl, `Open problem on ${site.name} ↗`)]),
+          el('div', { class: 'acts' }, [handlers.getCode ? copy : null, linkOut(shaped.problemUrl, `Open problem on ${site.name}`)]),
           copyStatus,
         ]);
       })() : null,
-      shaped.signIn ? el('div', { class: 'acts' }, [linkOut(site.login, `Sign in to ${site.name} ↗`)]) : null,
-      shaped.openProblem && !shaped.fallback ? el('div', { class: 'acts' }, [linkOut(shaped.problemUrl, `Open problem on ${site.name} ↗`)]) : null,
+      shaped.signIn ? el('div', { class: 'acts' }, [linkOut(site.login, `Sign in to ${site.name}`)]) : null,
+      shaped.openProblem && !shaped.fallback ? el('div', { class: 'acts' }, [linkOut(shaped.problemUrl, `Open problem on ${site.name}`)]) : null,
       shaped.checkFirst
         ? el('p', { class: 'sub-check' }, shaped.submissionUrl
-          ? [`This submission is on ${site.name} and will finish judging with or without this panel. `, linkOut(shaped.submissionUrl, 'Open it ↗')]
-          : [`Check your submissions on ${site.name} before sending another — this one may already be there. `, linkOut(shaped.submissionsUrl, 'Submissions ↗')])
+          ? [`This submission is on ${site.name} and will finish judging with or without this panel. `, linkOut(shaped.submissionUrl, 'Open it')]
+          : [`Check your submissions on ${site.name} before sending another — this one may already be there. `, linkOut(shaped.submissionsUrl, 'Submissions')])
         : null,
       acts.length ? el('div', { class: 'acts' }, acts) : null,
     ]));
@@ -517,7 +517,7 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
 
   if (shaped.details.length || shaped.note) {
     target.append(el('div', { class: 'sub-judge' }, [
-      el('div', { class: 'mono dim sub-judgehead' }, [
+      el('div', { class: 'sub-judgehead' }, [
         el('span', { text: "The judge's own words" }),
         el('span', { class: 'spacer' }),
         // The input that broke it is the most useful thing on this screen, and until now
@@ -542,8 +542,8 @@ export function renderSubmitResult(target, shaped, handlers = {}) {
 
   const foot = el('div', { class: 'sub-foot' }, [
     shaped.submissionUrl
-      ? linkOut(shaped.submissionUrl, shaped.target === 'neetcode' ? 'Open on NeetCode ↗' : 'This submission on LeetCode ↗')
-      : linkOut(shaped.submissionsUrl, `Your submissions on ${site.name} ↗`),
+      ? linkOut(shaped.submissionUrl, shaped.target === 'neetcode' ? 'Open on NeetCode' : 'This submission on LeetCode')
+      : linkOut(shaped.submissionsUrl, `Your submissions on ${site.name}`),
     el('span', { class: 'spacer' }),
     handlers.onResubmit
       ? el('button', { class: 'btn btn--quiet act', type: 'button', text: 'Submit again', onclick: handlers.onResubmit })
@@ -572,7 +572,7 @@ export const WATCH_CAP_MS = 90000;
  */
 export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFailingCase = null, getTarget = () => 'leetcode', neetcodeSlug = null, getMismatch = () => null }) {
   const body = el('div', { class: 'sub-body' });
-  const scope = el('span', { class: 'mono sub-scope', text: 'leetcode.com' });
+  const scope = el('span', { class: 'sub-scope', text: 'leetcode.com' });
   let where = { target: 'leetcode', neetcodeSlug: neetcodeSlug || slug };
   function aim() {
     where = { target: targetOf(getTarget()), neetcodeSlug: neetcodeSlug || slug };
@@ -581,7 +581,7 @@ export function createSubmitPanel({ slug, getCode, onEvent = () => {}, onUseFail
   }
   const root = el('div', { class: 'sub', hidden: true }, [
     el('div', { class: 'sub-head' }, [
-      el('span', { class: 'mono sub-mark', text: 'Submission' }),
+      el('strong', { class: 'sub-mark', text: 'Submission' }),
       scope,
     ]),
     body,

@@ -18,6 +18,7 @@
 
 import { el, replace, clear } from './dom.js';
 import { loadTestcases, saveTestcases } from './api.js';
+import { icon } from './ui/icon.js';
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -148,19 +149,22 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
           class: 'btn btn--quiet tc-tab' + (i === selected ? ' is-on' : '') + (mineHere ? ' is-mine' : ''),
           type: 'button',
           'aria-pressed': String(i === selected),
+          'aria-label': `${tabLabel(i)}, ${mineHere ? caseOrigin(c.source).toLowerCase() : 'published example'}`,
           title: mineHere ? caseOrigin(c.source) : "Published example",
           onclick: () => select(i),
         }, [
           el('span', { text: tabLabel(i) }),
-          c.source === 'leetcode' ? el('span', { class: 'tc-mark', title: 'From a failed submission', text: '!' }) : null,
-          c.source === 'coach' ? el('span', { class: 'tc-mark tc-mark-coach', title: 'Added by your tutor', 'aria-label': 'Added by your tutor', text: '✦' }) : null,
+          // The mark is decoration; the tab's own label says where the case came from.
+          c.source === 'leetcode' ? el('span', { class: 'tc-mark', 'aria-hidden': 'true' }, icon('bug', 13)) : null,
+          c.source === 'coach' ? el('span', { class: 'tc-mark tc-mark-coach', 'aria-hidden': 'true' }, icon('report', 13)) : null,
         ]);
       }),
       runnable
         ? el('button', {
-          class: 'btn btn--quiet tc-add', type: 'button', title: 'Add a test case of your own',
+          class: 'btn btn--icon tc-add', type: 'button', title: 'Add a test case of your own',
+          'aria-label': 'Add a test case of your own',
           onclick: () => addCase({ input: blankInput() }),
-        }, '+')
+        }, icon('plus', 15))
         : null,
     ]);
   }
@@ -239,7 +243,7 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
     replace(caseActions, [isMine
         ? el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: 'Delete', onclick: () => removeCase(index) })
         : el('button', {
-          class: 'btn btn--quiet ws-mini', type: 'button', text: 'Copy to a new case',
+          class: 'btn btn--quiet ws-mini', type: 'button', text: 'Duplicate',
           title: 'An editable copy, so the example itself stays what the problem published',
           onclick: () => addCase({ input: c.input, expected: c.expected }),
         })]);

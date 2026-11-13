@@ -80,7 +80,11 @@ test('SseStream emits the four contract event names with the contract payloads',
   s.done('sess-1', 'end_turn');
   assert.match(res.text, /^: open\n\n/);
   assert.ok(res.text.includes('event: token\ndata: {"text":"hi"}\n\n'));
-  assert.ok(res.text.includes('event: tool\ndata: {"name":"Read","summary":"NOTES.md"}\n\n'));
+  const tool = JSON.parse(res.text.split('event: tool\ndata: ')[1].split('\n\n')[0]);
+  assert.equal(tool.name, 'Read');
+  assert.equal(tool.summary, 'NOTES.md');
+  assert.deepEqual(tool.display, { doing: 'Reading saved context', done: 'Read saved context', effect: 'read' });
+  assert.ok(Number.isFinite(Date.parse(tool.at)));
   assert.ok(
     res.text.includes('event: done\ndata: {"sessionId":"sess-1","stoppedReason":"end_turn"}\n\n'),
   );

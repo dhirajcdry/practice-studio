@@ -23,6 +23,7 @@ const PATHS = {
   keyboard: 'M3 7h18v10H3z M7 11h.01 M11 11h.01 M15 11h.01 M8 14h8',
   back: 'M15 6l-6 6 6 6',
   chevron: 'M6 9l6 6 6-6',
+  up: 'M6 15l6-6 6 6',
   print: 'M7 9V3h10v6 M7 17H4v-7h16v7h-3 M7 14h10v7H7z',
   close: 'M6 6l12 12 M18 6 6 18',
   report: 'M6 3h9l3 3v15H6z M9 12h6 M9 16h6 M9 8h3',

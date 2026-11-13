@@ -34,14 +34,14 @@ import { SessionLog, CoachSessionStore, EVENT_TYPES, isKnownEventType } from './
 import { gatherContext, buildPrompt } from './context.mjs';
 import { writerSessionStatus } from '../writer-handoff.mjs';
 import { readRecallState } from '../recall/sync.mjs';
-import { appendTurn, readThreads, readTurns } from './transcript.mjs';
+import { normalizeTurnActivity, appendTurn, readThreads, readTurns } from './transcript.mjs';
 import { readCoachChoice, runProviderTurn, providerRoutes, coachSystemPrompt } from './provider.mjs';
 import { conversationTurns } from './provider-context.mjs';
 import { buildConversation } from './native-sessions.mjs';
 import { upkeepQueue } from './upkeep.mjs';
 import { CoachRuns } from './runs.mjs';
 import { visualRoutes } from './visuals.mjs';
-import { ActionStore, TOOL_SPECS, TOOL_NAMES, createToolSession } from './tools.mjs';
+import { ActionStore, TOOL_SPECS, TOOL_NAMES, createToolSession, toolDisplay, toolDisplayTable } from './tools.mjs';
 
 const STUDIO_MCP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'studio-mcp.mjs');
 
@@ -259,6 +259,7 @@ export async function handleCoachMessage(req, res, ctx) {
     // the text; the point is that the workspace has it too, once the tab is gone.
     let answer = '';
     const toolLines = [];
+    const activity = [];
     let timed = false;
     const timing = () => {
       if (timed) return;
@@ -273,7 +274,7 @@ export async function handleCoachMessage(req, res, ctx) {
     // killed with `settled = true` and no callback at all: the answer existed, was read,
     // and was then thrown away. The half you got is the half worth keeping.
     let filed = false;
-    const fileTurn = async (id, stopped) => {
+    const fileTurn = async (id, stopped, outcome = null) => {
       if (filed) return;
       const saved = await appendTurn({
         root: svc.root,
@@ -290,6 +291,10 @@ export async function handleCoachMessage(req, res, ctx) {
           ask: message,
           answer,
           tools: toolLines,
+          ...(outcome ? { outcome } : {}),
+          askedAt: new Date(started).toISOString(),
+          durationMs: Date.now() - started,
+          activity: activity.map((a, i) => ({ tool: a.tool, effect: a.display.effect, ms: Math.max(0, (activity[i + 1]?.at ?? Date.now()) - a.at) })),
           ...(toolSession?.actions.length ? { actions: toolSession.actions } : {}),
           ...(stopped ? { stopped: true } : {}),
         },
@@ -328,7 +333,8 @@ export async function handleCoachMessage(req, res, ctx) {
         // calls show as tool lines.
         onTool: (name, summary) => {
           toolLines.push(`${name} ${summary ?? ''}`.trim());
-          svc.runs.tool(run, name, summary);
+          const event = svc.runs.tool(run, name, summary);
+          activity.push({ tool: name, at: Date.parse(event.at), display: event.display });
         },
         onDone: (sessionId, stoppedReason, commit) => {
           timing();
@@ -348,7 +354,7 @@ export async function handleCoachMessage(req, res, ctx) {
           timing();
           finishing = (async () => {
             await endTools();
-            await fileTurn(logicalSessionId, true);
+            await fileTurn(logicalSessionId, true, { ok: false, kind: 'coach', message });
             svc.log?.warn?.(`[coach] ${slug}: ${message}`);
             svc.runs.finish(run, { status: 'error', message });
           })();
@@ -534,6 +540,10 @@ export async function handleHistory(req, res, ctx) {
   const slug = slugFrom(req, ctx);
 
   const threads = await readThreads({ root: svc.root, slug }).catch(() => []);
+  for (const thread of threads) for (const turn of thread.turns ?? []) {
+    turn.activity = normalizeTurnActivity(turn);
+    if (Array.isArray(turn.actions)) turn.actions = turn.actions.map(action => ({ ...action, display: toolDisplay(action.tool) }));
+  }
   // The conversation a message continues when it names no other: the same default
   // handleCoachMessage uses, so the page can draw what the coach will actually resume.
   const stored = await svc.coachSessions.read(slug).catch(() => null);
@@ -553,6 +563,8 @@ export const routes = {
   ...providerRoutes,
   ...visualRoutes,
   'POST /api/coach/message': handleCoachMessage,
+  // Plain wording for every tool. Saved turns hold tool names; the page resolves them here.
+  'GET /api/coach/tool-display': (_req, res) => sendJson(res, 200, toolDisplayTable()),
   'GET /api/coach/runs': handleCoachRuns,
   'GET /api/coach/runs/:id': handleCoachRunStream,
   'POST /api/coach/stop': handleCoachStop,

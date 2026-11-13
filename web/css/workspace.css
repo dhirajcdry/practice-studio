@@ -37,7 +37,7 @@ body.ws-wide .phero{padding:22px 20px 16px}
 body.ws-wide .phero .row1{gap:7px}
 body.ws-wide .phero h1{font:600 21px/1.25 var(--display);letter-spacing:-.04em;text-transform:none}
 body.ws-wide .phero .pno{font-size:11px;color:var(--ink-50)}
-body.ws-wide .tag{font:10px/1.5 var(--ui);letter-spacing:0;text-transform:none;border:0;background:var(--surface-inset);padding:2px 6px;border-radius:var(--r-sm)}
+body.ws-wide .tag{font:var(--text-xs)/1.5 var(--ui);letter-spacing:0;text-transform:none;border:0;background:var(--surface-inset);padding:2px 6px;border-radius:var(--r-sm)}
 body.ws-wide .tag.easy{color:var(--easy);background:var(--easy-soft)}
 body.ws-wide .tag.medium{color:var(--med);background:var(--med-soft)}
 body.ws-wide .tag.hard{color:var(--hard);background:var(--hard-soft)}
@@ -204,7 +204,6 @@ body.motion-off .monaco-editor .tutor-flash{animation:none;background:rgba(var(-
 .tutor-chip:hover .tutor-chip-x{opacity:1}
 
 /* A case the tutor added: its own tab glyph, and its reason under the fields. */
-.tc-mark-coach{font-weight:400;font-size:10px}
 .tc-why{display:flex;gap:8px;align-items:baseline;margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0;font:12px/1.5 var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
 .tc-why-who{flex:none;font:600 10px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
 
@@ -212,4 +211,8 @@ body.motion-off .monaco-editor .tutor-flash{animation:none;background:rgba(var(-
 .editor-file{flex:none;padding-inline:10px}
 .editor-path{margin-left:auto;flex:0 1 auto}
 .editor-meta>.python-editor-tools,.editor-meta>.btn{flex:none}
-body.ws-wide .pcol>.card>.ptags{margin:0;padding:8px 12px}
+/* Reset sits beside the file it resets; the cursor and view tools stay at the far end. */
+.editor-meta>.ws-reset{margin-right:auto}
+/* One left edge down the problem pane: its tabs, the tags and the statement. */
+body.ws-wide .pcol .ui-pane-header{padding-inline:var(--space-5)}
+body.ws-wide .pcol>.card>.ptags{margin:0;padding:var(--space-3) var(--space-5) 0}

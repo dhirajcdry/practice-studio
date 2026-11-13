@@ -21,10 +21,10 @@
 .flame.lit .flame-core{fill:var(--card);stroke:none;opacity:.6}
 
 /* ---------------- overview band ---------------- */
-.catalog .ov{display:grid;grid-template-columns:auto minmax(200px,1fr) minmax(230px,1.05fr) minmax(250px,1.1fr);align-items:stretch;margin:0 0 26px;padding:22px 8px;border-radius:var(--r-md);box-shadow:var(--shadow);overflow:visible}
+.catalog .ov{display:grid;grid-template-columns:auto minmax(200px,1fr) minmax(230px,1.05fr) minmax(250px,1.1fr);align-items:stretch;margin:var(--space-5) 0 calc(var(--space-7) + var(--space-6));padding:var(--space-6) var(--space-2);background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow);overflow:visible}
 .ov>*{padding:0 26px;min-width:0}
 .ov>*+*{border-left:1px solid var(--hair-10)}
-.ov-kicker{font:600 10px/1.3 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-50)}
+.ov-kicker{font:600 var(--text-xs)/1.3 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-50)}
 
 /* ring */
 .ov-ring{position:relative;width:136px;height:136px;align-self:center;box-sizing:content-box}
@@ -35,30 +35,31 @@
 @keyframes ring-sweep{from{stroke-dashoffset:var(--ring-from)}}
 .ov-ring-centre{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1}
 .ov-ring-centre b{font:700 38px/1 var(--display);letter-spacing:-.04em;color:var(--ink);font-variant-numeric:tabular-nums}
-.ov-ring-label{margin-top:4px;font:600 10px/1.2 var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
-.ov-ring-of{margin-top:5px;font:11px/1.2 var(--ui);color:var(--ink-50);font-variant-numeric:tabular-nums}
+.ov-ring-label{margin-top:4px;font:600 var(--text-xs)/1.2 var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.ov-ring-of{margin-top:5px;font:var(--text-xs)/1.2 var(--ui);color:var(--ink-50);font-variant-numeric:tabular-nums}
 
 /* difficulty */
 .ov-diff{display:flex;flex-direction:column;justify-content:center;gap:13px}
 .ov-diff-row{display:grid;grid-template-columns:56px minmax(0,1fr) 54px;align-items:center;gap:12px}
-.ov-diff-name{font:500 12px var(--ui);color:var(--ink-70)}
+.ov-diff-name{font:500 var(--text-sm) var(--ui);color:var(--ink-70)}
 .ov-diff-row .meter{height:7px}
-.ov-diff-n{font:11px var(--mono);color:var(--ink-50);text-align:right;font-variant-numeric:tabular-nums}
+.ov-diff-n{font:var(--text-xs) var(--mono);color:var(--ink-50);text-align:right;font-variant-numeric:tabular-nums}
 .ov-diff-n b{font-weight:600;color:var(--ink)}
 
 /* counts + next up */
 .ov-mid{display:flex;flex-direction:column;justify-content:center;gap:16px}
 .ov-counts{display:flex;flex-wrap:wrap;gap:8px 20px}
-.ov-count{display:inline-flex;align-items:center;gap:7px;font:12px var(--ui);color:var(--ink-50);white-space:nowrap}
-.ov-count b{font:600 15px var(--ui);color:var(--ink);font-variant-numeric:tabular-nums}
+.ov-count{display:inline-flex;align-items:center;gap:7px;font:var(--text-sm) var(--ui);color:var(--ink-50);white-space:nowrap}
+.ov-count b{font:600 var(--text-md) var(--ui);color:var(--ink);font-variant-numeric:tabular-nums}
 .ov-next{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;padding:11px 14px;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--hair-06);color:var(--ink);transition:border-color .15s ease,background-color .15s ease,transform .15s ease}
 .ov-next:hover{border-color:color-mix(in srgb,var(--accent) 50%,transparent);background:var(--accent-soft)}
 .ov-next:hover .ov-next-go{transform:translateX(3px);color:var(--accent)}
-.ov-next-title{font:600 14px/1.3 var(--ui);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ov-next-meta{display:flex;align-items:center;gap:8px;font:11px var(--ui);color:var(--ink-50);min-width:0}
-.ov-next-meta .tag{font:10px var(--ui);padding:2px 6px;border-radius:var(--r-sm)}
-.ov-next-go{margin-left:auto;font:14px var(--ui);color:var(--ink-35);transition:transform .15s ease,color .15s ease}
-.ov-next.done{flex-direction:row;align-items:center;gap:10px;background:var(--accent-soft);border-color:transparent;font:500 12px var(--ui);color:var(--accent)}
+.ov-next-title{font:600 var(--text-sm)/1.3 var(--ui);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-next-meta{display:flex;align-items:center;gap:8px;font:var(--text-xs) var(--ui);color:var(--ink-50);min-width:0}
+.ov-next-meta .tag{font:var(--text-xs) var(--ui);padding:2px 6px;border-radius:var(--r-sm);flex:none}
+.ov-next-pattern{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-next-go{margin-left:auto;font:var(--text-sm) var(--ui);color:var(--ink-35);transition:transform .15s ease,color .15s ease}
+.ov-next.done{flex-direction:row;align-items:center;gap:10px;background:var(--accent-soft);border-color:transparent;font:500 var(--text-sm) var(--ui);color:var(--accent)}
 .ov-done-check{width:16px;height:16px;padding:3px;border-radius:50%;background:var(--accent);color:var(--card);flex-shrink:0}
 
 /* streak */
@@ -67,14 +68,14 @@
 .ov-flame{padding:8px;border-radius:50%;box-sizing:border-box;width:40px;height:40px;background:var(--hair-06)}
 .ov-streak.lit .ov-flame{background:var(--accent-soft)}
 .ov-streak.today .ov-flame{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.25),0 0 18px rgba(var(--accent-rgb),.28)}
-.ov-streak-n{font:650 17px/1.2 var(--display);letter-spacing:-.02em;color:var(--ink)}
-.ov-streak-best{margin-top:3px;font:12px/1.35 var(--ui);color:var(--ink-50)}
+.ov-streak-n{font:650 var(--text-md)/1.2 var(--display);letter-spacing:-.02em;color:var(--ink)}
+.ov-streak-best{margin-top:3px;font:var(--text-sm)/1.35 var(--ui);color:var(--ink-50)}
 .ov-days{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:4px;list-style:none;margin:0;padding:0;max-width:280px}
 .ov-days li{aspect-ratio:1;max-height:18px;border-radius:calc(var(--r-sm) * .6);background:var(--hair-10)}
 .ov-days li.on{background:var(--accent)}
 .ov-days li.now{outline:1.5px solid var(--accent);outline-offset:1.5px}
 .ov-days li.now:not(.on){background:transparent;box-shadow:inset 0 0 0 1px var(--hair-20)}
-.ov-days-axis{display:flex;justify-content:space-between;max-width:280px;margin-top:-6px;font:10px var(--ui);color:var(--ink-35)}
+.ov-days-axis{display:flex;justify-content:space-between;max-width:280px;margin-top:-6px;font:var(--text-xs) var(--ui);color:var(--ink-35)}
 
 /* entrance: the band rises in once; meters and ring carry their own motion */
 .catalog .ov:not(.ov-loading){animation:ov-in .5s cubic-bezier(.2,.7,.2,1) both}
@@ -100,18 +101,23 @@
   .catalog .ov{grid-template-columns:auto minmax(0,1fr);padding:18px 4px}
   .ov>*{padding:0 18px}
   .ov-mid{grid-column:1/-1;border-left:0 !important;border-top:1px solid var(--hair-10);padding-top:18px}
+  /* The shorthand above would otherwise put the flame flush against the rule over it. */
+  .ov-streak{padding-top:18px}
+  /* Skeleton columns stack here like the real ones, without a stray rule at the card edge. */
+  .ov-loading .ov-skel+.ov-skel{grid-column:1/-1;border-left:0}
   .ov-ring,.ring-svg{width:116px;height:116px}
-  .ov-ring-centre b{font-size:32px}
+  .ov-ring-centre b{font-size:var(--text-xl)}
 }
 @media(max-width:520px){
   .catalog .ov{grid-template-columns:minmax(0,1fr)}
   .ov-diff{border-left:0 !important;border-top:1px solid var(--hair-10);padding-top:18px}
   .ov-ring{justify-self:center}
+  .ov-loading .ov-skel{border-left:0}
 }
 
 /* ---------------- streak pill (top bar) ---------------- */
 .streakmount{display:flex;align-items:center}
-.streakpill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px 0 8px;border:1px solid var(--hair-10);border-radius:999px;background:var(--card);color:var(--ink-70);text-decoration:none;font:600 12px/1 var(--ui);font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease}
+.streakpill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px 0 8px;border:1px solid var(--hair-10);border-radius:999px;background:var(--card);color:var(--ink-70);text-decoration:none;font:600 var(--text-sm)/1 var(--ui);font-variant-numeric:tabular-nums;transition:border-color .15s ease,color .15s ease}
 .streakpill .flame{width:16px;height:16px}
 .streakpill:hover{border-color:var(--hair-20);color:var(--ink)}
 .streakpill.active .flame{animation:flame-flicker 2.8s ease-in-out infinite;transform-origin:50% 90%}

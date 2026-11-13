@@ -1,4 +1,5 @@
 import { el, replace } from '../dom.js';
+import { icon } from './icon.js';
 
 export function moveActive(items, index, delta) {
   const enabled = items.map((item, i) => ({ item, i })).filter(x => !x.item.disabled);
@@ -40,7 +41,7 @@ export function createMenu({ anchor, label, items = [], groups = [], onSelect = 
         onfocus: () => { active = index; },
       }, [glyph(item.icon),
         el('span', { class: 'ui-menu-label', text: item.label }), item.hint ? el('span', { class: 'ui-menu-hint', text: item.hint }) : null,
-        el('span', { class: 'ui-menu-check', 'aria-hidden': 'true', text: item.checked ? '✓' : '' })]);
+        el('span', { class: 'ui-menu-check', 'aria-hidden': 'true' }, item.checked ? icon('check', 14) : null)]);
       buttons.push(button); return button;
     };
     replace(root, data.groups.length ? data.groups.map(group => el('div', { role: 'group', 'aria-label': group.label }, [

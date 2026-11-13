@@ -4,6 +4,7 @@ import { openLearningNotes } from './learning.js';
 // LLD contributes a candidate-owned Python document; the interview panel owns all
 // conversation, voice, timing, recovery and reports, exactly as in coding interviews.
 import { el, replace } from './dom.js';
+import { tooltip } from './tooltip.js';
 import { installPaneResizer } from './ui/split-pane.js';
 import { createInterviewPanel, createInterviewSetup, interviewJson } from './interview.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
@@ -51,7 +52,7 @@ export function initLLD(host) {
     session = { ...initialState, slug: entry.slug, id }; text = ''; diskCode = ''; edited = false;
     const codeHost = el('div', { class: 'lld-code', 'aria-label': 'Python design document' });
     const output = el('pre', { class: 'lld-output mono', hidden: true, 'aria-live': 'polite' });
-    const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', title: "Run Python (⌘')", text: 'Run Python', disabled: true, onclick: async () => {
+    const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', text: 'Run Python', disabled: true, onclick: async () => {
       if (!session?.id || session.debriefed) return;
       run.disabled = true; output.hidden = false; output.textContent = 'Running…';
       try {
@@ -61,6 +62,7 @@ export function initLLD(host) {
       } catch (error) { if (!gone) output.textContent = error.message; }
       finally { if (!gone) run.disabled = Boolean(session.debriefed || session.endedAt); }
     } });
+    tooltip(run, "Run Python (⌘')");
     const editorControls = createPythonEditorControls();
     const interviewHost = el('div', { class: 'lld-interviewer' });
     const subtitle = el('p', { class: 'dim', text: `Python · ${session.targetLevel || 'L4'} · Low-level design` });

@@ -91,6 +91,13 @@ do not fix shortcut leakage by stopping all whiteboard events at the page bounda
 7. A new feature gets a screen designed for it. Don't fit it into whatever container exists.
 8. Never fabricate a statistic. Missing data is stated ("No evidence recorded", "—").
 9. Use the spacing/type tokens, not raw px, in new CSS.
+11. Blocks breathe or share an edge, never in between. Two drawn edges (a border, or a
+    fill that differs from what is behind it) are at least `--space-2` apart, or exactly
+    flush with square corners so they read as one divider. Rows inside a card are ruled
+    lines, not cards of their own. The visual lint reports this as `crowded`.
+12. A pinned bar leaves no slot: it docks flush under the app bar, or under the pinned
+    bar above it, as a solid band (see `.catalog .filterbar` and the section heading
+    beneath it). The lint scrolls the page and reports `sticky-slot`.
 10. Before calling a screen done: add its states to `scripts/visual-audit.mjs`, run `npm run check:visual`, and look at the screenshots in at least one light and one dark theme. A green lint does not mean it looks good.
 
 The context inspector reuses `dialogHeader`, `.rp-sheet` and `.rp-scroll` with one
@@ -225,11 +232,13 @@ The action placement contract for the redesign is:
 | Report dialog | Practise from this mock | Ask the interviewer (pressed while open) | Re-grade; Print |
 | Live mock | — | Timer; Pause/Resume; Finish (danger); Run; Submit | Learning notes; previous/next/shuffle |
 | Untimed practice | — | Timer; Start/Resume; Learning notes | — |
-| Coding workspace | Submit with shortcut | Previous/next/shuffle icons; Run with shortcut | External resources; Reset code |
+| Coding workspace | Submit with shortcut | Previous/next/shuffle icons; Run with shortcut | External resources |
 
-Reset retains its arm-to-confirm step. Reference tabs retain their drawers and S/A
+Reset sits in the editor's file row beside the file it resets. It is immediate and
+undoable (⌘Z, or Undo on the notice it shows) and is absent while the buffer is the
+starter: prefer undo to a confirm step wherever the work can be put back. Reference tabs retain their drawers and S/A
 shortcuts. The coding screen rail replaces the old editor run bar. The case row
-owns Copy to a new case; there is only one Run control.
+owns Duplicate; there is only one Run control.
 
 Conversation controls use the UI font even in themes with serif prose. Show one
 current status; additional text explains an available action, never repeats that
@@ -428,7 +437,7 @@ open, even if focus falls back to the page or remains behind the overlay. Submit
 keys apply to the code buffer or workspace controls, not test-case inputs or Monaco
 Find. Chat Send belongs only to its visible composer; nested interview answers must
 never send a hidden Chat draft. Held Enter on action buttons must not repeat a
-submission, confirm Reset, or start/finish another session.
+submission, reset code, or start/finish another session.
 
 `check:submit-keys`, `check:shortcuts` and `check:interview` exercise these boundaries
 with simulated judges, fake providers and disposable workspaces.
@@ -577,3 +586,31 @@ animation frame; token updates replace only the active reply body, never saved m
 
 Browser checks must await Chrome exit through `scripts/chrome-cleanup.mjs` before
 removing disposable profiles. The helper retries removal five times at 200ms intervals.
+
+
+## Shared reply turns (round 1)
+
+The coding coach uses `web/js/ui/turn.js`. A turn contains a right-aligned question
+and timestamp, speaker and quiet metadata, one activity line, learner change cards,
+answer prose, an optional outcome notice, and a footer with Copy and time/duration.
+Empty replies have no footer. Live activity names the current step (or Thinking);
+finished activity expands to every step and its duration when recorded. Reads never
+become cards. Private notes appear only in the activity summary. Change cards retain
+pending, failed and undone states, with supported View/Undo actions.
+
+**Tool wording lives in TOOL_SPECS.display.** The server resolves provider tool names
+through `toolDisplay` with a generic fallback; tool arguments and raw names never
+become activity labels. History resolves display metadata without rewriting records.
+
+A thread strip under the tabs names the first question, start time and turn count.
+Date separators remain in the log; its latest question pins when scrolled above it.
+A finished short reply (under 200 trimmed characters) that saved a private note,
+without a learner change or notes handoff, offers Ask again. Attempt reviews are
+excluded. Failure/stopped notices take precedence and keep any prose visible.
+
+`createReply` exposes independent body, activity, changes, notice and footer slots;
+streaming prose never rebuilds activity or change controls. `questionNode`,
+`threadStrip` and `bindPinnedQuestion` complete the surrounding conversation.
+Interview, practice, design and report screens retain the existing conversation and
+receipt components until round 2. The visual audit includes working, writing,
+changed, expanded, note-only, stopped, failed, pinned and restored coach states.

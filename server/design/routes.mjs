@@ -1,6 +1,7 @@
 import { createWorkspaceTools, readAgentMemory, INTERVIEW_POLICY, LIVE_MOCK_POLICY } from '../coach/workspace-tools.mjs';
 import { createSessionContext } from '../coach/session-context.mjs';
 import { buildConversation } from '../coach/native-sessions.mjs';
+import { storedActivity } from '../coach/transcript.mjs';
 import { readLearningContext, refreshLearning } from '../learning/index.mjs';
 import { readLearnerProfile, learnerContext } from '../learning/profile.mjs';
 import { handoffRecords, contextReader, excerpt, evidenceRecords } from '../coach/context-policy.mjs';
@@ -147,6 +148,7 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
   const started = Date.now();
   let first = null;
   let tools = 0;
+  const activity = [];
   let timed = false;
   const timing = () => {
     if (timed) return;
@@ -200,7 +202,7 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
     const finalTags = createTagStripper();
     const asked = filler ? '' : (finalTags.push(broke ? (salvageQuestion(filter.text()) ?? '') : filter.text()) + finalTags.flush()).trim();
     try {
-      await onFinished(asked, { broke: broke || Boolean(stoppedReason), phase: lastPhase, gap: tags.gap, curveball: tags.curveball, filler, tagged: tags.tagged });
+      await onFinished(asked, { broke: broke || Boolean(stoppedReason), phase: lastPhase, gap: tags.gap, curveball: tags.curveball, filler, tagged: tags.tagged, ...(activity.length ? { activity: storedActivity(activity) } : {}) });
       if (!failure && !broke && !stoppedReason) await commit?.();
     } catch (err) {
       svc.log?.warn?.(`[design] ${id}: ${err.message}`);
@@ -247,7 +249,7 @@ async function streamTurn(svc, { id, choice, prompt, message = prompt, requestId
         child.kill();
       }
     },
-    onTool: (name, summary) => { tools++; stream.tool(name, summary); },
+    onTool: (name, summary) => { tools++; activity.push({ tool: name, summary, at: Date.now() }); stream.tool(name, summary); },
     onSessionId: (sid) => { if (sid) svc.sessions.set(sessionKey, sid); },
     onError: async (message) => {
       if (finished) return;
@@ -334,13 +336,13 @@ async function startDesign(svc, body, res) {
     kind: 'opening',
     resume: null,
     stream,
-    onFinished: async (asked) => {
+    onFinished: async (asked, { activity } = {}) => {
       rememberProvider(state, svc, id, choice);
       // The model chose the problem; that choice is the interview's identity, so it is
       // recorded rather than re-derived later from the transcript.
       if (!state.prompt && asked) state.prompt = asked.trim().split('\n')[0].slice(0, 300);
       recordTurn(state, { asked, at: new Date().toISOString() });
-      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'opening', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, asked });
+      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'opening', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, asked, ...(activity?.length ? { activity } : {}) });
       const current = await svc.store.readState(id);
       for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
         if (current && key in current) state[key] = current[key];
@@ -400,7 +402,7 @@ async function handleTurn(req, res, ctx) {
     if (requestId) stream.send('accepted', { requestId, said });
     await streamTurn(svc, {
       id, choice, prompt, message:turn.text, requestId, system: resume ? null : systemPrompt({ level: state.level, minutes: state.originalMinutes || state.minutes }), resume, stream,
-      onFinished: async (asked, { phase, broke, gap, curveball, filler, tagged } = {}) => {
+      onFinished: async (asked, { phase, broke, gap, curveball, filler, tagged, activity } = {}) => {
         rememberProvider(state, svc, id, choice);
         state.rehydrate = false;
         if (phase) enterPhase(state, phase);
@@ -408,7 +410,7 @@ async function handleTurn(req, res, ctx) {
         recordTurn(state, { said: accepted ? '' : said, asked, at: new Date().toISOString(), gap: gap ?? null });
         // Tags alone mean the interviewer chose silence; the candidate's words stay on record.
         const replyKind = filler ? 'suppressed_filler' : !asked && !broke && tagged ? 'interviewer_silent' : 'turn';
-        await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: replyKind, elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, ...(requestId ? { requestId, interrupted: Boolean(broke) } : { said }), ...(filler ? { raw: filler } : { asked }), phase: state.phase });
+        await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: replyKind, elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, ...(requestId ? { requestId, interrupted: Boolean(broke) } : { said }), ...(filler ? { raw: filler } : { asked }), phase: state.phase, ...(activity?.length ? { activity } : {}) });
         const current = await svc.store.readState(id);
         for (const key of ['pausedAt', 'spentMs', 'startedAt', 'graph']) { if (current && key in current) state[key] = current[key]; }
         const durable = await svc.store.readTurns(id);
@@ -482,7 +484,7 @@ async function handleDone(req, res, ctx) {
     message: turn, requestId,
     resume,
     stream,
-    onFinished: async (asked, { broke }) => {
+    onFinished: async (asked, { broke, activity } = {}) => {
       if (broke || !asked.trim()) {
         await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'partial', replyKind: 'debrief', asked });
         return;
@@ -490,7 +492,7 @@ async function handleDone(req, res, ctx) {
       rememberProvider(state, svc, id, choice);
       state.debriefed = true;
       state.endedAt = Date.now();
-      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'debrief', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, asked });
+      await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'debrief', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, asked, ...(activity?.length ? { activity } : {}) });
       const current = await svc.store.readState(id);
       for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
         if (current && key in current) state[key] = current[key];

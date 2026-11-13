@@ -1,10 +1,9 @@
 import { leetcodeViews } from './leetcode-views.js';
 import { screenHeader } from './ui/headers.js';
 import {el, replace} from './dom.js';
-import {LIST_FILTERS} from './browse.js';
+import {LIST_FILTERS, listSwitch, levelSwitch} from './browse.js';
 import {progressFor, summarizeProgress} from './catalog-progress.js';
 import {icon} from './ui/icon.js';
-import {createSelect} from './ui/select.js';
 
 // Composed ports and gutters keep paths out of the topic cards.
 const POSITIONS = {
@@ -38,17 +37,18 @@ const LINKS = [
  ['Graphs','2-D Dynamic Programming','M248 460H260Q270 460 270 470V565Q270 575 280 575H292',true],
 ];
 function svg(tag,attrs={}) {const node=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attrs))node.setAttribute(key,value);return node;}
+const plural=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
 function problemsFor(data,pattern,state) {const needle=state.query.trim().toLowerCase();return data.problems.filter(p=>p.pattern===pattern&&p.lists[state.list]&&(state.difficulty==='all'||p.difficulty===state.difficulty)&&(!needle||`${p.title} ${p.pattern} ${p.number}`.toLowerCase().includes(needle)));}
-const statusIcon=status=>status==='accepted'?'✓':status==='local-pass'?'◐':status==='attempted'?'•':'○';
 
 export function renderRoadmap(data,state,handlers) {
  const root=el('div',{class:'view catalog roadmap'});
  root.append(screenHeader({ title: 'Study roadmap', actions: { secondary: [
   el('a', { href: '#/add', class: 'btn btn--quiet catalog-add' }, [icon('plus', 15), 'Add problem']),
  ] }, status: leetcodeViews('roadmap') }));
+ // The same two switches as the explorer, in the same place and the same style.
  const chips=el('div',{class:'roadmap-chips'},[
-  ...LIST_FILTERS.filter(f=>!['added','others'].includes(f.id)).map(({id,label})=>el('button',{type:'button',class:'btn btn--quiet chip','aria-pressed':String(state.list===id),text:label,onclick:()=>handlers.onList(id)})),
-  el('label',{class:'roadmap-level'},['Level ',createSelect({label:'Problem difficulty',value:state.difficulty,options:['all','Easy','Medium','Hard'].map(level=>[level,level==='all'?'All levels':level]),onChange:e=>handlers.onDifficulty(e.target.value)})]),
+  listSwitch(LIST_FILTERS.filter(f=>!['added','others'].includes(f.id)),state,handlers),
+  levelSwitch(state,handlers),
  ]);root.append(chips);
  if(state.query)root.append(el('p',{class:'roadmap-query'},[`Matching “${state.query}”`,el('button',{class:'btn btn--quiet',type:'button',text:'Clear filters',onclick:handlers.onClear})]));
  const graph=el('section',{class:'roadmap-graph-col','aria-label':'Study roadmap graph'});
@@ -70,9 +70,9 @@ export function renderRoadmap(data,state,handlers) {
  for(const pattern of data.patterns){
   const [x,y]=POSITIONS[pattern];const items=problemsFor(data,pattern,state);const summary=summarizeProgress(items,state.progress);
   const progress=state.progress&&(summary.accepted?`${summary.accepted} accepted`:summary.localPass?`${summary.localPass} passed locally`:summary.attempted?`${summary.attempted} in progress`:'');
-  const node=el('button',{class:'ui-action-row roadmap-node',type:'button',style:`--x:${x}px;--y:${y}px`,'aria-label':`${pattern}, ${items.length} matching problems`,'aria-pressed':'false',onclick:()=>select(pattern,true),onfocus:()=>{
+  const node=el('button',{class:'ui-action-row roadmap-node'+(items.length?'':' empty'),type:'button',style:`--x:${x}px;--y:${y}px`,'aria-label':`${pattern}, ${plural(items.length,'problem')}`,'aria-pressed':'false',onclick:()=>select(pattern,true),onfocus:()=>{
    const r=viewport.getBoundingClientRect();if((x-108)*scale+tx<0||(x+108)*scale+tx>r.width||(y-36)*scale+ty<0||(y+36)*scale+ty>r.height){tx=r.width/2-x*scale;ty=r.height/2-y*scale;apply();}
-  }},[el('span',{class:'node-title',text:pattern}),el('span',{class:'node-meta',text:items.length?`${items.length} problems`:'0 matching problems'}),progress?el('span',{class:'node-progress'+(summary.accepted?' has-progress':''),text:progress}):null]);
+  }},[el('span',{class:'node-title',text:pattern}),el('span',{class:'node-meta',text:plural(items.length,'problem')}),progress?el('span',{class:'node-progress'+(summary.accepted?' has-progress':''),text:progress}):null]);
   nodes.set(pattern,node);canvas.append(node);
  }
  viewport.append(canvas);graph.append(viewport);root.append(graph);
@@ -83,10 +83,13 @@ export function renderRoadmap(data,state,handlers) {
   lines.querySelectorAll('path').forEach(path=>{const direct=path.dataset.from===pattern||path.dataset.to===pattern;path.classList.toggle('connected',direct||ancestors.has(`${path.dataset.from}|${path.dataset.to}`));});
   panel.hidden=!pattern;if(!pattern)return;
   const items=problemsFor(data,pattern,state);const summary=summarizeProgress(items,state.progress);
-  replace(panel,[el('div',{class:'detail-heading'},[el('span',{class:'detail-kicker',text:'Your next session'}),el('h2',{text:pattern}),el('p',{class:'detail-summary',text:state.progress?`${items.length} problems · ${summary.accepted} accepted · ${summary.localPass} passed locally`:`${items.length} problems · Saved progress ${state.progressState==='loading'?'loading…':'unavailable'}`}),el('button',{type:'button',class:'btn btn--icon detail-close icon-btn','aria-label':'Close pattern inspector',onclick:()=>select(null)},icon('close'))]),
-   el('div',{class:'detail-list'},items.length?items.map(p=>{const record=progressFor(p.slug,state.progress);return el('button',{class:'ui-action-row detail-problem ui-inset hover-surface hover-divided',type:'button',onclick:()=>handlers.onOpen(p.slug)},[el('span',{class:'status status-'+record.status,title:record.label,'aria-label':record.label,text:statusIcon(record.status)}),el('span',{class:'detail-title',text:p.title}),el('span',{class:'detail-diff '+p.difficulty.toLowerCase(),text:p.difficulty}),icon('forward')]);}):el('p',{text:'No matching problems.'})),
+  // Only the states that have problems in them: "0 accepted · 0 passed locally" says nothing.
+  const facts=state.progress?[plural(items.length,'problem'),summary.accepted?`${summary.accepted} solved`:null,summary.localPass?`${summary.localPass} passed locally`:null,summary.attempted?`${summary.attempted} in progress`:null].filter(Boolean).join(' · '):`${plural(items.length,'problem')} · Saved progress ${state.progressState==='loading'?'loading…':'unavailable'}`;
+  replace(panel,[el('div',{class:'detail-heading'},[el('h2',{text:pattern}),el('p',{class:'detail-summary',text:facts})]),
+   el('button',{type:'button',class:'btn btn--icon detail-close icon-btn','aria-label':'Close pattern inspector',onclick:()=>select(null)},icon('close')),
+   el('div',{class:'detail-list'},items.length?items.map(p=>{const record=progressFor(p.slug,state.progress);return el('button',{class:'ui-action-row detail-problem ui-inset hover-surface hover-divided',type:'button',onclick:()=>handlers.onOpen(p.slug)},[el('span',{class:'problem-state state-'+record.status,role:'img','aria-label':record.label},record.status==='accepted'?icon('check',9):null),el('span',{class:'detail-main'},[el('span',{class:'detail-title',text:p.title}),el('span',{class:'tag '+p.difficulty.toLowerCase(),text:p.difficulty})])]);}):el('p',{class:'detail-none',text:state.difficulty!=='all'||state.query?'No problems here match the filters.':'This list has no problems in this pattern.'})),
   ]);
-  if(reveal){announcement.textContent=`${pattern}: ${items.length} problems. Problem inspector opened below the map.`;requestAnimationFrame(()=>panel.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches||document.body.classList.contains('motion-off')?'auto':'smooth'}));}
+  if(reveal){announcement.textContent=`${pattern}: ${plural(items.length,'problem')}. Problem inspector opened below the map.`;requestAnimationFrame(()=>panel.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches||document.body.classList.contains('motion-off')?'auto':'smooth'}));}
  }
  select(selected);apply();
  function fit(){const r=viewport.getBoundingClientRect();scale=Math.min(r.width/1100,r.height/650);tx=(r.width-1100*scale)/2;ty=(r.height-650*scale)/2;apply();}

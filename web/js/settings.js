@@ -159,10 +159,13 @@ function themeCard(theme, onPick) {
   ]);
 }
 
+/** One keycap per key: "⌘B" set as a single 11px mono chip was not readable. */
 function keyRow(keys, what) {
+  const combos = (Array.isArray(keys) ? keys : [keys]).map(combo => el('span', { class: 'set-combo' },
+    [...combo].map(key => el('kbd', { text: key }))));
   return el('div', { class: 'set-keyrow' }, [
     el('span', { class: 'set-keywhat', text: what }),
-    el('kbd', { class: 'mono', text: keys }),
+    el('span', { class: 'set-keycaps' }, combos),
   ]);
 }
 
@@ -241,7 +244,7 @@ function createTrackerControl() {
   const restore = el('button', { class: 'btn btn--quiet tracker-restore-all', type: 'button', text: 'Undo reset', disabled: true, onclick: () => change('restore') });
   const restoreRow = el('div', { class: 'set-row', hidden: true }, [el('span', { class: 'set-rowtext' }, since), el('span', { class: 'set-control' }, restore)]);
   const paint = () => {
-    reset.textContent = armed ? 'Click again to reset' : 'Reset all tracker progress';
+    reset.textContent = armed ? 'Click again to reset' : 'Reset progress';
     reset.disabled = !loaded || trackerSaving;
     restoreRow.hidden = !resetAt;
     restore.disabled = !loaded || trackerSaving;
@@ -356,7 +359,7 @@ export function openSettings(section) {
         settingRow('Model', 'Answers new replies in coding, LLD and system design. Each provider uses its own sign-in and limits.', coachPicker.root),
         settingRow('Pictures', 'Painted by Codex in 30–60 seconds from your ChatGPT image allowance. Ask first shows a button; Off keeps the description. Illustrations are always instant and free.', pictureSeg),
         settingRow('Coaching instructions', 'How the coach teaches. It can refine them, and every change can be undone.', opens('Open', 'set-open-instructions', openCoachingInstructions)),
-        settingRow('What was sent?', 'The exact context of recent turns.', opens('View', 'set-open-context', openContextInspector)),
+        settingRow('Context sent to the coach', 'Exactly what each recent turn included.', opens('View', 'set-open-context', openContextInspector)),
       ]),
     ],
     practice: [
@@ -394,7 +397,7 @@ export function openSettings(section) {
     keys: [
       el('div', { class: 'set-keys' }, [
         ...CHORDS.map((c) => keyRow(c.label, `Show or hide ${c.what}`)),
-        keyRow('⌘← · ⌘→', 'Move to the previous or next problem'),
+        keyRow(['⌘←', '⌘→'], 'Move to the previous or next problem'),
         keyRow('⌘↵', 'Submit to LeetCode'),
         keyRow("⌘'", 'Run the example cases here'),
         keyRow('⌘S', 'Save to disk now'),

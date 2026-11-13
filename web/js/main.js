@@ -19,6 +19,7 @@ import { initLLD } from './lld.js';
 import { showInterviewSetup, activeInterview, interviewAction } from './interview.js';
 import { coachBeginAttempt, coachReviewAttempt } from './coach.js';
 import { installResizers } from './resize.js';
+import { loadToolDisplay } from './tool-display.js';
 import { installRecorder, mountRecorder } from './recorder.js';
 import { installSettingsButton, apply as applySettings, onSettingsChange, shuffleSourceSetting } from './settings.js';
 
@@ -58,6 +59,7 @@ function loadState() {
     if (saved.catalogMode === 'roadmap') state.catalogMode = 'roadmap';
     if (typeof saved.list === 'string') state.list = saved.list;
     if (typeof saved.difficulty === 'string') state.difficulty = saved.difficulty;
+    state.hideSolved = saved.hideSolved === true;
     if (Array.isArray(saved.collapsed)) state.collapsed = new Set(saved.collapsed);
     return saved.hasSavedCollapse === true;
   } catch { return false; }
@@ -69,6 +71,7 @@ function saveState() {
       catalogMode: state.catalogMode,
       list: state.list,
       difficulty: state.difficulty,
+      hideSolved: state.hideSolved === true,
       collapsed: [...state.collapsed],
       hasSavedCollapse: true,
     }));
@@ -160,10 +163,11 @@ const handlers = {
   },
   onList: (id) => { state.list = id; saveState(); render(); },
   onDifficulty: (value) => { state.difficulty = value; saveState(); render(); },
+  onHideSolved: (value) => { state.hideSolved = value === true; saveState(); render(); },
   onClear: () => {
     state.pattern = null;
     state.query = ''; searchEl.value = '';
-    state.list = 'neetcode250'; state.difficulty = 'all';
+    state.list = 'neetcode250'; state.difficulty = 'all'; state.hideSolved = false;
     saveState(); render();
   },
 };
@@ -504,7 +508,8 @@ async function boot() {
 
   const hadSavedCollapse = loadState();
   try {
-    data = await loadCatalog();
+    // With the catalog, not after it: any conversation drawn later already has its wording.
+    [data] = await Promise.all([loadCatalog(), loadToolDisplay()]);
   } catch (error) {
     replace(appEl, el('section', { class: 'card' }, el('div', { class: 'emptynote' }, [
       'The problem list could not be loaded at all — not from the server, and not from the bundled copy. ',

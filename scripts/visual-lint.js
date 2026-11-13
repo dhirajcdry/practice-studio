@@ -79,7 +79,7 @@ export function visualLint() {
   // A row contains controls under one parent whose vertical ranges overlap.
   const parents = new Map();
   for (const n of document.querySelectorAll(CONTROL)) {
-    if (!visible(n) || n.closest('.cmsg-body, .hist-answer, pre, .view-lines')) continue;
+    if (!visible(n) || n.closest('.ui-turn-body, .hist-answer, pre, .view-lines')) continue;
     const r = n.getBoundingClientRect();
     if (!onScreen(r) || r.height > 48) continue;
     // Walk up past single-child wrappers so a button in a <span> still meets its siblings.
@@ -223,6 +223,164 @@ export function visualLint() {
       const kr = k.getBoundingClientRect(); const centred = Math.abs((kr.left + kr.right) / 2 - (cr.left + cr.right) / 2) < 2;
       if (!full(k) && Math.abs(d) >= 4 && Math.abs(d) <= 40 && !centred) out.push({ kind: 'inset-mismatch', where: name(k), what: label(k), detail: `starts ${d > 0 ? '+' : ''}${d}px from its ${n} siblings' inset in ${name(c)}` });
     });
+  }
+
+  // 7: boxes pressed together. Two drawn edges (a border, or a fill that differs from
+  // what is behind it) closer than the smallest block gap read as one muddled line:
+  // a card a pixel under a tab rule, bordered rows stacked inside a bordered card.
+  // A shared hairline (exactly flush, square corners) is a divider and is allowed.
+  const MIN_BOX_GAP = 8;
+  const painted = (color) => { const c = rgb(color); return !!c && c.a > .04; };
+  const backdrop = (node) => {
+    for (let x = node.parentElement; x; x = x.parentElement) {
+      const c = getComputedStyle(x).backgroundColor;
+      if (painted(c)) return c;
+    }
+    return '';
+  };
+  const boxes = [];
+  const topbarNode = document.querySelector('.topbar');
+  const topbarRect = topbarNode && visible(topbarNode) && getComputedStyle(topbarNode).position === 'sticky' ? topbarNode.getBoundingClientRect() : null;
+  for (const n of document.querySelectorAll('body *')) {
+    if (boxes.length > 600) break;
+    if (n.closest('.monaco-editor, .excalidraw, svg, pre, .ui-turn-body, .rich, dialog:not(:modal)') || !visible(n)) continue;
+    const r = n.getBoundingClientRect();
+    if (!onScreen(r) || r.width < 120 || r.height < 24) continue;
+    // Compact controls sit in bars by design; their spacing has its own rules above.
+    if (r.height < 40 && n.matches('.segmented, .segmented *, ' + CONTROL)) continue;
+    const s = getComputedStyle(n);
+    if (/absolute|fixed/.test(s.position)) continue;
+    // Content scrolled behind the pinned app bar is covered by it, not beside it.
+    if (topbarRect && !n.closest('.topbar') && r.top < topbarRect.bottom - 1 && r.bottom > topbarRect.top) continue;
+    const filled = painted(s.backgroundColor) && s.backgroundColor !== backdrop(n);
+    const edges = {};
+    for (const side of ['Top', 'Right', 'Bottom', 'Left'])
+      edges[side] = filled || (parseFloat(s[`border${side}Width`]) > 0 && s[`border${side}Style`] !== 'none' && painted(s[`border${side}Color`]));
+    if (!Object.values(edges).some(Boolean)) continue;
+    // A menu, dialog or drawer floats over the page; it is not the page's neighbour.
+    const layer = n.closest('dialog, [popover], .settings, .drawer, .ui-menu, .ui-popover');
+    boxes.push({ n, r, edges, layer, roundTop: parseFloat(s.borderTopLeftRadius) > 0 || parseFloat(s.borderTopRightRadius) > 0,
+      roundBottom: parseFloat(s.borderBottomLeftRadius) > 0 || parseFloat(s.borderBottomRightRadius) > 0,
+      roundLeft: parseFloat(s.borderTopLeftRadius) > 0 || parseFloat(s.borderBottomLeftRadius) > 0,
+      roundRight: parseFloat(s.borderTopRightRadius) > 0 || parseFloat(s.borderBottomRightRadius) > 0 });
+  }
+  const crowded = new Map();
+  const crowd = (a, b, gap, how) => {
+    const key = name(a.n) + ' | ' + name(b.n) + ' | ' + how;
+    const prior = crowded.get(key);
+    if (prior) { prior.count++; return; }
+    crowded.set(key, { count: 1, where: name(b.n), what: label(b.n), gap, how, against: name(a.n) });
+  };
+  // Flush is a shared edge unless a rounded corner meets it, which leaves two notches.
+  // Up to a hairline apart is one divider drawn by whichever side owns it.
+  const tight = (gap, rounded) => (gap > 1.5 && gap < MIN_BOX_GAP - .5) || (Math.abs(gap) <= 1.5 && rounded);
+  for (let i = 0; i < boxes.length; i++) for (let j = 0; j < boxes.length; j++) {
+    if (i === j) continue;
+    const a = boxes[i], b = boxes[j];
+    if (a.layer !== b.layer) continue;
+    if (a.n.contains(b.n)) {
+      // A box nearly, but not exactly, flush inside a drawn container. Control tracks
+      // (a segmented switch and its raised option) are deliberately tight.
+      if (a.r.height < 56) continue;
+      for (const [side, d] of [['Top', b.r.top - a.r.top], ['Bottom', a.r.bottom - b.r.bottom], ['Left', b.r.left - a.r.left], ['Right', a.r.right - b.r.right]])
+        if (a.edges[side] && b.edges[side] && d > 1.5 && d < MIN_BOX_GAP - .5) crowd(a, b, d, `inside, ${side.toLowerCase()} edges`);
+      continue;
+    }
+    if (b.n.contains(a.n)) continue;
+    const overlapX = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
+    const overlapY = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+    const below = b.r.top - a.r.bottom, beside = b.r.left - a.r.right;
+    if (overlapX > 40 && a.edges.Bottom && b.edges.Top && tight(below, a.roundBottom || b.roundTop)) crowd(a, b, below, 'stacked');
+    // Side by side applies to blocks; chips and buttons in a toolbar have their own rules.
+    else if (overlapY > 16 && Math.max(a.r.height, b.r.height) >= 56 && a.edges.Right && b.edges.Left && tight(beside, a.roundRight || b.roundLeft)) crowd(a, b, beside, 'side by side');
+  }
+  for (const c of crowded.values())
+    out.push({ kind: 'crowded', where: c.where, what: c.what, detail: `${c.gap.toFixed(1)}px from ${c.against} (${c.how}${c.count > 1 ? `, ×${c.count}` : ''}); blocks need ${MIN_BOX_GAP}px or a shared edge` });
+
+  // 8: a bar pinned a little below the app bar leaves a slot the page scrolls through.
+  // Measured for real: scroll, see where the bar sticks, and ask what is painted above it.
+  const page = document.scrollingElement;
+  if (page && page.scrollHeight > innerHeight + 400) {
+    const restore = page.scrollTop;
+    page.scrollTo({ top: restore + 360, behavior: 'instant' });
+    const appBar = document.querySelector('.topbar');
+    const barRect = appBar && visible(appBar) ? appBar.getBoundingClientRect() : null;
+    const appFloor = barRect && barRect.bottom > 0 ? barRect.bottom : 0;
+    const stuck = [];
+    for (const n of document.querySelectorAll('body *')) {
+      const s = getComputedStyle(n);
+      if (s.position !== 'sticky' || s.zIndex === 'auto' || n === appBar || !visible(n)) continue;
+      const r = n.getBoundingClientRect();
+      if (Math.abs(r.top - parseFloat(s.top)) > 1 || r.width < 200) continue; // not stuck
+      stuck.push({ n, r });
+    }
+    for (const { n, r } of stuck) {
+      // A bar may dock beneath another pinned bar; that bar is then its floor.
+      const floor = Math.max(appFloor, ...stuck.filter(o => o.n !== n && o.r.bottom <= r.top + 1.5
+        && o.r.left < r.right && o.r.right > r.left).map(o => o.r.bottom));
+      const slot = r.top - floor;
+      if (slot < 1.5) continue;
+      // A bar may fill its own slot with a strip of page colour drawn just above itself.
+      const masked = ['::before', '::after'].some(pseudo => {
+        const p = getComputedStyle(n, pseudo);
+        return p.content !== 'none' && p.position === 'absolute' && painted(p.backgroundColor)
+          && parseFloat(p.height) >= slot - .5 && Math.abs(parseFloat(p.bottom) - r.height) < 4;
+      });
+      if (masked) continue;
+      out.push({ kind: 'sticky-slot', where: name(n), detail: `Pins ${slot.toFixed(0)}px below ${floor ? 'the bar above it' : 'the window edge'}; scrolled content shows through the slot` });
+    }
+    page.scrollTo({ top: restore, behavior: 'instant' });
+  }
+
+  // 9: the same slot inside a scrolling pane. A scroller's padding sits outside what
+  // sticky measures, so a header or action bar pinned with top:0 / bottom:0 stops one
+  // padding short of the pane edge and the content shows through the strip.
+  for (const n of document.querySelectorAll('body *')) {
+    const s = getComputedStyle(n);
+    if (s.position !== 'sticky' || !visible(n) || !painted(s.backgroundColor)) continue;
+    let scroller = n.parentElement;
+    while (scroller && scroller !== document.body && !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    if (!scroller || scroller === document.body || scroller.scrollHeight <= scroller.clientHeight + 40) continue;
+    const ss = getComputedStyle(scroller), restore = scroller.scrollTop;
+    for (const [side, pad] of [['top', parseFloat(ss.paddingTop)], ['bottom', parseFloat(ss.paddingBottom)]]) {
+      if (s[side] === 'auto' || pad < 1.5) continue;
+      scroller.scrollTop = side === 'top' ? scroller.scrollHeight : 0;
+      const r = n.getBoundingClientRect(), box = scroller.getBoundingClientRect();
+      const edge = side === 'top' ? box.top + scroller.clientTop : box.top + scroller.clientTop + scroller.clientHeight;
+      const slot = side === 'top' ? r.top - edge : edge - r.bottom;
+      // Only a bar that is actually pinned (not resting at its natural place) counts.
+      const natural = side === 'top' ? scroller.scrollTop < 2 : scroller.scrollTop > scroller.scrollHeight - scroller.clientHeight - 2;
+      if (!natural && slot > 1.5 && slot <= pad + 1.5) out.push({ kind: 'sticky-slot', where: name(n), detail: `Pins ${slot.toFixed(0)}px short of its pane's ${side} edge; scrolled content shows through the strip` });
+    }
+    scroller.scrollTop = restore;
+  }
+
+  // 10: data cut in the middle of a value. Unspaced test data ("[1,2],[3]") is one word
+  // to the browser, so overflow-wrap:anywhere slices numbers and names at the box edge
+  // unless the markup offers a break after each comma.
+  for (const n of document.querySelectorAll('pre, .mono')) {
+    if (!visible(n) || n.closest('.monaco-editor, .submission-code, .solutioncode, .rich, .ui-turn-body')) continue;
+    const s = getComputedStyle(n);
+    if (!/anywhere|break-word/.test(s.overflowWrap) && s.wordBreak !== 'break-all') continue;
+    if (!onScreen(n.getBoundingClientRect()) || !n.textContent.includes(',')) continue;
+    const walker = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+    const range = document.createRange(); let t, checked = 0, split = null;
+    while (!split && (t = walker.nextNode()) && checked < 4000) {
+      const text = t.textContent;
+      for (let i = 1; i < text.length && checked < 4000; i++, checked++) {
+        if (!/[\w"'.-]/.test(text[i]) || !/[\w"'.-]/.test(text[i - 1])) continue;
+        range.setStart(t, i - 1); range.setEnd(t, i); const a = range.getBoundingClientRect();
+        range.setStart(t, i); range.setEnd(t, i + 1); const b = range.getBoundingClientRect();
+        if (a.height && b.height && b.top > a.top + a.height / 2) { split = text.slice(Math.max(0, i - 6), i) + '⏎' + text.slice(i, i + 6); break; }
+      }
+    }
+    // A single value longer than the line has nowhere better to break.
+    if (split && n.querySelector('wbr') === null) out.push({ kind: 'token-split', where: name(n), what: split, detail: 'Line breaks inside a value; offer breaks between values (dataText)' });
+    else if (split) {
+      const widest = Math.max(...n.textContent.split(/[,\n]/).map(part => part.length));
+      const columns = Math.floor((n.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight)) / (parseFloat(s.fontSize) * .6));
+      if (widest < columns - 1) out.push({ kind: 'token-split', where: name(n), what: split, detail: 'Line breaks inside a value that would fit on its own line' });
+    }
   }
 
   // Monaco's gutter width grows with digit count; it must not own pane spacing.

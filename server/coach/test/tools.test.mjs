@@ -9,7 +9,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { ActionStore, TOOL_SPECS, TOOL_NAMES, createToolSession, validateArgs, expectedToText } from '../tools.mjs';
+import { ActionStore, TOOL_SPECS, TOOL_NAMES, createToolSession, validateArgs, expectedToText, toolDisplay } from '../tools.mjs';
 import { CoachRuns } from '../runs.mjs';
 import { SessionLog } from '../sessions.mjs';
 import { readCases, writeCases } from '../../runner/cases.mjs';
@@ -51,7 +51,11 @@ test('every spec is a closed object schema with a description', () => {
     assert.equal(spec.inputSchema.type, 'object');
     assert.equal(spec.inputSchema.additionalProperties, false);
     assert.ok(spec.description.length > 40, spec.name);
+    assert.deepEqual(Object.keys(spec.display).sort(), ['doing','done','effect']);
+    assert.ok(['read','change','note','handoff'].includes(spec.display.effect));
   }
+  assert.deepEqual(toolDisplay('mcp__studio__get_state').effect, 'read');
+  assert.deepEqual(toolDisplay('unknown_tool private arguments'), { doing: 'Using a tool', done: 'Used a tool', effect: 'read' });
 });
 
 test('arguments are checked for names, types, sizes and ranges', () => {

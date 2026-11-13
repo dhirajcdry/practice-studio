@@ -112,11 +112,15 @@ body.theme-studio :is(.ws,.coach,.dz-side){border-left:1px solid var(--hair-10)}
 body.theme-desk:not(.theme-studio){background:var(--texture),var(--canvas)}
 body.theme-desk :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:var(--pane-gap)}
 body.theme-desk :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.lld-document){background:var(--card);border-radius:var(--r-pane);box-shadow:var(--shadow);overflow:hidden}
+/* The problem pane is its own scroller; rounding it must not stop a long statement scrolling. */
+body.theme-desk .pbody.with-workspace .pcol{overflow:hidden auto}
 body.theme-dunes::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;contain:strict;background:var(--art) center/cover no-repeat}
 body.theme-dunes :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:var(--pane-gap)}
 body.theme-dunes :is(.topbar,.ui-screen-header,.ui-dialog-header,.ui-pane-header,.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.card,.settings,.drawer){background:var(--card)}
 body.theme-dunes :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.lld-document,.pr-work){border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
-body.theme-dunes .topbar{position:relative}
+body.theme-dunes.ws-wide .view>.ui-screen-header{margin:var(--pane-gap) var(--pane-gap) 0}
+/* The header board sits one gap lower here, so the rail starts below it instead of across its corner. */
+body.theme-dunes.ws-wide .workspace-rail{top:calc(46px + var(--pane-gap))}
 body.theme-dunes .topbar::after{content:'';position:absolute;inset:auto 0 -3px;height:3px;background:repeating-linear-gradient(110deg,var(--accent) 0 10px,var(--card) 10px 14px)}
 body.theme-dunes :is(.btn,.ui-tab,.ui-badge,.ui-pane-header>strong,.ui-screen-header h1,.ui-dialog-header h2){font-family:var(--btn-font);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
 body.theme-dunes .ui-screen-header{border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
@@ -136,11 +140,12 @@ body.theme-studio .ui-screen-header{width:100%}
 
 body.theme-studio :is(.dz-side,.lld-document,.pr-work,.pr-coach){border-radius:0;box-shadow:none}
 
-body.theme-dunes :is(.catalog-content,.catalog-tree,.roadmap-chips,.roadmap-query,.learner-context{background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow);padding:var(--space-3)}
+body.theme-dunes :is(.catalog-content,.catalog-tree,.roadmap-chips,.roadmap-query,.learner-context){background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow);padding:var(--space-3)}
 body.theme-desk .ui-screen-header{background:transparent;border:0}
+body.theme-dunes .catalog{--page-surface:var(--card)}
 body.theme-dunes :is(.dash-warn,.dash-foot){background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
 
 body.theme-dunes .dzl{gap:var(--pane-gap)}
 body.theme-dunes .dzl>:not(.ui-screen-header){margin-block:0}
 
-body.theme-dunes .dzl :is(.card{border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
+body.theme-dunes .dzl :is(.card){border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}

@@ -296,3 +296,16 @@ test('feature button class literals use shared variants or content rows', () => 
   }
   assert.deepEqual(offenders, []);
 });
+
+// An unclosed `:is(` does not fail loudly: the parser swallows that rule and every rule
+// after it in the file. themes.css shipped that way and lost its last ten rules.
+test('every selector closes its parentheses', () => {
+  for (const file of fs.readdirSync(WEB_CSS).filter(name => name.endsWith('.css'))) {
+    const css = fs.readFileSync(path.join(WEB_CSS, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const match of css.matchAll(/([^{};]+)\{/g)) {
+      const selector = match[1].trim();
+      const open = (selector.match(/\(/g) || []).length, close = (selector.match(/\)/g) || []).length;
+      assert.equal(open, close, `${file}: unbalanced parentheses in "${selector.slice(0, 120)}"`);
+    }
+  }
+});

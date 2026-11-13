@@ -1,3 +1,5 @@
+import { questionNode } from './ui/turn.js';
+import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/workspace-turn.js';
 import { openLearningNotes } from './learning.js';
 import { createMockTimeControls, mockTimeReading } from './ui/mock-time.js';
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
@@ -15,7 +17,7 @@ import { createSpeechStream } from './speech-stream.js';
 import { submissionEditor } from './editor.js';
 import { streamInterviewRequest } from './interview-transport.js';
 import { formatClock, endInterviewArchive, pauseInterviewArchive } from './recorder.js';
-import { conversationMessage, bindConversation, conversationSeparator, messageAction, thinkingRow, conversationText, appendConversationText } from './ui/conversation.js';
+import { bindConversation, conversationSeparator, conversationText, setConversationText, appendConversationText } from './ui/conversation.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { createSelect } from './ui/select.js';
 import { icon } from './ui/icon.js';
@@ -88,7 +90,6 @@ export function createInterviewSetup({ slug, title, discipline = 'coding', onSta
     begin.textContent = starting ? 'Preparing…' : startLabel;
   }
   const picker = createCoachModelPicker({ compact: true, onPending: value => { modelPending = value; paintPending(); } });
-  const dot = () => el('span', { class: 'ci-setup-dot', 'aria-hidden': 'true', text: '·' });
   const root = el('section', { class: 'ci-setup ui-inset' + (description ? ' ci-setup--featured ui-inset--roomy' : ''), 'aria-label': 'Start a mock interview' },
     el('form', { onsubmit: async event => {
       event.preventDefault();
@@ -109,7 +110,7 @@ export function createInterviewSetup({ slug, title, discipline = 'coding', onSta
     } }, [
       el('div', { class: 'ci-setup-head' }, [el(description ? 'h2' : 'span', { class: 'ci-setup-title', text: label }), description ? null : setupActions]),
       description ? el('p', { class: 'dim ci-setup-description', text: description }) : null,
-      el('div', { class: 'ci-setup-options' }, [length, dot(), answer, dot(), level, dot(), picker.root]), description ? setupActions : null, status,
+      el('div', { class: 'ci-setup-options' }, [length, answer, level, picker.root]), description ? setupActions : null, status,
     ]));
   interviewJson('/api/learner/preferences').then(({ preferences }) => {
     if (!disposed && !starting && !levelTouched && !saved.targetLevel) level.value = preferences?.targetLevel?.[discipline] || preferences?.targetLevel?.default || targetLevel;
@@ -226,7 +227,8 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   const resume = el('button', { class: 'btn btn--primary', text: 'Resume', onclick: togglePause });
   const paused = el('div', { class: 'ci-paused ui-inset ui-cluster', hidden: true }, [pausedText, resume]);
   const feedback = el('section', { class: 'ci-feedback ci-debrief', hidden: true, 'aria-label': 'Interview feedback' });
-  const transcript = el('details', { class: 'ci-transcript', hidden: true }, el('summary', { text: 'Conversation transcript' }));
+  const transcriptLabel = el('span', { text: 'Conversation transcript' });
+  const transcript = el('details', { class: 'ci-transcript', hidden: true }, el('summary', {}, [icon('chevron', 14), transcriptLabel]));
   const root = el('aside', { class: contained ? 'card ci-panel ci-contained ui-pane' : embedded ? 'ci-panel ci-embedded' : 'card coach ci-panel', 'aria-label': entry.discipline === 'lld' ? 'LLD interviewer' : 'Coding interviewer' }, [
     el('div', { class: 'ci-live-header ui-toolbar' }, [
       el('div', { class: 'ci-header' }, [el('div', { class: 'ci-identity' }, [el('strong', { text: entry.title }), pill]), toolbar]),
@@ -350,7 +352,10 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     for (const [index, item] of [...phasebar.children].entries()) {
       const done = index < phases.findIndex(([key]) => key === state.phase);
       item.classList.toggle('is-done', done);
-      item.textContent = (done ? '✓ ' : '') + phases[index][1];
+      if (item.dataset.done !== String(done)) {
+        item.dataset.done = String(done);
+        replace(item, done ? [icon('check', 12), phases[index][1]] : [phases[index][1]]);
+      }
       if (item.dataset.phase === (state.phase || 'clarify')) item.setAttribute('aria-current', 'step');
       else item.removeAttribute('aria-current');
     }
@@ -444,12 +449,15 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     bubble('You', text, at, false, destination);
   }
   function bubble(who, text = '', atMs = elapsed(), debrief = false, destination = log) {
-    const content = conversationText(text, { className: 'ci-text', user: who === 'You' });
-    const node = conversationMessage({ speaker: who, user: who === 'You', body: content,
-      stamp: atMs < 60000 ? 'At the start' : `${Math.floor(atMs / 60000)} min in`, dataset: { elapsed: atMs },
-      className: `cmsg ci-entry${who === 'You' ? ' ci-candidate' : ''}${debrief ? ' ci-debrief' : ''}`,
-      actions: who === 'Interviewer' ? [replayButton(() => content.dataset.markdown, replayReply)] : [],
-    });
+    const stamp = interviewStamp(atMs);
+    const reply = who === 'You' ? null : createWorkspaceReply({ speaker: who, meta: stamp, liveMock: true });
+    const node = reply?.node || questionNode({ text, stamp });
+    const content = reply?.body || node.querySelector('.ui-conversation-text');
+    if (reply) { setConversationText(content, text); reply.finish({ stamp, actions: who === 'Interviewer' ? [replayButton(() => content.dataset.markdown, replayReply)] : [] }); }
+    content.classList.add('ci-text'); node.classList.add('ci-entry');
+    if (who === 'You') node.classList.add('ci-candidate');
+    if (debrief) node.classList.add('ci-debrief');
+    node.dataset.elapsed = atMs;
     const follow = destination === log && followingLatest();
     destination.append(node);
     if (follow) revealLatest();
@@ -493,7 +501,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       transcript.hidden = false;
       if (log.parentNode !== transcript) transcript.append(log);
       const count = log.querySelectorAll('.ci-entry').length;
-      transcript.querySelector('summary').textContent = `Show conversation · ${count} ${count === 1 ? 'turn' : 'turns'}`;
+      transcriptLabel.textContent = `Show conversation · ${count} ${count === 1 ? 'turn' : 'turns'}`;
       return;
     }
     const judgement = state.report?.judgement;
@@ -514,7 +522,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       feedback.hidden = false;
       transcript.hidden = false;
       if (log.parentNode !== transcript) transcript.append(log);
-      transcript.querySelector('summary').textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
+      transcriptLabel.textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
       return;
     }
     writtenDebrief = text || '';
@@ -568,32 +576,33 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     feedback.hidden = false;
     transcript.hidden = false;
     transcript.append(log);
-    transcript.querySelector('summary').textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
+    transcriptLabel.textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
   }
   function replay(turns = []) {
     const readingTop = scrollViewport()?.scrollTop || 0;
     shownCandidates.clear();
     const history = document.createDocumentFragment();
-    let lastPhase = null;
+    let lastPhase = null, pendingActions = [];
     for (const turn of turns) {
       if (turn.phase && turn.phase !== lastPhase) {
         lastPhase = turn.phase; history.append(conversationSeparator(phases.find(([key]) => key === turn.phase)?.[1] || turn.phase, { phase: true, value: turn.phase }));
       }
-      if (turn.kind === 'tool_action') { showWorkspaceAction(history, turn.action, { replay: true }); continue; }
+      if (turn.kind === 'tool_action') { pendingActions.push(turn.action); continue; }
       const at = turn.elapsedMs ?? Math.max(0, Date.parse(turn.at) - Number(state.startedAt));
       if (turn.said) candidate(turn.said, turn.requestId, at, history);
       if (['interviewer_silent', 'suppressed_filler'].includes(turn.kind) && turn.replyKind === 'turn') history.append(interviewerSilentNote());
       const asked = turn.asked ?? turn.reply;
-      if (asked) {
+      if (asked || pendingActions.length || turn.activity?.length) {
         if ((embedded || entry.discipline === 'lld') && turn.kind === 'debrief') { showFeedback(asked); continue; }
         const debrief = turn.kind === 'debrief' || turn.replyKind === 'debrief';
-        const target = bubble(debrief ? 'Debrief' : 'Interviewer', asked, at, debrief, history);
-        if (turn.kind === 'partial') target.after(el('p', { class: 'dim', text: 'Reply interrupted before it finished.' }));
+        const target = bubble(debrief ? 'Debrief' : 'Interviewer', asked || '', at, debrief, history);
+        const reply = workspaceReply(target); reply.restore(turn.activity, pendingActions); reply.finish(); pendingActions = [];
+        if (turn.kind === 'partial') reply.setNotice({ head: 'Reply interrupted before it finished.' });
       }
     }
     if ((embedded || entry.discipline === 'lld') && state.debriefed && !feedback.childNodes.length) showFeedback('No feedback was recorded for this interview.');
     replace(log, history);
-    transcript.querySelector('summary').textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
+    transcriptLabel.textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
     if (following) revealLatest();
     else if (scrollViewport()) scrollViewport().scrollTop = readingTop;
   }
@@ -665,7 +674,6 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     if (action !== 'event') state.needsAttention = false;
     if (action !== 'event') lastOperation = { action, extra };
     if (action !== 'event') { error(''); paint(); }
-    const thinking = thinkingRow(); log.append(thinking);
     let target = null, accepted = false, stopped = false, debriefText = '', draftConsumed = false;
     const consumeDraft = () => {
       if (!extra.said || draftConsumed) return;
@@ -674,11 +682,14 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       requestId = null; rememberRequest(null);
     };
     const isDebrief = action === 'done' || (action === 'retry' && Boolean(state.endedAt));
+    target = bubble(isDebrief ? 'Debrief' : 'Interviewer', '', elapsed(), isDebrief);
+    const turnReply = workspaceReply(target); turnReply.start();
     try {
       const result = await streamRequest(`/api/interview/${action}`, {
         slug, interviewId: state.id, code: code(), ...extra,
       }, (name, payload) => {
-        if (name === 'action') { if (!gone) showWorkspaceAction(log, payload); }
+        if (name === 'action') { if (!gone) showWorkspaceAction(turnReply, payload); }
+        else if (name === 'tool') { if (!gone) turnReply.tool(payload); }
         else if (name === 'interview') {
           const oldDraft = input.value;
           mergeState({ ...payload, pending: false });
@@ -689,13 +700,13 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         } else if (name === 'accepted') {
           accepted = true;
           if (payload.state) { mergeState(payload.state); persist(); }
-          if (payload.said && !gone) candidate(payload.said, payload.requestId);
+          if (payload.said && !gone) { candidate(payload.said, payload.requestId); log.append(turnReply.node); }
           const delivered = new Set((extra.events || []).map(event => event.requestId));
           eventQueue = eventQueue.filter(event => !delivered.has(event.requestId)); saveEvents();
           consumeDraft();
           if (action === 'turn') void openMic();
         } else if (name === 'token') {
-          thinking.remove();
+          turnReply.writing();
           if (gone) return;
           target ??= bubble(isDebrief ? 'Debrief' : 'Interviewer', '', elapsed(), isDebrief);
           target.classList.add('ci-streaming');
@@ -765,7 +776,9 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       }
       return false;
     } finally {
-      thinking.remove();
+      turnReply.finish();
+      if (target) target.classList.remove('ci-streaming');
+      if (!turnReply.body.textContent.trim() && !turnReply.node.querySelector('[data-action-id]') && turnReply.node.querySelector('.ui-turn-activity').hidden) turnReply.node.remove();
       busy = false;
       if (!gone) { paint(); void modeControl.flush(); openMic(); }
     }

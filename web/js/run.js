@@ -7,7 +7,7 @@ import { paneHeader } from './ui/headers.js';
 // response did not say — no invented case lists behind a compile error, no
 // "unsupported" dressed up as a failure, no pass we cannot justify.
 
-import { el, clear, replace } from './dom.js';
+import { el, clear, replace, dataText } from './dom.js';
 import { runCode, cancelRun } from './api.js';
 import { createCaseEditor } from './cases.js';
 
@@ -232,7 +232,7 @@ export function summaryLine(shaped) {
 function labelled(label, value, className = '') {
   return el('div', { class: 'rr-field ' + className }, [
     el('div', { class: 'mono dim', text: label }),
-    el('pre', { text: value === '' ? '—' : value }),
+    el('pre', {}, dataText(value === '' ? '—' : value)),
   ]);
 }
 

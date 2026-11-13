@@ -163,7 +163,7 @@ const meterKey = () => el('div', { class: 'dash-meterkey' }, [
 
 function headSection(stats, { onRefresh, busy }) {
   return screenHeader({ title: 'Progress', meta: [evidenceSummary(stats)], actions: { secondary: [
-    { label: busy ? 'Reading…' : 'Re-read workspace', disabled: busy, onClick: onRefresh, className: 'dash-refresh' },
+    { label: busy ? 'Refreshing…' : 'Refresh', disabled: busy, onClick: onRefresh, className: 'dash-refresh' },
   ] }, status: leetcodeViews('progress') });
 }
 
@@ -175,8 +175,11 @@ function overallSection(stats) {
   const count = (value, label) => el('span', {}, [el('b', { text: String(value) }), ` ${label}`]);
   return el('section', { class: 'dash-overall' }, [
     meter({ solved: all.accepted, attempted: all.attempted, total: all.total }),
+    // Solved always shows, even at zero; an empty "in progress" or "not started" does not.
     el('div', { class: 'dash-counts' }, [
-      count(solved, 'solved'), count(started - solved, 'in progress'), count(all.total - started, 'not started'),
+      count(solved, 'solved'),
+      started - solved > 0 ? count(started - solved, 'in progress') : null,
+      all.total - started > 0 ? count(all.total - started, 'not started') : null,
     ]),
   ]);
 }
@@ -297,7 +300,7 @@ function recentSection(stats, now) {
     return card('Recent', {
       body: el('div', { class: 'dash-quiet' },
         stats.workspace.eventsRead === 0
-          ? 'No activity yet. Open a problem, type, run tests, or ask the coach to get started.'
+          ? 'No activity recorded yet.'
           : 'The practice actions carry no readable timestamps, so none of them can be placed on a timeline.'),
     });
   }
@@ -308,7 +311,6 @@ function recentSection(stats, now) {
       el('span', { class: 'when', text: `${fmtDay(event.at, now) ?? ''} ${String(event.at).slice(11, 16)}`.trim() }),
       el('span', { class: 'what' }, [
         el('b', { text: event.title ?? event.slug }),
-        ' — ',
         el('span', { class: 'ev', text: eventLabel(event.type) }),
         event.summary ? el('span', { class: 'sm', text: event.summary }) : null,
       ]),
@@ -328,14 +330,14 @@ function problemsSection(stats, now) {
     return el('tr', {}, [
       el('td', {}, [
         el('span', { class: 'name', text: problem.title ?? problem.slug }),
-        problem.inCatalog ? null : el('span', { class: 'tag quiet', style: 'margin-left:8px', text: 'off-list' }),
+        problem.inCatalog ? null : el('span', { class: 'tag quiet offlist', text: 'Not in a list' }),
       ]),
-      el('td', {}, el('span', { class: 'mono dim', style: 'letter-spacing:.06em', text: problem.pattern ?? '—' })),
+      el('td', {}, el('span', { class: 'pattern', text: problem.pattern ?? '—' })),
       el('td', {}, el('span', { class: `tag ${meta.cls}`, text: meta.label })),
       el('td', {}, el('span', { class: problem.attempts ? 'num' : 'num zero', text: String(problem.attempts) })),
       el('td', {}, el('span', { class: problem.events ? 'num' : 'num zero', text: String(problem.events) })),
       el('td', {}, el('span', { class: 'num', text: problem.lastAt ? (fmtDay(problem.lastAt, now) ?? '—') : '—' })),
-      el('td', {}, el('span', { class: 'evid', text: problem.acceptedSource ? `verdict from ${problem.acceptedSource}` : meta.evidence })),
+      el('td', {}, el('span', { class: 'evid', text: meta.evidence })),
     ]);
   });
 
@@ -390,10 +392,8 @@ function serverState({ kind, message, onRefresh }) {
   return el('section', { class: 'dash-card' }, el('div', { class: 'dash-empty' }, [
     el('h3', { text: heading }),
     el('p', { text: body }),
-    el('p', { class: 'dash-quiet', style: 'padding:0;font-style:italic' },
-      'Your progress will appear once it can be loaded.'),
-    el('div', { style: 'margin-top:13px' },
-      el('button', { class: 'btn btn--quiet dash-refresh', type: 'button', text: 'Try again', onclick: onRefresh })),
+    el('div', { class: 'dash-empty-actions' },
+      el('button', { class: 'btn btn--secondary dash-refresh', type: 'button', text: 'Try again', onclick: onRefresh })),
   ]));
 }
 
@@ -470,10 +470,8 @@ function renderInto(mountEl, stats, { onRefresh, busy, now }) {
       ]),
       hasRecord ? problemsSection(stats, now) : null,
       warningsSection(stats),
-      el('div', { class: 'dash-foot' }, [
-        `${stats.workspace.eventsRead} practice actions recorded`,
-        stats.workspace.skippedLines ? ' · Some saved activity could not be read' : '',
-      ]),
+      // The header already carries the counts; the foot speaks only when something was skipped.
+      stats.workspace.skippedLines ? el('div', { class: 'dash-foot', text: 'Some saved activity could not be read and is not counted here.' }) : null,
     ]),
   ]);
 

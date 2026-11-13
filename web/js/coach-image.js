@@ -19,6 +19,9 @@
 import { el, replace } from './dom.js';
 import { requestVisual, visualStatus, visualId } from './api.js';
 import { getSettings } from './settings.js';
+import { icon } from './ui/icon.js';
+import { button } from './ui/button.js';
+import { tooltip } from './tooltip.js';
 
 const POLL_MS = 2000;
 const WATCH_CAP_MS = 5 * 60 * 1000;
@@ -114,7 +117,7 @@ export function renderImageCard(code, { slug = null, live = false } = {}) {
   const status = el('span', { class: 'pic-status mono dim' });
   const stage = el('div', { class: 'pic-stage' });
   const asked = el('details', { class: 'pic-asked' }, [
-    el('summary', { class: 'mono dim', text: 'What the coach asked for' }),
+    el('summary', { class: 'dim' }, [icon('chevron', 14), el('span', { text: 'What the coach asked for' })]),
     el('p', { text: prompt }),
   ]);
   const card = el('figure', { class: 'ill pic', 'aria-label': alt || 'A picture from the coach' }, [
@@ -162,7 +165,9 @@ export function renderImageCard(code, { slug = null, live = false } = {}) {
     status.textContent = '';
     const img = el('img', { class: 'pic-img', src: state.url, alt: alt || 'Picture from the coach', decoding: 'async' });
     img.addEventListener('error', () => failed({ message: 'The picture file could not be loaded from the studio server.' }), { once: true });
-    replace(stage, el('button', { class: 'ui-action-row pic-open', type: 'button', title: 'Open larger', onclick: () => openLightbox(state.url, alt) }, img));
+    const open = el('button', { class: 'ui-action-row pic-open', type: 'button', 'aria-label': 'Open the picture larger', onclick: () => openLightbox(state.url, alt) }, img);
+    tooltip(open, 'Open larger');
+    replace(stage, open);
   };
 
   const failed = (state) => {
@@ -230,7 +235,7 @@ function openLightbox(url, alt) {
   const box = el('div', { class: 'pic-lightbox', role: 'dialog', 'aria-label': alt || 'Picture', onclick: close }, [
     el('img', { src: url, alt: alt || 'Picture from the coach' }),
     alt ? el('p', { text: alt }) : null,
-    el('button', { class: 'btn btn--quiet ws-mini pic-close', type: 'button', text: 'Close esc', onclick: close }),
+    button({ label: 'Close', kbd: 'Esc', variant: 'secondary', className: 'pic-close', onClick: close }),
   ]);
   document.addEventListener('keydown', onKey, true);
   document.body.append(box);

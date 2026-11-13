@@ -14,6 +14,8 @@
 // far as one string, and the tool lines as a list. Replaying is then "here is the text,
 // here are the tools", not a recording of every token that ever arrived.
 
+import { toolDisplay } from './tools.mjs';
+
 /** A finished run stays adoptable this long, so a reload right after it lands still sees it. */
 export const RETAIN_MS = 10 * 60 * 1000;
 
@@ -96,12 +98,16 @@ export class CoachRuns {
   }
 
   tool(run, name, summary) {
-    if (run.tools.length < MAX_TOOLS) run.tools.push({ name, summary: summary ?? null });
-    for (const stream of run.subscribers) stream.tool(name, summary);
+    const display = toolDisplay(name);
+    const event = { name, summary: summary ?? null, display, at: new Date(this.now()).toISOString() };
+    if (run.tools.length < MAX_TOOLS) run.tools.push(event);
+    for (const stream of run.subscribers) stream.tool(name, summary, event);
+    return event;
   }
 
   /** Send a tutor action (or a later status change of one) to every viewer. */
   action(run, payload) {
+    payload.display = toolDisplay(payload.tool);
     if (!run.actions.includes(payload) && run.actions.length < MAX_ACTIONS) run.actions.push(payload);
     for (const stream of run.subscribers) stream.action?.(publicAction(payload));
   }
@@ -115,8 +121,8 @@ export class CoachRuns {
     run.finishedAt = this.now();
     run.child = null;
     for (const stream of run.subscribers) {
-      if (status === 'error') stream.error(message ?? 'The coach stopped without a reason.');
-      else { stream.done(sessionId, stoppedReason); stream.end(); }
+      if (status === 'error') stream.error(message ?? 'The coach stopped without a reason.', { at: new Date(run.finishedAt).toISOString(), durationMs: run.finishedAt - Date.parse(run.startedAt) });
+      else { stream.done(sessionId, stoppedReason, { at: new Date(run.finishedAt).toISOString(), durationMs: run.finishedAt - Date.parse(run.startedAt) }); stream.end(); }
     }
     run.subscribers.clear();
     this.sweep();
@@ -139,7 +145,7 @@ export class CoachRuns {
       status: run.status,
     });
     if (run.text) stream.token(run.text);
-    for (const t of run.tools) stream.tool(t.name, t.summary);
+    for (const t of run.tools) stream.tool(t.name, t.summary, t);
     for (const a of run.actions) stream.action?.(publicAction(a));
     if (run.truncated) {
       stream.tool('note', 'This answer was too long to hold for replay in full; the transcript has all of it.');
@@ -149,8 +155,8 @@ export class CoachRuns {
       run.subscribers.add(stream);
       return () => run.subscribers.delete(stream);
     }
-    if (run.status === 'error') stream.error(run.errorMessage ?? 'The coach stopped without a reason.');
-    else { stream.done(run.sessionId, run.stoppedReason); stream.end(); }
+    if (run.status === 'error') stream.error(run.errorMessage ?? 'The coach stopped without a reason.', { at: new Date(run.finishedAt).toISOString(), durationMs: run.finishedAt - Date.parse(run.startedAt) });
+    else { stream.done(run.sessionId, run.stoppedReason, { at: new Date(run.finishedAt).toISOString(), durationMs: run.finishedAt - Date.parse(run.startedAt) }); stream.end(); }
     return () => {};
   }
 

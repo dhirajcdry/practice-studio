@@ -1,3 +1,5 @@
+import { questionNode } from './ui/turn.js';
+import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/workspace-turn.js';
 import { relativeInterviewDate } from './interview-format.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { screenHeader, paneHeader } from './ui/headers.js';
@@ -34,7 +36,8 @@ import { createInterviewMode } from './interview-mode.js';
 // instead of quietly charging you for the night.
 
 import { el, replace } from './dom.js';
-import { conversationMessage, bindConversation, conversationSeparator, thinkingRow, conversationText, setConversationText, appendConversationText } from './ui/conversation.js';
+import { tooltip } from './tooltip.js';
+import { bindConversation, conversationSeparator, conversationText, setConversationText, appendConversationText } from './ui/conversation.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { installPaneResizer } from './ui/split-pane.js';
 import { openReport } from './interview-report.js';
@@ -113,9 +116,19 @@ function metaOf(item) {
   return [item.level?.toUpperCase(), item.startedAt ? relativeInterviewDate(item.startedAt) : 'Date not recorded', countLabel(item.turns)].filter(Boolean);
 }
 
+function designEntry(kind, text = '', elapsedMs, replay) {
+  const stamp = interviewStamp(elapsedMs);
+  const reply = kind === 'a' ? null : createWorkspaceReply({ speaker: kind === 'q' ? 'Interviewer' : 'Debrief', meta: stamp, liveMock: true });
+  const node = reply?.node || questionNode({ text, stamp });
+  const body = reply?.body || node.querySelector('.ui-conversation-text');
+  body.classList.add('dz-body'); node.classList.add('dz-entry', `dz-${kind}`);
+  if (reply) { setConversationText(body, text); reply.finish({ stamp, actions: kind === 'q' && replay ? [replayButton(() => body.dataset.markdown, replay)] : [] }); }
+  return { node, body };
+}
+
 /** Put the transcript back on screen, in the order it was said. */
 function replayTurns(turns, entry, log, beganAt) {
-  let lastPhase = null;
+  let lastPhase = null, pendingActions = [];
   for (const turn of turns ?? []) {
     const start = typeof beganAt === 'number' ? beganAt : Date.parse(beganAt);
     const elapsedMs = turn.elapsedMs ?? (Number.isFinite(start) && Number.isFinite(Date.parse(turn.at)) ? Math.max(0, Date.parse(turn.at) - start) : undefined);
@@ -123,14 +136,18 @@ function replayTurns(turns, entry, log, beganAt) {
       lastPhase = turn.phase;
       log.append(conversationSeparator(PHASE_LABELS.get(lastPhase) || lastPhase, { phase: true, value: lastPhase }));
     }
-    if (turn.kind === 'tool_action') { if (log) showWorkspaceAction(log, turn.action, { replay: true }); continue; }
+    if (turn.kind === 'tool_action') { pendingActions.push(turn.action); continue; }
     if (turn.kind === 'debrief') {
       if (turn.asked) entry('d', turn.asked.trim().startsWith('{') ? 'Report ready.' : turn.asked);
       continue;
     }
     if (turn.said) { entry('a', turn.said, elapsedMs); if (log?.lastElementChild && turn.phase) log.lastElementChild.dataset.phase = turn.phase; }
     if (['interviewer_silent', 'suppressed_filler'].includes(turn.kind) && turn.requestId && log) log.append(interviewerSilentNote());
-    if (turn.asked) { entry('q', turn.asked, elapsedMs); if (log?.lastElementChild && turn.phase) log.lastElementChild.dataset.phase = turn.phase; }
+    if (turn.asked || pendingActions.length || turn.activity?.length) {
+      const body = entry('q', turn.asked || '', elapsedMs);
+      const reply = workspaceReply(body); reply.restore(turn.activity, pendingActions); reply.finish(); pendingActions = [];
+      if (log?.lastElementChild && turn.phase) log.lastElementChild.dataset.phase = turn.phase;
+    }
   }
 }
 
@@ -170,7 +187,7 @@ function mountLibrary(host, { onNew, onOpen }) {
     openInterview: item => onOpen(item.id),
     startMock: async (problem, state) => {
       const chosen = problem || (await callJson('/api/mock/prepare', { discipline: 'design', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
-      onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: chosen.statement,
+      onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: chosen.statement, title: chosen.title,
         problemSlug: presets.has(chosen.slug) ? undefined : chosen.slug, requestId: state.startRequestId });
     },
   });
@@ -194,7 +211,7 @@ function mountReview(host, data, { onBack }) {
 
   const conversationView = bindConversation(log);
   const entry = (kind, text, elapsedMs) => {
-    log.append(conversationMessage({ speaker: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief', user: kind === 'a', text, elapsedMs, className: `dz-entry dz-${kind}` }));
+    const reply = designEntry(kind, text, elapsedMs); log.append(reply.node); return reply.body;
   };
 
   if (!data.turns?.length) {
@@ -207,7 +224,7 @@ function mountReview(host, data, { onBack }) {
   // An interview without a debrief is not a finished interview, and must not read like
   // one just because it is being viewed after the fact.
   if (!data.debriefed) {
-    log.append(el('div', { class: 'dz-cut mono', text:
+    log.append(el('div', { class: 'dz-cut', text:
       'This interview was never debriefed, so there is no assessment of it. '
       + (!data.resumable ? 'This interview cannot be continued.'
         : data.rebuilt ? 'Continues from the saved transcript.'
@@ -279,7 +296,7 @@ function mountReview(host, data, { onBack }) {
 
 /* ---------------- one interview, live ---------------- */
 
-function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, problemSlug = null, answerMode = 'voice', requestId = crypto.randomUUID(), resumed = null, onBack }) {
+function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title = null, problemSlug = null, answerMode = 'voice', requestId = crypto.randomUUID(), resumed = null, onBack }) {
   let interviewId = resumed?.id ?? null;
   let unbindTools = () => {}, toolTarget = null;
   function bindTools() {
@@ -333,16 +350,18 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   function paintTimeControls() {
     timeControls.update({ disabled: !interviewId || busy || timeControls.saving || draining || modeControl.saving || changingPause || finishing, hidden: debriefed });
   }
-  const pauseButton = el('button', { class: 'btn btn--quiet dz-pause', type: 'button', text: 'Pause',
-    title: 'Pause the timer and microphone without ending your interview', disabled: true, onclick: () => togglePause() });
-  const phaseBar = el('div', { class: 'dz-phases', role: 'group', 'aria-label': 'Interview phase' }, PHASES.map(([id, label]) =>
-    el('button', {
+  const pauseButton = el('button', { class: 'btn btn--quiet dz-pause', type: 'button', text: 'Pause', disabled: true, onclick: () => togglePause() });
+  tooltip(pauseButton, () => paused ? 'Restart the timer and microphone' : 'Stop the timer and microphone without ending the interview');
+  const phaseBar = el('div', { class: 'dz-phases', role: 'group', 'aria-label': 'Interview phase' }, PHASES.map(([id, label]) => {
+    const control = el('button', {
       class: 'btn btn--quiet dz-phase', type: 'button', dataset: { phase: id },
       'aria-pressed': String(id === phase),
       text: label,
-      title: `Tell the interviewer you have moved on to ${label.toLowerCase()}`,
       onclick: () => { phase = id; paintPhases(); },
-    })));
+    });
+    tooltip(control, `Tell the interviewer you have moved on to ${label.toLowerCase()}`);
+    return control;
+  }));
 
   function paintPhases() {
     for (const button of phaseBar.querySelectorAll('.dz-phase')) {
@@ -368,7 +387,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   const sendButton = composerSend(el('button', { class: 'btn btn--quiet dz-send', type: 'button', onclick: () => answer() }));
 
   const micSlot = el('span', { class: 'dz-mic' });
-  const status = el('div', { class: 'dz-status mono', role: 'status', text: '' });
+  const status = el('p', { class: 'dz-status', role: 'status', text: '' });
 
   // Always a click away, because the moment you want it is the moment voice has
   // just mangled a term. For a single word, clicking the words is quicker still.
@@ -378,7 +397,6 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   // Speaking cuts playback immediately; the button and Escape remain alternatives.
   const skipButton = el('button', {
     class: 'btn btn--secondary', type: 'button', hidden: true, text: 'Interrupt · Esc',
-    title: 'Stop the interviewer and start answering (Esc)',
     onclick: () => interrupt(),
   });
 
@@ -410,7 +428,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   const voicePanel = el('div', { class: 'dz-voice', hidden: true }, [voiceView.root]);
   voiceView.setControls({ lead: [micButton], actions: [skipButton, typeLink, sendVoice] });
   const typePanel = el('div', { class: 'dz-type' }, input);
-  const typeActions = el('div', { class: 'dz-actions' }, [micSlot, status, sendButton]);
+  const typeActions = el('div', { class: 'dz-actions' }, [micSlot, sendButton]);
 
   function paintVoice() {
     // The microphone is held shut until a recovered answer is sent or edited, so going quiet sends nothing.
@@ -495,9 +513,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       log.append(conversationSeparator(PHASE_LABELS.get(phase) || phase, { phase: true, value: phase }));
       lastEntryPhase = phase;
     }
-    const body = conversationText(text, { className: 'dz-body', user: kind === 'a' });
-    const node = conversationMessage({ speaker: kind === 'q' ? 'Interviewer' : kind === 'a' ? 'You' : 'Debrief', user: kind === 'a', body, elapsedMs,
-      className: `dz-entry dz-${kind}`, dataset: { phase }, actions: kind === 'q' ? [replayButton(() => body.dataset.markdown, replayReply)] : [] });
+    const { node, body } = designEntry(kind, text, elapsedMs, replayReply);
+    node.dataset.phase = phase;
     node.hidden = Boolean(livePhaseFilter.value && phase !== livePhaseFilter.value);
     log.append(node);
     if (kind === 'a') following = true;
@@ -516,20 +533,28 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     practise.disabled = true;
     sendButton.disabled = true;
     doneButton.disabled = true;
-    if (!idle) say('thinking…');
+    // The transcript shows the interviewer thinking; this line is kept for problems.
+    if (!idle) say('');
     if (isVoice() && !idle) paintVoice('Thinking…', 'think');
     // An answer may be met with silence, so its bubble waits for words to put in it.
-    const thinking = thinkingRow(); log.append(thinking);
+
     const answering = url === '/api/design/turn';
-    let target = answering ? null : entry(kind), silent = false;
-    const reply = () => (target ??= entry(kind));
+    let target = entry(kind), silent = false;
+    const turnReply = workspaceReply(target); turnReply.start();
+    // While the interviewer decides whether to answer at all, the turn is only a quiet
+    // Thinking row: no speaker label, and not yet an interviewer entry. It becomes one
+    // when there are words, an action or an error to show; silence removes it.
+    const turnNode = turnReply.node;
+    if (answering) { turnNode.classList.remove('dz-q'); turnNode.classList.add('dz-deciding'); }
+    const reveal = () => { if (turnNode.classList.contains('dz-deciding')) { turnNode.classList.remove('dz-deciding'); turnNode.classList.add('dz-q'); } };
+    const reply = () => { reveal(); return (target ??= entry(kind)); };
     let cut = false, draftConsumed = false;
     let succeeded = false;
     let failed = false;
     try {
       await streamPost(url, body, {
         onToken: (text) => {
-          thinking.remove();
+          turnReply.writing();
       if (target) target.dataset.streaming = 'false';
           if (destroyed) return;
           const follow = following;
@@ -544,7 +569,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
           replySpeech.push(text);
         },
         onEvent: (name, payload) => {
-          if (name === 'action') { if (!destroyed) showWorkspaceAction(log, payload); return; }
+          if (name === 'action') { if (!destroyed) { reveal(); showWorkspaceAction(turnReply, payload); } return; }
+          if (name === 'tool') { if (!destroyed) { reveal(); turnReply.tool(payload); } return; }
           if (name === 'interview') {
             interviewId = payload.id; bindTools();
             if (input.value) saveDraft('design:' + interviewId, input.value);
@@ -579,7 +605,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
         },
       });
       if (cut) {
-        const note = el('div', { class: 'dz-cut mono' },
+        const note = el('div', { class: 'dz-cut' },
           reply().textContent.trim()
             ? 'The interviewer started writing your answer, so the turn was cut there. The question above stands.'
             : 'The interviewer started writing your answer, so the turn was cut. Say something and it will ask again.');
@@ -603,7 +629,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       setConversationText(reply(), error.message);
       reply().closest('.dz-entry')?.classList.add('dz-err');
     } finally {
-      thinking.remove();
+      turnReply.finish();
+      if (!turnReply.body.textContent.trim() && !turnReply.node.querySelector('[data-action-id]') && turnReply.node.querySelector('.ui-turn-activity').hidden) turnReply.node.remove();
+      else reveal();
       if (target) target.dataset.streaming = 'false';
       replyFailed = failed;
       busy = false;
@@ -614,7 +642,6 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       practise.disabled = !interviewId;
       void modeControl.flush();
       if (pauseWhenIdle) { pauseWhenIdle = false; if (!paused && !destroyed) togglePause(); }
-      say(isVoice() ? (speaker?.speaking ? 'speaking…' : 'listening…') : '');
       if (isVoice() && kind !== 'd') openMic();
     }
     if (succeeded && !failed && body.requestId === pendingRequest?.requestId) rememberRequest(null);
@@ -686,7 +713,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     phaseBar.querySelectorAll('button').forEach(button => { button.disabled = paused; });
     if (voice) voice.root.hidden = paused;
     api?.updateScene({ appState: { viewModeEnabled: paused } });
-    say(paused ? 'Paused' : '');
+    // Voice mode's own bar already says it is paused.
+    say(paused && !isVoice() ? 'Paused' : '');
     if (isVoice()) paintVoice();
   }
 
@@ -753,7 +781,11 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     clearTimeout(sceneTimer);
     // Excalidraw fires this on every pointer move; one write per quiet second is plenty,
     // and the server drops the ones that mean nothing anyway.
-    sceneTimer = setTimeout(() => { persistScene().catch(error => say(`Board save failed: ${error.message}`)); }, 1000);
+    sceneTimer = setTimeout(() => {
+      // A later save that succeeds takes its own failure notice down.
+      persistScene().then(() => { if (status.textContent.startsWith('Board save failed')) say(''); },
+        error => say(`Board save failed: ${error.message}`));
+    }, 1000);
   }
   function persistScene() {
     if (!interviewId || debriefed) return sceneWrites;
@@ -782,9 +814,13 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   } });
 
   const modelPicker = createCoachModelPicker({ compact: true });
-  const composer = createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [modelPicker.root, voiceLink], trailing: [typeActions], notices: [modeStatus, modeRetry] });
+  // The same footer as untimed practice: mode and model on the left, microphone and Send
+  // on the right. Errors sit above it, where voice mode can see them too.
+  const composer = createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [voiceLink, modelPicker.root], trailing: [typeActions], notices: [status, modeStatus, modeRetry] });
+  // The problem is the interview's name, as it is on the track home and in the review.
+  const problemTitle = (typeof resumed?.prompt === 'string' && resumed.prompt.trim()) || title;
   const view = el('div', { class: 'dz-view ui-workspace' }, [
-    screenHeader({ back: { onClick: onBack, label: 'Back to interviews', className: 'dz-back' }, crumb: 'Interviews', title: 'System design', meta: [level],
+    screenHeader({ back: { onClick: onBack, label: 'Back to interviews', className: 'dz-back' }, crumb: 'Interviews', title: problemTitle || 'System design', meta: problemTitle ? [level, 'System design'] : [level],
       status: timeControls.root, actions: { secondary: [pauseButton, doneButton, { label: 'Learning notes', onClick: async () => { if (!interviewId) return; try { const saved = await callJson(`/api/design/${interviewId}`); if (saved.topicSlug) openLearningNotes(saved.topicSlug, titleOf(saved)); else entry('d', 'No problem notes are associated with this interview.'); } catch (error) { entry('d', error.message); } } }], overflow: [practise] } }),
     el('div', { class: 'dz-split' }, [
       el('section', { class: 'ui-board-pane has-board-tools' }, [paneHeader({ title: 'Whiteboard', tools: boardControls }), canvasHost]),
@@ -798,6 +834,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   ]);
   replace(host, view);
 
+  // The budget is known before the interviewer speaks, so the clock never starts blank.
+  paintClock();
   const conversationView = bindConversation(log, { composer, onJump: () => { following = true; } });
   const disposeSplit = installPaneResizer(view.querySelector('.dz-split'), { storageKey: 'studio.workspace-split.design.v1', label: 'Whiteboard and interviewer' });
   const onKey = (e) => {
@@ -818,7 +856,6 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
     onStateChange: (speaking) => {
       skipButton.hidden = !speaking;
       openMic();
-      say(speaking ? 'speaking…' : isVoice() ? 'listening…' : '');
       paintVoice();
     },
   });
@@ -880,10 +917,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
   if (!speechSupported() || !voice) {
     const button = voiceLink;
     button.disabled = true;
-    button.title = !voice
+    const reason = el('p', { id: 'voice-unavailable', class: 'dim dz-voice-unavailable', text: !voice
       ? 'This browser cannot record audio, so voice mode is unavailable.'
-      : 'This browser has no speech synthesis, so the interviewer cannot talk.';
-    const reason = el('p', { id: 'voice-unavailable', class: 'dim', text: button.title });
+      : 'This browser has no speech synthesis, so the interviewer cannot talk.' });
     button.setAttribute('aria-describedby', reason.id);
     voiceLink.after(reason);
   }
@@ -926,13 +962,12 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
       if (resumed.rebuilt) {
         // Said plainly: the model that answers next did not ask these questions. It is
         // reading the transcript above, same as the candidate can, not remembering it.
-        log.append(el('div', { class: 'dz-cut mono', text:
+        log.append(el('div', { class: 'dz-cut', text:
           'Continues from the saved transcript.' }));
       }
       log.scrollTop = log.scrollHeight;
       tickClock();
       pauseButton.disabled = false;
-      say(isVoice() ? 'listening…' : '');
       input.focus();
       openMic();
       return;
@@ -940,10 +975,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, probl
 
     // The browser check mounts this screen to prove the board loads from disk. It must
     // not start an interview to do that — that would reach the real CLI and spend a turn.
-    if (new URLSearchParams(location.search).has('nointerview')) {
-      say('ready');
-      return;
-    }
+    if (new URLSearchParams(location.search).has('nointerview')) return;
     await runTurn('/api/design/start', { level, minutes, prompt, problemSlug, requestId, mode: mode === 'type' ? 'typed' : 'voice' });
     input.focus();
   })();

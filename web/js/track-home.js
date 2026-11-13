@@ -42,6 +42,8 @@ export function mountTrackHome(host, track) {
   const { discipline } = track;
   const notice = el('p', { class: 'th-notice', role: 'status' });
   const fail = error => { if (!gone) notice.textContent = error.message; };
+  // A failed start is reported beside the button that was pressed.
+  const practiseNotice = el('p', { class: 'th-notice', role: 'status' });
 
   /* A short list where exactly one row is chosen. The first row is the open option. */
   function picker({ name, open }) {
@@ -71,10 +73,10 @@ export function mountTrackHome(host, track) {
   const mockPick = picker({ name: 'Mock', open: 'Surprise me with a fresh problem' });
 
   const practise = button({ label: 'Start practising', variant: 'secondary', size: 'lg', className: 'th-practice', onClick: async () => {
-    practise.disabled = true;
+    practise.disabled = true; practiseNotice.textContent = '';
     const problem = practisePick.value;
     try { await startPractice(problem ? { ...problem.entry, discipline } : { discipline, title: 'Open practice', statement: '' }); }
-    catch (error) { fail(error); practise.disabled = false; }
+    catch (error) { if (!gone) { practiseNotice.textContent = error.message; practise.disabled = false; } }
   } });
   const setup = createInterviewSetup({ slug: `${discipline}-new-mock`, discipline, label: 'Mock settings', startLabel: 'Start mock',
     onStart: state => {
@@ -99,7 +101,7 @@ export function mountTrackHome(host, track) {
     el('div', { class: 'th-wrap' }, [
       el('div', { class: 'th-pair' }, [
         box('practise', 'Practise', 'No clock and no grade. Work through a problem with the coach beside you.', practisePick,
-          el('div', { class: 'th-box-foot' }, [practise])),
+          el('div', { class: 'th-box-foot' }, [practiseNotice, practise])),
         box('mock', 'Mock', 'A timed interview that ends with a score and a report.', mockPick, setup.root),
       ]),
       recent, notice,
@@ -150,7 +152,7 @@ export function mountTrackHome(host, track) {
     replace(recent, [
       el('h2', { id: 'th-recent-title', text: 'What you’ve done' }),
       items.length ? el('ul', { class: 'th-list' }, shown.map(sessionRow))
-        : el('p', { class: 'th-quiet', text: 'Nothing yet. Your mocks and practice sessions will be listed here.' }),
+        : el('p', { class: 'th-quiet', text: 'No mocks or practice sessions yet.' }),
       items.length > shown.length ? button({ label: `Show all ${items.length}`, variant: 'quiet', className: 'th-all', onClick: () => paintRecent(items, true) }) : null,
     ]);
   }

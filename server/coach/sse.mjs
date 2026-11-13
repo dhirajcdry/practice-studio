@@ -1,3 +1,5 @@
+import { toolDisplay } from './tools.mjs';
+
 // Server-Sent Events framing. Hand-rolled, because the format is six lines of spec and
 // a dependency here would be a supply-chain question for no benefit.
 //
@@ -65,8 +67,8 @@ export class SseStream {
     return this.send('token', { text });
   }
 
-  tool(name, summary) {
-    return this.send('tool', { name, summary });
+  tool(name, summary, event = null) {
+    return this.send('tool', event ? { ...event } : { name, summary, display: toolDisplay(name), at: new Date().toISOString() });
   }
 
   /** Something the tutor did in Studio. See tools.mjs for the payload. */
@@ -74,13 +76,13 @@ export class SseStream {
     return this.send('action', payload);
   }
 
-  done(sessionId, stoppedReason) {
-    return this.send('done', { sessionId, stoppedReason });
+  done(sessionId, stoppedReason, timing = {}) {
+    return this.send('done', { sessionId, stoppedReason, ...timing });
   }
 
   /** One error event, in plain English, and that is the end of the stream. */
-  error(message) {
-    const ok = this.send('error', { message });
+  error(message, timing = {}) {
+    const ok = this.send('error', { message, ...timing });
     this.end();
     return ok;
   }

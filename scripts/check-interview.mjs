@@ -353,7 +353,7 @@ try {
   const scrollBefore = await evaluate("const s = document.querySelector('.rp-scroll'); s.scrollTop = 600; return s.scrollTop;");
   await evaluate("document.querySelector('.rp-dim-ask').click();");
   assert.equal(await evaluate("return document.querySelector('.rp-scroll').scrollTop;"), scrollBefore, 'asking leaves the report where it was');
-  await until(() => evaluate("return document.querySelector('.rp-ask .cmsg.reply .cmsg-body')?.textContent.includes('[3,3], 6');"), 'follow-up answer streams in');
+  await until(() => evaluate("return document.querySelector('.rp-ask .ui-turn .ui-turn-body')?.textContent.includes('[3,3], 6');"), 'follow-up answer streams in');
   assert.equal(await evaluate("return document.querySelector('.rp-ask-starters').hidden;"), true, 'suggestions give way to the thread');
   await evaluate("const i = document.querySelector('.rp-ask-input'); i.value = 'An unsent follow-up'; i.dispatchEvent(new Event('input'));");
   if (process.env.STUDIO_CHECK_SHOT) {
@@ -363,7 +363,7 @@ try {
   await evaluate("document.querySelector('.rp-sheet[open] .ui-dialog-close[aria-label=\"Close report\"]').click();");
   await until(() => evaluate("return !document.querySelector('.rp-sheet[open]');"), 'report closes with a draft');
   await evaluate("document.querySelector('.ci-open-report').click();");
-  await until(() => evaluate("return document.querySelector('.rp-sheet[open] .rp-ask .cmsg.reply .cmsg-body')?.textContent.includes('[3,3], 6');"), 'answered follow-up survives reopening');
+  await until(() => evaluate("return document.querySelector('.rp-sheet[open] .rp-ask .ui-turn .ui-turn-body')?.textContent.includes('[3,3], 6');"), 'answered follow-up survives reopening');
   assert.equal(await evaluate("return document.querySelector('.rp-ask-input').value;"), 'An unsent follow-up', 'unsent question survives reopening');
   await evaluate("const i = document.querySelector('.rp-ask-input'); i.value = ''; i.dispatchEvent(new Event('input'));");
   await evaluate("document.querySelector('.rp-sheet[open] .ui-dialog-close[aria-label=\"Close report\"]').click();");

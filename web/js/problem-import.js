@@ -9,6 +9,8 @@ export function renderProblemImport({ onAdded }) {
   let disposed = false;
   let preview = null;
   const status = el('p', { class: 'import-status', role: 'status', 'aria-live': 'polite' });
+  // A failure is told apart from progress by more than its wording.
+  const say = (text, tone = '') => { status.textContent = text; status.dataset.tone = tone; };
   const details = el('section', { class: 'import-preview', hidden: true, 'aria-label': 'Problem preview' });
   const input = el('input', { id: 'problem-url', type: 'url', required: true, autocomplete: 'off',
     placeholder: 'https://leetcode.com/problems/…', 'aria-describedby': 'import-help' });
@@ -38,39 +40,39 @@ export function renderProblemImport({ onAdded }) {
     } finally { clearTimeout(timer); }
   }
   input.addEventListener('input', () => {
-    preview = null; details.hidden = true; inspect.className = 'btn btn--primary'; status.textContent = '';
+    preview = null; details.hidden = true; inspect.className = 'btn btn--primary'; say('');
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const url = input.value.trim();
     preview = null; details.hidden = true; input.disabled = true; inspect.disabled = true;
-    status.textContent = 'Loading problem…';
+    say('Loading problem…');
     try {
       const result = await request('/api/problems/import/preview', url);
       if (disposed) return;
       preview = result;
-      status.textContent = result.existing ? 'This problem is already in your catalog.' : 'Preview ready. Nothing has been added yet.';
+      say(result.existing ? 'This problem is already in your catalog.' : 'Nothing has been added yet.');
       inspect.className = 'btn btn--secondary';
       const add = el('button', { type: 'button', class: 'btn btn--primary import-save', text: result.existing ? 'Open problem' : 'Add and open' });
       add.addEventListener('click', async () => {
         if (!preview) return;
         add.disabled = true; input.disabled = true; inspect.disabled = true;
-        status.textContent = 'Opening problem…';
+        say('Opening problem…');
         try {
           const saved = await request('/api/problems/import', url);
           if (!disposed) await onAdded(saved);
         } catch (error) {
-          if (!disposed) { status.textContent = error.message; add.disabled = false; }
+          if (!disposed) { say(error.message, 'error'); add.disabled = false; }
         } finally { if (!disposed) { input.disabled = false; inspect.disabled = false; } }
       });
       const content = result.content || {};
       replace(details, [
-        el('div', { class: 'import-preview-head' }, [el('div', {}, [
-          el('p', { class: 'import-help', text: [result.entry.number, result.entry.difficulty].filter(Boolean).join(' · ') }),
+        el('div', { class: 'import-preview-head' }, [el('div', { class: 'import-preview-title' }, [
           el('h2', { text: result.entry.title }),
+          result.entry.difficulty ? el('span', { class: 'tag ' + String(result.entry.difficulty).toLowerCase(), text: result.entry.difficulty }) : null,
+          result.entry.number ? el('span', { class: 'import-number', text: `No. ${result.entry.number}` }) : null,
         ]), add]),
-        el('p', { class: 'import-runner', text: result.runner.message }),
-        el('p', { class: 'import-help', text: 'Local tests use public examples and your own cases. LeetCode’s hidden tests run only when you submit.' }),
+        el('p', { class: 'import-help import-runner', text: `${result.runner.message} LeetCode’s hidden tests run only when you submit.` }),
         el('div', { class: 'import-description prose' }, content.descriptionHtml ? sanitizeHtml(content.descriptionHtml)
           : el('p', { text: 'The statement is unavailable. Premium content may need to be connected from your signed-in browser after adding.' })),
         el('h3', { text: 'Python starter' }),
@@ -80,8 +82,10 @@ export function renderProblemImport({ onAdded }) {
       ]);
       details.hidden = false;
       add.focus({ preventScroll: true });
-    } catch (error) { if (!disposed) status.textContent = error.message; }
+    } catch (error) { if (!disposed) say(error.message, 'error'); }
     finally { if (!disposed) { input.disabled = false; inspect.disabled = false; } }
   });
+  // The page has one job, so the field is ready to paste into.
+  requestAnimationFrame(() => { if (!disposed && root.isConnected) input.focus({ preventScroll: true }); });
   return { element: root, destroy() { disposed = true; controller?.abort(); } };
 }

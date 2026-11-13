@@ -2,15 +2,16 @@ import { icon } from './ui/icon.js';
 // Saved verdicts beside their exact code. Reads never submit; loading a snapshot
 // goes through the editor's save and undo path, and asking attaches only its id.
 import { tooltip } from './tooltip.js';
-import { el, replace } from './dom.js';
+import { el, replace, dataText } from './dom.js';
 import { when, verdictLine } from './history.js';
 import { loadSubmissions, fetchSubmissionDetails } from './api.js';
 import { highlightPython } from './highlight.js';
 import { lineDiff } from './line-diff.js';
 import { submissionEditor } from './editor.js';
-import { submissionPresentation, firstDifference } from './submission-presentation.js';
+import { submissionPresentation, firstDifferingValue } from './submission-presentation.js';
 
 const idOf = submission => String(submission.submissionId);
+const chordText = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘Z' : 'Ctrl+Z';
 const button = (text, onclick) => el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text, onclick });
 function tone(submission) {
   if (submission.accepted) return 'easy';
@@ -96,40 +97,46 @@ export function histogram(metric, name) {
 }
 
 // Long diagnostics start collapsed, but copying always preserves the full saved text.
-function failureBlock(label, text, range) {
+// A single line can be as long as the test's whole input, so length collapses it too.
+const COLLAPSED_LINES = 8, COLLAPSED_CHARACTERS = 600;
+function failureBlock(label, text, range, markClass = '') {
   if (typeof text !== 'string' || !text.length) return null;
   const lines = text.split('\n');
+  const short = lines.slice(0, COLLAPSED_LINES).join('\n').slice(0, COLLAPSED_CHARACTERS);
   const pre = el('pre');
   function paint(expanded) {
-    const visible = expanded ? text : lines.slice(0, 8).join('\n');
-    if (range) replace(pre, [visible.slice(0, range[0]), el('mark', {
-      text: visible.slice(range[0], range[1]),
-    }), visible.slice(range[1])]);
-    else pre.textContent = visible;
+    const visible = expanded ? text : short;
+    const from = range ? Math.min(range[0], visible.length) : 0, to = range ? Math.min(range[1], visible.length) : 0;
+    if (to > from) replace(pre, [...dataText(visible.slice(0, from)),
+      el('mark', { class: markClass }, dataText(visible.slice(from, to))), ...dataText(visible.slice(to))]);
+    else replace(pre, dataText(visible));
   }
   paint(false);
-  const copy = button('⧉', async () => {
+  let revert = 0;
+  const name = label.toLowerCase();
+  const copy = el('button', { class: 'btn btn--icon icon-btn', type: 'button', 'aria-label': `Copy ${name}`, onclick: async () => {
+    clearTimeout(revert);
     try {
       await navigator.clipboard.writeText(text);
-      copy.textContent = '✓';
+      replace(copy, icon('check', 14));
       copy.setAttribute('aria-label', 'Copied');
     }
-    catch { copy.textContent = '!'; copy.setAttribute('aria-label', 'Copy failed'); }
-  });
-  copy.className = 'btn btn--icon icon-btn';
-  copy.setAttribute('aria-label', `Copy ${label.toLowerCase()}`);
-  tooltip(copy, `Copy ${label.toLowerCase()}`);
+    catch { copy.setAttribute('aria-label', 'Copy failed'); }
+    revert = setTimeout(() => { replace(copy, icon('copy', 14)); copy.setAttribute('aria-label', `Copy ${name}`); }, 1600);
+  } }, icon('copy', 14));
+  tooltip(copy, `Copy ${name}`);
   const section = el('section', { class: 'failure-block' }, [
     el('div', { class: 'failure-label' }, [el('h4', { text: label }), copy]), pre,
   ]);
-  if (lines.length > 8) section.append(button(`Show all ${lines.length} lines`, event => {
-    paint(true);
-    event.currentTarget.remove();
-  }));
+  if (short.length < text.length) section.append(button(
+    lines.length > COLLAPSED_LINES ? `Show all ${lines.length} lines` : 'Show all of it', event => {
+      paint(true);
+      event.currentTarget.remove();
+    }));
   return section;
 }
 // Keep unchanged context near edits; the rest remains available on demand.
-function diffView(before, after) {
+function diffView(before, after, same) {
   const lines = lineDiff(before, after);
   const nodes = [];
   const render = row => el('div', { class: `diff-${row.type}` }, [
@@ -146,7 +153,7 @@ function diffView(before, after) {
     const run = lines.slice(index, end);
     if (run.length > 6) {
       nodes.push(...run.slice(0, 3).map(render), el('details', {}, [
-        el('summary', { text: `⋯ ${run.length - 6} unchanged lines` }), ...run.slice(3, -3).map(render),
+        el('summary', { text: `Show ${run.length - 6} unchanged lines` }), ...run.slice(3, -3).map(render),
       ]), ...run.slice(-3).map(render));
     } else nodes.push(...run.map(render));
     index = end;
@@ -154,7 +161,9 @@ function diffView(before, after) {
   const added = lines.filter(line => line.type === 'added').length;
   const removed = lines.filter(line => line.type === 'removed').length;
   return el('div', {}, [
-    el('div', { class: 'diff-counts', text: `+${added} −${removed}` }),
+    // "+0 −0" reads like a result; say what it means instead.
+    added || removed ? el('div', { class: 'diff-counts', text: `+${added} −${removed}` })
+      : el('p', { class: 'diff-same', text: same }),
     el('pre', { class: 'submission-diff' }, nodes),
   ]);
 }
@@ -211,7 +220,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       ]));
     }
     if (!rows.length) parts.push(el('div', { class: 'submission-empty' }, [
-      el('span', { class: 'empty-icon', 'aria-hidden': 'true' }, icon('forward', 15)),
+      el('span', { class: 'empty-icon', 'aria-hidden': 'true' }, icon('send', 18)),
       el('h3', { text: 'No submissions yet' }),
     ]));
     rows.forEach((submission, index) => {
@@ -234,7 +243,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
             class: `submission-delta ${delta <= 0 ? 'diff-good' : 'diff-bad'}`,
             text: `${delta < 0 ? '−' : '+'}${Math.abs(delta)} ms`,
           }) : null,
-          submission === best ? el('span', { class: 'submission-best', text: '★ best' }) : null,
+          submission === best ? el('span', { class: 'submission-best', text: 'Best' }) : null,
           submission.source === 'neetcode' ? el('span', { class: 'submission-tag', text: 'NeetCode' }) : null,
         ]),
         !submission.accepted && submission.testsTotal > 0
@@ -267,7 +276,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
 
   function distributionCard(submission) {
     const chart = el('div');
-    const card = el('section', { class: 'submission-card ui-inset' });
+    const card = el('section', { class: 'submission-section' });
     function show(index) {
       const name = index ? 'Memory' : 'Runtime';
       const drawing = histogram(submission.details?.[name.toLowerCase()], name);
@@ -275,7 +284,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       if (!drawing) chart.append(fetchDetailsButton(submission) || '');
     }
     if (submission.details?.runtime?.distribution?.length || submission.details?.memory?.distribution?.length) {
-      card.append(el('header', { class: 'submission-card-head' }, [
+      card.append(el('header', { class: 'submission-section-head' }, [
         segmented(['Runtime', 'Memory'], show),
       ]));
     }
@@ -294,12 +303,15 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       || failure.traceback || failure.error || failure.message || details.runtimeError || details.compileError;
     const short = typeof expected === 'string' && typeof output === 'string'
       && !expected.includes('\n') && !output.includes('\n') && expected.length < 100 && output.length < 100;
-    const difference = short ? firstDifference(expected, output) : null;
+    // Short answers sit side by side, long ones stack. Either way the one value where
+    // they first part ways is marked whole, never half a word.
+    const difference = typeof expected === 'string' && typeof output === 'string'
+      ? firstDifferingValue(expected, output) : null;
     const comparison = el('div', { class: short ? 'failure-comparison' : '' }, [
-      failureBlock('Expected', expected, difference && [difference.start, difference.endExpected]),
+      failureBlock('Expected', expected, difference && [difference.start, difference.endExpected], 'is-expected'),
       failureBlock('Your output', output, difference && [difference.start, difference.endActual]),
     ]);
-    const card = el('section', { class: 'submission-card ui-inset' }, [
+    const card = el('section', { class: 'submission-section' }, [
       el('h4', { text: 'Where it failed' }), failureBlock('Input', input), comparison,
       failureBlock('Stdout', failure.stdout ?? failure.consoleOutput ?? details.stdOutput),
       failureBlock('Error', error),
@@ -311,7 +323,7 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
     if (input) card.append(button('Add as test case', () =>
       submissionEditor(slug)?.addFailingCase({ input, expected: expected ?? null })));
     const lines = new Set([...String(error || '').matchAll(/line\s+(\d+)/gi)].map(match => Number(match[1])));
-    for (const line of lines) card.append(button(`Line ${line} ↗`, () => submissionEditor(slug)?.jumpToLine(line)));
+    for (const line of lines) card.append(button(`Go to line ${line}`, () => submissionEditor(slug)?.jumpToLine(line)));
     return card;
   }
 
@@ -330,13 +342,13 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
       const before = index === 1 ? previous?.code : submission.code;
       const after = index === 1 ? submission.code : submissionEditor(slug)?.getCode();
       replace(content, typeof before === 'string' && typeof after === 'string'
-        ? diffView(before, after) : el('p', {
+        ? diffView(before, after, index === 1 ? 'The same code as the previous submission.' : 'The same code as the editor.') : el('p', {
           text: index === 1 ? 'Previous code is unavailable.' : 'The editor is not open.',
         }));
     }
     show(0);
-    return el('section', { class: 'submission-card ui-inset' }, [
-      el('header', { class: 'submission-card-head' }, [
+    return el('section', { class: 'submission-section' }, [
+      el('header', { class: 'submission-section-head' }, [
         segmented(previous ? ['Code', 'vs previous', 'vs editor'] : ['Code', 'vs editor'],
           index => show(!previous && index === 1 ? 2 : index)),
       ]), content,
@@ -348,8 +360,9 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
     selected = idOf(submission);
     status.textContent = '';
     const index = rows.indexOf(submission);
-    const previous = button('↑', () => detail(rows[index - 1]));
-    const next = button('↓', () => detail(rows[index + 1]));
+    const previous = button('', () => detail(rows[index - 1]));
+    const next = button('', () => detail(rows[index + 1]));
+    replace(previous, icon('up', 14)); replace(next, icon('chevron', 14));
     previous.className = next.className = 'btn btn--icon icon-btn';
     tooltip(previous, 'Newer submission');
     tooltip(next, 'Older submission');
@@ -365,54 +378,50 @@ export function createSubmissions({ slug, onCount = () => {}, onAsk = () => {} }
     const sourceNode = /^https:\/\/(leetcode\.com|neetcode\.io)\//.test(submission.submissionUrl || '')
       ? el('a', { href: submission.submissionUrl, target: '_blank', rel: 'noopener noreferrer', text: source })
       : el('span', { text: source });
+    const back = el('button', { class: 'btn btn--quiet ws-mini', type: 'button', onclick: list }, [icon('back', 14), 'All submissions']);
+    // What led up to it and how far it got belong with the verdict, not in loose lines
+    // between the sections below.
+    const lead = submission.leadUp;
+    const facts = [];
+    if (presentation.tests && submission.accepted) facts.push(`${submission.testsPassed} / ${submission.testsTotal} tests passed`);
+    if (Number.isFinite(lead?.minutes)) facts.push(`${lead.minutes} min in`);
+    if (Number.isFinite(lead?.localRuns)) facts.push(`${lead.localRuns} ${lead.localRuns === 1 ? 'run' : 'runs'}`);
+    if (Number.isFinite(lead?.coachAsks)) facts.push(`asked the coach ${lead.coachAsks === 1 ? 'once' : `${lead.coachAsks} times`}`);
     const parts = [el('div', { class: 'submission-navigation' }, [
-      button('All submissions', list), el('span', { class: 'spacer' }),
-      el('span', { text: `${index + 1} of ${rows.length}` }), previous, next,
+      back, el('span', { class: 'spacer' }),
+      el('span', { class: 'submission-position', text: `${index + 1} of ${rows.length}` }), previous, next,
     ]), el('div', {
       class: `submission-hero tone-${tone(submission)} ${submission.accepted ? 'accepted' : 'rejected'}`,
     }, [
       el('h3', { text: submission.verdict || 'Verdict unavailable' }),
       el('div', { class: 'submission-date' }, [when(submission.at) || date, ' · ', sourceNode]),
+      facts.length ? el('p', { class: 'submission-facts', text: facts.join(' · ') }) : null,
     ]), el('div', { class: 'submission-metrics' }, presentation.metrics.map(metric =>
       tile(metric.name, metric.value, metric.percentile)))];
-    if (presentation.tests) {
-      const tests = `${submission.testsPassed} / ${submission.testsTotal} tests`;
-      if (submission.accepted) parts.push(el('p', { class: 'submission-tests', text: tests }));
-      else parts.push(el('div', { class: 'submission-stat tests-stat' }, [
-        el('strong', { text: `${tests} passed` }),
-        meter(submission.testsPassed, submission.testsTotal, tone(submission)),
-        submission.testsTotal > 0 ? el('small', {
-          text: `${Math.round(submission.testsPassed / submission.testsTotal * 100)}% of tests`,
-        }) : null,
-      ]));
-    }
+    if (presentation.tests && !submission.accepted) parts.push(el('div', { class: 'tests-stat' }, [
+      el('strong', { text: `${submission.testsPassed} / ${submission.testsTotal} tests passed` }),
+      meter(submission.testsPassed, submission.testsTotal, tone(submission)),
+    ]));
     parts.push(submission.accepted ? distributionCard(submission) : failureCard(submission));
-    const lead = submission.leadUp;
-    const facts = [];
-    if (Number.isFinite(lead?.minutes)) facts.push(`◷ ${lead.minutes} min in`);
-    if (Number.isFinite(lead?.localRuns)) facts.push(`▷ ${lead.localRuns} runs`);
-    if (Number.isFinite(lead?.coachAsks)) facts.push(`◇ asked coach ${lead.coachAsks}×`);
-    if (facts.length) parts.push(el('p', { class: 'submission-lead', text: facts.join(' · ') }));
     if (typeof submission.code === 'string') parts.push(codeCard(submission));
     const load = button('Load into editor', async () => {
       const editor = submissionEditor(slug);
       status.textContent = editor ? await editor.loadSubmission(submission.code)
-        || `Submission loaded · ⌘Z to undo`
+        || `Submission loaded · ${chordText} to undo`
         : 'The editor is not open.';
-      const toast = el('div', { class: 'submission-toast', role: 'status', text: status.textContent });
-      root.parentElement.append(toast);
-      setTimeout(() => toast.remove(), 4000);
     });
     load.classList.remove('btn--quiet'); load.classList.add('btn--secondary', 'ws-run');
     load.disabled = typeof submission.code !== 'string';
-    parts.push(status, el('div', { class: 'submission-action-bar' }, [
-      load, button('Ask coach', () => onAsk(submission)), button('Copy', async () => {
-        try {
-          await navigator.clipboard.writeText(submission.code || '');
-          status.textContent = 'Code copied.';
-        }
-        catch { status.textContent = 'Code could not be copied.'; }
-      }),
+    const copyCode = button('Copy code', async () => {
+      try {
+        await navigator.clipboard.writeText(submission.code || '');
+        status.textContent = 'Code copied.';
+      }
+      catch { status.textContent = 'Code could not be copied.'; }
+    });
+    copyCode.disabled = typeof submission.code !== 'string';
+    parts.push(el('div', { class: 'submission-action-bar' }, [
+      status, load, button('Ask coach', () => onAsk(submission)), copyCode,
     ]));
     replace(root, parts);
     root.scrollTop = 0;

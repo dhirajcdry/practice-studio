@@ -383,10 +383,15 @@ body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
 /* Opened or closed from the keyboard (s, a, Esc): no slide, no fade. */
 :is(.drawer,.scrim).is-instant{transition:none}
 .dhead{min-width:0}
+/* The tabs start on the body's left edge; the title is context, not a third tab. */
+.drawer .dhead{padding-left:var(--space-5);gap:var(--space-4)}
 .dhead .dtabs{flex:none}
 .dhead .dtitle{overflow:hidden;text-overflow:ellipsis}
-.dtabs{display:flex;gap:2px;border:1px solid var(--hair-20);border-radius:var(--r-md);padding:2px;background:var(--canvas)}
-.dhead .dtitle{flex:1;min-width:0;font-size:14px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The same underline tabs as the problem pane they mirror, the full height of the header
+   so the indicator sits on its rule. A box around them cut the indicator off. */
+body .dhead .dtabs{align-self:stretch;height:auto;border-bottom:0}
+body .dhead .btn.btn.dtab{height:100%}
+.dhead .dtitle{flex:1;min-width:0;font:400 var(--text-sm)/var(--line-sm) var(--ui);color:var(--ink-50);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dbody{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;padding:18px 20px 24px}
 .dfoot{
   flex:0 0 auto;border-top:1px solid var(--hair-10);padding:9px 16px;background:rgba(var(--ink-rgb),.015);
@@ -531,8 +536,10 @@ body.hide-problem .ws-probtitle{
   flex:0 0 auto;border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.02);
 }
 .ws-notice.warn{background:var(--med-soft);border-bottom-color:rgba(var(--med-rgb),.28)}
-.ws-noticehead{color:var(--med);flex:0 0 auto;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.ws-noticebody{font-size:13px;color:var(--ink-70);flex:1 1 240px;min-width:0}.ws-noticex{line-height:1;}
+.ws-noticehead{color:var(--ink);flex:0 0 auto;font:600 var(--text-sm)/var(--line-sm) var(--ui)}
+.ws-notice.warn .ws-noticehead{color:var(--med)}
+body .ws-notice .ws-noticecopy{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--space-3);flex-basis:10rem}
+.ws-noticebody{font:var(--text-sm)/var(--line-md) var(--ui);color:var(--ink-70);min-width:0}.ws-noticex{line-height:1;}
 
 /* ---- the editor itself ---- */
 .ws-host{flex:1 1 auto;min-height:150px;position:relative;overflow:hidden;background:var(--card)}
@@ -597,6 +604,8 @@ body.hide-results .ws-results{display:none}
 .rr-summary.s-unclear .rr-headline{color:var(--med)}
 
 .rr-case + .rr-case{border-top:1px solid var(--hair-06)}.rr-casehead{width:100%;display:flex;align-items:center;text-align:left}
+/* A full-width row, not a toolbar button: it shares the summary's inset on both sides. */
+body .btn.btn.rr-casehead{justify-content:flex-start;height:var(--control-md);padding:0 var(--space-4);border-radius:0}
 .rr-caret{color:var(--ink-35);font-size:12px;line-height:1;flex:0 0 auto;transition:transform var(--dur-turn) var(--ease-out)}
 @media (prefers-reduced-motion:reduce){.rr-caret{transition:none}}
 .rr-casehead[aria-expanded="true"] .rr-caret{transform:rotate(90deg)}
@@ -609,7 +618,7 @@ body.hide-results .ws-results{display:none}
 .rr-verdict.k-pass{color:var(--easy);border-color:rgba(var(--easy-rgb),.35);background:var(--easy-soft)}
 .rr-verdict.k-fail,.rr-verdict.k-runtime{color:var(--hard);border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
 .rr-verdict.k-timeout,.rr-verdict.k-unknown{color:var(--med);border-color:rgba(var(--med-rgb),.35);background:var(--med-soft)}
-.rr-ms{flex:0 0 auto;width:58px;text-align:right;font-size:10px;letter-spacing:.06em}
+.rr-ms{flex:0 0 auto;width:58px;text-align:right;font-size:var(--text-xs);letter-spacing:0}
 
 .rr-casebody{padding:2px 16px 16px}
 .rr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.rr-field > .mono{margin-bottom:4px}
@@ -710,7 +719,7 @@ body.coach-open.hide-problem .ws{max-width:none}body.coach-open .coach-launch{di
 
 /* The app speaking, not either party — an attempt closing, and why the coach is about
    to answer a question nobody typed. */
-.cmsg-note{
+.coach-session-note{
   align-self:center;text-align:center;
   border-top:1px solid var(--hair-06);border-bottom:1px solid var(--hair-06);
   padding:7px 0;width:100%;
@@ -729,12 +738,6 @@ body.coach-open.hide-problem .ws{max-width:none}body.coach-open .coach-launch{di
 
 /* the example cases, shown before you run so you know what "Run" will do */
 
-/* tool calls: one quiet line each, never a wall of JSON */
-
-.coach-thinking{display:flex;align-items:center;gap:8px;color:var(--ink-35)}
-.coach-thinking i{width:5px;height:5px;border-radius:50%;background:var(--ink-35);animation:coach-pulse 1.1s ease-in-out infinite}
-@keyframes coach-pulse{0%,100%{opacity:.25}50%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.coach-thinking i{animation:none}}
 
 /* ---- composer ---- */
 
@@ -838,13 +841,20 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
    verdict from twenty minutes ago is findable without sitting on top of the run you just
    asked for. It reads as a lane header, not as a button, because that is what it is —
    a header with the body folded away. */
-.ws-stub{
-  display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;
-  padding:9px 16px 8px;border:0;border-bottom:1px solid var(--hair-10);
-  background:rgba(var(--ink-rgb),.03);color:inherit;font:inherit;cursor:pointer;
-}.ws-stub:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.ws-stubmark{color:var(--ink-70);font-weight:600;letter-spacing:.2em;font-size:10px;flex:0 0 auto}
-.ws-stubline{font-size:12.5px;color:var(--ink-50);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body .btn.btn.ws-stub{
+  display:flex;justify-content:flex-start;gap:var(--space-2);width:100%;height:var(--pane-header-height);
+  padding:0 var(--space-4);border-bottom:1px solid var(--hair-10);border-radius:0;text-align:left;
+}
+body .btn.btn.ws-stub:focus-visible{outline-offset:-2px}
+.ws-stub[hidden]{display:none!important}
+/* The folded local run rides the bottom edge of the pane as a solid band, so a tall
+   verdict never leaves it half cut off below the fold. */
+body .ws-lane + .btn.btn.ws-stub{position:sticky;bottom:0;z-index:2;background:var(--card);border-top:1px solid var(--hair-10);border-bottom:0}
+.ws-lane:has(+ .ws-stub:not([hidden])) .sub{border-bottom:0}
+body .ws-lane + .btn.btn.ws-stub:hover{background:linear-gradient(var(--row-hover-bg),var(--row-hover-bg)),var(--card)}
+.ws-stubmark{color:var(--ink);font:600 var(--text-sm)/var(--line-sm) var(--ui);flex:0 0 auto}
+.ws-stubline{flex:1 1 auto;min-width:0;font:400 var(--text-sm)/var(--line-sm) var(--ui);color:var(--ink-50);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-stub>.ui-icon{color:var(--ink-35)}
 .ws-stub[data-tone="ok"] .ws-stubline{color:var(--easy)}
 .ws-stub[data-tone="err"] .ws-stubline{color:var(--hard)}
 .ws-stub[data-tone="warn"] .ws-stubline{color:var(--medium)}
@@ -854,12 +864,14 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
    one-line description under every view heading — same name, different component — and
    painted a card background and a rule behind it on every screen that has one. */
 .ws .sub{border-bottom:1px solid var(--hair-20);background:var(--card)}
+/* A pane header like the local run's, not a solid band: the verdict below is the loud
+   thing in this lane, and the site name is what tells the two lanes apart. */
 .sub-head{
-  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
-  padding:8px 16px;background:var(--solid-bg);color:var(--solid-fg);
+  display:flex;align-items:center;gap:var(--space-2);height:var(--pane-header-height);
+  padding:0 var(--space-4);border-bottom:1px solid var(--hair-10);
 }
-.sub-mark{color:var(--solid-fg);font-weight:600;letter-spacing:.2em;font-size:10px}
-.sub-scope{color:var(--solid-fg);opacity:.62;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.sub-mark{color:var(--ink);font:600 var(--text-sm)/var(--line-sm) var(--ui)}
+.sub-scope{color:var(--ink-50);font:400 var(--text-xs)/var(--line-sm) var(--ui)}
 .sub-body{padding:0 0 14px}
 .sub-body > .state{margin:14px 16px 0;border-style:solid}
 .sub-msg{font-size:13.5px;color:var(--ink-70);margin:0 16px 10px;max-width:70ch;line-height:1.55}
@@ -896,7 +908,7 @@ body.coach-open .pbody.with-workspace{grid-template-columns:minmax(0,.74fr) minm
 .sub-judge{margin:16px 16px 0;border-top:1px solid var(--hair-10);padding-top:12px}
 /* The section head has to out-rank the field labels under it, or "the judge's
    own words" reads as just another box label. */
-.sub-judgehead{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.2em;font-weight:600;color:var(--ink-70);margin-bottom:11px}
+.sub-judgehead{display:flex;align-items:center;gap:10px;font:600 var(--text-sm)/var(--line-sm) var(--ui);color:var(--ink);margin-bottom:11px}
 .sub-judgehead .spacer{flex:1 1 auto}
 .sub-judge .sub-msg{margin-left:0;margin-right:0}
 .sub-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -1068,21 +1080,26 @@ body .settings .btn.set-nav-item:focus-visible{outline-offset:-2px}
 /* Block flow: this scrolls — see server/test/css-rules.test.mjs. */
 .set-body{min-width:0;min-height:0;box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;display:block;padding:var(--space-3) var(--space-6) var(--space-6)}
 .set-group{margin:0}
-.set-group+.set-group{margin-top:var(--space-5)}
-.set-label{margin:0 0 var(--space-3);font:500 var(--text-sm)/1.4 var(--ui);color:var(--ink)}
+/* Every row on a page is ruled off from the next, across groups too: a gap between two
+   groups read as a missing line. */
+.set-group+.set-group{border-top:1px solid var(--hair-10)}
+.set-label{margin:0;padding:var(--space-3) 0;font:500 var(--text-sm)/1.4 var(--ui);color:var(--ink)}
 
 .set-row{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-6);min-height:36px;padding:var(--space-3) 0}
 .set-row~.set-row{border-top:1px solid var(--hair-10)}
 .set-rowtext{display:flex;flex-direction:column;gap:2px;flex:1 1 240px;min-width:0}
 .set-rowname{font:500 var(--text-sm)/1.4 var(--ui);color:var(--ink)}
 .set-rowhint{margin:0;font-size:12px;line-height:1.5;color:var(--ink-70);max-width:54ch}
-.set-status{padding-bottom:var(--space-2)}
+.set-status{padding-bottom:var(--space-3)}
+/* The model picker is a .btn as well as a select, and the button's padding wins over the
+   select's: without this its chevron sits on the last letter of the label. */
+body .settings .set-control .btn.ui-select-button{padding-right:var(--space-7)}
 .set-control{display:flex;align-items:center;justify-content:flex-end;flex:0 1 auto;gap:var(--space-2);min-width:0;max-width:100%}
 .set-notice{margin-top:var(--space-1)}
 .set-range{flex:0 1 180px;width:180px;min-width:0;accent-color:var(--accent)}
-.set-value{flex:0 0 auto;min-width:34px;text-align:right;font-size:11px}
+.set-value{flex:0 0 auto;min-width:34px;text-align:right;font-size:var(--text-xs)}
 
-.set-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3)}
+.set-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);padding-bottom:var(--space-4)}
 .set-card{
   display:block;text-align:left;width:100%;
   border:1px solid var(--hair-20);border-radius:var(--r-md);background:var(--card);
@@ -1119,13 +1136,16 @@ body{background-image:var(--texture);background-attachment:scroll}
 
 /* The key list in Settings — a reference, not a control panel. */
 .set-keys{display:flex;flex-direction:column}
-.set-keyrow{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);min-height:36px;border-bottom:1px solid var(--hair-10)}
+.set-keyrow{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);min-height:44px;border-bottom:1px solid var(--hair-10)}
 .set-keyrow:last-child{border-bottom:0}
+.set-keycaps{display:flex;align-items:center;gap:var(--space-3);flex:none}
+.set-combo{display:inline-flex;align-items:center;gap:var(--space-1)}
 .set-keyrow kbd{
-  flex:none;min-width:30px;font-size:11px;letter-spacing:.04em;color:var(--ink-70);
-  border:1px solid var(--hair-20);border-radius:var(--r-sm);padding:2px var(--space-2);text-align:center;
+  box-sizing:border-box;flex:none;display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 var(--space-1);
+  font:500 var(--text-sm)/1 var(--ui);color:var(--ink-70);
+  border:1px solid var(--hair-20);border-radius:var(--r-sm);
 }
-.set-keywhat{font-size:13px;color:var(--ink)}
+.set-keywhat{font-size:var(--text-sm);color:var(--ink)}
 
 /* ---- turns still running on other problems ---- */
 .coach-runs{
@@ -1167,24 +1187,27 @@ body.coach-open .coach-runs{bottom:20px}
   display:flex;align-items:center;gap:2px;padding:6px 10px 0;
   border-bottom:1px solid var(--hair-10);background:rgba(var(--ink-rgb),.012);
 }
+/* One left edge down the results pane: its tabs, the case editor and the result rows. */
+body .ui-pane-header.rr-tabs{padding-inline:var(--space-4)}
+.rr .tc-row-actions{padding-right:calc(var(--space-4) - 10px)}
 .rr-tabmark{margin-left:auto;align-self:center;padding:0 6px;font-size:10.5px;color:var(--ink-35);cursor:default}
 .rr-pane{min-height:0}
 
 .tc{display:flex;flex-direction:column}
-.tc-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:11px 14px 0}.tc-tab{
+.tc-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:var(--space-3) var(--space-4) 0}.tc-tab{
   display:inline-flex;align-items:center;
 
 }
 .tc-tab.is-on{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
 .tc-tab.is-mine{border-style:dashed}
 .tc-tab.is-mine.is-on{border-style:solid}
-.tc-mark{color:var(--accent);font-weight:700}
+.tc-mark{display:inline-flex;color:var(--accent)}
 .tc-tab.is-on .tc-mark{color:var(--solid-fg)}.tc-add{
   line-height:1;
 
 }
 
-.tc-panel{padding:11px 14px 13px}
+.tc-panel{padding:var(--space-3) var(--space-4) var(--space-4)}
 .tc-fields{display:flex;flex-direction:column;gap:8px}
 .tc-field{display:flex;flex-direction:column;gap:3px}
 .tc-label{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
@@ -1201,7 +1224,7 @@ body.coach-open .coach-runs{bottom:20px}
 .tc-origin{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
 
 .tc-empty{padding:14px 4px;font-size:13px;color:var(--ink-50);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tc-notice{margin:8px 14px 0;font-size:12px;color:var(--ink-50)}
+.tc-notice{margin:var(--space-2) var(--space-4) 0;font-size:12px;color:var(--ink-50)}
 .tc-notice.warn{color:var(--med)}
 
 /* ---- the light/dark switch, next to the gear ---- */
@@ -1219,6 +1242,13 @@ body.coach-open .coach-runs{bottom:20px}
 .pnav{position:absolute;top:18px;right:14px;display:inline-flex;gap:2px}
 .pnav-shuffle{display:inline-grid;place-items:center;margin-left:4px}
 .ptags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+/* A collection's note about this problem: one line that opens, with the app's chevron. */
+.prep-note>summary{display:flex;align-items:center;gap:var(--space-2);list-style:none;cursor:pointer;color:var(--ink);font:500 var(--text-sm)/var(--line-md) var(--ui)}
+.prep-note>summary::-webkit-details-marker{display:none}
+.prep-note>summary>.ui-icon{flex:none;color:var(--ink-50);transition:transform var(--dur-turn) var(--ease-out)}
+.prep-note[open]>summary>.ui-icon{transform:rotate(90deg)}
+.prep-note[open]>summary{margin-bottom:var(--space-3)}
+.prep-note>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .paneltoggles{container-type:inline-size}
 .plinks{margin-left:auto;display:flex;gap:12px;align-items:center}
 /* In a narrow column the links get their own line, read from the left like the rest. */

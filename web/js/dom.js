@@ -21,6 +21,23 @@ export function el(tag, props = null, children = null) {
   return node;
 }
 
+/**
+ * Test data as nodes that wrap between values. `[2147483646],[2147483647]` has no spaces,
+ * so a browser treats a whole line as one word and cuts it wherever the box ends, in
+ * the middle of a number or a name. A <wbr> after each comma offers the break there
+ * instead. It adds no character, so selecting and copying give the exact text back.
+ */
+export function dataText(text) {
+  const value = String(text ?? '');
+  if (value.length > 20000 || !value.includes(',')) return [value];
+  const nodes = [];
+  for (const part of value.split(/(?<=,)(?=\S)/)) {
+    if (nodes.length) nodes.push(document.createElement('wbr'));
+    nodes.push(part);
+  }
+  return nodes;
+}
+
 export function append(parent, children) {
   if (children === null || children === undefined || children === false) return parent;
   if (Array.isArray(children)) {

@@ -203,6 +203,46 @@ export async function runVisualAudit({ origin, target, output }) {
     }
     if(!need('.pr-coach .coach-model-select button').textContent.includes('Extra high'))throw Error('Selected effort missing');`,
   };
+  // Turn fixtures only render local made-up data; no provider or picture job is started.
+  const turnState = state => ({ url: problem, ready: '.coach-log .ui-turn', setup: `${coach}
+    const {createReply,questionNode,threadStrip}=await import('/js/ui/turn.js');
+    const {renderCoachText}=await import('/js/coach.js');
+    const log=need('.coach-log');
+    const at='2025-01-14T14:33:00Z';
+    const question='Why does this queue contain the same cell twice?';
+    const reply=createReply({speaker:'Coach',meta:'Example model',startedAt:new Date(Date.now()-6000).toISOString()});
+    const read={display:{doing:'Reading your coaching rules',done:'Read your coaching rules',effect:'read'},effect:'read',ms:2000};
+    const note={display:{doing:'Saving a private note',done:'Saved a private note',effect:'note'},effect:'note',ms:1000};
+    log.replaceChildren(questionNode({text:question,at}),reply.node);
+    const host=need('.coach-bar').nextElementSibling;host.hidden=false;host.replaceChildren(threadStrip({title:question,startedAt:at,turns:1}));
+    const state=${JSON.stringify(state)};
+    reply.setActivity(state==='note-only'?[read,note]:[read],{live:state==='working'});
+    const text=state==='working'||state==='failed'?'':state==='note-only'?'I saved a note.':state==='stopped'?'Start with every source in the queue. Then, level by':state==='long'||state==='jump'?Array(35).fill('Mark each cell when you enqueue it. This prevents two parents from adding the same neighbour.').join('\\n\\n'):'Mark each cell when you enqueue it. Both parents otherwise add the same neighbour before either copy is processed.';
+    renderCoachText(reply.body,text,null,{live:false});
+    if(state==='writing')reply.body.dataset.streaming='true';
+    if(state==='change'||state==='expanded')reply.setChanges([{id:'fixture-change',title:'Added a test case',detail:'A small grid with two paths to the same cell.',tag:'Undoable',actions:[{label:'View',onClick(){}},{label:'Undo',onClick(){}}],state:'done'}]);
+    if(state==='note-only')reply.setNotice({tone:'warn',head:'The coach saved a note and wrote only this.',actions:[{label:'Ask again',onClick(){}}]});
+    if(state==='stopped')reply.setNotice({head:'Stopped before it finished'});
+    if(state==='failed')reply.setNotice({tone:'err',head:'The coach could not answer',body:'The connection ended before an answer arrived.',actions:[{label:'Ask again',onClick(){}}]});
+    if(!['working','writing'].includes(state))reply.finish({at,durationMs:41000});
+    if(state==='expanded')reply.node.querySelector('.ui-turn-activity button').click();
+    if(state==='restored'){
+      const earlier=createReply({speaker:'Coach',meta:'Example model'});renderCoachText(earlier.body,'Start by listing the initial sources.',null,{live:false});earlier.finish({at,durationMs:12000});
+      log.prepend(questionNode({text:'How should I start the queue?',at}),earlier.node);
+      host.replaceChildren(threadStrip({title:'How should I start the queue?',startedAt:at,turns:2}));
+    }
+    if(state==='long'){log.scrollTop=180;await sleep(100);need('.ui-pinned-question');}
+    if(state==='jump'){log.scrollTop=180;await sleep(100);need('.ui-jump-latest').hidden=false;}
+  `, assert: `const reply=need('.coach-log .ui-turn');
+    if(reply.scrollWidth>reply.clientWidth+1)throw Error('Turn overflows');
+    const body=reply.querySelector('.ui-turn-body'),foot=reply.querySelector('.ui-turn-foot');
+    if(!body.textContent.trim()&&foot)throw Error('Empty reply exposes Copy');
+    const head=need('.ui-turn-head').getBoundingClientRect(),activity=reply.querySelector('.ui-turn-activity');
+    if(!activity.hidden&&activity.getBoundingClientRect().top<head.bottom)throw Error('Activity overlaps speaker');
+    for(const turn of document.querySelectorAll('.coach-log .ui-turn'))if(turn.querySelectorAll('.ui-turn-activity-line').length>1)throw Error('A reply has more than one activity line');
+    const pill=document.querySelector('.ui-jump-latest');
+    if(pill&&!pill.hidden){const p=pill.getBoundingClientRect(),c=need('.coach-compose').getBoundingClientRect(),l=need('.coach-log').getBoundingClientRect();if(p.height<20||p.bottom>c.top||p.top<l.top)throw Error('Jump to latest is not floating above the composer');if(Math.abs((p.left+p.right)/2-(l.left+l.right)/2)>2)throw Error('Jump to latest is off centre');}
+  ` });
   const conversationAssertions = `
     const bodies=[...document.querySelectorAll('.ui-conversation-text')];
     if(!bodies.some(n=>n.querySelector('code')?.textContent==='get_balance') || !bodies.some(n=>n.querySelector('strong')))throw Error('Reply Markdown is visible as plain text');
@@ -282,8 +322,8 @@ export async function runVisualAudit({ origin, target, output }) {
     practiceBranchNarrow: feedbackState(390),
     practiceBranchScrolled: feedbackState(1440,true),
     practiceBranchScrolledNarrow: feedbackState(390,true),
-    agentActions: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'done',summary:'Updated LLD memory with the observed invariant and the next verification exercise.'},{replay:true});showWorkspaceAction(log,{id:'visual-run',tool:'run_code',status:'done',summary:'Ran Python (coach run)',result:{exitCode:0,stdout:'reservation trace '.repeat(40)}},{replay:true});if(log.lastElementChild.querySelector('details').open)throw Error('Successful run output must start collapsed');log.scrollTop=log.scrollHeight;` },
-    agentActionsNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:390, ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const log=need('.pr-thread');showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'failed',summary:'Update learner memory',message:'The saved note changed. Read it again before replacing this passage.'},{replay:true});need('.pr-coach').scrollIntoView({block:'center'});log.scrollTop=log.scrollHeight;` },
+    agentActions: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const {createWorkspaceReply}=await import('/js/ui/workspace-turn.js');const thread=need('.pr-thread');const log=createWorkspaceReply();thread.append(log.node);showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'done',summary:'Updated LLD memory with the observed invariant and the next verification exercise.'},{replay:true});showWorkspaceAction(log,{id:'visual-run',tool:'run_code',status:'done',summary:'Ran Python (coach run)',result:{exitCode:0,stdout:'reservation trace '.repeat(40)}},{replay:true});log.finish();log.node.querySelector('.ui-turn-activity-line')?.click();if(log.node.querySelector('details[open]'))throw Error('Successful run output must start collapsed');thread.scrollTop=thread.scrollHeight;` },
+    agentActionsNarrow: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:390, ready: '.pr-coach .pr-answer', setup: `const {showWorkspaceAction}=await import('/js/workspace-tools.js');const {createWorkspaceReply}=await import('/js/ui/workspace-turn.js');const thread=need('.pr-thread');const log=createWorkspaceReply();thread.append(log.node);showWorkspaceAction(log,{id:'visual-code-edit',tool:'edit_code',status:'done',summary:'Edited your code: added cancellation validation while preserving the caller’s reservation and ownership checks.'},{replay:true});showWorkspaceAction(log,{id:'visual-memory',tool:'update_memory',status:'failed',summary:'Update learner memory',message:'The saved note changed. Read it again before replacing this passage.'},{replay:true});log.finish();need('.pr-coach').scrollIntoView({block:'center'});thread.scrollTop=thread.scrollHeight;` },
     practiceLongDraft: { url: '/#/lld/practice/lld-locker/visual-practice-lld', width:1024, height:650, ready: '.pr-coach .pr-answer', setup: `${practiceMode('Typed')} const input=need('.pr-typed textarea'); input.value='A concrete trace through reservation ownership, validation and cancellation. '.repeat(80);input.dispatchEvent(new Event('input'));`, assert: `const c=need('.ui-composer').getBoundingClientRect(),t=need('.pr-thread').getBoundingClientRect();if(c.height>280||t.height<80)throw Error('Long draft consumes conversation');` },
     practiceVoice: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: practiceMode('Voice'), assert: `if(visible(document.querySelector('.pr-typed')))throw Error('Voice exposes typed input');` },
     practiceLLD: { url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', setup: practiceMode('Typed'), assert: conversationAssertions },
@@ -300,7 +340,6 @@ export async function runVisualAudit({ origin, target, output }) {
     lldNarrow: { url: '/#/lld', width: 390, ready: '.th-box--mock .th-pick[data-slug]' },
     lldNewMock: { url: '/#/lld', ready: '.th-box--mock .ci-start' },
     lldMockNarrow: { url: '/#/lld', width: 390, ready: '.th-box--mock .ci-start', assert: `need('.th-box--mock [aria-label="Answer mode: Voice"]'); need('.th-box--mock [aria-label^="Target level:"]');` },
-    lldContextNarrow: { url: '/#/lld', width: 390, setup: `need('.learner-context summary').click();`, ready: '.learner-context > div:not([hidden])', assert: `if (!need('.learner-context').open) throw Error('Learning context did not expand');` },
     lldSelected: lldSelection,
     lldSelectedNarrow: { ...lldSelection, width: 390 },
     lldLongDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1024, height: 650, setup: `for(let i=0;i<100 && !document.querySelector('.ci-composer .ui-mode-switch:not(:disabled)');i++) await sleep(50); const log=need('.ci-log'); for(let i=0;i<20;i++){const p=document.createElement('p');p.textContent='Interviewer: How does reservation ownership prevent conflicting updates?';log.append(p);} log.scrollTop=log.scrollHeight;`, ready: '.ci-contained .ci-log' },
@@ -353,6 +392,16 @@ export async function runVisualAudit({ origin, target, output }) {
     catalogNarrowRows: { url: '/#/', width: 390, setup: `need('.phead').scrollIntoView({block:'start'});`, ready: '.phead' },
     roadmapDetail: { url: '/#/roadmap', setup: `need('.roadmap-node').click(); need('.roadmap-detail').scrollIntoView({block:'center'});`, ready: '.roadmap-detail:not([hidden])' },
     catalogNarrow: { url: '/#/', width: 390, ready: '.catalog' },
+    coachWorking: turnState('working'),
+    coachWriting: turnState('writing'),
+    coachChanged: turnState('change'),
+    coachActivityExpanded: turnState('expanded'),
+    coachNoteOnly: turnState('note-only'),
+    coachStopped: turnState('stopped'),
+    coachFailed: turnState('failed'),
+    coachPinnedQuestion: turnState('long'),
+    coachJumpLatest: turnState('jump'),
+    coachRestoredThread: turnState('restored'),
     coachPicture: { url: problem, setup: `${coach} const picture=(await import('/js/coach-image.js')).renderImageCard(JSON.stringify({prompt:'An interval merging diagram',alt:'How overlapping intervals combine'})); need('.coach-log').append(picture);`, ready: '.pic-offer' },
     coachIllustration: { url: problem, setup: `${coach} const viz=(await import('/js/viz.js')).drawViz({type:'array',title:'Walking the array',values:[2,3,1,1,4],frames:[{note:'Start at the first index.'},{note:'Track the furthest reachable index.'}]}); need('.coach-log').append(viz);`, ready: '.viz-stepper' },
     catalog: { url: '/#/', ready: '.catalog' },
@@ -381,12 +430,29 @@ export async function runVisualAudit({ origin, target, output }) {
     problem: { url: problem, ready: '.ui-screen-header .ws-run', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
     chat: { url: problem, setup: coach, ready: '.recent-chat', assert: historySpacing },
     chatNarrow: { url: problem, setup: `${coach} need('.recent-chats').style.width='260px'; need('.recent-title').textContent='I am struggling to understand how these overlapping intervals should merge, especially when the new interval spans several existing intervals.';`, ready: '.recent-chat', assert: historySpacing },
+    chatThreadNarrow: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); const pane = need('.coach'); pane.style.width = pane.style.maxWidth = pane.style.minWidth = '290px'; pane.style.flex = 'none'; await sleep(200);`, ready: '.ui-thread-strip', assert: `const bar = need('.coach-bar').getBoundingClientRect(), strip = need('.ui-thread-strip').getBoundingClientRect(); for (const n of document.querySelectorAll('.coach-chat-tools button')) { const r = n.getBoundingClientRect(); if (!r.width) continue; if (r.bottom > bar.bottom + 0.5 || r.top < bar.top - 0.5) throw Error('A chat tool hangs outside the sidebar header'); if (r.bottom > strip.top + 0.5 && r.top < strip.bottom - 0.5) throw Error('A chat tool covers the conversation strip'); }` },
     chatActive: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); need('.coach-chat-tools [aria-label="History"]').click();`, ready: '.chat-history-popover .recent-chat', assert: historySpacing },
     subsNarrow: { url: problem, setup: `${submissions} need('.submissions').style.width='260px';`, ready: '.submission-row' },
     interviewsNarrow: { url: problem, setup: `${coach} clickText('.coach-tab', 'Interviews'); document.querySelector('.interview-back')?.click(); need('.interviews-view').style.width='280px';`, ready: '.interviews-overview .interview-row' },
+    catalogScrolled: { url: '/#/', setup: `for (let i=0; i<100 && !document.querySelector('.catalog .psec .prow'); i++) await sleep(50); document.scrollingElement.scrollTo({ top: 520, behavior: 'instant' }); await sleep(200);`, ready: '.catalog .filterbar' },
+    problemScroll: { url: problem, setup: `const pane=need('.pcol'); pane.lastElementChild.style.minHeight='2400px'; await sleep(100);`, ready: '.pcol', assert: `
+      // overflow:hidden still scrolls from script, so the computed value is the test:
+      // only auto or scroll lets a wheel or trackpad move it.
+      const pane=need('.pcol'), flow=getComputedStyle(pane).overflowY;
+      if (pane.scrollHeight <= pane.clientHeight + 100) throw Error('Fixture statement is not taller than its pane');
+      if (!/auto|scroll/.test(flow)) throw Error('A long problem statement cannot be scrolled (overflow-y: ' + flow + ')');` },
+    subsEmpty: { url: '/#/p/time-based-key-value-store', setup: `${coach} clickText('.coach-tab', 'Submissions'); await sleep(400);`, ready: '.submission-empty' },
     subsList: { url: problem, setup: submissions, ready: '.submission-row' },
     subsAccepted: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Accepted')); if (!row) throw Error('No accepted fixture'); row.click();`, ready: '.submission-hero.accepted', assert: `need('.submission-chart');` },
     subsTle: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Time Limit Exceeded')); if (!row) throw Error('No TLE fixture'); row.click();`, ready: '.submission-hero.rejected' },
+    resetNotice: { url: problem, setup: `${editor} inst.setValue('# something of my own\\nclass Solution:\\n    pass\\n'); await sleep(600); need('.ws-reset').click(); await sleep(300);`, ready: '.ws-notice:not([hidden])', assert: `
+      if (![...document.querySelectorAll('.ws-notice button')].some(b => b.textContent.trim() === 'Undo')) throw Error('Reset must offer Undo');` },
+    moreMenu: { url: problem, setup: `need('.ui-screen-header .ui-header-more').click(); await sleep(200);`, ready: '.ui-menu-item', assert: `
+      for (const item of document.querySelectorAll('.ui-menu-item')) if (item.querySelector('button, a, input')) throw Error('A menu item contains another control: ' + item.textContent.trim());` },
+    subsWrong: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Wrong Answer')); if (!row) throw Error('No wrong-answer fixture'); row.click(); await sleep(400); const pane = need('.submissions'); pane.scrollTop = 220;`, ready: '.failure-block pre', assert: `
+      const pane = need('.submissions'), bar = need('.submission-action-bar').getBoundingClientRect(), box = pane.getBoundingClientRect();
+      if (pane.scrollHeight <= pane.clientHeight + 40) throw Error('Fixture detail does not scroll');
+      if (box.bottom - bar.bottom > 1.5) throw Error('Content shows ' + (box.bottom - bar.bottom).toFixed(0) + 'px beneath the pinned actions');` },
     find: { url: problem, setup: `${editor} await inst.getAction('actions.find').run();`, ready: '.find-widget.visible' },
     suggest: { url: problem, setup: `${editor}
       // Insert on a real method-body line, not past the model's last line.

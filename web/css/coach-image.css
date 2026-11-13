@@ -4,7 +4,7 @@
 /* The larger view dims whatever theme is behind it the same way: it is a photo viewer. */
 :root{--pic-backdrop:rgba(0,0,0,.78);--pic-backdrop-ink:#EEEEEE;--pic-shadow:rgba(0,0,0,.45)}
 
-.pic .pic-head{display:flex;align-items:baseline;gap:8px;padding:var(--space-2) var(--content-inset) 0;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.pic .pic-head{display:flex;align-items:baseline;gap:var(--space-2);padding:var(--space-2) var(--content-inset) 0;font:500 var(--text-xs)/var(--line-md) var(--ui);letter-spacing:0;text-transform:none}
 .pic .pic-status{margin-left:auto}
 .pic-stage{margin:var(--space-2) var(--content-inset) var(--content-inset)}
 
@@ -12,7 +12,7 @@
 .pic-wait{
   position:relative;display:grid;place-items:center;aspect-ratio:4 / 3;max-height:300px;width:100%;
   border-radius:var(--r-md);background:var(--hair-10);overflow:hidden;
-  font:500 11.5px/1.4 var(--ui);color:var(--ink-50);
+  font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50);
 }
 .pic-wait > span{position:relative;z-index:1}
 .pic-shimmer{
@@ -30,16 +30,22 @@ body.motion-off .pic-shimmer{animation:none;opacity:.5}
 
 .pic-offer{
   display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);padding:var(--content-inset);
-  border:1px dashed var(--hair-20);border-radius:var(--r-md);
+  border-radius:var(--r-md);background:var(--hair-06);
 }
-.pic-offer p{margin:0;flex:1 1 100%;font-size:13px;line-height:1.5}
-.pic-offer .pic-cost{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+/* The stage is a filled well, like the waiting shimmer: a dashed frame here drew a
+   second box just inside the card's own border. */
+.pic-offer p{margin:0;flex:1 1 100%;font-size:var(--text-sm);line-height:var(--line-md)}
+.pic-offer .pic-cost{font:500 var(--text-xs)/var(--line-md) var(--ui);letter-spacing:0;text-transform:none}
 .pic-failed{margin:0}
 
 .pic-alt{padding-top:0}
 .pic-asked{margin:0 var(--content-inset) var(--content-inset)}
-.pic-asked summary{cursor:pointer;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;list-style-position:inside}
-.pic-asked p{margin:6px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink-70);white-space:pre-wrap}
+.pic-asked summary{display:flex;align-items:center;gap:var(--space-1);cursor:pointer;font:500 var(--text-xs)/var(--line-md) var(--ui);letter-spacing:0;text-transform:none;list-style:none}
+.pic-asked summary::-webkit-details-marker{display:none}
+.pic-asked summary>svg{flex:none;transform:rotate(-90deg)}
+.pic-asked[open] summary>svg{transform:none}
+.pic-asked summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pic-asked p{margin:var(--space-2) 0 0;font-size:var(--text-sm);line-height:var(--line-md);color:var(--ink-70);white-space:pre-wrap}
 
 /* Larger view. Click anywhere or Esc to close. */
 .pic-lightbox{
@@ -47,4 +53,6 @@ body.motion-off .pic-shimmer{animation:none;opacity:.5}
   padding:32px;background:var(--pic-backdrop);cursor:zoom-out;
 }
 .pic-lightbox img{max-width:min(1100px, 100%);max-height:calc(100vh - 140px);object-fit:contain;border-radius:var(--r-md);box-shadow:0 20px 60px var(--pic-shadow)}
-.pic-lightbox p{margin:0;max-width:70ch;color:var(--pic-backdrop-ink);font-size:13.5px;line-height:1.5;text-align:center}.pic-lightbox .pic-close{position:absolute;top:16px;right:16px}
+.pic-lightbox p{margin:0;max-width:70ch;color:var(--pic-backdrop-ink);font-size:var(--text-sm);line-height:var(--line-md);text-align:center}
+/* The backdrop is dark in every theme, so Close carries its own solid surface. */
+body .pic-lightbox .pic-close{position:absolute;top:var(--space-4);right:var(--space-4);background:var(--card);color:var(--ink)}

@@ -21,8 +21,8 @@
 
 .viz-count{
   margin-left:4px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font:500 11px/1.4 var(--ui);color:var(--ink-50);font-variant-numeric:tabular-nums;
+  font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50);font-variant-numeric:tabular-nums;
 }
-.viz-note{font-size:12.5px;line-height:1.5;color:var(--ink-70);overflow-wrap:anywhere;padding:0}
+.viz-note{font-size:var(--text-sm);line-height:var(--line-md);color:var(--ink-70);overflow-wrap:anywhere;padding:0}
 
 /* The drawing never animates between steps; with reduced motion the buttons do not ease either. */

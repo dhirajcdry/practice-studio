@@ -17,7 +17,9 @@ body.theme-art .dash-body{margin-block:var(--space-5);background:var(--surface-c
 .dash-sec{min-width:0}
 .dash-sec>header{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);padding-bottom:var(--space-3)}
 .dash-sec>header h2{margin:0;font:600 var(--text-md)/1.4 var(--title-font);color:var(--ink)}
-.dash-sec>header .note{color:var(--ink-70);font:400 12px/1.4 var(--ui);white-space:nowrap}
+/* Twin Suns sets its titles in stencil capitals; these section labels follow. */
+body.theme-dunes .dash-sec>header h2{font-size:var(--text-sm);text-transform:uppercase;letter-spacing:.14em}
+.dash-sec>header .note{color:var(--ink-70);font:400 var(--text-sm)/1.4 var(--ui);white-space:nowrap}
 
 /* Loading, error and empty states keep the boxed card. */
 .dash-card{
@@ -38,9 +40,9 @@ body.theme-art .dash-body{margin-block:var(--space-5);background:var(--surface-c
 .dash-meter i{display:block;height:100%}
 .dash-meter i.solved,.dash-meterkey i.solved,.dash-patterns .pcells i.solved{background:var(--accent)}
 .dash-meter i.tried,.dash-meterkey i.tried,.dash-patterns .pcells i.tried{background:rgba(var(--accent-rgb),.4)}
-.dash-meterkey{display:flex;gap:var(--space-5);flex-wrap:wrap;padding-top:var(--space-4);border-top:1px solid var(--hair-10);color:var(--ink-70);font-size:12px}
-.dash-meterkey span{display:inline-flex;align-items:center;gap:6px}
-.dash-meterkey i{width:10px;height:10px;border-radius:2px;background:var(--hair-10);flex:none}
+.dash-meterkey{display:flex;gap:var(--space-5);flex-wrap:wrap;padding-top:var(--space-4);border-top:1px solid var(--hair-10);color:var(--ink-70);font-size:var(--text-sm)}
+.dash-meterkey span{display:inline-flex;align-items:center;gap:var(--space-2)}
+.dash-meterkey i{width:12px;height:12px;border-radius:2px;background:var(--hair-10);flex:none}
 
 .dash-lists{display:flex;flex-direction:column;gap:var(--space-4)}
 .dash-listrow .top{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);margin-bottom:6px;font-size:var(--text-sm)}
@@ -50,15 +52,17 @@ body.theme-art .dash-body{margin-block:var(--space-5);background:var(--surface-c
 .dash-patterns{list-style:none;margin:0;padding:0}
 .dash-prow{
   display:grid;grid-template-columns:22px minmax(120px,210px) minmax(0,1fr) 56px 76px;
-  align-items:center;gap:var(--space-4);min-height:44px;border-top:1px solid var(--hair-10);font-size:var(--text-sm);
+  align-items:center;gap:var(--space-4);box-sizing:border-box;min-height:44px;padding:var(--space-2) 0;border-top:1px solid var(--hair-10);font-size:var(--text-sm);
 }
-.dash-prow .pidx{color:var(--ink-50);font-size:12px;font-variant-numeric:tabular-nums}
+.dash-prow .pidx{color:var(--ink-50);font-size:var(--text-xs);font-variant-numeric:tabular-nums}
 .dash-prow .pname{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dash-prow.zero .pname{color:var(--ink-70)}
-.dash-prow .pcells{display:flex;gap:3px;min-width:0}
-.dash-prow .pcells i{flex:1 1 0;max-width:18px;height:14px;border-radius:2px;background:var(--hair-10)}
+/* One square is one problem, the same size in every row, so a longer row is a bigger
+   pattern. A row too long for its column wraps instead of squeezing its squares. */
+.dash-prow .pcells{display:flex;flex-wrap:wrap;gap:3px;min-width:0}
+.dash-prow .pcells i{flex:none;width:12px;height:12px;border-radius:2px;background:var(--hair-10)}
 .dash-prow .pcount{color:var(--ink-70);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-.dash-prow .ptag{color:var(--ink-70);font-size:12px;text-align:right;white-space:nowrap}
+.dash-prow .ptag{color:var(--ink-70);font-size:var(--text-xs);text-align:right;white-space:nowrap}
 .dash-prow .ptag.now{color:var(--accent)}
 @media (max-width:640px){
   .dash-prow{grid-template-columns:minmax(0,1fr) 56px;gap:var(--space-1) var(--space-3);padding:var(--space-2) 0}
@@ -71,23 +75,23 @@ body.theme-art .dash-body{margin-block:var(--space-5);background:var(--surface-c
 .dash-habit{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-4);padding:10px 0;border-top:1px solid var(--hair-10);font-size:var(--text-sm)}
 .dash-habit b{font-weight:600;white-space:nowrap}
 .dash-habit .need{color:var(--ink-70);white-space:nowrap}
-.dash-habit.sub{padding:var(--space-1) 0 var(--space-1) var(--space-4);border-top:0;color:var(--ink-70);font-size:12px}
+.dash-habit.sub{padding:var(--space-1) 0 var(--space-1) var(--space-4);border-top:0;color:var(--ink-70);font-size:var(--text-xs)}
 
 /* ---------------- the last fourteen days ---------------- */
 .dash-days{display:flex;align-items:flex-end;gap:var(--space-1);height:64px}
 .dash-days i{flex:1 1 0;height:3px;border-radius:2px;background:var(--hair-10)}
 .dash-days i.on{background:var(--accent)}
-.dash-dayends{display:flex;justify-content:space-between;padding-top:6px;color:var(--ink-70);font-size:12px}
+.dash-dayends{display:flex;justify-content:space-between;padding-top:var(--space-2);color:var(--ink-70);font-size:var(--text-xs)}
 
 /* ---------------- lists of things that happened ---------------- */
 .dash-recent{list-style:none}
 .dash-recent{margin:0;padding:0}
-.dash-recent li{border-top:1px solid var(--hair-10);display:flex;gap:12px;align-items:baseline;padding:10px 0}
-.dash-recent .when{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-35);flex:0 0 96px;white-space:nowrap}
-.dash-recent .what{flex:1;font-size:14px;min-width:0}
-.dash-recent .what b{font-weight:600}
-.dash-recent .what .ev{color:var(--ink-50);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.dash-recent .what .sm{display:block;color:var(--ink-50);font-size:13px;margin-top:2px}
+.dash-recent li{border-top:1px solid var(--hair-10);display:flex;gap:var(--space-4);align-items:baseline;padding:10px 0}
+.dash-recent .when{font-size:var(--text-xs);color:var(--ink-50);flex:0 0 108px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dash-recent .what{flex:1;font-size:var(--text-sm);min-width:0}
+.dash-recent .what b{font-weight:600;margin-right:var(--space-2)}
+.dash-recent .what .ev{color:var(--ink-70)}
+.dash-recent .what .sm{display:block;color:var(--ink-50);font-size:var(--text-xs);margin-top:2px}
 @media (max-width:640px){
   .dash-recent li{flex-direction:column;gap:3px}
   .dash-recent .when{flex:0 0 auto}
@@ -99,16 +103,18 @@ table.dash-table{width:100%;border-collapse:collapse;min-width:620px}
 table.dash-table th{
   color:var(--ink-50);text-align:left;
   padding:9px 14px 9px 0;border-bottom:1px solid var(--hair-10);white-space:nowrap;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
+  font:500 var(--text-xs)/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 table.dash-table td{
-  padding:10px 14px 10px 0;border-bottom:1px solid var(--hair-10);font-size:14px;vertical-align:middle;white-space:nowrap;
+  padding:10px 14px 10px 0;border-bottom:1px solid var(--hair-10);font-size:var(--text-sm);vertical-align:middle;white-space:nowrap;
 }
 table.dash-table tr:last-child td{border-bottom:0}
 table.dash-table .name{font-weight:600;letter-spacing:-.01em}
-table.dash-table .num{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink-50)}
+table.dash-table .offlist{margin-left:var(--space-2)}
+table.dash-table .pattern{color:var(--ink-70)}
+table.dash-table .num{font-variant-numeric:tabular-nums;color:var(--ink-70)}
 table.dash-table .num.zero{color:var(--ink-35)}
-table.dash-table .evid{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-35);white-space:normal;max-width:26ch}
+table.dash-table .evid{font-size:var(--text-xs);color:var(--ink-50);white-space:normal;max-width:32ch}
 
 /* status tags — reusing the shared .tag shapes, adding only what is new here */
 .tag.dash-accepted{background:var(--solid-bg);border-color:var(--solid-edge);color:var(--solid-fg)}
@@ -118,25 +124,25 @@ table.dash-table .evid{font-family:var(--mono);font-size:10px;letter-spacing:.06
 
 /* ---------------- empty / error states ---------------- */
 .dash-empty{padding:var(--space-5) var(--content-rail);max-width:74ch}
-.dash-empty h3{font-weight:700;font-size:16px;letter-spacing:-.02em;margin-bottom:7px}
-.dash-empty p{font-size:14.5px;color:var(--ink-70);line-height:1.6}
-.dash-empty p + p{margin-top:8px}
+.dash-empty h3{font-weight:600;font-size:var(--text-md);letter-spacing:-.01em;margin-bottom:var(--space-2)}
+.dash-empty p{font-size:var(--text-sm);color:var(--ink-70);line-height:1.6}
+.dash-empty p + p{margin-top:var(--space-2)}
+.dash-empty-actions{margin-top:var(--space-4)}
 .dash-empty b{font-weight:600;color:var(--ink)}
 .dash-empty ul{margin:9px 0 0 18px}
-.dash-empty li{font-size:14px;color:var(--ink-70);margin:5px 0}
+.dash-empty li{font-size:var(--text-sm);color:var(--ink-70);margin:5px 0}
 .dash-quiet{margin:0;color:var(--ink-70);font-size:var(--text-sm);max-width:70ch}
 
 .dash-warn{
   border-top:1px solid var(--hair-10);padding:11px 0;
-  font-size:13px;color:var(--ink-50);line-height:1.6;
+  font-size:var(--text-sm);color:var(--ink-70);line-height:1.6;
 }
-.dash-warn b{color:var(--med);display:block;margin-bottom:4px;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.dash-warn b{color:var(--med);display:block;margin-bottom:var(--space-1);font:600 var(--text-sm)/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .dash-warn li{margin:3px 0 3px 16px}
 
 .dash-foot{
-  margin-top:4px;
-  color:var(--ink-35);text-align:center;
-  font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none;
+  color:var(--ink-50);text-align:center;
+  font:var(--text-xs)/1.4 var(--ui);letter-spacing:0;text-transform:none;
 }
 
 /* self-test output, only ever rendered with ?dashtest=1 */

@@ -167,22 +167,23 @@ try {
   else bad('Reset appears once you have written something', 'the button is hidden — it does not know the starter');
 
   if (visible) {
-    // One click arms, it does not wipe.
-    await evaluate(`${resetSel}.click()`);
-    await sleep(120);
-    const armed = await evaluate(`${resetSel}.classList.contains('is-arming')`);
-    const stillMine = await evaluate(`window.monaco.editor.getEditors()[0].getValue().includes('something of my own')`);
-    if (armed && stillMine) ok('one click on Reset asks rather than wipes');
-    else bad('one click on Reset only asks', `armed=${armed} codeIntact=${stillMine}`);
-
-    // The second click does it, and puts back something that is not what we typed.
+    // One click resets, and nothing is lost: the notice offers Undo and the editor's
+    // own undo stack holds what was written.
     await evaluate(`${resetSel}.click()`);
     await sleep(300);
     const after = await evaluate(`window.monaco.editor.getEditors()[0].getValue()`);
-    if (!after.includes('something of my own') && after.includes('class Solution')) {
-      ok('the second click puts the starter back');
-    } else {
-      bad('the second click restores the starter', JSON.stringify(after.slice(0, 80)));
+    const undo = `[...document.querySelectorAll('.ws-notice:not([hidden]) button')].find(b => b.textContent.trim() === 'Undo')`;
+    const offered = await evaluate(`!!${undo}`);
+    if (!after.includes('something of my own') && after.includes('class Solution') && offered) ok('one click on Reset puts the starter back and offers Undo');
+    else bad('one click on Reset restores the starter and offers Undo', `undoOffered=${offered} ${JSON.stringify(after.slice(0, 80))}`);
+
+    if (offered) {
+      await evaluate(`${undo}.click()`);
+      await sleep(300);
+      const restored = await evaluate(`window.monaco.editor.getEditors()[0].getValue().includes('something of my own')`);
+      const cleared = await evaluate(`!document.querySelector('.ws-notice:not([hidden])')`);
+      if (restored && cleared) ok('Undo brings back exactly what was written');
+      else bad('Undo restores the code and clears the notice', `restored=${restored} noticeCleared=${cleared}`);
     }
   }
 

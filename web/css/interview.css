@@ -9,14 +9,15 @@
 .ci-setup-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
 .ci-setup-title{font:600 var(--text-sm)/var(--line-sm) var(--ui)}
 .ci-setup-options{display:flex;align-items:center;flex-wrap:wrap;gap:0 var(--space-1);margin-top:var(--space-1);}
-.ci-setup-dot{color:var(--ink-35);font-size:var(--text-xs)}
 .ci-setup-options .coach-model-picker{min-width:0;max-width:none;flex:0 1 auto}
 body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:var(--hair-06);color:var(--ink)}
 .ci-setup-options .ui-select-button::after{right:var(--space-2);width:4px;height:4px;margin-top:-3px}
-.interview-row-top{display:flex;align-items:center;gap:var(--space-2);width:100%}
-.interview-row-top strong{font:500 var(--text-sm)/var(--line-md) var(--ui)}
+.interview-row-top{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1) var(--space-2);width:100%}
+.interview-row-top strong{font:500 var(--text-sm)/var(--line-md) var(--ui);white-space:nowrap}
 .interview-status{margin-left:auto}
-.interview-row-meta{font-size:var(--text-xs);line-height:var(--line-md)}.interview-back{margin-bottom:var(--space-3)}
+.interview-row-meta{font-size:var(--text-xs);line-height:var(--line-md)}
+/* A link back, not a full-width bar. */
+.interview-back{align-self:flex-start;margin-bottom:var(--space-3)}
 .ci-panel{display:flex;flex-direction:column;min-height:0;color:var(--ink);background:transparent}
 .ci-live-header{position:sticky;top:0;z-index:2;border:var(--float-border);border-radius:var(--float-radius);background:var(--card);box-shadow:var(--float-shadow)}
 .ci-live-header .ci-header{padding:0 0 var(--space-2)}
@@ -29,8 +30,9 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-clock[data-urgency=hard]{color:var(--hard)}
 .ci-session-controls{display:flex;flex-direction:column;gap:var(--space-2);border-bottom:1px solid var(--hair-10);padding-bottom:var(--space-2)}
 .ci-phases{display:flex;list-style:none;gap:var(--space-1);padding:0;margin:0}
-.ci-phases li{flex:1;min-width:0;padding:var(--space-1) 0 0;border-top:var(--phase-rule);color:var(--ink-50);font:400 var(--text-xs)/var(--line-sm) var(--ui);white-space:nowrap}
+.ci-phases li{display:flex;align-items:center;gap:var(--space-1);flex:1;min-width:0;padding:var(--space-1) 0 0;border-top:var(--phase-rule);color:var(--ink-50);font:400 var(--text-xs)/var(--line-sm) var(--ui);white-space:nowrap}
 .ci-phases li.is-done{border-top-color:var(--easy);color:var(--ink-70)}
+.ci-phases li>svg{flex:none;color:var(--easy)}
 .ci-phases li[aria-current=step]{border-top-color:var(--accent);color:var(--ink);font-weight:600}
 .ci-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-1)}
 .ci-state{display:flex;align-items:center;gap:var(--space-2);font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
@@ -50,10 +52,15 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-voice .vc-status{padding:var(--space-2);font-size:var(--text-sm)}
 .ci-panel.is-complete .ci-live-header{display:none}
 .ci-score-hero{border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg);box-shadow:var(--surface-card-shadow);}
-.ci-score-hero>.ui-badge{font-size:var(--text-xl);padding:var(--space-2) var(--space-3)}
+/* The verdict is the card's title: tone-coloured display type, like a submission's
+   verdict. A 20px chip cannot hold 28px type; its fill showed as a stripe behind it. */
+body[class] .ci-score-hero>.ui-badge{display:block;height:auto;padding:0;border:0;border-radius:0;background:transparent;font:500 var(--text-xl)/1.15 var(--display);letter-spacing:-.025em;text-transform:none;white-space:normal}
 .ci-score-hero p{font-size:var(--text-md);line-height:var(--line-lg);margin-block:var(--space-3)}
 .ci-score-meta{font-size:var(--text-xs);line-height:var(--line-md)}
-.ci-dimension{padding-block:var(--space-4);border-bottom:var(--row-rule);padding:var(--space-4) var(--space-3);border-radius:var(--row-radius)}
+/* Ratings are a ruled list. A radius on a row that only has a bottom rule bends the rule. */
+.ci-dimension{padding-block:var(--space-4);border-bottom:1px solid var(--hair-10);border-radius:0}
+.ci-panel .ci-mini-dims{margin-top:var(--space-3)}
+.ci-panel .ci-mini-dim{padding-inline:0;border-bottom:1px solid var(--hair-10);border-radius:0;margin-bottom:0;background:transparent}
 .ci-dimension-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);font-size:var(--text-sm)}
 .ci-evidence{display:flex;align-items:baseline;gap:var(--space-2);margin-top:var(--space-2);font-size:var(--text-sm);line-height:var(--line-lg)}
 .ci-evidence p{margin:0}.ci-evidence-time{flex:none;}
@@ -65,14 +72,19 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .ci-phase-stack span{background:var(--accent)}
 .ci-phase-labels{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-3);font-size:var(--text-xs);color:var(--ink-70);margin-top:var(--space-2)}
 .ci-transcript{border-top:1px solid var(--hair-10);padding-top:var(--space-4)}
-.ci-transcript>summary{font-size:var(--text-sm);cursor:pointer;color:var(--ink-70)}
+.ci-transcript>summary{display:flex;align-items:center;gap:var(--space-2);list-style:none;font-size:var(--text-sm);cursor:pointer;color:var(--ink-70)}
+.ci-transcript>summary::-webkit-details-marker{display:none}
+.ci-transcript>summary>svg{flex:none;color:var(--ink-50);transform:rotate(-90deg)}
+.ci-transcript[open]>summary>svg{transform:none}
+.ci-transcript>summary:hover{color:var(--ink)}
+.ci-transcript>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .interviews-view [hidden],.ci-panel [hidden]{display:none!important}
 
 .interviews-notice:not(:empty){border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg)}
 
 .ci-empty-session{--content-stack-gap:var(--space-3);border:var(--surface-card-border);border-radius:var(--float-radius);background:var(--surface-card-bg);box-shadow:var(--surface-card-shadow);margin-bottom:var(--space-5)}
 .ci-empty-icon{display:grid;place-items:center;width:var(--space-8);height:var(--space-8);border-radius:var(--radius-md);background:var(--accent-soft);color:var(--accent)}
-.ci-empty-session h3{margin:0;font:600 var(--text-lg)/var(--line-md) var(--ui)}
+.ci-empty-session h3{margin:0;font:var(--title-weight,600) var(--text-lg)/var(--line-sm) var(--title-font,var(--ui))}
 .ci-empty-session p{margin:0;font:400 var(--text-md)/var(--line-lg) var(--ui);color:var(--ink-70)}.ci-empty-session .btn{margin-top:var(--space-2)}
 .ci-log:focus-visible{outline:2px solid var(--accent);outline-offset:var(--space-1);border-radius:var(--float-radius)}
 
@@ -100,7 +112,15 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 
 /* The embedded LeetCode interview shares the sidebar scroll viewport. Only
    this variant sticks within that viewport; bounded workspaces use normal flow. */
-body[class] .ci-embedded>.ui-composer{position:sticky;bottom:var(--space-2)}
+/* It lines up with the cards above it, and nothing shows around it: the scroller's
+   bottom padding lies outside what sticky measures, so the answer box floats above the
+   pane's edge and the transcript would scroll through that strip. The mask is a solid
+   surround in the pane's own colour, drawn as a shadow so it follows the corners. */
+.ci-embedded{--ci-composer-mask:0 var(--space-4) 0 var(--space-2) var(--card);--ci-header-mask:0 calc(-1 * var(--space-4)) 0 var(--space-2) var(--card),var(--float-shadow)}
+body[class] .ci-embedded>.ui-composer{position:sticky;bottom:var(--space-2);margin-inline:0;box-shadow:var(--ci-composer-mask)}
+/* The same above the pinned phase card: the scroller's top padding is a strip the
+   transcript would otherwise pass through on its way under the card. */
+.ci-embedded>.ci-live-header{box-shadow:var(--ci-header-mask)}
 /* Fill the parent scroll viewport even with a short transcript. These inner
    wrappers do not scroll; long interviews still use the existing viewport. */
 .interview-detail:not([hidden]){display:flex;flex-direction:column;min-height:100%}

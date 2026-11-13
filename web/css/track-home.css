@@ -18,10 +18,14 @@
 .th-box-body{flex:1;display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-6) var(--space-6) 0}
 .th-box-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);min-height:var(--control-md)}
 .th-box-text{font:400 var(--text-sm)/1.55 var(--ui);color:var(--ink-70);min-height:calc(2 * 1.55em)}
-.th-box-foot{display:flex;padding:var(--space-5) var(--space-6) var(--space-6)}
-body .th-box-foot .btn.btn{flex:1 1 auto;width:100%;justify-content:center}
+.th-box-foot{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-5) var(--space-6) var(--space-6)}
+/* A quiet button's label sits on the box's content rail; its hover fill extends past it. */
+body .th-box-head .th-others.btn{padding-inline:var(--space-3);margin-right:calc(-1 * var(--space-3))}
+body .th-box-foot .btn.btn{flex:none;width:100%;justify-content:center}
 
-.th-picks{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) calc(-1 * var(--space-3)) 0}
+/* Room for the open choice and three suggestions is held from the first paint, so the
+   Start buttons do not move when the saved records arrive. */
+.th-picks{display:flex;flex-direction:column;gap:2px;margin:var(--space-2) calc(-1 * var(--space-3)) 0;min-height:calc(4 * (2 * var(--space-2) + 1.45 * var(--text-sm)) + 3 * 2px)}
 body .th-pick.ui-action-row{display:flex;align-items:center;gap:var(--space-3);min-height:var(--control-md);padding:var(--space-2) var(--space-3);margin:0;border:0;background:transparent;text-align:left}
 body .th-pick.ui-action-row:hover{background:var(--row-hover-bg)}
 body .th-pick.ui-action-row[aria-pressed="true"]{background:var(--hair-06)}
@@ -34,14 +38,27 @@ body .th-box .ci-setup{--content-inset:var(--space-5) var(--space-6) var(--space
 .th-box .ci-setup form{display:flex;flex-direction:column;gap:var(--space-3)}
 .th-box .ci-setup-head{display:contents}
 .th-box .ci-setup-title{display:none}
-.th-box .ci-setup-options{order:1;margin:0 0 0 calc(-1 * var(--space-2))}
+/* The settings are four quiet pickers on the content rail. Spacing separates them, so a
+   wrapped row never ends on a stray dot. */
+.th-box .ci-setup-options{order:1;margin:0 0 0 calc(-1 * var(--space-2));gap:var(--space-1) var(--space-2)}
+.th-box .ci-setup-dot{display:none}
+body .th-box .ci-setup-options .ui-select-button{padding-inline:var(--space-2)}
 .th-box .ci-setup-actions{order:2;margin:0;justify-content:stretch}
 .th-box .ci-setup-actions .ci-start{flex:1;justify-content:center}
 
 /* What you've done: one line per session. */
 .th-recent{display:flex;flex-direction:column;align-items:stretch;gap:var(--space-3);min-width:0}
-.th-all{align-self:flex-start}
-.th-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius);overflow:hidden}
+/* Its label lines up with the row titles above it. */
+body .th-recent .th-all.btn{align-self:flex-start;padding-inline:var(--space-3);margin-left:calc(var(--space-2) + 1px)}
+.th-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius);overflow:hidden;box-shadow:var(--surface-card-shadow)}
+/* Twin Suns: the painting is behind boards, never text. The whole section is one board
+   (heading, rows and Show all), so the list inside it is ruled lines, not a second box. */
+body.theme-dunes .th-recent{box-sizing:border-box;padding:var(--space-6);background:var(--surface-card-bg);border:var(--surface-card-border);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow)}
+body.theme-dunes .th-list{background:transparent;border:0;border-top:1px solid var(--hair-10);border-radius:0;box-shadow:none;margin-inline:calc(-1 * var(--space-6))}
+body.theme-dunes .th-recent>.th-list:last-child{margin-bottom:calc(-1 * var(--space-6))}
+body.theme-dunes .th-item-open.ui-action-row{padding-left:var(--space-6)}
+body.theme-dunes .th-again{margin-right:var(--space-4)}
+body.theme-dunes .th-recent .th-all.btn{margin-left:calc(-1 * var(--space-3))}
 .th-item{display:grid;grid-template-columns:minmax(0,1fr) 104px;align-items:center}
 .th-item+.th-item{border-top:1px solid var(--hair-06)}
 body .th-item-open.ui-action-row{box-sizing:border-box;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 72px 120px 110px;align-items:center;gap:var(--space-4);min-height:0;padding:var(--space-3) var(--space-2) var(--space-3) var(--space-5);margin:0;border:0;border-radius:0;background:transparent;text-align:left;text-decoration:none}
@@ -61,10 +78,21 @@ body .th-item-open.ui-action-row:only-child{grid-column:1/-1;padding-right:calc(
   .th-pair{grid-template-columns:minmax(0,1fr)}
   .th-wrap{padding:var(--space-5) var(--space-4) var(--space-7);gap:var(--space-6)}
   .th-box-text{min-height:0}
+  body .th-recent .th-all.btn{margin-left:calc(var(--space-1) + 1px)}
+  body.theme-dunes .th-recent{padding:var(--space-4)}
+  body.theme-dunes .th-list{margin-inline:calc(-1 * var(--space-4))}
+  body.theme-dunes .th-recent>.th-list:last-child{margin-bottom:calc(-1 * var(--space-4))}
+  body.theme-dunes .th-item-open.ui-action-row{padding-left:var(--space-4)}
   body .th-item-open.ui-action-row{grid-template-columns:minmax(0,1fr) auto;gap:2px var(--space-3);padding-left:var(--space-4)}
   body .th-item-open.ui-action-row:only-child{padding-right:var(--space-4)}
   .th-item-title{grid-column:1/-1}
   .th-item-score:empty{display:none}
   .th-item-date{grid-column:2;grid-row:2}
   .th-item-score{grid-column:1;grid-row:3}
+}
+/* Twin Suns sets buttons in tracked capitals, so "Practise it" needs a wider column
+   to keep clear of the date beside it. */
+@media(min-width:821px){
+  body.theme-dunes .th-item{grid-template-columns:minmax(0,1fr) 136px}
+  body.theme-dunes .th-item-open.ui-action-row:only-child{padding-right:calc(136px + var(--space-2))}
 }

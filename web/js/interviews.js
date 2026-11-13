@@ -43,8 +43,10 @@ export function createInterviews(entry) {
     row.badge.className = 'ui-badge interview-status ui-badge--' + outcome.tone;
     row.title.textContent = relativeInterviewDate(record.startedAt);
     row.meta.textContent = `${interviewDuration(record)} · ${record.mode === 'voice' ? 'Voice' : 'Typed'}`;
-    row.resume.hidden = false;
-    row.resume.setAttribute('aria-label', state === 'paused' ? 'Open and resume interview' : 'Open interview');
+    // The row itself opens an interview. Only a paused one gets a second control, and it
+    // says what it does: open it and carry on.
+    row.resume.hidden = state !== 'paused';
+    row.chevron.hidden = state === 'paused';
   }
   function rowFor(record) {
     let row = rows.get(record.id);
@@ -53,18 +55,23 @@ export function createInterviews(entry) {
       const badge = el('span', { class: 'interview-status mono' });
       const meta = el('span', { class: 'interview-row-meta dim' });
       const content = el('div', { class: 'interview-row-content' });
-      const button = el('button', { class: 'ui-action-row interview-row-summary ui-row-content ui-stack', type: 'button', onclick: () => {
+      const chevron = el('span', { class: 'ui-row-trailing ui-row-chevron', 'aria-hidden': 'true' }, [icon('chevron', 16)]);
+      const button = el('button', { class: 'ui-action-row interview-row-summary ui-inset ui-row', type: 'button', onclick: () => {
         const id = article.dataset.interviewId;
         if (selected === id) collapse(); else open(id);
-      } }, [el('span', { class: 'interview-row-top' }, [title, badge]), meta]);
-      const resume = el('button', { class: 'btn btn--secondary interview-row-resume', text: 'Open', hidden: false, onclick: () => { open(record.id); if (status(record) === 'paused') panel?.resume(); } });
+      } }, [el('span', { class: 'ui-row-content ui-stack' }, [el('span', { class: 'interview-row-top' }, [title, badge]), meta]), chevron]);
+      const resume = el('button', { class: 'btn btn--secondary interview-row-resume', text: 'Resume', hidden: true, onclick: () => {
+        // Read the record as it is now; the one this row was built from may be a refresh old.
+        const id = article.dataset.interviewId, latest = records.find(item => item.id === id) || record;
+        open(id); if (status(latest) === 'paused') panel?.resume();
+      } });
       const article = el('article', { class: 'sidebar-record interview-row', dataset: { interviewId: record.id } }, [el('div', { class: 'interview-row-heading' }, [button, resume]), content]);
-      row = { article, button, title, badge, meta, content, resume }; rows.set(record.id, row);
+      row = { article, button, title, badge, meta, content, resume, chevron }; rows.set(record.id, row);
     }
     paintRow(row, record); return row;
   }
   function render() {
-    count.textContent = `${records.length} ${records.length === 1 ? 'interview' : 'interviews'}`;
+    count.textContent = records.length ? `${records.length} ${records.length === 1 ? 'interview' : 'interviews'}` : '';
     const nodes = records.map(record => rowFor(record).article);
     // Keep mounted records in place: detaching an unchanged expanded row resets
     // its nested scroll/focus on every background status acknowledgement.

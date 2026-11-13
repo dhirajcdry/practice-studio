@@ -124,12 +124,18 @@ async function seed() {
   const rows = [
     { at: '2026-10-17T01:00:00Z', submissionId: '1', verdict: 'Accepted', accepted: true, testsPassed: 178, testsTotal: 178 },
     { at: '2026-10-18T01:00:00Z', submissionId: '2', verdict: 'Time Limit Exceeded', accepted: false, testsPassed: 12, testsTotal: 178 },
+    { at: '2026-10-18T02:00:00Z', submissionId: '3', verdict: 'Wrong Answer', accepted: false, testsPassed: 30, testsTotal: 178 },
   ].map(row => ({ ...row, source: 'studio', codeFile: `submissions/${row.submissionId}.py` }));
   await json(path.join(dir, 'meta.json'), { schemaVersion: 1, slug: 'jump-game', submissions: rows });
   for (const row of rows) {
     await json(path.join(dir, 'submissions', `${row.submissionId}.json`), {
       schemaVersion: 1, submissionId: row.submissionId, source: 'studio', at: row.at, verdict: row,
-      failure: row.accepted ? null : { kind: 'timeout', lastTestcase: '[3,2,1,0,4]', expectedOutput: 'false' },
+      // Long, unspaced data: the shape that used to be cut mid-number at the box edge.
+      failure: row.accepted ? null : row.submissionId === '3' ? { kind: 'wrong',
+        lastTestcase: '[' + Array.from({ length: 28 }, (_, i) => 2147483600 + i).join(',') + ']\n[' + Array.from({ length: 22 }, (_, i) => `"reach${i}"`).join(',') + ']',
+        expectedOutput: '[' + Array.from({ length: 24 }, (_, i) => i % 3 ? 2147483647 : 'null').join(',') + ']',
+        output: '[' + Array.from({ length: 24 }, (_, i) => i % 4 ? 2147483647 : 'null').join(',') + ']' }
+        : { kind: 'timeout', lastTestcase: '[3,2,1,0,4]', expectedOutput: 'false' },
       details: row.accepted ? {
         runtime: { display: '23 ms', ms: 23, percentile: 44, unit: 'ms', distribution: [
           { bucket: 20, label: '20', pct: 25 }, { bucket: 23, label: '23', pct: 45 }, { bucket: 30, label: '30', pct: 30 },

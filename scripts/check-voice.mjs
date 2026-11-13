@@ -115,7 +115,7 @@ try {
     assert.equal(await evaluate("return voiceFixture.plays[0].text"),'Good question. Here is the direct answer when two callers reserve the same room.','the short opener and full sentence must share one clip despite delayed tokens');
     assert.equal(await evaluate("return voiceFixture.plays[0].open"),true);
     assert.equal(await evaluate("return voiceFixture.asks[0].question"),'Would two callers reserve the same room?');
-    assert.ok(await evaluate("return document.querySelector('.pr-question p').textContent==='Would two callers reserve the same room?'"),'the sent answer is in the conversation');
+    assert.ok(await evaluate("return document.querySelector('.pr-exchange .ui-question')?.dataset.question==='Would two callers reserve the same room?'"),'the sent answer is in the conversation');
     await shot(name+'-speaking');
     const firstCapture=await evaluate("return voiceFixture.captures");
     await evaluate("const panel=document.querySelector('.voice-panel');voiceFixture.phases=[];voiceFixture.observer=new MutationObserver(records=>voiceFixture.phases.push(...records.map(r=>r.oldValue),panel.dataset.state));voiceFixture.observer.observe(panel,{attributes:true,attributeFilter:['data-state'],attributeOldValue:true});voiceFixture.finish(0)");

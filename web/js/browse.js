@@ -9,6 +9,7 @@ import { progressFor, summarizeProgress, summarizeByDifficulty } from './catalog
 import { computeStreak, recentDays } from './streak.js';
 import { flameIcon } from './streak-pill.js';
 import { icon } from './ui/icon.js';
+import { button } from './ui/button.js';
 
 export const LIST_FILTERS = [
   { id: 'neetcode250', label: 'NeetCode 250' },
@@ -55,6 +56,7 @@ export function groupProblems(data, state) {
     bucket.total++;
     bucket.all.push(problem);
     if (state.difficulty !== 'all' && problem.difficulty !== state.difficulty) continue;
+    if (state.hideSolved && state.progress && progressFor(problem.slug, state.progress).status === 'accepted') continue;
     if (!matches(problem, needle)) continue;
     if (state.pattern && state.pattern !== pattern) continue;
     bucket.items.push(problem);
@@ -133,7 +135,8 @@ function progressRing(accepted, total, key) {
     el('div', { class: 'ov-ring-centre', 'aria-hidden': 'true' }, [
       el('b', { text: String(accepted) }),
       el('span', { class: 'ov-ring-label', text: 'solved' }),
-      el('span', { class: 'ov-ring-of', text: `of ${total} · ${total ? Math.round(accepted / total * 100) : 0}%` }),
+      // One solved of 250 is not 0%.
+      el('span', { class: 'ov-ring-of', text: `of ${total} · ${accepted > 0 && accepted / total < 0.005 ? '<1' : total ? Math.round(accepted / total * 100) : 0}%` }),
     ]),
   ]);
 }
@@ -141,7 +144,7 @@ function progressRing(accepted, total, key) {
 /* --------------------------------- overview -------------------------------- */
 
 function statusGlyph(status, label) {
-  return el('span', { class: `problem-state state-${status}`, title: label, 'aria-label': label },
+  return el('span', { class: `problem-state state-${status}`, role: 'img', 'aria-label': label },
     status === 'accepted' ? checkIcon('state-check') : null);
 }
 
@@ -159,17 +162,45 @@ function difficultyBreakdown(collection, state) {
   ]);
 }
 
+/**
+ * What to open next, from evidence already loaded. The problem touched most recently
+ * (in this list, and since the last tracker reset) says where the learner is: if it is
+ * unfinished it is the one to continue; otherwise the next unsolved problem of that
+ * pattern follows. With no such record, curriculum order decides.
+ */
+export function pickNext(collection, state) {
+  const open = problem => progressFor(problem.slug, state.progress).status !== 'accepted';
+  const first = collection.find(open);
+  if (!first) return null;
+  const bySlug = new Map(collection.map((problem, index) => [problem.slug, index]));
+  let latest = null;
+  for (const record of state.stats?.problems || []) {
+    if (!record?.lastAt || !bySlug.has(record.slug)) continue;
+    const progress = state.progress?.get?.(record.slug);
+    // A reset starts a fresh round: activity from before it no longer says where you are.
+    if (progress?.resetAt && String(record.lastAt) <= String(progress.resetAt)) continue;
+    if (!progress || progress.status === 'empty') continue;
+    if (!latest || String(record.lastAt) > String(latest.lastAt)) latest = record;
+  }
+  if (!latest) return { problem: first, resumed: false };
+  const at = bySlug.get(latest.slug);
+  const last = collection[at];
+  if (open(last)) return { problem: last, resumed: true };
+  const samePattern = problem => problem.pattern === last.pattern && open(problem);
+  const follow = collection.slice(at + 1).find(samePattern) || collection.find(samePattern);
+  return { problem: follow || first, resumed: false };
+}
+
 function nextUp(collection, state, onOpen) {
-  // Curriculum order is the server's problem order, so the first unaccepted one is next.
-  const next = collection.find(problem => progressFor(problem.slug, state.progress).status !== 'accepted');
-  if (!next) return el('div', { class: 'ov-next done' }, [checkIcon('ov-done-check'), el('span', { text: 'Every problem in this list is accepted.' })]);
-  const status = progressFor(next.slug, state.progress);
-  return el('button', { class: 'ui-action-row ov-next', type: 'button', onclick: () => onOpen(next.slug), title: `Open ${next.title}` }, [
-    el('span', { class: 'ov-kicker', text: status.status === 'empty' ? 'Next up' : `Next up · ${status.label.toLowerCase()}` }),
+  const pick = pickNext(collection, state);
+  if (!pick) return el('div', { class: 'ov-next done' }, [checkIcon('ov-done-check'), el('span', { text: 'Every problem in this list is solved.' })]);
+  const next = pick.problem;
+  return el('button', { class: 'ui-action-row ov-next', type: 'button', onclick: () => onOpen(next.slug) }, [
+    el('span', { class: 'ov-kicker', text: pick.resumed ? 'Pick up where you left off' : 'Next up' }),
     el('span', { class: 'ov-next-title', text: next.title }),
     el('span', { class: 'ov-next-meta' }, [
       el('span', { class: 'tag ' + next.difficulty.toLowerCase(), text: next.difficulty }),
-      el('span', { text: next.pattern }),
+      next.pattern ? el('span', { class: 'ov-next-pattern', text: next.pattern }) : null,
       el('span', { class: 'ov-next-go', 'aria-hidden': 'true' }, icon('forward', 15)),
     ]),
   ]);
@@ -191,10 +222,7 @@ function streakTile(stats) {
       ]),
     ]),
     el('ol', { class: 'ov-days', 'aria-label': `Last 14 days: ${days.filter(d => d.active).length} with practice` },
-      days.map(({ day, active }) => el('li', {
-        class: (active ? 'on' : '') + (day === streak.today ? ' now' : ''),
-        title: `${day}${day === streak.today ? ' (today)' : ''}: ${active ? 'practised' : 'no practice'}`,
-      }))),
+      days.map(({ day, active }) => el('li', { class: (active ? 'on' : '') + (day === streak.today ? ' now' : '') }))),
     el('div', { class: 'ov-days-axis', 'aria-hidden': 'true' }, [el('span', { text: '2 weeks ago' }), el('span', { text: 'today' })]),
   ]);
 }
@@ -222,36 +250,39 @@ function progressOverview(collection, state, handlers) {
 
   const summary = summarizeProgress(collection, state.progress);
   const notStarted = summary.total - summary.touched;
+  const counts = [
+    ['local-pass', summary.localPass, 'passed locally'],
+    ['attempted', summary.attempted, 'in progress'],
+    ['empty', notStarted, 'not started'],
+  ].filter(([, n]) => n > 0);
   // The band rises in once per page load, not on every filter click.
   const seen = overviewSeen; overviewSeen = true;
   return el('section', { class: 'card ov' + (seen ? ' seen' : ''), 'aria-label': `${label} progress` }, [
     progressRing(summary.accepted, summary.total, `${state.list}:ring`),
     difficultyBreakdown(collection, state),
     el('div', { class: 'ov-mid' }, [
-      el('div', { class: 'ov-counts' }, [
-        ['local-pass', summary.localPass, 'passed locally'],
-        ['attempted', summary.attempted, 'in progress'],
-        ['empty', notStarted, 'not started'],
-      ].map(([status, n, text]) => el('div', { class: 'ov-count' }, [
+      // A count of nothing is noise: only the states that have problems in them are listed.
+      counts.length ? el('div', { class: 'ov-counts' }, counts.map(([status, n, text]) => el('div', { class: 'ov-count' }, [
         statusGlyph(status, text), el('b', { text: String(n) }), el('span', { text }),
-      ]))),
+      ]))) : null,
       nextUp(collection, state, handlers.onOpen),
     ]),
     streakTile(state.stats),
   ]);
 }
 
-function assetDot(present, letter, label) {
-  return el('span', {
-    class: present ? 'assetdot' : 'assetdot off',
-    title: present ? label + ' available' : 'No ' + label.toLowerCase(),
-    'aria-label': present ? label + ' available' : 'No ' + label.toLowerCase(),
-    text: letter,
-  });
+/** The shorter core list a problem also belongs to, unless that is the list on screen. */
+function coreListNote(problem, state) {
+  if (state.list === 'blind75') return null;
+  if (problem.lists.blind75) return 'Blind 75';
+  if (problem.lists.neetcode150 && state.list !== 'neetcode150') return 'NeetCode 150';
+  return null;
 }
 
 function problemRow(problem, state, needle, onOpen) {
   const progress = progressFor(problem.slug, state.progress);
+  const note = coreListNote(problem, state);
+  // Title, level and list read as one phrase from the left, at any window width.
   const row = el('button', {
     class: 'ui-action-row prow' + (state.selectedSlug === problem.slug ? ' sel' : ''),
     type: 'button',
@@ -259,18 +290,11 @@ function problemRow(problem, state, needle, onOpen) {
     onclick: () => onOpen(problem.slug),
   }, [
     statusGlyph(progress.status, progress.label),
-    el('span', { class: 'pnum', text: problem.number ? String(problem.number) : '—' }),
-    el('span', { class: 'ptitle' }, markTitle(problem.title, needle)),
-    el('span', { class: 'plists' }, [
-      problem.lists.blind75 ? el('span', { class: 'tag quiet', text: 'B75' }) : null,
-      problem.lists.neetcode150 && !problem.lists.blind75 ? el('span', { class: 'tag quiet', text: '150' }) : null,
-    ]),
-    el('span', { class: 'pdiff' }, el('span', {
-      class: 'tag ' + problem.difficulty.toLowerCase(), text: problem.difficulty,
-    })),
-    el('span', { class: 'assets' }, [
-      assetDot(problem.hasPythonSolution, 'S', 'Python solution'),
-      assetDot(problem.hasArticle, 'A', 'Article'),
+    el('span', { class: 'pnum', text: problem.number ? String(problem.number) : '' }),
+    el('span', { class: 'pmain' }, [
+      el('span', { class: 'ptitle' }, markTitle(problem.title, needle)),
+      el('span', { class: 'tag ' + problem.difficulty.toLowerCase(), text: problem.difficulty }),
+      note ? el('span', { class: 'plist-note', text: note }) : null,
     ]),
   ]);
   return el('li', {}, row);
@@ -281,8 +305,8 @@ function sectionProgress(group, state) {
   if (!state.progress) return el('span', { class: 'sec-progress pending' });
   const { accepted } = summarizeProgress(group.all, state.progress);
   const done = group.total > 0 && accepted === group.total;
-  return el('span', { class: 'sec-progress' + (done ? ' done' : ''), title: `${accepted} of ${group.total} accepted`, 'aria-label': `${accepted} of ${group.total} accepted` }, [
-    meter(accepted, group.total, null),
+  return el('span', { class: 'sec-progress' + (done ? ' done' : ''), role: 'img', 'aria-label': `${accepted} of ${group.total} solved` }, [
+    accepted > 0 && !done ? meter(accepted, group.total, null) : null,
     el('span', { class: 'sec-n' }, [el('b', { text: String(accepted) }), `/${group.total}`]),
     done ? checkIcon('sec-check') : null,
   ]);
@@ -313,7 +337,7 @@ function patternSection(group, index, state, needle, handlers) {
   if (filtered) {
     section.append(el('div', {
       class: 'psec-more',
-      text: `${group.total - group.items.length} more in this pattern hidden by the filters`,
+      text: `${group.total - group.items.length} more in this pattern not shown`,
     }));
   }
   return section;
@@ -323,16 +347,14 @@ function treeItem({ root = false, label, items, summary, pressed, onClick }) {
   const total = items.length;
   const done = summary && total > 0 && summary.accepted === total;
   const count = summary ? `${summary.accepted}/${total}` : String(total);
+  // The count says it; a bar per row was eighteen empty tracks for most learners.
   return el('button', {
-    type: 'button', class: (root ? 'tree-root' : 'tree-pattern') + (done ? ' done' : ''), title: label,
+    type: 'button', class: (root ? 'tree-root' : 'tree-pattern') + (done ? ' done' : ''),
     'aria-pressed': String(pressed), onclick: onClick,
-    'aria-label': summary ? `${label}: ${summary.accepted} of ${total} accepted` : `${label}: ${total} problems`,
+    'aria-label': summary ? `${label}: ${summary.accepted} of ${total} solved` : `${label}: ${total} problems`,
   }, [
     done ? el('span', { class: 'tree-done' }, checkIcon('tree-check')) : folderIcon(),
-    el('span', { class: 'tree-name' }, [
-      el('span', { class: 'tree-label', text: label }),
-      summary ? meter(summary.accepted, total, null) : null,
-    ]),
+    el('span', { class: 'tree-label', text: label }),
     el('span', { class: 'tree-count', text: count }),
   ]);
 }
@@ -342,6 +364,26 @@ function chip(label, pressed, onClick, extraClass = '') {
     class: 'btn btn--quiet chip ' + extraClass, type: 'button', 'aria-pressed': String(pressed), onclick: onClick, text: label,
   });
 }
+
+/* The list and level switches, shared with the roadmap so both views filter the same way. */
+const segment = (label, options) => el('div', { class: 'segmented seg', role: 'group', 'aria-label': label }, options);
+
+export function listSwitch(lists, state, handlers) {
+  return segment('List', lists.map(f => chip(f.label, state.list === f.id, () => handlers.onList(f.id), 'seg-opt')));
+}
+
+export function levelSwitch(state, handlers) {
+  return segment('Level', [
+    chip('All levels', state.difficulty === 'all', () => handlers.onDifficulty('all'), 'seg-opt'),
+    ...DIFFICULTIES.map(d => {
+      const option = chip(d, state.difficulty === d, () => handlers.onDifficulty(d), 'seg-opt ' + d.toLowerCase());
+      option.prepend(el('i', { class: 'seg-dot', 'aria-hidden': 'true' }));
+      return option;
+    }),
+  ]);
+}
+
+let barHeight = 0;
 
 export function renderBrowse(data, state, handlers) {
   const groups = groupProblems(data, state);
@@ -353,7 +395,12 @@ export function renderBrowse(data, state, handlers) {
 
   const view = el('div', { class: 'view catalog' });
   const collection = data.problems.filter(problem => problem.lists[state.list]);
-  const listLabel = LIST_FILTERS.find(f => f.id === state.list)?.label || 'All problems';
+  const summary = state.progress ? summarizeProgress(collection, state.progress) : null;
+  const setHideSolved = (next) => {
+    // main.js does not own this filter yet; until it does, the level handler re-renders.
+    if (handlers.onHideSolved) handlers.onHideSolved(next);
+    else { state.hideSolved = next; handlers.onDifficulty(state.difficulty); }
+  };
 
   view.append(screenHeader({ title: 'Problem explorer', actions: { secondary: [
     el('a', { href: '#/add', class: 'btn btn--quiet catalog-add' }, [icon('plus', 15), 'Add problem']),
@@ -363,27 +410,23 @@ export function renderBrowse(data, state, handlers) {
 
   // One toolbar, aligned to the column it filters: two segmented controls (which list,
   // which level) and the count. Labels moved into aria: the options say what they are.
-  const segment = (label, options) => el('div', { class: 'segmented seg', role: 'group', 'aria-label': label }, options);
   const controls = el('div', { class: 'filterbar' }, [
-    segment('List', LIST_FILTERS.filter(f => !['added', 'others'].includes(f.id) || state.list === f.id || data.problems.some(p => p.lists?.[f.id])).map(f =>
-      chip(f.label, state.list === f.id, () => handlers.onList(f.id), 'seg-opt'))),
-    segment('Level', [
-      chip('All levels', state.difficulty === 'all', () => handlers.onDifficulty('all'), 'seg-opt'),
-      ...DIFFICULTIES.map(d => {
-        const option = chip(d, state.difficulty === d, () => handlers.onDifficulty(d), 'seg-opt ' + d.toLowerCase());
-        option.prepend(el('i', { class: 'seg-dot', 'aria-hidden': 'true' }));
-        return option;
-      }),
-    ]),
-    el('span', { class: 'spacer' }),
+    listSwitch(LIST_FILTERS.filter(f => !['added', 'others'].includes(f.id) || state.list === f.id || data.problems.some(p => p.lists?.[f.id])), state, handlers),
+    levelSwitch(state, handlers),
+    // The count and actions travel as one group: when the row is too narrow they move to a
+    // second line together instead of clipping a switch or stranding one button.
+    el('div', { class: 'filter-actions' }, [
     // Plain numerals here: the boxed-digit treatment read as "1 3 of 250" at this size.
     el('span', { class: 'countpill' }, shown === collection.length
-      ? [el('b', { text: String(shown) }), ' problems']
+      ? [el('b', { text: String(shown) }), shown === 1 ? ' problem' : ' problems']
       : [el('b', { text: String(shown) }), ` of ${collection.length}`]),
+    // Offered once something is solved: the usual question is "what is left".
+    summary?.accepted > 0 || state.hideSolved
+      ? button({ label: 'Hide solved', pressed: Boolean(state.hideSolved), className: 'linkbtn hide-solved', onClick: () => setHideSolved(!state.hideSolved) })
+      : null,
     el('button', {
       class: 'btn btn--quiet linkbtn shufflebtn', type: 'button',
       disabled: !!handlers.shuffleState?.().busy, 'aria-busy': String(!!handlers.shuffleState?.().busy),
-      title: 'Random problem (r)',
       'aria-label': handlers.shuffleState?.().busy ? 'Finding a LeetCode problem…' : 'Random problem; keyboard shortcut R',
       onclick: handlers.onShuffle,
     }, [icon('shuffle', 14), el('span', { class: 'shuffle-label', role: 'status', text: handlers.shuffleState?.().busy ? 'Finding…' : 'Shuffle' })]),
@@ -394,38 +437,42 @@ export function renderBrowse(data, state, handlers) {
         onclick: () => handlers.onToggleAll(!allCollapsed),
       })
       : null,
+    ]),
   ]);
+  // The open section's heading pins under this bar, so it needs the bar's real height
+  // (one line or two). Remembered across renders so a filter click never shifts it.
+  if (barHeight) view.style.setProperty('--catalog-bar-h', `${barHeight}px`);
+  const barObserver = new ResizeObserver(() => {
+    if (!controls.isConnected) { barObserver.disconnect(); return; }
+    const height = Math.round(controls.getBoundingClientRect().height);
+    if (!height || height === barHeight) return;
+    barHeight = height;
+    view.style.setProperty('--catalog-bar-h', `${height}px`);
+  });
+  barObserver.observe(controls);
   const layout = el('div', { class: 'catalog-layout' });
-  const rootSummary = state.progress ? summarizeProgress(collection, state.progress) : null;
+  // Only the patterns this list has problems in: a row reading 0/0 leads nowhere.
+  const inList = groups.filter(group => group.total > 0);
   const sidebar = el('nav', { class: 'catalog-tree', 'aria-label': 'Problem patterns' }, [
     el('div', { class: 'tree-heading' }, [el('span', { text: 'Patterns' }), el('span', { class: 'tree-legend', text: state.progress ? 'solved / total' : 'problems' })]),
-    treeItem({ root: true, label: listLabel, items: collection, summary: rootSummary, pressed: !state.pattern, onClick: () => handlers.onPattern(null) }),
-    ...groups.map(group => group.pattern).map(pattern => {
-      const items = collection.filter(problem => (problem.pattern || 'Uncategorized') === pattern);
-      const summary = state.progress ? summarizeProgress(items, state.progress) : null;
-      return treeItem({ label: pattern, items, summary, pressed: state.pattern === pattern, onClick: () => handlers.onPattern(pattern) });
-    }),
-    el('a', {class:'tree-report',href:'#/progress',text:'View practice report'}),
+    treeItem({ root: true, label: 'All patterns', items: collection, summary, pressed: !state.pattern, onClick: () => handlers.onPattern(null) }),
+    ...inList.map(group => treeItem({
+      label: group.pattern, items: group.all, summary: state.progress ? summarizeProgress(group.all, state.progress) : null,
+      pressed: state.pattern === group.pattern, onClick: () => handlers.onPattern(group.pattern),
+    })),
   ]);
   const content = el('div', {class:'catalog-content'});
   layout.append(sidebar, content);
   view.append(layout);
-  content.append(el('div', {class:'catalog-path'}, [el('span',{text:listLabel}), el('span',{text:'/'}),el('strong',{text:state.pattern || 'All patterns'})]), controls);
+  content.append(controls);
   if (privateCollection && state.list === privateCollection.id && privateCollection.note) {
     content.append(el('p', { class: 'sub', text: privateCollection.note }));
   }
 
   if (shown === 0) {
     content.append(el('section', { class: 'card' }, el('div', { class: 'emptynote' }, [
-      'Nothing matches ',
-      needle ? el('b', { text: `“${state.query.trim()}”` }) : 'these filters',
-      needle ? ' with the current filters' : '',
-      '. ',
-      el('button', {
-        class: 'btn btn--quiet linkbtn', type: 'button', style: 'display:inline;padding:0',
-        text: 'Clear everything', onclick: handlers.onClear,
-      }),
-      ' to see all 250 again.',
+      el('span', {}, ['Nothing matches ', needle ? el('b', { text: `“${state.query.trim()}”` }) : 'these filters', needle ? ' in this list.' : '.']),
+      button({ label: needle ? 'Clear search and filters' : 'Clear filters', variant: 'secondary', onClick: () => { state.hideSolved = false; handlers.onClear(); } }),
     ])));
     return view;
   }
@@ -439,7 +486,8 @@ export function renderBrowse(data, state, handlers) {
   });
   content.append(sections);
 
-  const silent = state.pattern ? [] : groups.filter(g => !g.items.length);
+  // Patterns this list has problems in, none of which pass the filters.
+  const silent = state.pattern ? [] : groups.filter(g => g.total > 0 && !g.items.length);
   if (silent.length) {
     content.append(el('div', {
       class: 'catalog-silent',
@@ -450,7 +498,7 @@ export function renderBrowse(data, state, handlers) {
   content.append(el('div', { class: 'hint' }, [
     el('kbd', { text: '/' }), ' search  ',
     el('kbd', { text: 'j' }), el('kbd', { text: 'k' }), ' move  ',
-    el('kbd', { text: '↵' }), ' open  ',
+    el('kbd', { text: 'enter' }), ' open  ',
     el('kbd', { text: 'r' }), ' random  ',
     el('kbd', { text: 'esc' }), ' clear',
   ]));

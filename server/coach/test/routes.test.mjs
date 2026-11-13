@@ -188,7 +188,13 @@ test('a coach turn streams token, tool and done in the contract shape', async (t
 
   assert.equal(events.filter((e) => e.event === 'token').map((e) => e.data.text).join(''), 'Hello, coach here.');
   const tool = events.find((e) => e.event === 'tool');
-  assert.deepEqual(tool.data, { name: 'Read', summary: 'problems/two-sum/NOTES.md' });
+  // name/summary are the original contract; display and at let the page say what the
+  // step was in plain words without a label map of its own.
+  assert.equal(tool.data.name, 'Read');
+  assert.equal(tool.data.summary, 'problems/two-sum/NOTES.md');
+  assert.equal(tool.data.display.effect, 'read');
+  assert.ok(tool.data.display.doing && tool.data.display.done);
+  assert.ok(Number.isFinite(Date.parse(tool.data.at)));
   const done = events.at(-1);
   assert.equal(done.data.stoppedReason, 'end_turn');
   assert.ok(done.data.sessionId);

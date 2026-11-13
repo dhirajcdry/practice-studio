@@ -1,6 +1,10 @@
+import { questionNode } from './ui/turn.js';
+import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/workspace-turn.js';
 import { bindPythonTools, bindBoardTools, showWorkspaceAction } from './workspace-tools.js';
 // Both design disciplines share one untimed, question-led learning workspace.
 import { el, replace } from './dom.js';
+import { icon } from './ui/icon.js';
+import { tooltip } from './tooltip.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { workspaceHeader, paneHeader } from './ui/headers.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
@@ -8,7 +12,7 @@ import { createSelect } from './ui/select.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
 import { loadExcalidraw, boardTools } from './whiteboard.js';
 import { getSettings, onSettingsChange } from './settings.js';
-import { conversationMessage, bindConversation, messageAction, thinkingRow, conversationText, setConversationText } from './ui/conversation.js';
+import { bindConversation, conversationText, setConversationText } from './ui/conversation.js';
 import { openLearningNotes, saveLearningNote } from './learning.js';
 import { relativeInterviewDate } from './interview-format.js';
 import { streamInterviewRequest } from './interview-transport.js';
@@ -114,7 +118,7 @@ export function initPractice(host, { slug, id }) {
   voiceView.setControls({ lead: [mic], actions: [interrupt, typeLink, voiceSend] });
   const work = el('section', { class: 'pr-work card ui-editor-surface' });
   const output = el('pre', { class: 'lld-output mono', hidden: true });
-  const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', title: "Run Python (⌘')", text: 'Run Python', onclick: async () => {
+  const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', text: 'Run Python', onclick: async () => {
     run.disabled = true; output.hidden = false; output.textContent = 'Running…';
     try {
       await save();
@@ -123,13 +127,18 @@ export function initPractice(host, { slug, id }) {
     } catch (e) { output.textContent = e.message; }
     finally { run.disabled = false; }
   } });
+  tooltip(run, "Run Python (⌘')");
   const currentCode = () => editor?.getValue() ?? code;
   function updateTopic(topic) {
     if (!session || !topic || gone) return;
     session.title = topic.title; session.statement = topic.statement;
     const heading = view.querySelector('.ui-workspace-identity h1');
     if (heading) heading.textContent = session.title;
-    if (problemText) problemText.textContent = session.statement || 'Describe any problem to your coach to get started.';
+    if (problemText) {
+      problemText.textContent = session.statement || '';
+      // The disclosure appears once the coach has recorded a problem to show in it.
+      if (session.statement) problemText.parentElement.hidden = false;
+    }
   }
   function paintErrors() { if (!gone) { error.hidden = errors.size === 0; error.textContent = [...errors.values()].join('\n'); } }
   function showError(e, scope = 'reply') {
@@ -201,23 +210,25 @@ export function initPractice(host, { slug, id }) {
   function bottom() { if (following) { thread.scrollTop = thread.scrollHeight; lastThreadTop = thread.scrollTop; } }
   function exchange(question, answer = '', state = 'complete', requestId = null) {
     if (requestId && exchangeNodes.has(requestId)) return exchangeNodes.get(requestId);
-    const reply = conversationText(answer, { className: 'pr-answer' });
+    const turn = createWorkspaceReply();
+    const reply = turn.body; reply.classList.add('pr-answer'); setConversationText(reply, answer);
     const marker = el('span', { class: 'dim pr-exchange-status', text: state === 'failed' ? 'Reply incomplete' : '' });
-    if (state === 'pending' && !answer) replace(reply, thinkingRow());
+    if (state === 'pending' && !answer) turn.start();
     thread.querySelector('.pr-empty')?.remove();
-    const saveNote = el('button', { class: 'btn btn--quiet', text: 'Save to notes', onclick: async () => {
+    const saveNote = el('button', { class: 'btn btn--quiet', text: 'Save to notes', 'aria-label': 'Save to notes', onclick: async () => {
       saveNote.disabled = true;
-      try { await saveLearningNote(slug, `Question: ${question}\n\n${reply.dataset.markdown || answer}`); saveNote.setAttribute('aria-label', 'Saved to notes'); clearError(`note:${requestId}`); }
+      // The button itself says the note was kept; it stays disabled so it cannot be saved twice.
+      try { await saveLearningNote(slug, `Question: ${question}\n\n${reply.dataset.markdown || answer}`); saveNote.textContent = 'Saved to notes'; saveNote.setAttribute('aria-label', 'Saved to notes'); clearError(`note:${requestId}`); }
       catch (e) { showError(e, `note:${requestId}`); saveNote.disabled = false; }
     } });
     saveNote.hidden = !answer;
-    messageAction(saveNote, 'report', 'Save to notes');
+    const finish = () => turn.finish({ actions: [replayButton(() => reply.dataset.markdown || reply.textContent, replayReply, 'Coach'), saveNote] });
     thread.append(el('article', { class: 'pr-exchange ui-message-group' }, [
-      conversationMessage({ speaker: 'You', user: true, text: question, className: 'pr-question' }),
-      conversationMessage({ speaker: 'Coach', body: reply, actions: [replayButton(() => reply.dataset.markdown || reply.textContent, replayReply, 'Coach'), saveNote] }), marker,
+      questionNode({ text: question }),
+      turn.node, marker,
     ]));
-    const receipts = el('div', { class: 'pr-receipts' }); reply.before(receipts);
-    const ui = { reply, marker, saveNote, receipts };
+    const ui = { reply, marker, saveNote, turn, finish };
+    if (state !== 'pending') finish();
     if (requestId) exchangeNodes.set(requestId, ui);
     bottom(); return ui;
   }
@@ -240,15 +251,16 @@ export function initPractice(host, { slug, id }) {
     following = true;
     const ui = exchange(question, '', 'complete', request.requestId); let answer = ''; playbackInterrupted = false;
     replySpeech = createSpeechStream(speaker);
-    replace(ui.reply, thinkingRow()); ui.marker.textContent = ''; ui.saveNote.hidden = true;
+    ui.turn.start(); ui.marker.textContent = ''; ui.saveNote.hidden = true;
     paint();
     try {
       await save();
       await streamInterviewRequest('/api/practice/ask', request, (name, value) => {
         if (gone) return;
-        if (name === 'action') showWorkspaceAction(ui.receipts, value);
+        if (name === 'action') showWorkspaceAction(ui.turn, value);
+        if (name === 'tool') ui.turn.tool(value);
         if (name === 'practice_topic') updateTopic(value);
-        if (name === 'token') { ui.reply.dataset.streaming = 'true'; answer += value.text || ''; setConversationText(ui.reply, answer); bottom();
+        if (name === 'token') { ui.turn.writing(); ui.reply.dataset.streaming = 'true'; answer += value.text || ''; setConversationText(ui.reply, answer); bottom();
           if (mode === 'voice' && !playbackInterrupted) replySpeech.push(value.text || '');
         }
         if (name === 'done') { answer = value.answer ?? answer; setConversationText(ui.reply, answer); ui.saveNote.hidden = false; }
@@ -256,12 +268,12 @@ export function initPractice(host, { slug, id }) {
       lastRequest = null; localStorage.removeItem(requestKey);
       if (!gone && mode === 'voice' && !playbackInterrupted) replySpeech.finish();
     } catch (e) {
-      ui.reply.querySelector('.ui-thinking')?.remove();
+      ui.turn.setNotice({ tone: 'err', head: 'Reply incomplete', body: e.message });
       replySpeech?.cancel(); voiceLoop?.pause();
       ui.marker.textContent = e.workspaceSave ? 'Question not sent. Save your work, then retry.' : 'Reply incomplete. Your question is saved.';
       if (!e.workspaceSave) showError(e);
     }
-    finally { ui.reply.dataset.streaming = 'false'; busy = false; if (!gone) { paint(); bottom(); voiceLoop?.sync(); } }
+    finally { ui.finish(); ui.reply.dataset.streaming = 'false'; busy = false; if (!gone) { paint(); bottom(); voiceLoop?.sync(); } }
   }
   function interruptReply() {
     playbackInterrupted = true; replySpeech?.cancel(); speaker?.cancel(); voiceLoop?.sync(); paint();
@@ -307,8 +319,11 @@ export function initPractice(host, { slug, id }) {
       if (session.discipline === 'lld') fileHeader.classList.add('python-document-bar');
       work.append(fileHeader, workError, canvas);
       if (session.discipline === 'lld') work.append(output);
-      problemText = el('p', { text: session.statement || 'Describe any problem to your coach to get started.' });
-      const statement = el('details', { class: 'pr-problem' }, [el('summary', { text: source ? 'Problem and mock feedback' : 'Problem' }), problemText]);
+      problemText = el('p', { text: session.statement || '' });
+      const statement = el('details', { class: 'pr-problem' }, [
+        el('summary', {}, [icon('forward', 14), el('span', { text: source ? 'Problem and mock feedback' : 'Problem' })]), problemText]);
+      // An open session has no problem yet; the empty state below already says so.
+      statement.hidden = !source && !session.statement;
       if (source) {
         const feedback = data.sourceSnapshot?.feedback;
         const feedbackNode = conversationText(typeof feedback === 'string' && feedback.trim() ? feedback : 'No mock feedback was recorded.');
@@ -329,7 +344,8 @@ export function initPractice(host, { slug, id }) {
       if (!data.exchanges.length) thread.append(el('div', { class: 'pr-empty' }, [el('h2', { text: session.openEnded && !session.statement ? 'What would you like to work on?' : 'Make room to think.' }), el('p', { class: 'dim', text: session.openEnded && !session.statement ? 'Describe a question, paste its requirements, or ask for a suggestion. Your coach will keep the problem and your work here as you go.' : 'Your coach sees your work when you ask a question. Explore the problem, try an approach, and ask for help whenever you need it.' })]));
       else for (const item of data.exchanges) {
         const ui = exchange(item.question, item.answer, item.status, item.requestId);
-        for (const action of item.actions || []) showWorkspaceAction(ui.receipts, action, { replay: true });
+        ui.turn.restore(item.activity, item.actions, { pending: item.status === 'pending', at: item.at });
+        if (item.status !== 'pending') ui.finish();
       }
       if (data.busy) { busy = true; watchPending(); }
       speaker = createSpeaker({ onPlayback: value => voiceView.playback(value), onStateChange: () => { if (!gone) { paint(); voiceLoop?.sync(); } } });
@@ -368,7 +384,7 @@ export function initPractice(host, { slug, id }) {
       if (recovered) changed(); paint(); bottom();
       if (voiceLaunches.delete(id) && mode === 'voice') voiceLoop.start();
     } catch (e) {
-      if (!gone && !view.isConnected) replace(host, el('div', { class: 'ui-inset' }, [el('p', { text: e.message }), el('a', { href: `#/${slug.startsWith('lld-') ? 'lld' : 'design'}`, text: 'Back to library' })]));
+      if (!gone && !view.isConnected) replace(host, el('div', { class: 'ui-inset' }, [el('p', { text: e.message }), el('a', { href: `#/${slug.startsWith('lld-') ? 'lld' : 'design'}`, text: slug.startsWith('lld-') ? 'Back to Low-level design' : 'Back to System design' })]));
       else showError(e);
     }
   })();
@@ -383,7 +399,8 @@ export function initPractice(host, { slug, id }) {
         updateTopic(data.session);
         for (const item of data.exchanges) {
           const ui = exchange(item.question, item.answer, item.status, item.requestId);
-          for (const action of item.actions || []) showWorkspaceAction(ui.receipts, action, { replay: true });
+        ui.turn.restore(item.activity, item.actions, { pending: item.status === 'pending', at: item.at });
+          if (item.status !== 'pending') ui.finish();
           // Recovery polls are snapshots, not deltas. Replace the visible prefix
           // while pending too; do not replay historical text through the speaker.
           if (ui.reply.dataset.markdown !== (item.answer || '')) {
@@ -391,7 +408,7 @@ export function initPractice(host, { slug, id }) {
           }
           if (item.status !== 'pending') {
             ui.marker.textContent = item.status === 'failed' ? 'Reply incomplete. Retry when ready.' : '';
-            ui.saveNote.hidden = item.status !== 'complete';
+            ui.saveNote.hidden = item.status !== 'complete'; ui.finish();
           }
         }
         busy = data.busy;

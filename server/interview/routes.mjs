@@ -17,6 +17,7 @@ import { data, systemPrompt, lldSystemPrompt, turnPrompt, rehydratePrompt, debri
 import { createSessionContext } from '../coach/session-context.mjs';
 import { contextPacket } from '../coach/context-packet.mjs';
 import { buildConversation } from '../coach/native-sessions.mjs';
+import { storedActivity } from '../coach/transcript.mjs';
 import { handoffRecords, selectRecords, evidenceRecords } from '../coach/context-policy.mjs';
 import { parseReport, buildReport } from './report.mjs';
 import { readReportDifficulty } from './report-difficulty.mjs';
@@ -206,7 +207,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
       sections:debriefing ? [] : [['Full saved interview record',handoffRecords(evidenceRecords(turns.filter(t => !body.requestId || t.requestId !== body.requestId)),{query:body.said||''})]]}});
   const prompt = nativeConversation.bootstrapPrompt;
   const regraded = regrade ? { regrade: true, reportDifficulty: state.reportDifficulty || null } : {};
-  let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', buffered = '', child, finished = false, sessionId = null, silent = false;
+  let tags = createTagStripper(), guard = createNarrationFilter(), asked = '', buffered = '', child, finished = false, sessionId = null, silent = false, activity = [];
   const emit = text => {
     if (!text) return;
     buffered += text;
@@ -249,7 +250,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
             if (tags.curveball) state.curveballDone = true;
           }
         }
-        await record(svc, state, id, { kind: failure || stopped ? 'partial' : kind, replyKind: kind, asked, requestId: body.requestId, provider: choice.provider, model: choice.model, stopped, ...regraded });
+        await record(svc, state, id, { kind: failure || stopped ? 'partial' : kind, replyKind: kind, asked, requestId: body.requestId, provider: choice.provider, model: choice.model, stopped, ...(activity.length ? { activity: storedActivity(activity) } : {}), ...regraded });
       }
       if (!failure && !stopped && kind === 'debrief' && !asked.trim()) {
         failure = 'The interviewer returned an empty debrief.';
@@ -299,6 +300,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
           child?.kill(); void finish({ stopped: true });
         }
       },
+      onTool: (name, summary) => { activity.push({ tool: name, summary, at: Date.now() }); stream.tool(name, summary); },
       onDone: (sid, _reason, commit) => { sessionId = sid || sessionId; return finish({ commit }); },
       onError: message => finish({ failure:String(message) }),
     });

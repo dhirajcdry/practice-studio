@@ -98,40 +98,46 @@ export function mountWorkspace(entry, options = {}) {
     onclick: () => doRun(),
   }, [runLabel, el('kbd', { text: "⌘'" })]);
 
-  // Reset throws away everything you wrote, so it asks once. A single stray click on a
-  // small button in a toolbar is not enough intent to delete a solution — and the button
-  // sits next to Run and Submit, which are clicked constantly.
-  let resetArmed = null;
+  // Reset puts the starter back in one click and keeps what it replaced: the swap goes
+  // through the editor's undo stack (⌘Z), and the notice above the code offers Undo by
+  // name. Nothing is asked first, because nothing is lost. It sits beside the file it
+  // resets, away from Run and Submit, and only while there is something to reset.
+  let resetUndo = null;         // the code Reset replaced, while its Undo is still on offer
 
-  function disarmReset() {
-    if (resetArmed) clearTimeout(resetArmed);
-    resetArmed = null;
-    revertButton.classList.remove('is-arming');
-    revertLabel.textContent = 'Reset code';
-    revertButton.title = 'Put LeetCode\'s starter code back. What you wrote is not kept.';
+  function clearResetNotice() {
+    if (resetUndo === null) return;
+    resetUndo = null;
+    noticeEl.hidden = true;
   }
 
-  // It lives in the file row, beside the file it resets, and away from Run and Submit.
-  const revertLabel = el('span', { class: 'ws-reset-label', text: 'Reset code' });
+  function resetCode() {
+    if (stubCode === null || !editor) return;
+    const before = editor.getValue();
+    if (before === stubCode) return;
+    editor.setValue(stubCode);
+    onEdit();
+    showNotice({
+      head: 'Starter code restored',
+      body: editor.kind === 'monaco' ? 'Your code is one undo away (⌘Z).' : 'Your code is one undo away.',
+      actions: [{ label: 'Undo', onClick: () => {
+        const mine = resetUndo;
+        clearResetNotice();
+        if (mine === null || !editor || editor.getValue() !== stubCode) return;
+        editor.setValue(mine);
+        onEdit();
+        editor.focus();
+      } }],
+      onDismiss: () => { resetUndo = null; },
+    });
+    resetUndo = before;
+    editor.focus();
+  }
+
   const revertButton = el('button', {
-    class: 'btn btn--icon editor-tool ws-reset', type: 'button', hidden: true,
-    title: 'Put LeetCode\'s starter code back. What you wrote is not kept.',
-    onclick: () => {
-      if (stubCode === null || !editor) return;
-      if (!resetArmed) {
-        revertButton.classList.add('is-arming');
-        revertLabel.textContent = 'Discard your code?';
-        revertButton.title = 'Click again to replace what you wrote with the starter.';
-        // Disarms itself, so a click you walked away from is not still loaded.
-        resetArmed = setTimeout(disarmReset, 4000);
-        return;
-      }
-      disarmReset();
-      editor.setValue(stubCode);
-      onEdit();
-      editor.focus();
-    },
-  }, [icon('reset', 14), revertLabel]);
+    class: 'btn btn--quiet editor-tool ws-reset', type: 'button', hidden: true,
+    'aria-label': 'Reset to the starter code',
+    onclick: resetCode,
+  }, [icon('reset', 14), el('span', { text: 'Reset' })]);
 
   const editorControls = createPythonEditorControls();
 
@@ -245,10 +251,10 @@ export function mountWorkspace(entry, options = {}) {
   const editorTabs = el('div', { class: 'editor-tabs' }, [
     el('span', { class: 'editor-file' }, [el('span', { class: 'file-language', text: 'PY' }), el('span', { text: 'solution.py' })]),
     el('span', { class: 'editor-meta' }, [
+      revertButton,
       marksChip,
       el('span', { class: 'editor-path mono', text: `problems/${slug}/solution.py` }),
       editorControls.root,
-      revertButton,
       sidebarButton,
     ]),
   ]);
@@ -274,7 +280,7 @@ export function mountWorkspace(entry, options = {}) {
   ]);
 
   if (options.headerActions) {
-    options.headerActions({ run: runButton, submit: submitButton, reset: revertButton, status: statusEl });
+    options.headerActions({ run: runButton, submit: submitButton, status: statusEl });
     // The screen rail owns these controls in the three-pane coding workspace.
     root.append(el('div', { hidden: true }, probButton));
     root.querySelector('.ws-bar').remove();
@@ -294,9 +300,8 @@ export function mountWorkspace(entry, options = {}) {
     if (saveState === 'failed') {
       statusEl.append(el('button', { class: 'btn btn--quiet ws-retry', type: 'button', text: 'Retry', onclick: () => flush() }));
     }
-    const nothingToReset = stubCode === null || !editor || editor.getValue() === stubCode;
-    if (nothingToReset && resetArmed) disarmReset();
-    revertButton.hidden = nothingToReset;
+    // Absent rather than disabled: with the starter on screen there is nothing to reset.
+    revertButton.hidden = stubCode === null || !editor || editor.getValue() === stubCode;
   }
 
   function setSave(state, detail = '') {
@@ -338,6 +343,8 @@ export function mountWorkspace(entry, options = {}) {
   function onEdit() {
     if (!editor) return;
     touched = true;
+    // Typing over the starter, or ⌘Z, makes the offer to undo the reset stale.
+    if (resetUndo !== null && editor.getValue() !== stubCode) clearResetNotice();
     window.dispatchEvent(new CustomEvent('studio-interview-work', { detail: { slug, type: 'typing' } }));
     paintNeetCodeNotice();
     if (saveState !== 'failed' && saveState !== 'local') setSave('dirty');
@@ -385,7 +392,7 @@ export function mountWorkspace(entry, options = {}) {
     const mismatch = currentMismatch();
     shapeNotice.hidden = !mismatch;
     replace(shapeNotice, mismatch ? [
-      el('span', { class: 'ws-noticebody', text: mismatch.message }),
+      el('span', { class: 'ws-noticebody ui-cluster-content', text: mismatch.message }),
       ...(mismatch.fix ? [el('button', { class: 'btn btn--quiet ws-mini', type: 'button',
         text: "Use NeetCode's name", onclick: mismatch.fix })] : []),
     ] : []);
@@ -393,14 +400,19 @@ export function mountWorkspace(entry, options = {}) {
 
   /* ---- notices ---- */
 
-  function showNotice({ tone = '', head, body, actions = [] }) {
+  function showNotice({ tone = '', head, body, actions = [], onDismiss = null }) {
+    // Any other notice replaces the reset one; its Undo goes with it (⌘Z still works).
+    resetUndo = null;
     noticeEl.hidden = false;
-    noticeEl.className = 'ws-notice ' + tone;
+    noticeEl.className = 'ws-notice ui-inset ui-cluster ' + tone;
     replace(noticeEl, [
-      el('span', { class: 'mono ws-noticehead', text: head }),
-      el('span', { class: 'ws-noticebody', text: body }),
+      // One block, so the actions and the close button stay beside it when it wraps.
+      el('div', { class: 'ws-noticecopy ui-cluster-content' }, [
+        el('span', { class: 'ws-noticehead', text: head }),
+        body ? el('span', { class: 'ws-noticebody', text: body }) : null,
+      ]),
       ...actions.map(a => el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: a.label, onclick: a.onClick })),
-      el('button', { class: 'btn btn--icon ws-noticex', type: 'button', 'aria-label': 'Dismiss', onclick: () => { noticeEl.hidden = true; } }, icon('close')),
+      el('button', { class: 'btn btn--icon ws-noticex', type: 'button', 'aria-label': 'Dismiss', onclick: () => { noticeEl.hidden = true; onDismiss?.(); } }, icon('close', 15)),
     ]);
   }
 
@@ -539,18 +551,20 @@ export function mountWorkspace(entry, options = {}) {
 
     if (!judgeStub.hidden) {
       replace(judgeStub, [
-        el('span', { class: 'mono ws-stubmark', text: 'Submission' }),
+        el('span', { class: 'ws-stubmark', text: 'Submission' }),
         el('span', { class: 'ws-stubline', text: judge.isBusy() ? `Judging on ${judge.targetName?.() || 'LeetCode'}…` : submitLine(verdict) }),
+        icon('forward', 15),
       ]);
       judgeStub.dataset.tone = verdict?.tone ?? '';
     }
     if (!runStub.hidden) {
       replace(runStub, [
-        el('span', { class: 'mono ws-stubmark', text: 'Local run' }),
+        el('span', { class: 'ws-stubmark', text: 'Local run' }),
         el('span', {
           class: 'ws-stubline',
-          text: panel.isRunning() ? 'Running…' : (summaryLine(local) || 'your test cases'),
+          text: panel.isRunning() ? 'Running…' : (summaryLine(local) || 'Test cases'),
         }),
+        icon('forward', 15),
       ]);
       runStub.dataset.tone = local && !panel.isRunning() ? (local.tone ?? '') : '';
     }

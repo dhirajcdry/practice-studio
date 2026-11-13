@@ -21,25 +21,6 @@ export function appendConversationText(node, chunk) {
 }
 
 
-// Message chrome has no knowledge of providers or persistence. Callers retain the
-// source, streaming renderer, timestamps and action handlers they already own.
-export function conversationMessage({ speaker = 'Coach', user = false, body = null, text = '', stamp = '', elapsedMs, className = '', actions = [], dataset = {} } = {}) {
-  if (!stamp && Number.isFinite(elapsedMs)) stamp = elapsedMs < 60000 ? 'At the start' : `${Math.floor(elapsedMs / 60000)} min in`;
-  const content = body || conversationText(text, { user });
-  content.classList.add('ui-conversation-text', 'rich');
-  if (user) content.classList.add('ui-conversation-text--user');
-  if (!user) actions = [...actions, messageAction(el('button', { onclick: async () => {
-    try { await navigator.clipboard.writeText(content.dataset.markdown || content.textContent); } catch { /* Clipboard may be unavailable. */ }
-  } }), 'copy', 'Copy reply')];
-  const node = el('article', { class: `ui-message ${user ? 'ui-message--user' : 'ui-message--coach'} ${className}`, dataset: { ...dataset, speaker }, tabindex: '0' }, [
-    el('div', { class: 'ui-message-head' }, [
-      el('span', { class: `ui-speaker${user ? ' sr-only' : ''}`, text: speaker }),
-      stamp ? el('span', { class: 'ui-message-time', text: stamp }) : null,
-    ]), content, el('div', { class: 'ui-message-actions' }, actions),
-  ]);
-  return node;
-}
-
 export function messageAction(button, name = 'report', label = button.getAttribute('aria-label') || button.textContent) {
   button.classList.remove('btn--quiet', 'btn--secondary', 'btn--lg');
   button.classList.add('btn', 'btn--icon', 'ui-message-action');
@@ -48,12 +29,6 @@ export function messageAction(button, name = 'report', label = button.getAttribu
   button.replaceChildren(icon(name, 15));
   tooltip(button, label);
   return button;
-}
-
-export function thinkingRow() {
-  return el('div', { class: 'ui-thinking', role: 'status' }, [
-    el('span', { text: 'Thinking' }), el('span', { class: 'ui-thinking-dots', 'aria-hidden': 'true' }, [el('i'), el('i'), el('i')]),
-  ]);
 }
 
 export function conversationSeparator(label, { phase = false, value } = {}) {
@@ -79,10 +54,10 @@ export function decorateConversationCode(root) {
 export function bindConversation(log, { composer = null, viewport = () => log, onJump = null } = {}) {
   let unread = false, initialized = false, frame = 0, regroup = true;
   const dirty = new Set();
-  const jump = el('button', { class: 'btn btn--secondary ui-jump-latest', text: 'Jump to latest', type: 'button', hidden: true, onclick: () => {
+  const jump = el('button', { class: 'ui-jump-latest', type: 'button', hidden: true, onclick: () => {
     const view = viewport(); if (!view) return;
     onJump?.(); view.scrollTop = view.scrollHeight; unread = false; jump.hidden = true;
-  } });
+  } }, [icon('chevron', 14), el('span', { text: 'Jump to latest' })]);
   // A zero-height anchor keeps unread controls out of the transcript's layout.
   // Hiding an in-flow pill used to grow the viewport and clamp scrollTop by 36px.
   const jumpAnchor = el('div', { class: 'ui-jump-anchor' }, jump);
@@ -100,7 +75,7 @@ export function bindConversation(log, { composer = null, viewport = () => log, o
       message.classList.toggle('ui-message--continuation', Boolean(same));
       message.classList.remove('ui-message--latest'); prior = message;
     }
-    messages.filter(m => m.classList.contains('ui-message--coach')).at(-1)?.classList.add('ui-message--latest');
+    messages.filter(m => m.classList.contains('ui-turn')).at(-1)?.classList.add('ui-message--latest');
     regroup = false;
     }
     for (const node of dirty) if (node.isConnected) decorateConversationCode(node);
@@ -122,5 +97,6 @@ export function bindConversation(log, { composer = null, viewport = () => log, o
   const onScroll = event => { if (event.target === viewport()) scroll(); };
   log.ownerDocument.addEventListener('scroll', onScroll, true);
   dirty.add(log); paint();
-  return { jump, refresh() { regroup = true; dirty.add(log); schedule(); }, dispose() { observer.disconnect(); cancelAnimationFrame(frame); log.ownerDocument.removeEventListener('scroll', onScroll, true); jumpAnchor.remove(); } };
+  // Screens that build their layout after binding place `anchor`, never the bare button.
+  return { jump, anchor: jumpAnchor, refresh() { regroup = true; dirty.add(log); schedule(); }, dispose() { observer.disconnect(); cancelAnimationFrame(frame); log.ownerDocument.removeEventListener('scroll', onScroll, true); jumpAnchor.remove(); } };
 }

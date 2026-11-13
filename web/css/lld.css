@@ -18,3 +18,7 @@
 }
 
 .lld-view:not(.is-workspace)>.ui-screen-header{margin-bottom:var(--space-6)}
+
+/* Inside the interviewer pane the paused notice is a band of the pane, not a second
+   card pressed against the pane's own border. */
+.lld-interviewer>.ci-panel>.ci-paused{margin:0;border:0;border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:transparent}

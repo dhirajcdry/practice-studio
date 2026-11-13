@@ -109,6 +109,10 @@ try {
     window.streamDuringSubmit = { sendHidden: document.querySelector('.coach-send')?.hidden === true, stopVisible: document.querySelector('.coach-stop')?.getClientRects().length > 0 };
 
     const log = document.querySelector('.coach-log');
+    // The question is flushed (speech, editor save) before the turn is drawn.
+    for (let i = 0; i < 200 && !log.querySelector('.ui-turn'); i++) await sleep(10);
+    if (!log.querySelector('.ui-turn') || !document.querySelector('.ui-thread-strip')) throw Error('Missing shared turn or thread strip');
+    if (log.querySelector('.ui-turn-foot')) throw Error('Empty reply exposes Copy');
     await sleep(2400);
     window.streamCheck = { log, realFetch, tall: log.scrollHeight };
   })()`);
@@ -138,6 +142,9 @@ try {
     }
     const growth = log.innerText.length - charsBefore;
     if (document.querySelector('.ui-jump-latest')?.hidden !== false) throw Error('Jump to latest must appear while unread content arrives above the bottom');
+    const pill = document.querySelector('.ui-jump-latest').getBoundingClientRect();
+    const box = document.querySelector('.coach .ui-composer, .coach .coach-compose').getBoundingClientRect();
+    if (pill.height < 20 || pill.bottom > box.top || pill.top < log.getBoundingClientRect().top) throw Error('Jump to latest must float over the transcript, above the composer (pill ' + Math.round(pill.top) + '-' + Math.round(pill.bottom) + ', composer top ' + Math.round(box.top) + ')');
     window.streamCheck.held = { placed, drift, growth, stoppedAboveBottom };
   })()`);
   await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: 100000 });

@@ -207,10 +207,7 @@ function renderSolutionInto(body, entry, result) {
   wrap.append(pre, copy);
 
   const rich = el('div', { class: 'rich' }, wrap);
-  body.append(
-    el('div', { class: 'mono dim', style: 'margin-bottom:10px', text: `${result.language || 'python'} reference · ${entry.title}` }),
-    rich,
-  );
+  body.append(rich);
   if (result.source === 'mock') {
     body.append(el('div', { class: 'mono dim', style: 'margin-top:6px;font:500 11px/1.4 var(--ui);letter-spacing:0', text: 'Bundled sample — the studio server serves the full set.' }));
   }
@@ -328,7 +325,7 @@ export function renderProblem(entry, context) {
     crumb: context.listLabel || 'Problems', title: titleEl,
     badges: [hero.querySelector('.tag.' + entry.difficulty.toLowerCase()), badgeRow],
     meta: [entry.number ? `No. ${entry.number}` : '', entry.pattern, workspaceActions.status],
-    actions: { primary: workspaceActions.submit, secondary: [...nav, el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }), workspaceActions.run], overflow: [...links, workspaceActions.reset] },
+    actions: { primary: workspaceActions.submit, secondary: [...nav, el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }), workspaceActions.run], overflow: links },
   });
   const toggles = hero.querySelector('.paneltoggles');
   toggles.className = 'ui-tabs problem-tabs';
@@ -357,8 +354,8 @@ function interviewPrepCard(entry) {
   if (!prep) return null;
   if (prep.origin === 'personal') {
     return el('section', { class: 'card', 'aria-label': 'Personal practice selection' },
-      el('details', { class: 'desc rich', dataset: { interviewPrep: prep.id } }, [
-        el('summary', { text: `${prep.id} · Added by you · Personal practice` }),
+      el('details', { class: 'desc rich prep-note', dataset: { interviewPrep: prep.id } }, [
+        el('summary', {}, [icon('forward', 15), el('span', { text: `${prep.id} · Added by you · Personal practice` })]),
         el('p', { text: prep.reportedPrompt }),
         el('p', { text: prep.caveat }),
         el('p', {}, ['Problem source: ', ...prep.sources.map(source =>
@@ -368,8 +365,8 @@ function interviewPrepCard(entry) {
   const collection = currentCollection();
   const checked = collection?.checkedAt ? ` Mappings checked ${collection.checkedAt}.` : '';
   return el('section', { class: 'card', 'aria-label': `${collection?.label || 'Collection'} preparation` },
-    el('details', { class: 'desc rich', dataset: { interviewPrep: prep.id } }, [
-      el('summary', { text: `${prep.id} · ${prep.priority} · ${prep.match}` }),
+    el('details', { class: 'desc rich prep-note', dataset: { interviewPrep: prep.id } }, [
+      el('summary', {}, [icon('forward', 15), el('span', { text: `${prep.id} · ${prep.priority} · ${prep.match}` })]),
       el('p', { text: prep.reportedPrompt }),
       el('p', {}, [el('strong', { text: 'Mapping caveat: ' }), prep.caveat]),
       el('p', {}, [el('strong', { text: 'Practice: ' }), prep.practice]),
@@ -412,7 +409,7 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
         ? 'LeetCode did not respond in time. Retry or open the statement directly.'
         : 'The statement is not available offline. Open it on LeetCode or retry your connection.',
       actions: [
-        {label:'Open on LeetCode ↗',onClick:()=>window.open(`https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, '_blank', 'noopener,noreferrer')},
+        {label:'Open on LeetCode',onClick:()=>window.open(`https://leetcode.com/problems/${encodeURIComponent(entry.slug)}/`, '_blank', 'noopener,noreferrer')},
         ...(result.code === 'DEMO_CONTENT_UNAVAILABLE' ? [] : [{label:'Retry',onClick:()=>{replace(target,skeleton(7));loadProblem(entry.slug,entry).then(r=>fillDescription(card,tags,titleEl,badgeRow,entry,r));}}]),
       ],
     }));

@@ -1,6 +1,8 @@
+import { questionNode } from './ui/turn.js';
+import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/workspace-turn.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
-import { conversationMessage, bindConversation, messageAction, thinkingRow, conversationText } from './ui/conversation.js';
+import { bindConversation, conversationText, setConversationText } from './ui/conversation.js';
 import { practiseFromMock } from './ui/button.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { claimActionKey } from './keyboard.js';
@@ -21,8 +23,11 @@ import { appendDraft, readDraft, saveDraft, clearDraft } from './drafts.js';
 const PHASE_LABELS = { clarify: 'Clarify', approach: 'Approach', code: 'Code', test: 'Test', followup: 'Follow-up' };
 const SIGNALS = ['No hire', 'Lean no', 'Lean hire', 'Hire', 'Strong hire'];
 const MOMENT_LABELS = { insight: 'Insight', stuck: 'Stuck', hint: 'Hint', bug: 'Bug', fix: 'Fix', test: 'Test', verdict: 'Verdict' };
+const NO_PHASES = 'Phase durations were not recorded for this interview.';
 const minutes = ms => ms < 60000 ? `${Math.max(0, Math.round(ms / 1000))}s` : `${Math.round(ms / 60000)} min`;
 
+// A drawn chevron for a disclosure; the browser's own marker is a text glyph.
+const disclosureIcon = () => el('span', { class: 'rp-disclosure', 'aria-hidden': 'true' }, icon('chevron', 14));
 function section(title, body, extra = '') {
   return el('section', { class: 'rp-section' + (extra ? ' ' + extra : '') }, [el('h3', { class: 'rp-h', text: title }), body]);
 }
@@ -36,7 +41,9 @@ function stat(label, value, detail = '') {
 
 function signalScale(signal) {
   const index = SIGNALS.indexOf(signal);
-  return el('div', { class: 'rp-scale', role: 'img', 'aria-label': signal ? `Hire signal: ${signal}` : 'No hire signal recorded' },
+  // Nothing to place on the scale: five unlit steps would only look like a broken chart.
+  if (index < 0) return null;
+  return el('div', { class: 'rp-scale', role: 'img', 'aria-label': `Hire signal: ${signal}` },
     SIGNALS.map((label, i) => el('span', { class: 'rp-scale-step' + (i === index ? ' is-on' : ''), dataset: { tone: ratingTone(label) } }, [
       el('i'), el('span', { text: label }),
     ])));
@@ -66,12 +73,11 @@ function timeLink(at, jump) {
 function timeline(facts, moments, jump, discipline) {
   const labels = discipline === 'lld' ? { clarify: 'Requirements', approach: 'Design', code: 'Implement', test: 'Verify', followup: 'Extend' } : PHASE_LABELS;
   const phases = facts.phases.filter(p => p.ms > 0);
-  const track = el('div', { class: 'rp-track' }, phases.length
-    ? phases.map(p => el('span', { class: 'rp-seg', dataset: { phase: p.phase }, style: `flex:${p.ms}` }))
-    : [el('span', { class: 'rp-seg is-empty', style: 'flex:1' })]);
-  const legend = el('div', { class: 'rp-legend' }, [
+  // No phase time on record: say so instead of drawing an empty bar from 0:00 to 0:00.
+  const track = phases.length ? el('div', { class: 'rp-track' }, phases.map(p => el('span', { class: 'rp-seg', dataset: { phase: p.phase }, style: `flex:${p.ms}` }))) : null;
+  const legend = phases.length ? el('div', { class: 'rp-legend' }, [
     ...phases.map(p => el('span', { class: 'rp-legend-item' }, [el('i', { dataset: { phase: p.phase } }), `${labels[p.phase] || p.phase} ${minutes(p.ms)}`])),
-  ]);
+  ]) : null;
   const momentList = moments.length ? el('ol', { class: 'rp-moments' }, moments.map(m => el('li', { dataset: { kind: m.kind } }, [
     m.at === null ? el('span', { class: 'rp-time is-empty', text: '—' })
       : el('button', { type: 'button', class: 'btn btn--quiet rp-time tnum', text: formatClock(m.at), onclick: () => jump(m.at) }),
@@ -79,8 +85,9 @@ function timeline(facts, moments, jump, discipline) {
     el('div', { class: 'rp-moment-text' }, [el('span', { text: m.text }), m.evidence ? el('blockquote', { class: 'rp-moment-quote' }, el('q', { text: m.evidence.quote })) : null]),
   ]))) : null;
   return el('div', { class: 'rp-timeline' }, [
-    el('div', { class: 'rp-track-wrap' }, [track,
-      el('div', { class: 'rp-track-ends tnum' }, [el('span', { text: '0:00' }), el('span', { text: formatClock(facts.durationMs) })])]),
+    track ? el('div', { class: 'rp-track-wrap' }, [track,
+      el('div', { class: 'rp-track-ends tnum' }, [el('span', { text: '0:00' }), el('span', { text: formatClock(facts.durationMs) })])])
+      : el('p', { class: 'rp-note is-missing', text: NO_PHASES }),
     legend, momentList,
   ]);
 }
@@ -91,7 +98,8 @@ function dimensionCard(d, jump, onAsk) {
     e.note ? el('p', { class: 'rp-note', text: (e.provenance === 'interpretation' ? 'Interviewer observation: ' : '') + e.note }) : null,
   ]))) : el('p', { class: 'rp-note is-missing', text: 'No evidence recorded.' });
   return el('article', { class: 'rp-dim' }, [
-    el('h4', { text: d.name }),
+    // The rating sits in the row beside the card on screen; paper has no rows, so it prints here.
+    el('header', { class: 'rp-dim-head' }, [el('h4', { text: d.name }), el('span', { class: 'rp-rating rp-dim-rating', dataset: { tone: d.rating ? ratingTone(d.rating) : 'neutral' }, text: d.rating || 'Not rated' })]),
     d.summary ? el('p', { class: 'rp-dim-summary', text: d.summary }) : null,
     evidence,
     onAsk ? el('button', { type: 'button', class: 'btn btn--secondary rp-dim-ask', text: 'Ask about this', 'aria-label': `Ask about ${d.name.toLowerCase()}`, onclick: () => onAsk(dimensionQuestion(d)) }) : null,
@@ -109,14 +117,18 @@ function boxScore(dimensions, jump, onAsk) {
       replace(detail, dimensionCard(d, jump, onAsk));
     },
   }, [el('span', { text: d.name }), el('strong', { class: 'rp-rating', dataset: { tone: d.rating ? ratingTone(d.rating) : 'neutral' }, text: d.rating || 'Not rated' })]));
-  return section('Box score', el('div', { class: 'rp-dims' }, [el('div', { class: 'rp-dim-rows', 'aria-label': 'Dimensions' }, rows), detail]));
+  // Paper has no selection: a printed report carries every dimension, where the screen shows the chosen one.
+  const printed = el('div', { class: 'rp-dim-print' }, dimensions.map(d => dimensionCard(d, jump, null)));
+  return section('Box score', el('div', { class: 'rp-dims' }, [el('div', { class: 'rp-dim-rows', 'aria-label': 'Dimensions' }, rows), detail, printed]));
 }
 
 function practiceSection(j, jump) {
   const items = (j.practice || []).slice(0, 3);
   const legacy = !items.some(p => p.fix) && j.improvements?.length;
   if (!items.length && !legacy) return null;
-  return section('Fix these three', el('div', {}, [
+  // The heading counts what is listed: one or two fixes are not "three".
+  const heading = items.length === 1 ? 'Fix this first' : items.length === 2 ? 'Fix these two' : items.length ? 'Fix these three' : 'What to improve';
+  return section(heading, el('div', {}, [
     el('ol', { class: 'rp-practice' }, items.map((p, i) => el('li', {}, [
       el('div', { class: 'rp-practice-top' }, [el('span', { class: 'rp-practice-n tnum', text: String(i + 1) }), timeLink(p.at, jump)]),
       el('h4', { text: p.fix || p.title }),
@@ -131,13 +143,14 @@ function codeSection(facts, code, discipline) {
   const lld = discipline === 'lld';
   if (!code && !facts.finalCode) return null;
   const same = !lld && code?.complexity && code?.optimal && code.complexity.replace(/\s/g, '').toLowerCase() === code.optimal.replace(/\s/g, '').toLowerCase();
+  const lines = facts.finalCode ? facts.finalCode.replace(/\n+$/, '').split('\n').length : 0;
   const final = facts.finalCode ? el('details', { class: 'rp-code', open: true }, [
-    el('summary', { text: 'Your final code' }),
+    el('summary', {}, [disclosureIcon(), el('span', { text: `Final code · ${lines} ${lines === 1 ? 'line' : 'lines'}` })]),
     el('pre', { class: 'mono' }, el('code', {}, highlightPython(facts.finalCode))),
   ]) : null;
   const complexity = code?.complexity || code?.optimal ? el('div', { class: 'rp-complexity' }, [
-    el('span', {}, [el('span', { class: 'rp-stat-label', text: 'Yours · ' }), el('strong', { class: 'mono', text: code.complexity || 'Not assessed' })]),
-    !lld ? el('span', {}, [el('span', { class: 'rp-stat-label', text: 'Best known · ' }), el('strong', { class: 'mono', text: code.optimal || 'Not assessed' })]) : null,
+    el('span', {}, [el('span', { class: 'rp-stat-label', text: 'Yours' }), el('strong', { class: 'mono', text: code.complexity || 'Not assessed' })]),
+    !lld ? el('span', {}, [el('span', { class: 'rp-stat-label', text: 'Best known' }), el('strong', { class: 'mono', text: code.optimal || 'Not assessed' })]) : null,
     same ? el('span', { class: 'ui-badge ui-badge--success', text: 'Optimal' }) : null,
   ]) : null;
   return el('section', { class: 'rp-section rp-solution' }, [el('header', { class: 'rp-code-head' }, [el('h3', { class: 'rp-h', text: 'Your code' }), complexity]), el('div', {}, [
@@ -163,7 +176,7 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
     : el('p', { class: 'rp-note is-missing', text: 'No debrief text was recorded.' }));
   const transcriptHost = el('div', { class: 'rp-transcript-body' });
   const transcriptBox = el('details', { class: 'rp-transcript' }, [
-    el('summary', { text: `Conversation · ${facts.candidateTurns} ${facts.candidateTurns === 1 ? 'answer' : 'answers'}` }), transcriptHost]);
+    el('summary', {}, [disclosureIcon(), el('span', { text: `Conversation · ${facts.candidateTurns} ${facts.candidateTurns === 1 ? 'answer' : 'answers'}` })]), transcriptHost]);
   if (transcript) transcriptHost.append(transcript);
   const jump = ms => {
     transcriptBox.open = true;
@@ -179,17 +192,17 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
   const mode = facts.mode === 'voice' ? 'Voice' : facts.mode === 'typed' ? 'Typed' : 'Input mode not recorded';
   const stats = el('div', { class: 'rp-stats' }, [
     stat('Time', formatClock(facts.durationMs), `of ${formatClock(facts.plannedMs)}`),
-    record.discipline === 'design' ? stat('Board', facts.finalBoard ? 'Recorded' : 'Empty', 'Semantic graph') : stat('Hints', facts.hints.length ? `${facts.hints.length} ${facts.hints.length === 1 ? (facts.hints[0].level === 'nudge' ? 'nudge' : 'hint') : 'hints'}` : 'None taken'),
+    record.discipline === 'design' ? stat('Board', facts.finalBoard ? 'Recorded' : 'Empty', 'Semantic graph') : stat('Hints', facts.hints.length ? `${facts.hints.length} ${facts.hints.length === 1 ? (facts.hints[0].level === 'nudge' ? 'nudge' : 'hint') : 'hints'}` : 'None'),
     record.discipline === 'design' ? null : stat('Runs', String(facts.runs.length), facts.runs.length ? (facts.runs.at(-1).passed ? (record.discipline === 'lld' ? 'Last exited normally' : 'Last passed') : `${runsFailed} failed`) : 'No runs'),
     record.discipline === 'lld' || record.discipline === 'design' ? null : stat('Submission', verdict ? (verdict.accepted ? 'Accepted' : verdict.label) : 'Not submitted', verdict ? `at ${formatClock(verdict.at)}` : ''),
   ]);
   const hero = el('header', { class: 'rp-hero', dataset: { tone: j.signal ? ratingTone(j.signal) : 'neutral' } }, [
     el('div', { class: 'rp-masthead' }, [
-      el('span', { class: 'rp-eyebrow', text: `Mock interview · ${title}` }),
+      el('span', { class: 'rp-eyebrow' }, ['Mock interview · ', el('strong', { text: title })]),
       el('div', { class: 'rp-meta' }, [el('span', { text: `${relativeInterviewDate(record.startedAt)} · ${mode}` }), difficulty ? el('span', { class: 'rp-graded', text: `Graded at ${difficulty}` }) : null]),
     ]),
     el('div', { class: 'rp-verdict' }, [el('div', { class: 'rp-verdict-copy' }, [
-      el('h2', { class: 'rp-signal', text: j.signal || 'No signal recorded' }),
+      el('h2', { class: 'rp-signal' + (j.signal ? '' : ' is-missing'), text: j.signal || 'No signal recorded' }),
       signalScale(j.signal),
       j.headline ? el('p', { class: 'rp-headline', text: j.headline }) : null,
     ]), stats]),
@@ -205,7 +218,7 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
     j.dimensions.length ? boxScore(j.dimensions, jump, onAsk) : null,
     ...[['Hard technical errors', j.technicalErrors], ['Missing considerations', j.missingConsiderations], ['Self-caught vs interviewer-surfaced', j.discoveries]].filter(([, items]) => items?.length).map(([title, items]) => section(title, el('ul', { class: 'rp-list' }, items.map(text => el('li', { text }))))),
     section('Play by play', el('div', {}, [
-      facts.phases.length || j.moments.length ? timeline(facts, attachMomentQuotes(j.moments, j.dimensions), jump, record.discipline) : el('p', { class: 'rp-note', text: 'Phase durations were not recorded for this interview.' }),
+      facts.phases.some(p => p.ms > 0) || j.moments.length ? timeline(facts, attachMomentQuotes(j.moments, j.dimensions), jump, record.discipline) : el('p', { class: 'rp-note is-missing', text: NO_PHASES }),
       transcriptBox,
     ])),
     record.discipline === 'design' ? null : codeSection(facts, j.code, record.discipline),
@@ -279,38 +292,42 @@ function createFollowups({ id, judgement, load, send, learningSlug = null, disci
     starters.hidden = Boolean(thread.querySelector('.rp-ask-pair'));
   }
   function pair(question) {
-    const body = conversationText('', { className: 'cmsg-body' });
+    const reply = createWorkspaceReply({ speaker: 'Reviewer' });
+    const body = reply.body;
     const node = el('div', { class: 'rp-ask-pair ui-message-group' }, [
-      conversationMessage({ speaker: 'You', user: true, text: question, className: 'cmsg you' }),
-      conversationMessage({ speaker: 'Interviewer', body, className: 'cmsg reply' }),
+      questionNode({ text: question }),
+      reply.node,
     ]);
     thread.insertBefore(node, starters);
     return body;
   }
   function showAnswer(body, item) {
-    for (const action of item.actions || []) showWorkspaceAction(thread, action, { replay: true });
-    if (item.pending) { replace(body, thinkingRow()); return; }
+    const reply = workspaceReply(body);
+    if (item.activity || item.actions) reply.restore(item.activity, item.actions, { pending: item.pending, at: item.at });
+    if (item.pending) { reply.start(); return; }
     if (item.answer && !item.failed) {
-      replace(body, renderMarkdown(item.answer));
+      setConversationText(body, item.answer);
+      reply.finish();
       if (learningSlug) {
         const save = el('button', { class: 'btn btn--quiet', text: 'Save to learning notes', onclick: async () => {
           save.disabled = true;
           try { await saveLearningNote(learningSlug, `From interview ${id} — model explanation\n\n${item.question}\n\n${item.answer}`); save.textContent = 'Saved to notes'; }
           catch (error) { save.textContent = error.message; save.disabled = false; }
-        } }); messageAction(save, 'report', 'Save to notes'); body.closest('.ui-message').querySelector('.ui-message-actions').append(save);
+        } }); reply.finish({ actions: [save] });
       }
       return;
     }
-    replace(body, el('div', { class: 'state ui-inset ui-cluster' }, [
-      el('p', { class: 'ui-cluster-content', text: item.error || (item.answer === null && !item.failed ? 'No answer was saved for this question.' : 'The answer did not finish.') }),
-      el('button', { class: 'btn btn--secondary', type: 'button', text: 'Ask again', onclick: () => run(item.question, item.requestId, body) }),
-    ]));
+    setConversationText(body, item.answer || '');
+    reply.setNotice({ tone: 'err', head: item.error || (item.answer === null && !item.failed ? 'No answer was saved for this question.' : 'The answer did not finish.'),
+      actions: [{ label: 'Ask again', onClick: () => run(item.question, item.requestId, body) }] });
+    reply.finish();
   }
+
   async function run(question, requestId, body, typed = false) {
     if (busy || gone) return;
     let accepted = false;
     busy = true; status.hidden = true; paint();
-    replace(body, thinkingRow());
+    workspaceReply(body).start();
     let text = '';
     try {
       const result = await send({ question, requestId }, (name, payload) => {
@@ -319,16 +336,18 @@ function createFollowups({ id, judgement, load, send, learningSlug = null, disci
           // Saved by the server now, so the typed draft can go.
           if (typed && readDraft(draftKey)?.text.trim() === question) clearDraft(draftKey);
         }
-        if (name === 'action' && !gone) showWorkspaceAction(thread, payload);
+        if (name === 'action' && !gone) showWorkspaceAction(workspaceReply(body), payload);
+        if (name === 'tool' && !gone) workspaceReply(body).tool(payload);
         if (name !== 'token' || gone) return;
+        workspaceReply(body).writing();
         const follow = atBottom();
         body.dataset.streaming = 'true';
         text += payload.text || '';
-        replace(body, renderMarkdown(text));
+        setConversationText(body, text);
         if (follow) thread.scrollTop = thread.scrollHeight;
       });
       if (result?.duplicate) text = result.followup.answer;
-      if (!gone) showAnswer(body, { question, requestId, answer: text });
+      if (!gone) showAnswer(body, result?.duplicate ? result.followup : { question, requestId, answer: text });
     } catch (failure) {
       // Never received, so never saved: put a typed question back where it was written.
       if (typed && !accepted && !gone && !input.value.trim()) { input.value = question; saveDraft(draftKey, question); autosize(); }
@@ -468,7 +487,7 @@ export function openReport({ title, record, report, transcript, followups = null
   // Grades the same record again under the current rules. Confirmed with a second click, never a browser dialog.
   let confirming = false;
   const regrade = onRegrade && report.judgement && record.id ? el('button', {
-    type: 'button', class: 'btn btn--quiet', text: 'Re-grade', title: 'Grade this interview again with the current report rules. The original report is kept in the record.',
+    type: 'button', class: 'btn btn--quiet', text: 'Re-grade',
     onclick: async event => {
       const button = event.currentTarget;
       if (!confirming) {

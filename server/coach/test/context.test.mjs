@@ -149,6 +149,8 @@ test('the prompt states what the coach may and may not write', async () => {
 
   assert.ok(prompt.includes('problems/two-sum/NOTES.md'));
   assert.ok(prompt.includes('no background model turn follows your answer'));
+  // A note is never the answer: twice on 2026-11-12 the coach filed its explanation in a note and replied only that it had.
+  assert.ok(prompt.includes('Answer the learner in your reply before saving anything'));
   assert.ok(prompt.includes('Do not write or edit any file'));
   const toolPrompt = buildPrompt({ context, message: 'make notes', tools: true }).prompt;
   assert.ok(toolPrompt.includes('start_notes_session / notes_session_status'));

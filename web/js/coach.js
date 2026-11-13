@@ -1,6 +1,7 @@
+import { changeCards } from './ui/turn-changes.js';
 import { createPopover } from './ui/popover.js';
-import { paintReceipt, receiptOutput, receiptFailed, toolReceipt } from './ui/receipt.js';
-import { conversationMessage, bindConversation, conversationSeparator, messageAction, thinkingRow, conversationText } from './ui/conversation.js';
+import { createReply, questionNode, threadStrip, bindPinnedQuestion, activitySteps, isNoteOnlyReply } from './ui/turn.js';
+import { bindConversation, conversationSeparator } from './ui/conversation.js';
 import { paneHeader } from './ui/headers.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { claimActionKey, hasOpenOverlay, isTextEntry } from './keyboard.js';
@@ -23,17 +24,17 @@ import { icon } from './ui/icon.js';
 // ```viz and ```image blocks go through illustrator.js, which validates or sanitises
 // before drawing. No innerHTML is assigned anywhere in this file.
 
-import { el, clear, replace } from './dom.js';
-import { renderMarkdown, renderUserText, looksLikeCode } from './markdown.js';
+import { el, replace } from './dom.js';
+import { renderMarkdown, looksLikeCode } from './markdown.js';
 import { splitDiagramBlocks, renderDiagram } from './illustrator.js';
-import { streamCoachMessage, loadHistory, api } from './api.js';
+import { loadHistory, api } from './api.js';
 import { createVoicePanel } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { flushRecorder } from './recorder.js';
 import { flushEditorSave } from './editor.js';
 import {
-  studioToolName, actionStatus, receiptGlyph, receiptSummary, canUndo, undoAction,
+  studioToolName, undoAction,
 } from './coach-actions.js';
 import { readAttempt, resumeDecision } from './attempt-state.js';
 import { renderHistory, threadDate } from './history.js';
@@ -109,29 +110,6 @@ export function shapeCoachOutcome(result, hadText = false) {
   return { tone: preset.tone, head: preset.head, body: message + tail, retry: preset.retry };
 }
 
-/** What a Studio tool line says when no receipt covers it. Its arguments are never shown. */
-const STUDIO_TOOL_LINES = {
-  get_recall_evidence: 'Read practice evidence', save_recall_note: 'Saving recall notes',
-  get_submissions: 'Read your submissions',
-  get_state: 'Looked at your cases and runs',
-  add_case: 'Added a case', update_case: 'Changed a case', remove_case: 'Removed a case',
-  run_code: 'Ran your code', mark_lines: 'Marked lines', clear_marks: 'Cleared its marks',
-  edit_code: 'Edited your code', open_panel: 'Opened a reference panel', save_note: 'Updated tutor memory',
-  read_memory: 'Read tutor memory', update_memory: 'Updated tutor memory',
-};
-
-/** "Read" + "problems/two-sum/NOTES.md" → one quiet line, never a wall of JSON. */
-export function toolLine(name, summary) {
-  const studio = studioToolName(name);
-  if (studio) return STUDIO_TOOL_LINES[studio];
-  const verb = {
-    Read: 'Read', Write: 'Wrote', Edit: 'Edited', Glob: 'Looked for',
-    Grep: 'Searched', LS: 'Listed', TodoWrite: 'Planned',
-  }[name] || name;
-  const detail = String(summary || '').trim();
-  return detail ? `${verb} ${detail}` : verb;
-}
-
 /* ============================== rendering ============================== */
 
 /**
@@ -169,109 +147,6 @@ export function renderCoachText(target, text, cache = null, { slug = null, live 
   return target;
 }
 
-/**
- * How many tool lines each receipt hides, by bare tool name. A Studio tool call arrives
- * twice — as an ordinary tool line and as an action — and the receipt is the one worth
- * reading.
- */
-export function coveredTools(actions) {
-  const counts = new Map();
-  for (const a of actions || []) {
-    const name = studioToolName(a?.tool);
-    if (name) counts.set(name, (counts.get(name) || 0) + 1);
-  }
-  return counts;
-}
-
-/** Hide the tool lines in `toolsEl` that a receipt already says. */
-function coverToolLines(toolsEl, actions) {
-  const left = coveredTools(actions);
-  for (const line of toolsEl.querySelectorAll('.cmsg-tool[data-tool]')) {
-    const name = line.dataset.tool;
-    const n = left.get(name) || 0;
-    line.hidden = n > 0;
-    if (n > 0) left.set(name, n - 1);
-  }
-}
-
-/**
- * One thing the tutor did in Studio, as a line in its reply.
- *
- * `ui` is the panel's own state for it (an undo in flight, its error, or that it was
- * undone); `onUndo` only on a live reply — a replayed thread shows what happened, and
- * offers nothing to press.
- */
-function receiptRow(action, { ui = {}, onUndo = null, settled = false } = {}) {
-  let status = ui.undone ? 'undone' : actionStatus(action);
-  // The turn is over and nobody ever answered for this one: it was not done, and saying
-  // "working…" forever would claim otherwise.
-  if (settled && status === 'pending') {
-    status = 'failed';
-    action = { ...action, message: action.message || 'Studio did not apply this one (the problem was not open in this tab when it arrived).' };
-  }
-  const tool = studioToolName(action.tool) || '';
-  const summary = receiptSummary(action);
-  const undoable = !!onUndo && !ui.undone && canUndo(action);
-  const why = status === 'failed' ? String(action.message || '').trim() : '';
-  const row = paintReceipt(el('div'), { tool, status, output: receiptOutput(action), failed: receiptFailed(action), content: [
-    action.url && (/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\//.test(action.url) || tool === 'start_notes_session' && /^https:\/\/[a-z0-9.-]+\.ts\.net(?::\d+)?\//i.test(action.url))
-      ? el('a', { class: 'cr-text', text: summary, href: action.url, target: '_blank', rel: 'noopener noreferrer' })
-      : el('span', { class: 'cr-text', text: summary }),
-    status === 'pending' ? el('span', { class: 'cr-state', text: 'working…' }) : null,
-    status === 'failed' ? el('span', { class: 'cr-state', text: 'not done' }) : null,
-    status === 'undone' ? el('span', { class: 'cr-state', text: 'Undone' }) : null,
-    undoable
-      ? el('button', {
-        class: 'btn btn--quiet cr-undo', type: 'button', disabled: !!ui.busy,
-        title: tool === 'edit_code' ? 'Put your code back as it was before this edit' : 'Put your test cases back as they were',
-        text: ui.busy ? 'Undoing…' : 'Undo', onclick: onUndo,
-      })
-      : null,
-    why ? el('div', { class: 'cr-why', text: why }) : null,
-    ui.error ? el('div', { class: 'cr-why', text: ui.error }) : null,
-  ] });
-  if (tool === 'start_notes_session' && action.writerSessionId) {
-    const refresh = async () => {
-      if (!row.isConnected) return;
-      try {
-        const response = await fetch(`/api/coach/writer/${encodeURIComponent(action.writerSessionId)}`);
-        if (response.ok) {
-          const result = await response.json();
-          row.querySelector('.cr-text').textContent = result.stage ? `Writer · ${result.stage}` : 'Open Writer session';
-          if (['done','error','stopped','interrupted','failed'].includes(result.status)) return;
-        }
-      } catch { /* Retain the link; no new work is started by status reads. */ }
-      setTimeout(refresh, 15000);
-    };
-    setTimeout(refresh, 1000);
-  }
-  if (tool === 'save_recall_note' && action.revisionId && !action.url) {
-    const refresh = async () => {
-      if (!row.isConnected) return;
-      try {
-        const response = await fetch(`/api/coach/recall/${encodeURIComponent(action.revisionId)}`);
-        const result = await response.json();
-        if (result.status === 'saved' && /^http:\/\/127\.0\.0\.1(?::\d+)?\//.test(result.url)) {
-          row.querySelector('.cr-text').replaceWith(el('a', { class: 'cr-text', text: 'Saved to Studycraft',
-            href: result.url, target: '_blank', rel: 'noopener noreferrer' }));
-          return;
-        }
-      } catch { /* Keep the durable pending receipt while Studio is unreachable. */ }
-      setTimeout(refresh, 30000);
-    };
-    setTimeout(refresh, 1000);
-  }
-  return row;
-}
-
-function noticeBlock({ tone = '', head, body, actions = [] }) {
-  return el('div', { class: 'ui-conversation-error ' + tone, role: 'status' }, [
-    el('span', { text: body || head }),
-    actions.length
-      ? el('div', { class: 'acts' }, actions.map(a => el('button', { class: 'btn btn--quiet act', type: 'button', text: a.label === 'Ask again' ? 'Retry' : a.label, onclick: a.onClick })))
-      : null,
-  ]);
-}
 
 const STARTERS = [
   { icon: 'play', label: 'Where do I start?', text: 'I have read the problem and I am not sure where to start. Ask me one question that would unblock me — do not give me the approach.' },
@@ -388,6 +263,7 @@ export function createCoachPanel(entry) {
     trailing: [stopButton, sendButton], notices: api.demo ? [] : [voice.status] });
   composerSend(stopButton, 'Stop');
   stopButton.replaceChildren(icon('stop', 15));
+  const pinnedQuestion = bindPinnedQuestion(log);
   const conversationView = bindConversation(log, { composer, onJump: () => { following = true; mayResume = true; } });
   sendButton.disabled = !input.value.trim();
   const composerOptions = composer.querySelector('.ui-composer-options');
@@ -498,6 +374,7 @@ export function createCoachPanel(entry) {
     interviews.show(selectedTab === 'interviews');
     tabInterviews.classList.toggle('has-live', Boolean(activeInterview(slug) && !activeInterview(slug).pausedAt));
     log.hidden = composer.hidden = !onChat;
+    stripHost.hidden = !onChat || !threadInfo;
     tabChat.setAttribute('aria-pressed', String(onChat));
     tabInterviews.setAttribute('aria-pressed', String(selectedTab === 'interviews'));
     tabSubmissions.setAttribute('aria-pressed', String(onSubmissions));
@@ -505,6 +382,8 @@ export function createCoachPanel(entry) {
     pastChats.hidden = true; historyPopover?.close(false);
     historyButton.setAttribute('aria-pressed', 'false');
     setChatToolsVisible(historyButton, newChatButton, pastChats, onChat);
+    // The empty screen already lists the recent chats and is itself the new chat.
+    if (onChat && log.querySelector(':scope > .coach-empty')) historyButton.hidden = newChatButton.hidden = true;
     if (onSubmissions) {
       if (alreadyActive) submissions.showList(); else submissions.refresh();
     }
@@ -541,12 +420,13 @@ export function createCoachPanel(entry) {
     sendButton.disabled = !input.value.trim() || pending || streaming || voice.isBusy();
   } });
 
+  const stripHost = el('div', { class: 'ui-thread-host', hidden: true });
   const root = el('section', { class: 'card coach', 'aria-label': 'Coach' }, [
     Object.assign(paneHeader({ tabs: el('span', { class: 'coach-tabs ui-tabs', role: 'tablist', 'aria-label': 'Practice sidebar' }, [tabChat, tabInterviews, tabSubmissions]), tools: [historyButton, newChatButton, closeButton] }), { className: 'ui-pane-header coach-bar' }),
-    log,
+    stripHost, log,
     submissionsView,
     interviews.root,
-    conversationView.jump, composer,
+    conversationView.anchor, composer,
   ]);
   if (!api.demo) mountComposerDictation(composer, voice);
 
@@ -656,7 +536,53 @@ export function createCoachPanel(entry) {
     if (force || following) log.scrollTop = log.scrollHeight;
   }
 
+  const replies = new Set();
+  let threadInfo = null;
+  function updateThreadStrip(info = threadInfo) {
+    threadInfo = info;
+    stripHost.hidden = !info || selectedTab !== 'chat';
+    replace(stripHost, info ? threadStrip(info) : []);
+  }
+  const progressWatches = new WeakMap();
+  function watchChangeProgress(actions, card, repaint) {
+    let watched = progressWatches.get(card);
+    if (!watched) { watched = new Set(); progressWatches.set(card, watched); }
+    for (const action of actions) {
+      const writer = action.writerSessionId;
+      const recall = studioToolName(action.tool) === 'save_recall_note' && action.revisionId && !action.url;
+      if ((!writer && !recall) || watched.has(action.id)) continue;
+      watched.add(action.id);
+      const refresh = async () => {
+        if (disposed || !card.isConnected) return;
+        try {
+          const response = await fetch(writer ? `/api/coach/writer/${encodeURIComponent(writer)}` : `/api/coach/recall/${encodeURIComponent(action.revisionId)}`);
+          if (response.ok) {
+            const result = await response.json();
+            if (writer && result.stage) action.summary = `Writer · ${result.stage}`;
+            if (recall && result.status === 'saved' && /^http:\/\/127\.0\.0\.1(?::\d+)?\//.test(result.url)) {
+              action.summary = 'Saved to Studycraft'; action.url = result.url; repaint(); return;
+            }
+            repaint();
+            if (writer && ['done', 'error', 'stopped', 'interrupted', 'failed'].includes(result.status)) return;
+          }
+        } catch { /* Preserve the link if a read-only progress check fails. */ }
+        setTimeout(refresh, writer ? 15000 : 30000);
+      };
+      setTimeout(refresh, 1000);
+    }
+  }
+  function retryQuestion(ask) { input.value = ask || ''; saveDraft(slug, input.value); autosize(); input.focus(); }
+  function replyNotice({ text = '', activity = [], actions = [], kind, stopped, result, ask }) {
+    if ((!result || result.ok) && stopped || result?.kind === 'cancelled' || result?.stoppedReason === 'stopped') return { head: 'Stopped before it finished' };
+    const outcome = result && !result.ok ? shapeCoachOutcome(result, !!text.trim()) : null;
+    const noteOnly = isNoteOnlyReply({ text, activity, actions, kind });
+    const notice = outcome || (noteOnly ? { tone: 'warn', head: 'The coach saved a note and wrote only this.', retry: true }
+      : !text.trim() ? shapeCoachOutcome({ ok: true }, false) : null);
+    return notice ? { ...notice, actions: notice.retry ? [{ label: 'Ask again', onClick: () => retryQuestion(ask) }] : [] } : null;
+  }
+
   function showEmptyState() {
+    updateThreadStrip(null);
     historyButton.hidden = true;
     newChatButton.hidden = true;
     const recent = el('div', { class: 'recent-chats' });
@@ -682,7 +608,7 @@ export function createCoachPanel(entry) {
    * in his mouth in his own conversation.
    */
   function noteNode(text) {
-    return el('div', { class: 'cmsg-note mono dim', text });
+    return el('div', { class: 'coach-session-note mono dim', text });
   }
 
   function addNote(text) {
@@ -698,20 +624,24 @@ export function createCoachPanel(entry) {
   // therefore forced to exactly the height of the log and clipped there, with nothing left
   // for the log to scroll: the answer looked cut off mid-sentence and the wheel did
   // nothing. A message and the panel it sits in must not share a class name.
-  function messageNode(role, text = '') {
-    const bodyEl = conversationText(role === 'you' ? text : '', { user: role === 'you', className: 'cmsg-body' });
-    const message = conversationMessage({ speaker: role === 'you' ? 'You' : 'Coach', user: role === 'you', body: bodyEl, className: 'cmsg ' + role });
-    return { message, bodyEl };
+  function messageNode(role, text = '', at = null, meta = '') {
+    if (role === 'you') {
+      const message = questionNode({ text, at }); message.classList.add('cmsg', 'you');
+      return { message, bodyEl: message.querySelector('.ui-conversation-text') };
+    }
+    const reply = createReply({ meta, startedAt: at }); replies.add(reply);
+    reply.node.classList.add('cmsg', 'reply');
+    return { message: reply.node, bodyEl: reply.body, reply };
   }
 
-  function addMessage(role, text = '') {
+  function addMessage(role, text = '', at = null, meta = '') {
     historyButton.hidden = false;
     newChatButton.hidden = false;
-    const { message, bodyEl } = messageNode(role, text);
-    if (log.querySelector('.coach-empty')) replace(log, message);
-    else log.append(message);
+    const view = messageNode(role, text, at, meta);
+    if (log.querySelector('.coach-empty')) replace(log, view.message);
+    else log.append(view.message);
     scrollDown(true);
-    return { message, bodyEl };
+    return view;
   }
 
   /**
@@ -728,6 +658,7 @@ export function createCoachPanel(entry) {
   function replayThread(thread) {
     historyButton.hidden = false;
     newChatButton.hidden = false;
+    updateThreadStrip({ title: thread.turns?.find(t => t.ask)?.ask, startedAt: thread.startedAt || thread.turns?.[0]?.askedAt || thread.turns?.[0]?.at, turns: thread.turns?.length || 0 });
     replace(log, threadNodes(thread));
     following = true;
     scrollDown(true);
@@ -742,36 +673,24 @@ export function createCoachPanel(entry) {
       const at = turn.at || thread.startedAt;
       const nextDay = at && new Date(at).toDateString();
       if (nextDay && nextDay !== day && nextDay !== 'Invalid Date') { nodes.push(conversationSeparator(threadDate(at))); day = nextDay; }
-      if (turn.ask && turn.ask.trim()) push(turn, messageNode('you', turn.ask).message);
+      if (turn.ask && turn.ask.trim()) push(turn, messageNode('you', turn.ask, turn.askedAt || at).message);
       else if (turn.kind === 'attempt-review') push(turn, noteNode('Attempt review'));
-      const said = (turn.answer || '').trim() !== '';
-      const worked = (Array.isArray(turn.tools) && turn.tools.length > 0)
-        || (Array.isArray(turn.actions) && turn.actions.length > 0);
-      if (!said && !worked) {
-        // Killed before it got a word out. An empty card under a "Coach" heading reads
-        // as an answer you failed to scroll to.
-        push(turn, noteNode(turn.stopped ? 'Stopped before the coach answered' : 'The coach said nothing'));
-        continue;
-      }
-      const { message: card, bodyEl } = messageNode('reply');
+      const { message: card, bodyEl, reply } = messageNode('reply', '', turn.askedAt || at, turn.model || turn.provider || '');
       push(turn, card);
+      const steps = activitySteps(turn.activity || (turn.tools || []).map(() => ({})), turn.at);
       const acted = Array.isArray(turn.actions) ? turn.actions.filter(a => a && a.tool) : [];
-      if (worked) {
-        const tools = el('div', { class: 'cmsg-tools' });
-        for (const line of turn.tools || []) {
-          // Stored as "<name> <summary>". A Studio tool's line is said plainly, never its arguments.
-          const name = studioToolName(String(line).split(' ')[0]);
-          tools.append(toolReceipt(name, name ? toolLine(name) : line));
-        }
-        coverToolLines(tools, acted);
-        card.insertBefore(tools, bodyEl);
-      }
-      if (acted.length) {
-        card.insertBefore(el('div', { class: 'cmsg-receipts' }, acted.map(a => receiptRow(a, { settled: true }))), bodyEl);
-      }
+      const ui = new Map();
+      const paintChanges = () => reply.setChanges(changeCards(acted, { ui, settled: true, onUndo: async action => {
+        ui.set(String(action.id), { busy: true }); paintChanges();
+        try { const result = await undoAction(action); ui.set(String(action.id), result.ok ? { undone: true } : { error: result.message }); }
+        catch { ui.set(String(action.id), { error: 'Could not undo this change. Try again.' }); }
+        paintChanges();
+      } }));
+      reply.setActivity(steps); paintChanges();
+      watchChangeProgress(acted, card, paintChanges);
       renderCoachText(bodyEl, turn.answer || '', new Map(), { slug, live: false });
-      // An answer that was cut short is shown as one rather than passed off as whole.
-      if (turn.stopped) card.append(el('div', { class: 'cmsg-note mono dim', text: 'Stopped before it finished' }));
+      reply.setNotice(replyNotice({ text: turn.answer || '', activity: steps, actions: acted, kind: turn.kind, stopped: turn.stopped, result: turn.outcome, ask: turn.ask }));
+      reply.finish({ at, durationMs: turn.durationMs });
     }
     return nodes;
   }
@@ -794,8 +713,9 @@ export function createCoachPanel(entry) {
       ? data.threads.find(past => past.sessionId === data.currentSessionId) : null;
     // A turn already on screen as a run (in flight, or adopted after a reload) is not drawn twice.
     const shown = shownRun?.serverId;
+    if (current) updateThreadStrip({ title: current.turns?.find(t => t.ask)?.ask, startedAt: current.startedAt, turns: current.turns.length + (shownRun && !current.turns.some(t => t.requestId === shown) ? 1 : 0) });
     const nodes = current ? threadNodes({ ...current, turns: current.turns.filter(turn => !shown || turn.requestId !== shown) }) : [];
-    if (!nodes.length) { if (!log.firstChild) showEmptyState(); return; }
+    if (!nodes.length) { if (!log.querySelector('.cmsg,.coach-session-note')) showEmptyState(); return; }
     historyButton.hidden = false;
     newChatButton.hidden = false;
     if (!log.firstChild || log.querySelector('.coach-empty')) replace(log, nodes);
@@ -841,18 +761,15 @@ export function createCoachPanel(entry) {
     }
     if (printAsk) {
       if (run.review) addNote(run.lead || 'Attempt ended. Reviewing it end to end.');
-      else if (run.ask) addMessage('you', run.ask);
+      else if (run.ask) addMessage('you', run.ask, run.startedAt);
     }
 
-    const { message: card, bodyEl } = addMessage('reply');
-    const toolsEl = el('div', { class: 'cmsg-tools' });
-    card.insertBefore(toolsEl, bodyEl);
-    const receiptsEl = el('div', { class: 'cmsg-receipts' });
-    card.insertBefore(receiptsEl, bodyEl);
-    const receiptUi = new Map();     // action id → { busy, error, undone }
-    const thinking = thinkingRow(); thinking.classList.add('coach-thinking');
-
-    let painted = 0;                 // how many tool lines are already on screen
+    updateThreadStrip(threadInfo ? { ...threadInfo, turns: log.querySelectorAll('.cmsg.reply').length + 1 }
+      : { title: run.ask || 'Attempt review', startedAt: run.startedAt, turns: 1 });
+    const { message: card, bodyEl, reply } = addMessage('reply', '', run.startedAt, run.model || run.provider || '');
+    if (run.serverId) card.dataset.requestId = String(run.serverId);
+    const receiptUi = new Map();
+    const steps = () => activitySteps(run.tools, run.endedAt);
     const diagrams = new Map();      // finished drawings, kept across frames
     let painting = false;
     let paintedAt = 0;
@@ -861,34 +778,23 @@ export function createCoachPanel(entry) {
     // box reflows constantly. The stream is prose, not an animation.
     const PAINT_MS = 220;
 
-    const paintTools = () => {
-      for (; painted < run.tools.length; painted++) {
-        const t = run.tools[painted];
-        toolsEl.append(toolReceipt(studioToolName(t.name), toolLine(t.name, t.summary)));
-      }
-      coverToolLines(toolsEl, [...(run.actions?.values() ?? [])]);
-    };
+    let activityLive = !run.done && !run.text;
+    const paintTools = (live = !run.done && !run.text) => { activityLive = live; reply.setActivity(steps(), { live, endedAt: run.endedAt }); };
 
     const undo = async (action) => {
       const id = String(action.id);
       if (receiptUi.get(id)?.busy) return;
       receiptUi.set(id, { busy: true });
       paintReceipts();
-      const result = await undoAction(action);
-      receiptUi.set(id, result.ok ? { undone: true } : { error: result.message });
+      try { const result = await undoAction(action); receiptUi.set(id, result.ok ? { undone: true } : { error: result.message }); }
+      catch { receiptUi.set(id, { error: 'Could not undo this change. Try again.' }); }
       paintReceipts();
     };
 
-    // Rebuilt whole on every change: a handful of lines, and replace() swaps them in one go.
-    const paintReceipts = () => {
-      const list = [...(run.actions?.values() ?? [])];
-      replace(receiptsEl, list.map(a => receiptRow(a, {
-        ui: receiptUi.get(String(a.id)) || {},
-        onUndo: () => undo(a),
-        settled: run.done,
-      })));
-      coverToolLines(toolsEl, list);
-    };
+    const paintReceipts = () => reply.setChanges(changeCards([...(run.actions?.values() ?? [])], {
+      ui: receiptUi, onUndo: undo, settled: run.done,
+    }));
+    const watchHandoffs = () => watchChangeProgress([...(run.actions?.values() || [])], card, paintReceipts);
 
     const render = () => {
       // Reading three paragraphs back: hold that exact offset across the rebuild, or the
@@ -913,24 +819,11 @@ export function createCoachPanel(entry) {
     };
 
     const finish = () => {
-      thinking.remove();
-      paintTools();
-      paintReceipts();
+      paintTools(); paintReceipts();
       renderCoachText(bodyEl, run.text, diagrams, { slug, live: true });
-      bodyEl.dataset.streaming = String(!run.done && Boolean(run.text));
-      if (run.text.trim() === '') bodyEl.remove();
-
-      const outcome = shapeCoachOutcome(run.result, run.text.trim() !== '');
-      if (outcome) {
-        card.append(noticeBlock({
-          tone: outcome.tone,
-          head: outcome.head,
-          body: outcome.body,
-          actions: outcome.retry
-            ? [{ label: 'Ask again', onClick: () => { input.value = run.ask; saveDraft(slug, input.value); autosize(); input.focus(); } }]
-            : [],
-        }));
-      }
+      const outcome = replyNotice({ text: run.text, activity: steps(), actions: [...(run.actions?.values() || [])], kind: run.kind, result: run.result, ask: run.ask });
+      reply.setNotice(outcome);
+      reply.finish({ at: run.endedAt, durationMs: run.durationMs });
 
       bodyEl.dataset.streaming = 'false';
       setBusy(false, outcome && outcome.tone === 'err' ? 'Not available' : thread.live ? 'Attempt in progress' : 'Ready');
@@ -943,16 +836,17 @@ export function createCoachPanel(entry) {
     // Whatever has already arrived, before subscribing to the rest.
     paintTools();
     paintReceipts();
-    if (run.text) render(); else card.append(thinking);
+    watchHandoffs();
+    if (run.text) render();
 
     if (run.done) { finish(); return; }
 
     setBusy(true, 'Thinking');
     detachRun = watch(slug, (event) => {
       if (disposed) return;
-      if (event === 'token') { thinking.remove(); paint(); return; }
-      if (event === 'tool') { paintTools(); scrollDown(); return; }
-      if (event === 'action') { paintReceipts(); scrollDown(); return; }
+      if (event === 'token') { if (activityLive) paintTools(false); paint(); return; }
+      if (event === 'tool') { paintTools(!run.done); scrollDown(); return; }
+      if (event === 'action') { paintReceipts(); watchHandoffs(); scrollDown(); return; }
       if (event === 'done') finish();
     });
   }
@@ -1095,7 +989,7 @@ export function createCoachPanel(entry) {
       unwatchDraft();
       saveDraft(slug, committed());
       voice.dispose({ finish: true });
-      inputSize.dispose(); conversationView.dispose(); historyPopover.dispose(); modelPicker.dispose();
+      inputSize.dispose(); pinnedQuestion.dispose(); for (const reply of replies) reply.dispose(); conversationView.dispose(); historyPopover.dispose(); modelPicker.dispose();
       interviews.dispose();
     },
   };
@@ -1161,6 +1055,18 @@ function ensureRunsChip() {
   return runsChip;
 }
 
+// Said plainly in its tooltip, because a close mark next to something still being
+// written looks like a cancel and is not one.
+function hideRunButton(run) {
+  const button = el('button', {
+    class: 'btn btn--icon coach-run-x', type: 'button',
+    'aria-label': `Hide this note about ${run.title}`,
+    onclick: () => dismissRun(run.slug),
+  }, icon('close', 13));
+  tooltip(button, run.done ? 'Hide this. The answer stays on that problem.' : 'Hide this. The coach keeps writing.');
+  return button;
+}
+
 function paintRunsChip() {
   if (!runsChip) return;
   const raw = /^#\/p\/([^/?]+)/.exec(location.hash)?.[1];
@@ -1173,7 +1079,6 @@ function paintRunsChip() {
   replace(runsChip, others.map((run) => el('div', { class: 'coach-run mono' }, [
     el('button', {
       class: 'btn btn--quiet coach-run-go', type: 'button',
-      title: run.done ? 'The answer is waiting on that problem' : 'Still being written',
       onclick: () => {
         openOnMount = true;
         if (location.hash === `#/p/${run.slug}`) { setOpen(true); showPendingRun(); }
@@ -1184,16 +1089,7 @@ function paintRunsChip() {
       el('span', { class: 'coach-run-title', text: run.title }),
       el('span', { class: 'coach-run-state', text: run.done ? 'answer ready' : 'writing…' }),
     ]),
-    el('button', {
-      class: 'btn btn--icon coach-run-x', type: 'button',
-      'aria-label': `Hide this note about ${run.title}`,
-      // Said plainly, because a × next to something still being written looks like a
-      // cancel and is not one.
-      title: run.done
-        ? 'Hide this. The answer stays on that problem.'
-        : 'Hide this. The coach keeps writing.',
-      onclick: () => dismissRun(run.slug),
-    }),
+    hideRunButton(run),
   ])));
 }
 

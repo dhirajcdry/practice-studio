@@ -9,7 +9,6 @@ body .python-editor-viewport>.ws-fallback{padding:var(--python-editor-padding-to
 .python-document-bar>.python-editor-tools{margin-left:auto}
 .editor-cursor{flex:none;font:10px var(--mono);color:var(--ink-50);white-space:nowrap}body[class] .editor-tool{display:inline-flex;align-items:center;cursor:pointer}
 body[class] .editor-tool[aria-pressed="true"] svg{color:var(--accent)}
-body[class] .editor-tool.ws-reset:hover,body[class] .editor-tool.ws-reset.is-arming{color:var(--hard);background:rgba(var(--hard-rgb),.10)}
 
 /* Monaco owns its caret and widget focus; the canvas is not a control ring. */
 .python-editor-frame .monaco-editor:focus-visible,.python-editor-frame .monaco-editor .inputarea:focus-visible,.python-editor-viewport:focus-visible{outline:none}

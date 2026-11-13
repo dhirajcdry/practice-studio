@@ -8,7 +8,8 @@
 /* .spacer is deliberately not global in app.css — every bar opts its own in. */
 .dz-bar .spacer,.dz-actions .spacer{flex:1 1 auto}
 
-.dz-clock{font-size:13px;letter-spacing:.08em;color:var(--ink-50);font-variant-numeric:tabular-nums}
+/* The clock is the Add time button's label, exactly as in an LLD or coding mock. */
+.dz-clock{font-variant-numeric:tabular-nums}
 .dz-clock.over{color:var(--hard)}
 .dz-done:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
 /* The prompt is the interview's name when you are reading one back, so it gets the
@@ -30,8 +31,8 @@
 
 /* The cut is stated, never hidden. See server/design/narration.mjs. */
 .dz-cut{
-  font-size:9.5px;letter-spacing:.08em;text-transform:none;line-height:1.6;
-  color:var(--medium,var(--med));border-left:2px solid var(--med);padding:4px 0 4px 9px;margin-top:2px;
+  font:400 var(--text-xs)/var(--line-md) var(--ui);letter-spacing:0;
+  color:var(--ink-70);border-left:2px solid var(--med);padding:var(--space-1) 0 var(--space-1) var(--space-3);margin-top:var(--space-3);
 }
 
 .dz-input{
@@ -40,13 +41,14 @@
   background:var(--canvas);color:var(--ink);
 }
 .dz-input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
-.dz-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+/* Microphone and Send share one line at the right of the composer footer. */
+.dz-actions{display:flex;align-items:center;gap:var(--space-1)}
 /* The two switches in the compose row read as the same kind of control as everything
    else on this screen; unstyled they came out as wrapped serif text mid-row. */
 
 .dz-hands.off{opacity:.55}
 
-.dz-status{color:var(--ink-35);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}.dz-send:disabled{opacity:.45;cursor:default}
+.dz-send:disabled{opacity:.45;cursor:default}
 
 /* ---------------- the library of past interviews ---------------- */
 /* A list, not a grid of cards. These are a handful of long sittings, each identified by
@@ -61,8 +63,9 @@
 
 
 /* ---- how you answer: two modes, not one row of four controls ---- */
-/* Voice mode reuses the shared voice bar; this button belongs to typed dictation. */
-.dz-voice .vc-talk{display:none}
+/* Voice mode reuses the shared voice bar, which has its own microphone toggle; the
+   typed composer's dictation button would be a second one. */
+.dz-voice .dz-mic{display:none}
 
 .dz-voice{display:block}
 
@@ -73,7 +76,6 @@
 /* A working room: generous board, legible conversation, anchored answer controls. */
 .dz-view{min-height:0;gap:8px;font-family:var(--ui)}
 
-.dz-clock{font:13px var(--mono);padding:7px 10px;background:var(--surface-inset,var(--canvas));border-radius:var(--r-sm);color:var(--ink-70)}
 .dz-split{grid-template-columns:var(--workspace-columns,minmax(0,1fr) minmax(360px,420px));gap:16px}
 .dz-canvas,.dz-side{border-radius:var(--r-md);min-width:0}
 .dz-side{box-shadow:0 2px 8px rgba(var(--ink-rgb),.035)}
@@ -84,11 +86,16 @@
 .dz-log{min-height:100px;padding:18px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .dz-d{border-left:3px solid var(--accent);padding-left:14px}
 .dz-input::placeholder{color:var(--ink-50)}
-.dz-status{font:11px/1.5 var(--ui);letter-spacing:0;color:var(--ink-70)}
+/* One line for what went wrong (a failed save, audio still transcribing). Empty otherwise. */
+.dz-status{margin:var(--space-1) 0 0;padding-inline:var(--space-2);font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
+.dz-status:empty{display:none}
+.dz-voice-unavailable{margin:0;font-size:var(--text-xs)}
 
 .dz-vheard.empty::before{content:'Your words appear here as they are transcribed.';color:var(--ink-50)}
 
-.dz-mic{display:block;max-width:100%}
+.dz-mic{display:flex;align-items:center;min-width:0}
+/* A microphone notice sits above the composer on the composer's own inset. */
+.dz-side>.vc-status{flex:none;margin:0 var(--space-2);padding:var(--space-2) var(--space-3)}
 .dz-view button:focus-visible,.dzl button:focus-visible,.dzl select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .dz-view button:disabled{cursor:not-allowed}
 .dzl{max-width:none;padding:0;display:flex;flex-direction:column;gap:var(--space-6)}
@@ -108,3 +115,5 @@
 .dz-voice .vc-status{max-height:100px;overflow-y:auto}
 .dz-clock.paused{color:var(--ink-50)}.dz-pause:disabled{opacity:.45}
 .dz-input:disabled{opacity:.6;resize:none}
+/* An interviewer who may stay silent has not spoken yet: no speaker label until it does. */
+.dz-deciding .ui-turn-head{display:none}

@@ -16,15 +16,15 @@ import {
   splitDiagramBlocks, sanitizeSvg, isSafeSvgValue, parseMermaid, parseLink,
   layoutFlowchart, drawFlowchart, renderDiagram, findBackEdges,
 } from './illustrator.js';
-import { shapeCoachOutcome, toolLine, renderCoachText, setCoachState, setChatToolsVisible } from './coach.js';
+import { shapeCoachOutcome, renderCoachText, setCoachState, setChatToolsVisible } from './coach.js';
 import {
   shapeSubmitResult, renderSubmitResult, submitLine, shapeFailure,
   formatPercentile, submissionUrlOf, submissionsUrlOf,
 } from './submit.js';
 import { parseViz, drawViz, resolveFrame, buildTree, layoutFrames } from './viz.js';
 import { shapeTranscription, describeMicError, formatTake, phraseDecision, SILENCE_MS, MIN_PHRASE_MS, MAX_PHRASE_MS } from './voice.js';
-import { conversationMessage, bindConversation } from './ui/conversation.js';
-import { paintReceipt, receiptFailed } from './ui/receipt.js';
+import { bindConversation, setConversationText } from './ui/conversation.js';
+import { createReply, questionNode } from './ui/turn.js';
 import { composerSend } from './ui/composer.js';
 
 const out = document.getElementById('out');
@@ -39,29 +39,33 @@ const md = s => html(renderMarkdown(s)).replaceAll(' data-markdown-block=""', ''
 /* ---------------- shared conversation surfaces ---------------- */
 group('Shared conversation surfaces');
 const conversationHost = document.createElement('div'); conversationHost.style.width = '800px';
-const firstMessage = conversationMessage({ speaker: 'Coach', text: 'First reply' });
-const secondMessage = conversationMessage({ speaker: 'Coach', text: 'Follow-up reply' });
+const testReply = text => { const reply = createReply(); setConversationText(reply.body, text); reply.finish(); return reply; };
+const firstReply = testReply('First reply'), secondReply = testReply('Follow-up reply');
+const firstMessage = firstReply.node, secondMessage = secondReply.node;
 conversationHost.append(firstMessage, secondMessage); document.body.append(conversationHost);
 const conversationComposer = document.createElement('div');
 conversationHost.after(conversationComposer);
 const conversationBinding = bindConversation(conversationHost, { composer: conversationComposer });
-check('conversation groups repeated speaker labels', firstMessage.querySelector('.ui-speaker')?.getClientRects().length > 0 && getComputedStyle(secondMessage.querySelector('.ui-speaker')).clipPath !== 'none');
-const learner = conversationMessage({ speaker: 'Learner', user: true, text: 'A learner answer' }); conversationHost.append(learner);
+check('conversation groups repeated speakers', secondMessage.classList.contains('ui-message--continuation'));
+check('reply foot holds Copy', firstMessage.querySelector('.ui-turn-foot [aria-label="Copy reply"]') !== null);
+const learner = questionNode({ text: 'A learner answer' }); conversationHost.append(learner);
 const learnerBubble = learner.querySelector('.ui-conversation-text');
-check('learner bubble stays right and bounded', Math.abs(learnerBubble.getBoundingClientRect().right - learner.getBoundingClientRect().right) <= 1 && learnerBubble.getBoundingClientRect().width <= learner.getBoundingClientRect().width * .85 + 1);
+check('learner bubble stays right and bounded', Math.abs(learnerBubble.getBoundingClientRect().right - learner.getBoundingClientRect().right) <= 1 && learnerBubble.getBoundingClientRect().width <= learner.getBoundingClientRect().width * .88 + 1);
 check('coach message stays within reading width', firstMessage.getBoundingClientRect().width <= 720);
-const receipt = paintReceipt(document.createElement('div'), { tool: 'run_code', status: 'done', output: 'exit 0' }); conversationHost.append(receipt);
-check('receipt output is closed by default', receipt.querySelector('details')?.open === false);
-receipt.querySelector('details').open = true;
-check('receipt disclosure opens', receipt.querySelector('details')?.getBoundingClientRect().height > 0);
-const failedReceipt = paintReceipt(document.createElement('div'), { tool: 'run_code', status: 'done', output: 'exit 1', failed: receiptFailed({ result: { exitCode: 1 } }) }); conversationHost.append(failedReceipt);
-check('failed receipt opens output', receiptFailed({ status: 'failed', result: {} }) && failedReceipt.querySelector('details')?.open === true);
+firstReply.setActivity([{ display: { doing: 'Running code', done: 'Ran code', effect: 'read' }, output: 'exit 0' }]);
+firstMessage.querySelector('.ui-turn-activity button').click();
+const outputDisclosure = firstMessage.querySelector('.ui-turn-output');
+check('run output is closed by default', outputDisclosure.open === false);
+outputDisclosure.open = true;
+check('run output disclosure opens', outputDisclosure.getBoundingClientRect().height > 0);
+firstReply.setActivity([{ display: { doing: 'Running code', done: 'Ran code', effect: 'read' }, output: 'exit 1', failed: true }]);
+check('failed run opens output', firstMessage.querySelector('.ui-turn-output').open === true);
 const sendProbe = composerSend(document.createElement('button'));
 document.body.append(sendProbe);
 check('composer send is 28px', sendProbe.getBoundingClientRect().height === 28);
 check('conversation jump starts hidden', conversationBinding.jump.hidden === true);
 conversationHost.style.height = '20px'; conversationHost.style.overflow = 'auto'; conversationHost.scrollTop = 0;
-conversationHost.append(conversationMessage({ speaker: 'Coach', text: 'New reply' })); conversationBinding.refresh();
+conversationHost.append(testReply('New reply').node); conversationBinding.refresh();
 // Conversation mutations are coalesced into one presentation update per frame.
 await new Promise(requestAnimationFrame);
 check('conversation jump appears after unread reply', conversationBinding.jump.hidden === false);
@@ -397,10 +401,6 @@ check('a stream that died after some text says the answer was cut off',
 check('an unknown failure kind still produces a real message',
   shapeCoachOutcome({ ok: false, kind: 'wat' }).body.length > 20);
 check('a null result is still a rendered, honest state', shapeCoachOutcome(null).head.length > 0);
-check('tool events become one quiet line', toolLine('Read', 'problems/two-sum/NOTES.md') === 'Read problems/two-sum/NOTES.md');
-check('a write is reported as a write', toolLine('Write', 'NOTES.md') === 'Wrote NOTES.md');
-check('an unknown tool keeps its own name', toolLine('Bash', 'ls') === 'Bash ls');
-check('a tool with no summary does not render a dangling space', toolLine('Glob', '') === 'Looked for');
 
 /* ---------------- the SVG sanitizer ---------------- */
 group('Illustrator — SVG must be scrubbed');
@@ -1123,7 +1123,7 @@ check('accepted best and improving delta are visible', (() => {
     { submissionId: '2', accepted: true, runtimeMs: 23 },
     { submissionId: '1', accepted: true, runtimeMs: 34 },
   ]);
-  return panel.root.textContent.includes('−11 ms') && panel.root.textContent.includes('★ best');
+  return panel.root.textContent.includes('−11 ms') && panel.root.textContent.includes('Best');
 })());
 check('rejected metrics are inapplicable even if a stale metric is present',
   submissionPresentation({ accepted: false, runtimeMs: 5, detailFile: 'submissions/1.json' }).metrics.length === 0);

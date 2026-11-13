@@ -87,3 +87,47 @@ test('recall turn kind and delivery receipt survive replay', async t => {
   assert.equal(rows[0].kind, 'recall-notes');
   assert.deepEqual(rows[0].actions, [action]);
 });
+
+test('new optional activity preserves raw tools/actions and old record bytes', async t => {
+  const root = await workspace(); t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  await appendTurn({ root, slug: 'two-sum', turn: turn({ tools: ['Read old/context'] }) });
+  const before = await fsp.readFile(chatFile(root, 'two-sum'), 'utf8');
+  const activity = [{ tool: 'read_context', effect: 'read', ms: 2300 }, { tool: 'save_note', effect: 'note' }];
+  await appendTurn({ root, slug: 'two-sum', turn: turn({ askedAt: '2025-01-01T10:00:00Z', durationMs: 4500, activity, tools: ['save_note raw evidence'] }) });
+  const bytes = await fsp.readFile(chatFile(root, 'two-sum'), 'utf8');
+  assert.ok(bytes.startsWith(before));
+  const saved = (await readTurns({ root, slug: 'two-sum' }))[1];
+  assert.deepEqual(saved.activity, activity);
+  assert.equal(saved.durationMs, 4500);
+  assert.equal(saved.askedAt, '2025-01-01T10:00:00Z');
+  assert.deepEqual(saved.tools, ['save_note raw evidence']);
+});
+
+test('history activity resolves new and legacy tools without altering evidence', async () => {
+  const { normalizeTurnActivity } = await import('../transcript.mjs');
+  const legacy = { tools: ['mcp__studio__read_context problem:fixture', 'Read private/path', 'unknown_tool secret'] };
+  const copy = structuredClone(legacy);
+  const activity = normalizeTurnActivity(legacy);
+  assert.equal(activity[0].tool, 'read_context');
+  assert.equal(activity[0].display.done, 'Read saved context');
+  assert.equal(activity[1].display.done, 'Read saved context');
+  assert.equal(activity[2].display.done, 'Used a tool');
+  assert.equal(activity[0].ms, undefined);
+  assert.deepEqual(legacy, copy);
+  assert.deepEqual(normalizeTurnActivity({}), []);
+  const fresh = normalizeTurnActivity({ activity: [{ tool: 'save_note', effect: 'note', ms: 1234 }], tools: ['Read ignored'] });
+  assert.equal(fresh.length, 1);
+  assert.equal(fresh[0].ms, 1234);
+  assert.equal(fresh[0].display.effect, 'note');
+});
+
+test('terminal activity keeps request identity separate from raw tool-action evidence', async t => {
+  const root = await workspace(); t.after(() => fsp.rm(root, { recursive: true, force: true }));
+  const terminal = { requestId: 'mock-r1', ask: 'Answer.', answer: 'Done.', activity: [{ tool: 'read_context', effect: 'read' }] };
+  const action = { requestId: 'mock-r1', kind: 'tool_action', action: { id: 'a1', tool: 'read_context', status: 'done' } };
+  await appendTurn({ root, slug: 'two-sum', turn: terminal });
+  const rows = await readTurns({ root, slug: 'two-sum' });
+  assert.equal(rows[0].requestId, 'mock-r1');
+  assert.deepEqual(rows[0].activity, terminal.activity);
+  assert.deepEqual(action, { requestId: 'mock-r1', kind: 'tool_action', action: { id: 'a1', tool: 'read_context', status: 'done' } }, 'raw action evidence remains caller-owned');
+});

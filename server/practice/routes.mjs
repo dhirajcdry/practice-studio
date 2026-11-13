@@ -142,7 +142,7 @@ async function get(_req, res, ctx) {
   x.session = await updateWork(x.d, { expireTimer: true });
   // A process interruption leaves a recoverable question, never a permanent busy state.
   const live = liveReplies.get(x.d);
-  const exchanges = x.exchanges.map(e => ({ ...(live?.requestId === e.requestId ? live : e), ...(e.status === 'pending' && !active.has(x.d) ? { status: 'failed', error: 'The previous reply was interrupted.' } : {}) }));
+  const exchanges = x.exchanges.map(e => { const out = { ...(live?.requestId === e.requestId ? live : e), ...(e.status === 'pending' && !active.has(x.d) ? { status: 'failed', error: 'The previous reply was interrupted.' } : {}) }; return out; });
   return sendJson(res, 200, { session: x.session, exchanges, busy: active.has(x.d), ...await workspace(x.d), sourceSnapshot: await json(path.join(x.d, 'source.json')), serverNow: Date.now() });
 }
 async function timer(req, res, ctx) {
@@ -267,6 +267,7 @@ async function ask(req, res, ctx) {
         providerChild = (ctx.practiceRun || runProviderTurn)({ choice, root, discipline:x.session.discipline, binary: process.env.STUDIO_COACH_BINARY, tools: '', ...agentTools.options,
           systemPrompt, prompt,
           conversation,
+          onTool: (name, summary) => { pending.activity ||= []; pending.activity.push({ tool: String(name).replace(/^mcp__studio__/, ''), at: Date.now() }); stream.tool(name, summary); },
           onToken: token => { if (!finished && token) { pending.answer += token; pending.liveRevision = (pending.liveRevision || 0) + 1; stream.token(token);
             if (!checkpointTimer) checkpointTimer = setTimeout(() => {
               checkpointTimer = null;

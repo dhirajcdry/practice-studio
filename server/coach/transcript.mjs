@@ -14,11 +14,35 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { isoWithOffset } from './sessions.mjs';
 import { problemDir } from '../storage-layout.mjs';
+import { toolDisplay } from './tools.mjs';
 
 const MAX_STORED_CHARS = 200_000; // a turn this long is a bug, not a lesson
 
 export function chatFile(root, slug) {
   return path.join(problemDir(root, slug), 'chats.jsonl');
+}
+/**
+ * What a record keeps about the steps of a turn: which tool, what kind of effect, how long.
+ * Never the wording (that lives with the tool, so it can improve without touching records)
+ * and never the arguments. `steps` are `{ tool, at }` in order; `at` is epoch ms.
+ */
+export function storedActivity(steps = [], endedAt = Date.now()) {
+  return steps.slice(0, 60).map((step, index) => {
+    const tool = String(step.tool || step.name || '').replace(/^mcp__studio__/, '');
+    const ms = Number.isFinite(step.at) ? Math.max(0, (Number.isFinite(steps[index + 1]?.at) ? steps[index + 1].at : endedAt) - step.at) : null;
+    return { tool, effect: toolDisplay(tool).effect, ...(ms === null ? {} : { ms }) };
+  });
+}
+
+/** Response-only normalization. The record on disk and its legacy fields stay raw. */
+export function normalizeTurnActivity(turn) {
+  const source = Array.isArray(turn.activity) ? turn.activity : (Array.isArray(turn.tools) ? turn.tools : []).map(line => ({ tool: String(line).trim().split(/\s+/, 1)[0] }));
+  return source.filter(item => item && typeof item === 'object').map(item => {
+    const tool = String(item.tool || item.name || '').replace(/^mcp__studio__/, '');
+    const display = toolDisplay(tool);
+    return { tool, effect: ['read', 'change', 'note', 'handoff'].includes(item.effect) ? item.effect : display.effect,
+      ...(Number.isFinite(item.ms) ? { ms: Math.max(0, item.ms) } : {}), display };
+  });
 }
 
 /**
@@ -46,6 +70,9 @@ export async function appendTurn({ root, slug, turn, log = console }) {
     ask: String(turn.ask ?? '').slice(0, MAX_STORED_CHARS),
     answer: answer.slice(0, MAX_STORED_CHARS),
     tools: Array.isArray(turn.tools) ? turn.tools.slice(0, 60) : [],
+    ...(turn.askedAt ? { askedAt: String(turn.askedAt) } : {}),
+    ...(Number.isFinite(turn.durationMs) ? { durationMs: Math.max(0, Math.round(turn.durationMs)) } : {}),
+    ...(Array.isArray(turn.activity) && turn.activity.length ? { activity: normalizeTurnActivity(turn).slice(0, 60).map(({ tool, effect, ms }) => ({ tool, effect, ...(Number.isFinite(ms) ? { ms } : {}) })) } : {}),
     // What the tutor did in Studio this turn, as receipts: replayed threads show them
     // (without Undo — the case list has moved on since).
     ...(Array.isArray(turn.actions) && turn.actions.length
@@ -56,6 +83,7 @@ export async function appendTurn({ root, slug, turn, log = console }) {
         id: String(a.id ?? ''), tool: String(a.tool ?? ''), summary: String(a.summary ?? '').slice(0, 300), ok: a.ok === true,
       })) }
       : {}),
+    ...(turn.outcome ? { outcome: turn.outcome } : {}),
     // The answer was cut short — kept anyway, but never passed off as a whole one.
     ...(turn.stopped ? { stopped: true } : {}),
   };
@@ -113,7 +141,7 @@ export async function readThreads({ root, slug }) {
         sessionId: turn.sessionId ?? null,
         resumable: Boolean(turn.sessionId),
         attemptId: turn.attemptId ?? null,
-        startedAt: turn.at,
+        startedAt: turn.askedAt || turn.at,
         endedAt: turn.at,
         turns: [],
       });

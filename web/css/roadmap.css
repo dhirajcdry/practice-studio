@@ -1,39 +1,47 @@
 /* A curriculum atlas: calm chapter lanes, legible nodes, connections on demand. */
 .roadmap{max-width:1600px}
 
-.roadmap-chips{display:flex;align-items:center;gap:8px;margin-bottom:16px}
-
-.roadmap-level{margin-left:auto;font:12px var(--ui);color:var(--ink-50);white-space:nowrap}
-.roadmap-level select{margin-left:8px;background-color:var(--card);color:var(--ink);border:1px solid var(--hair-10);border-radius:var(--r-sm);padding:7px 30px 7px 10px;font:12px var(--ui)}
-.roadmap-query{font:12px var(--ui);color:var(--ink-70);margin-bottom:14px}.roadmap-query button{margin-left:12px;color:var(--accent)}
-.roadmap-graph-col{border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card);overflow:hidden}
+/* The explorer's list and level switches, in the explorer's order. */
+.roadmap-chips{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3);margin:var(--space-5) 0 var(--space-4)}
+.roadmap-chips>.seg{min-width:0;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.roadmap-query{display:flex;align-items:center;gap:var(--space-3);font:var(--text-sm) var(--ui);color:var(--ink-70);margin:0 0 var(--space-4)}
+.roadmap-graph-col{border:var(--surface-card-border);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow);background:var(--surface-card-bg);overflow:hidden}
 .roadmap-toolbar{height:42px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 18px;border-bottom:1px solid var(--hair-10)}
-.graph-caption{font:12px var(--ui);color:var(--ink-70)}
+.graph-caption{font:var(--text-sm) var(--ui);color:var(--ink-70)}
 .graph-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .roadmap-viewport{height:650px;overflow:hidden;position:relative;cursor:grab;background-color:var(--canvas);background-image:radial-gradient(var(--hair-10) 1px,transparent 1px);background-size:24px 24px;touch-action:pan-y}
 .roadmap-viewport:active{cursor:grabbing}
 .roadmap-canvas{position:absolute;width:1100px;height:650px;transform-origin:0 0}
-.map-start{position:absolute;color:var(--accent);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.map-start{position:absolute;color:var(--accent);font:500 var(--text-xs)/1.4 var(--ui);letter-spacing:0;text-transform:none}
 .roadmap-lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
 .roadmap-edge{fill:none;stroke:var(--ink-35);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.75}
-.roadmap-edge.secondary{opacity:0}.roadmap-edge.connected{stroke:var(--accent);stroke-width:2;opacity:1}body .ui-action-row.roadmap-node{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%);width:216px;text-align:left;display:grid;grid-template-columns:1fr auto;grid-template-rows:36px 12px;box-sizing:border-box;padding:var(--space-3);height:72px;white-space:normal;gap:0;background:var(--card);border:var(--surface-card-border);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow);cursor:pointer;z-index:1}
+.roadmap-edge.secondary{opacity:0}.roadmap-edge.connected{stroke:var(--accent);stroke-width:2;opacity:1}body .ui-action-row.roadmap-node{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%);width:216px;text-align:left;display:grid;grid-template-columns:1fr auto;grid-template-rows:minmax(0,1fr) auto;box-sizing:border-box;padding:var(--space-2) var(--space-3);height:72px;white-space:normal;gap:var(--space-1) var(--space-2);background:var(--card);border:var(--surface-card-border);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow);cursor:pointer;z-index:1}
 body .ui-action-row.roadmap-node.selected{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft),0 3px 8px var(--hair-06)}
-.node-title{font:600 16px/18px var(--ui);letter-spacing:-.025em;color:var(--ink);grid-column:1/-1;grid-row:1;align-self:center}
-.node-meta{font:11px/12px var(--ui);color:var(--ink-70);grid-column:1;grid-row:2}
-.node-progress{font:10px/12px var(--ui);color:var(--accent);grid-column:2;grid-row:2;text-align:right}.node-progress.has-progress{color:var(--easy)}
-.roadmap-detail{position:relative;display:grid;grid-template-columns:280px minmax(0,1fr);gap:24px;margin-top:20px;padding:24px;border:1px solid var(--hair-10);background:var(--card);border-radius:var(--r-md);min-width:0}
+.node-title{font:600 var(--text-md)/18px var(--ui);letter-spacing:-.02em;color:var(--ink);grid-column:1/-1;grid-row:1;align-self:center}
+.node-meta{font:var(--text-xs)/14px var(--ui);color:var(--ink-70);grid-column:1;grid-row:2;white-space:nowrap}
+.node-progress{font:var(--text-xs)/14px var(--ui);color:var(--accent);grid-column:2;grid-row:2;text-align:right;white-space:nowrap}.node-progress.has-progress{color:var(--easy)}
+/* A pattern this list (or filter) has nothing in stays on the map, stepped back. */
+.roadmap-node.empty .node-title{color:var(--ink-50)}.roadmap-node.empty .node-meta{color:var(--ink-35)}
+.roadmap-detail{position:relative;display:grid;grid-template-columns:280px minmax(0,1fr);gap:var(--space-6);align-items:start;margin-top:var(--space-5);padding:var(--space-6);border:var(--surface-card-border);background:var(--surface-card-bg);border-radius:var(--surface-card-radius);box-shadow:var(--surface-card-shadow);min-width:0}
 .roadmap-detail[hidden]{display:none}
-.detail-kicker{color:var(--accent);font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.roadmap-detail h2{font:600 26px/1.2 var(--ui);letter-spacing:-.04em;color:var(--ink);margin:12px 0}
-.detail-summary{font:12px/1.7 var(--ui);color:var(--ink-70);margin:0}.detail-close{position:absolute;right:12px;top:10px;width:28px;}
-.detail-list{display:block;max-height:320px;overflow:auto;padding-inline:0}
-.detail-problem{width:100%;display:grid;grid-template-columns:18px minmax(0,1fr) 60px 12px;gap:9px;align-items:center;text-align:left;border-bottom:1px solid var(--hair-10);}
+.roadmap-detail h2{font:var(--title-weight,600) var(--text-lg)/1.25 var(--title-font,var(--ui));letter-spacing:-.02em;color:var(--ink);margin:0 0 var(--space-2);padding-right:var(--space-6)}
+.detail-summary{font:var(--text-sm)/1.5 var(--ui);color:var(--ink-70);margin:0}.detail-close{position:absolute;right:var(--space-5);top:var(--space-7);width:28px}
+@media(min-width:651px){.detail-heading{position:sticky;top:calc(var(--topbar-h) + var(--space-5))}}
+/* The list is part of the page: it grows with the pattern instead of scrolling inside a
+   scrolling page. The close control sits over the heading column, clear of the rows. */
+.detail-list{display:block;min-width:0;padding-right:var(--space-7)}
+.detail-none{margin:0;font:var(--text-sm)/1.5 var(--ui);color:var(--ink-70)}
+.detail-problem{width:100%;display:grid;grid-template-columns:18px minmax(0,1fr);gap:var(--space-3);align-items:center;text-align:left}
+/* Ruled rows in one list, not a stack of touching cards. */
+body .detail-list .detail-problem.ui-action-row{border:0;border-bottom:1px solid var(--hair-10);border-radius:0;background:transparent;box-shadow:none}
+body .detail-list .detail-problem.ui-action-row:last-child{border-bottom:0}
+.detail-main{display:flex;align-items:center;gap:var(--space-3);min-width:0}
+.detail-main .tag{flex:none}
 .detail-problem:hover .detail-title{color:var(--accent)}
-.detail-title{font:13px/1.5 var(--ui);color:var(--ink)}.detail-diff{font:10px var(--ui);text-align:right;color:var(--ink-50)}
-.status{font:14px var(--mono);color:var(--ink-35)}.status-accepted,.detail-diff.easy{color:var(--easy)}.status-local-pass{color:var(--accent)}.status-attempted,.detail-diff.medium{color:var(--med)}.detail-diff.hard{color:var(--hard)}.open-arrow{font:14px var(--ui);color:var(--ink-35)}
+.detail-title{font:500 var(--text-sm)/1.5 var(--ui);color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .roadmap button:focus-visible,.roadmap select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
-@media(max-width:650px){.roadmap-head{align-items:start;flex-direction:column}.roadmap-chips{flex-wrap:wrap}.roadmap-level{margin-left:0}.roadmap-toolbar{padding-inline:10px}.graph-caption{font-size:10px}.graph-actions{gap:3px}.roadmap-viewport{height:540px}.roadmap-detail{display:block;padding:20px}.detail-list{margin-top:18px;max-height:360px}}
+@media(max-width:650px){.roadmap-toolbar{padding-inline:var(--space-3)}.graph-actions{gap:var(--space-1)}.roadmap-viewport{height:540px}.roadmap-detail{display:block;padding:var(--space-5)}.detail-list{margin-top:var(--space-4);padding-right:0}.detail-close{top:var(--space-4);right:var(--space-3)}}
 
 .map-announcement{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 

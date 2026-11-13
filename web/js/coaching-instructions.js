@@ -2,6 +2,7 @@ import { el, replace } from './dom.js';
 import { dialogHeader } from './ui/headers.js';
 import { createSelect } from './ui/select.js';
 import { relativeInterviewDate } from './interview-format.js';
+import { icon } from './ui/icon.js';
 
 const SCOPES = [['all','All disciplines'],['coding','Coding'],['lld','Low-level design'],['design','System design']];
 const MODES = [['all','All modes'],['practice','Practice'],['mock','Mock interviews'],['review','Reviews']];
@@ -34,7 +35,7 @@ export async function openCoachingInstructions() {
   }
   function historyRow(change) {
     const diff=el('details',{class:'gi-history ui-stack'},[
-      el('summary',{text:`Revision ${change.revision} · ${change.source.actor==='coach'?'Coach':'You'} · ${relativeInterviewDate(change.at)}`}),
+      el('summary',{},[icon('chevron',14),el('span',{text:`Revision ${change.revision} · ${change.source.actor==='coach'?'Coach':'You'} · ${relativeInterviewDate(change.at)}`})]),
       el('p',{text:change.reason}),
       el('div',{class:'gi-versions'},[['Before',change.before],['After',change.after]].map(([title,rules])=>el('section',{class:'ui-stack'},[
         el('strong',{text:title}),...(rules.length?rules.map(rule=>el('div',{class:'gi-version-rule'},[
@@ -42,7 +43,7 @@ export async function openCoachingInstructions() {
         ])):[el('p',{class:'dim',text:'No saved instructions.'})]),
       ]))),
       change.source.conversationKey?el('p',{class:'dim gi-source',text:`Source: ${change.source.conversationKey}${change.source.requestId?` · ${change.source.requestId}`:''}`}):null,
-      button('Restore this version',()=>mutate({operation:'restore',restoreRevision:change.revision,reason:`Restored revision ${change.revision} from Settings.`})),
+      el('div',{class:'gi-actions'},[button('Restore this version',()=>mutate({operation:'restore',restoreRevision:change.revision,reason:`Restored revision ${change.revision} from Settings.`}))]),
     ]);return diff;
   }
   function render() {
@@ -59,7 +60,7 @@ export async function openCoachingInstructions() {
       ...state.rules.map(rule=>el('article',{class:'gi-rule ui-stack ui-inset'},[
         el('div',{class:'ui-cluster'},[el('strong',{class:'ui-cluster-content',text:scopeLabel(rule)}),el('span',{class:'dim',text:rule.enabled?'Active':'Disabled'})]),
         el('p',{class:'gi-text',text:rule.text}),
-        el('div',{class:'ui-cluster'},[button('Edit',()=>edit(rule)),button(rule.enabled?'Disable':'Enable',()=>mutate({operation:'upsert',rule:{...rule,enabled:!rule.enabled},reason:`${rule.enabled?'Disabled':'Enabled'} instruction from Settings.`})),button('Remove',()=>mutate({operation:'remove',ruleId:rule.id,reason:'Removed instruction from Settings.'}))]),
+        el('div',{class:'ui-cluster gi-actions'},[button('Edit',()=>edit(rule)),button(rule.enabled?'Disable':'Enable',()=>mutate({operation:'upsert',rule:{...rule,enabled:!rule.enabled},reason:`${rule.enabled?'Disabled':'Enabled'} instruction from Settings.`})),button('Remove',()=>mutate({operation:'remove',ruleId:rule.id,reason:'Removed instruction from Settings.'}))]),
       ])),
       ...(!state.rules.length?[el('p',{class:'dim',text:'No saved coaching instructions. Add one here, or let your coach refine its approach during a conversation.'})]:[]),
       el('div',{class:'ui-cluster'},[el('h3',{class:'ui-cluster-content',text:'Change history'}),state.revision?button('Undo latest change',()=>mutate({operation:'restore',restoreRevision:state.revision-1,reason:'Undid the latest change from Settings.'})):null]),
@@ -73,7 +74,7 @@ export async function openCoachingInstructions() {
     const mode=createSelect({label:'Mode',options:MODES,value:rule?.mode||'practice'});pickers=[scope,mode];
     const area=el('textarea',{class:'gi-input',rows:'6',maxlength:'2000','aria-label':'Coaching instruction',placeholder:'Explain the intuition before showing code.'});area.value=rule?.text||'';
     const reason=el('input',{class:'gi-input',maxlength:'2000','aria-label':'Reason for change',placeholder:'Why this helps (optional)'});
-    replace(body,[button('Back to instructions',render),el('h3',{text:rule?'Edit instruction':'Add instruction'}),
+    replace(body,[el('button',{type:'button',class:'btn btn--quiet gi-back',onclick:render},[icon('back',14),'Back to instructions']),el('h3',{text:rule?'Edit instruction':'Add instruction'}),
       el('div',{class:'ui-cluster'},[scope,mode]),area,reason,
       button('Save instruction',()=>{if(!area.value.trim()){status.textContent='Write an instruction first.';area.focus();return;}
         void mutate({operation:'upsert',rule:{id:rule?.id||`instruction-${crypto.randomUUID()}`,scope:scope.value,mode:mode.value,text:area.value.trim(),enabled:rule?.enabled??true},reason:reason.value.trim()||'Coaching instruction edited in Settings.'});},true),status]);area.focus();

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { TOOL_SPECS, createToolSession } from './tools.mjs';
+import { TOOL_SPECS, createToolSession, toolDisplay } from './tools.mjs';
 import { serviceFor, writeMcpConfig } from './routes.mjs';
 
 export { MEMORY_SCOPES, memoryFile, readAgentMemory } from './memory.mjs';
@@ -19,7 +19,7 @@ export async function createWorkspaceTools({ root, slug, target = null, req, str
   if(sessionContext)names.push('record_session');
   if(setProblem)names.push('set_practice_problem');
   const store = svc.actions;
-  const runs = stream ? { action: (_run, payload) => stream.send('action', payload) } : null;
+  const runs = stream ? { action: (_run, payload) => stream.send('action', { ...payload, display: toolDisplay(payload.tool) }) } : null;
   const state = getState ? async () => {
     const value = await getState();
     if (value && Array.isArray(value.elements) && !value.revision) value.revision = crypto.createHash('sha256').update(JSON.stringify(value.elements)).digest('hex');

@@ -957,14 +957,14 @@ async function consumeCoachStream(response, { onToken, onTool, onRun, onAction }
     let payload = null;
     try { payload = data ? JSON.parse(data) : null; } catch { return; } // a frame we cannot read is not a message
     if (event === 'token' && typeof payload?.text === 'string') onToken(payload.text);
-    else if (event === 'tool') onTool(String(payload?.name || 'Tool'), String(payload?.summary || ''));
+    else if (event === 'tool') onTool(String(payload?.name || 'Tool'), String(payload?.summary || ''), payload);
     // The server's id for this turn, sent first. It is what lets a reload find it again.
     else if (event === 'run' && payload?.id) onRun?.(payload);
     // Something the tutor did in Studio (server/coach/tools.mjs). coachruns.js keeps it and
     // coach-actions.js applies the ones the page owes an answer.
     else if (event === 'action' && payload && typeof payload === 'object' && payload.id) onAction?.(payload);
-    else if (event === 'done') done = { sessionId: payload?.sessionId ?? null, stoppedReason: payload?.stoppedReason ?? null };
-    else if (event === 'error') failure = String(payload?.message || 'The coach stopped with an error it did not explain.');
+    else if (event === 'done') done = { sessionId: payload?.sessionId ?? null, stoppedReason: payload?.stoppedReason ?? null, at: payload?.at, durationMs: payload?.durationMs };
+    else if (event === 'error') failure = { message: String(payload?.message || 'The coach stopped with an error it did not explain.'), at: payload?.at, durationMs: payload?.durationMs };
   };
 
   for (;;) {
@@ -975,8 +975,8 @@ async function consumeCoachStream(response, { onToken, onTool, onRun, onAction }
   }
   for (const frame of decoder.flush()) handle(frame);
 
-  if (failure) return { ok: false, kind: 'coach', code: 'COACH_ERROR', message: failure };
-  if (done) return { ok: true, sessionId: done.sessionId, stoppedReason: done.stoppedReason };
+  if (failure) return { ok: false, kind: 'coach', code: 'COACH_ERROR', ...failure };
+  if (done) return { ok: true, ...done };
   return {
     ok: false, kind: 'truncated', code: 'NO_DONE',
     message: 'The coach stopped mid-answer — the connection ended before it finished. Whatever arrived is above.',
