@@ -2,11 +2,13 @@
 const NS = 'http://www.w3.org/2000/svg';
 const PATHS = {
   check: 'M5 12l4 4L19 6',
+  external: 'M13 5h6v6 M19 5l-9 9 M10 7H5v12h12v-5',
   bug: 'M8 9h8v8a4 4 0 0 1-8 0V9Z M9 9V6h6v3 M4 10l4 2 M20 10l-4 2 M4 18l4-2 M20 18l-4-2 M12 10v10',
   code: 'M8 6l-6 6 6 6 M16 6l6 6-6 6 M14 4l-4 16',
   image: 'M3 4h18v16H3z M3 17l6-7 4 5 3-3 5 6 M16 8h.01',
 
   copy: 'M9 9h12v12H9z M15 9V3H3v12h6',
+  trash: 'M4 7h16 M10 7V4h4v3 M6 7l1 13h10l1-13 M10 11v5 M14 11v5',
   stop: 'M6 6h12v12H6z',
   edit: 'M4 16l-1 5 5-1L20 8l-4-4L4 16Z M14 6l4 4',
   forward: 'M9 6l6 6-6 6',

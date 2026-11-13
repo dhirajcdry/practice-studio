@@ -55,7 +55,9 @@ async function seed() {
   for (const [slug, title, questionId, name, params, type, input, solution] of problems) {
     await json(path.join(home, 'cache', 'leetcode', `${slug}.json`), { question: {
       title, titleSlug: slug, difficulty: 'Medium', questionId,
-      content: '<p>Use the supplied inputs to solve this synthetic practice problem.</p><p>Explain your approach and consider the edge cases.</p>',
+      // Shaped like a real LeetCode statement (bold example lines, <pre> blocks, constraints,
+      // a follow-up) so the structured statement is what every problem screenshot shows.
+      content: '<p>Use the supplied inputs to solve this <strong>synthetic</strong> practice problem. Return <code>true</code> when the rule holds for the whole input, or <code>false</code> otherwise.</p><p>Explain your approach and consider the edge cases.</p><p>&nbsp;</p><p><strong class="example">Example 1:</strong></p><pre>\n<strong>Input:</strong> ' + input.split('\n').join(', ') + '\n<strong>Output:</strong> true\n<strong>Explanation:</strong> The rule holds at every step, so the answer is true.\n</pre><p><strong class="example">Example 2:</strong></p><pre>\n<strong>Input:</strong> nums = [3,2,1,0,4], limit = 2\n<strong>Output:</strong> false\n<strong>Explanation:</strong> The third step can never be completed.\nNo later choice changes that.\n</pre><p>&nbsp;</p><p><strong>Constraints:</strong></p><ul><li><code>1 &lt;= n &lt;= 10<sup>4</sup></code></li><li><code>0 &lt;= value &lt;= 10<sup>5</sup></code></li></ul><p><strong>Follow up:</strong> Can you solve it in one pass with constant extra space?</p>',
       metaData: JSON.stringify({ name, params, return: { type } }), exampleTestcases: input,
       codeSnippets: [{ langSlug: 'python3', code: solution }],
     } });

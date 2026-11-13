@@ -1,0 +1,65 @@
+/* The problem statement: description, examples as labelled rows, constraints, follow-up.
+   One column in a narrow pane; in a wide pane the examples move beside the description so
+   the pane's width is used instead of left empty. Everything is drawn from theme tokens. */
+.pcol{container:problem / inline-size}
+body .desc:has(.stmt){max-width:none}
+.stmt{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--space-6)}
+.stmt-lead{max-width:74ch}
+.stmt-lead>:last-child,.stmt-rest>:last-child,.stmt-constraints>:last-child,.stmt-follow>:last-child{margin-bottom:0}
+body .stmt .stmt-h{margin:0;font:600 var(--text-xs)/var(--line-sm) var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-50)}
+.stmt-examples,.stmt-rest{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+.stmt-rest{gap:var(--space-6)}
+.stmt-constraints,.stmt-follow{display:flex;flex-direction:column;gap:var(--space-3)}
+
+.stmt-example{min-width:0;border:var(--surface-card-border);border-radius:var(--r-md);background:var(--well);overflow:hidden}
+.ex-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);min-height:var(--control-sm);padding:var(--space-1) var(--space-2) var(--space-1) var(--space-4);border-bottom:1px solid var(--hair-10)}
+.ex-head strong{font:600 var(--text-sm)/var(--line-sm) var(--ui);color:var(--ink)}
+body .ex-head .ex-try{font-size:var(--text-xs);color:var(--ink-50)}
+body .ex-head .ex-try:hover{color:var(--accent)}
+/* One label column for every card, so values start on the same line down the whole list. */
+.ex-rows{display:grid;grid-template-columns:11ch minmax(0,1fr);gap:var(--space-2) var(--space-4);padding:var(--space-3) var(--space-4)}
+.ex-row{display:contents}
+.ex-label{font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50)}
+.ex-value{min-width:0;font:var(--text-sm)/var(--line-md) var(--mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.ex-value.is-prose{font-family:var(--prose);color:var(--ink-70)}
+.ex-value strong,.ex-value b{font-weight:600}
+/* A picture that is the explanation sits in the Explanation row, where the label says it is. */
+.ex-value.is-figure p{margin:0}
+.ex-value.is-figure img{display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0;border:0;border-radius:var(--r-sm)}
+.ex-figure{padding:var(--space-3) var(--space-4) 0}
+/* A diagram is a reference, not the headline: capped so the values beside or under it stay in view. */
+.ex-figure img{display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0;border:0;border-radius:var(--r-sm)}
+/* In a card with room, the diagram sits beside its values instead of above a wide empty strip. */
+.stmt-example{container:example / inline-size}
+@container example (min-width:420px){
+  /* Beside a diagram, a few short rows sit level with its middle; rows taller than the diagram simply start at the top. */
+  .stmt-example:has(.ex-figure) .ex-body{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);align-items:center}
+  .stmt-example:has(.ex-figure) .ex-figure{align-self:start}
+  .stmt-example:has(.ex-figure) .ex-figure{padding-bottom:var(--space-3);padding-right:0;max-width:44cqw}
+}
+.ex-raw{padding:var(--space-3) var(--space-4)}
+.ex-raw>:last-child{margin-bottom:0}
+
+.stmt-constraints ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.stmt-constraints li{margin:0;padding-left:var(--space-4);position:relative;font-size:var(--text-sm);line-height:var(--line-md);color:var(--ink-70)}
+.stmt-constraints li::before{content:"";position:absolute;left:0;top:.6em;width:var(--space-1);height:var(--space-1);border-radius:50%;background:var(--hair-20)}
+.stmt-follow{padding:var(--space-3) var(--space-4);border-radius:var(--r-md);background:var(--accent-soft)}
+body .stmt .stmt-follow .stmt-h{color:var(--accent)}
+.stmt-follow p{margin:0;font-size:var(--text-sm);line-height:var(--line-md);color:var(--ink)}
+
+@container problem (min-width:880px){
+  /* The first row is only as tall as the description, so what follows it is not pushed down by tall examples. */
+  .stmt{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto 1fr;column-gap:var(--space-7);align-items:start}
+  .stmt-lead{grid-column:1;max-width:none}
+  .stmt-examples{grid-column:2;grid-row:1 / span 2}
+  .stmt-rest{grid-column:1}
+}
+
+/* Ways out of Studio for this problem, at the right of the pane's tabs. In a pane too narrow
+   for both, they take their own line under the tabs instead of squeezing them. */
+body .pcol .ui-pane-header{height:auto;min-height:38px;flex-wrap:wrap;row-gap:0}
+body .pcol .ui-pane-header .problem-tabs{flex:0 1 auto}
+body .pcol .ui-pane-header .ui-pane-tools{margin-left:auto}
+.pane-links{display:flex;align-items:center;gap:var(--space-1);min-height:38px}
+body .pane-links .pane-link{gap:var(--space-1);padding:0 var(--space-2);min-height:var(--control-sm);font-size:var(--text-xs);color:var(--ink-50);text-decoration:none}
+body .pane-links .pane-link:hover{color:var(--ink)}

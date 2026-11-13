@@ -68,9 +68,6 @@ body.ws-wide .rr-summary{font:500 13px var(--ui)}
 body.ws-wide .tc-tab.is-on{background:rgba(var(--ink-rgb),.08);border-color:var(--hair-20);color:var(--ink)}
 body.ws-wide .tc-tab.is-on .tc-mark{color:inherit}
 
-body.ws-wide .tc-label,body.ws-wide .tc-origin{font:11px var(--ui);letter-spacing:0;text-transform:none}
-/* Read-only is said by the note under the fields; a dashed edge read as a drop zone. */
-body.ws-wide .tc-input[readonly]{border-style:solid;border-color:var(--hair-10)}
 /* File-level tools ride in the file row: quiet until hovered, away from Run and Submit. */
 .editor-meta:has(.editor-tool){gap:var(--space-3);padding-right:var(--space-2)}.editor-tool[hidden],body.coach-open .editor-open-sidebar{display:none}
 

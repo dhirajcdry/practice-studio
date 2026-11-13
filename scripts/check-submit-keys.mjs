@@ -65,7 +65,7 @@ const blur = 'document.activeElement?.blur?.()';
 const focus = (selector) => `document.querySelector(${JSON.stringify(selector)}).focus()`;
 const active = (selector) => `document.activeElement.matches(${JSON.stringify(selector)})`;
 const openSettings = `document.querySelector('.set-settings').click()`;
-const openDrawer = `import('/js/problem.js').then(m => m.openPanel({ slug: 'contains-duplicate', title: 'Contains Duplicate' }, 'solution', { instant: true }))`;
+const openSolutionTab = `document.querySelector('.problem-tabs [data-panel="solution"]').click()`;
 const openCoach = `window.dispatchEvent(new Event('studio:open-coach'))`;
 
 // `expect` says the state really is what the case names: a sheet that never opened, or a
@@ -76,11 +76,12 @@ const CASES = [
   { what: 'nothing focused', fires: true, setup: blur, expect: `document.activeElement === document.body` },
   { what: 'a workspace toolbar button', fires: true, setup: focus('.ws-submit'), expect: active('.ws-submit') },
   { what: 'a button beside the statement', fires: true, setup: focus('.pcol button:not(:disabled)'), expect: active('.pcol button') },
+  // The Solution tab is part of the problem pane, not an overlay over the workspace.
+  { what: 'the Solution tab beside the editor', fires: true, setup: `${openSolutionTab}; ${blur}`, expect: `!!document.querySelector('.pcol .ref-tab[data-panel="solution"]:not([hidden])') && document.querySelector('#ref-problem').hidden` },
   // The bug.
   { what: 'the report question box', fires: false, setup: `${OPEN_REPORT}.then(() => ${focus('.rp-ask-input')})`, expect: active('.rp-sheet[open] .rp-ask-input') },
   { what: 'the report, clicked on its text', fires: false, setup: `${OPEN_REPORT}.then(() => ${blur})`, expect: `Boolean(document.querySelector('.rp-sheet[open]')) && document.activeElement === document.body` },
   // Everything else that sits over or beside a mounted workspace.
-  { what: 'the reference drawer', fires: false, setup: `${openDrawer}.then(() => ${blur})`, expect: `!document.querySelector('#drawer').hidden` },
   { what: 'the settings panel', fires: false, setup: `${openSettings}; ${blur}`, expect: `Boolean(document.querySelector('aside.settings'))` },
   { what: 'the header search box', fires: false, setup: focus('#q'), expect: active('#q') },
   { what: 'the coach composer', fires: false, setup: `${openCoach}; ${focus('.coach-input')}`, expect: active('.coach-input') },

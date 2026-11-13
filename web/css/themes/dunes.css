@@ -1,0 +1,28 @@
+/* Twin Suns: a painting behind solid boards with two hard shadows. */
+body.theme-dunes{
+  --canvas:#FBF2E8;--card:#FFF9F0;--ink:#2A1A10;--ink-rgb:42,26,16;--on-ink:#FBF2E8;--on-ink-rgb:251,242,232;
+  --accent:#B94219;--accent-rgb:185,66,25;--solid-bg:#C2491D;--solid-fg:#FFFFFF;--solid-edge:#C2491D;--solid-hover:#A93D17;
+  --easy:#2E6B4F;--easy-rgb:46,107,79;--med:#8C5A06;--med-rgb:140,90,6;--hard:#B33A1A;--hard-rgb:179,58,26;
+  --verdict-easy:#246044;--verdict-med:#795400;--verdict-hard:#B33A1A;--tok-kw:#B0431C;--tok-def:#2F5D7C;
+  --shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);--shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --r-sm:3px;--r-md:3px;--r-pane:3px;--pane-gap:14px;
+  --surface-card-border:1.5px solid var(--ink);--surface-card-shadow:-4px 4px 0 var(--sun-a),4px 4px 0 var(--sun-b);
+  --surface-card-hover-shadow:var(--shadow);--sun-a:var(--accent);--sun-b:rgba(var(--ink-rgb),.25);--art:url(../img/themes/dunes-light.jpg);--glass:rgba(255,250,244,.55);
+  --display:Futura,"Avenir Next",var(--ui);--btn-font:Futura,"Avenir Next",sans-serif;--btn-transform:uppercase;--btn-tracking:.14em;
+  --title-font:Futura,"Avenir Next",sans-serif;
+}
+body.theme-dunes.is-dark{
+  --canvas:#08141A;--card:#10232A;--ink:#E9E4DA;--ink-rgb:233,228,218;--on-ink:#08141A;--on-ink-rgb:8,20,26;
+  --accent:#FF9A62;--accent-rgb:255,154,98;--solid-bg:#E0703A;--solid-fg:#1A0B03;--solid-edge:#E0703A;--solid-hover:#EE8350;
+  --easy:#7FD4A0;--easy-rgb:127,212,160;--med:#F2CB6C;--med-rgb:242,203,108;--hard:#FF8A80;--hard-rgb:255,138,128;
+  --verdict-easy:#7FD4A0;--verdict-med:#F2CB6C;--verdict-hard:#FF8A80;--tok-kw:#FF9A62;--tok-def:#8CC7D9;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);--shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  --status-soft-alpha:.14;--sun-b:rgba(0,0,0,.55);--art:url(../img/themes/dunes-dark.jpg);--glass:rgba(8,20,26,.50);
+}
+
+/* Signature: stencil capitals and the survey stripe under the app bar. */
+body.theme-dunes .topbar::after{content:'';position:absolute;inset:auto 0 -3px;height:3px;background:repeating-linear-gradient(110deg,var(--accent) 0 10px,var(--card) 10px 14px)}
+body.theme-dunes :is(.btn,.ui-tab,.ui-badge,.ui-pane-header>strong,.ui-screen-header h1,.ui-dialog-header h2){font-family:var(--btn-font);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
+body.theme-dunes .wordmark{font-family:var(--btn-font);font-size:16px;letter-spacing:.22em;text-transform:uppercase}
+body.theme-dunes .wordmark .solid,body.theme-dunes .wordmark .outline{font:inherit;letter-spacing:inherit;text-transform:inherit}
+body.theme-dunes .wordmark .outline{-webkit-text-stroke:0;color:var(--accent)}

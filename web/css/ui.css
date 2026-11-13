@@ -208,9 +208,12 @@ body .btn.btn.ui-tab:is([aria-selected=true],[aria-pressed=true]){box-shadow:var
 .ui-pane-header .dz-phases{padding:0;border:0;gap:var(--space-1)}
 .ui-header-actions>.ci-toolbar{padding:0;border:0}
 .ui-header-actions .btn{flex-shrink:0}
-.tc-row{display:flex;align-items:center;gap:var(--space-2);min-width:0}
-.tc-row>.tc-tabs{flex:1;min-width:0}
-.tc-row-actions{display:flex;flex:none;padding-right:var(--space-3)}
+/* Case tabs, then where the selected case came from and its one action. When the pane is
+   too narrow for both, the actions take their own line rather than squeezing the tabs. */
+.tc-row{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3);min-width:0}
+.tc-row>.tc-tabs{flex:1 1 12rem;min-width:0}
+.tc-row-actions{display:flex;align-items:center;gap:var(--space-3);flex:0 1 auto;min-width:0;margin-left:auto;padding-right:var(--space-3)}
+.tc-row-actions>.btn{flex:none}
 
 .is-review .excalidraw .dropdown-menu-button{display:none}
 body .ui-pane-header{height:38px;min-height:38px;padding:0 var(--space-3)}
@@ -258,7 +261,7 @@ body .btn kbd{font:10px var(--mono);opacity:.7;border:0;padding:0}
  .ui-header-secondary{display:none}
  .ui-header-more-responsive{display:inline-flex!important}
  .ui-header-meta,.ui-header-crumb{display:none}
- .ui-header-actions>.btn--primary{max-width:42cqw;overflow:hidden}
+ .ui-header-actions>.btn--primary{max-width:48cqw;padding-inline:var(--space-2);overflow:hidden}
  .ui-header-actions>.btn--primary span{overflow:hidden;text-overflow:ellipsis}
 }
 /* Stencil control type is part of Twin Suns' structure, including shared tabs. */

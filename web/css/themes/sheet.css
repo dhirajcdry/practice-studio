@@ -1,0 +1,150 @@
+/* Sheet: a coloured frame carries the navigation; each screen is one rounded sheet inside it. */
+body.theme-sheet{
+  --canvas:#F2F6F3;--card:#FCFDFB;--ink:#17201D;--ink-rgb:23,32,29;--on-ink:#FCFDFB;--on-ink-rgb:252,253,251;
+  --accent:#1B7A5B;--accent-rgb:27,122,91;--solid-bg:#1B7A5B;--solid-fg:#FFFFFF;--solid-edge:#1B7A5B;--solid-hover:#15684C;
+  --easy:#1B7A5B;--easy-rgb:27,122,91;--med:#8A5A00;--med-rgb:138,90,0;--hard:#B3401F;--hard-rgb:179,64,31;
+  --verdict-easy:#17694D;--verdict-med:#7A5000;--verdict-hard:#AD3A1C;--tok-kw:#1B7A5B;--tok-def:#1F5F8F;
+  --shadow:none;--shadow-lift:0 2px 6px rgba(10,40,34,.10), 0 22px 56px rgba(10,40,34,.24);
+  --r-sm:8px;--r-md:12px;--r-pane:0px;--pane-gap:0px;
+  --frame:linear-gradient(160deg,#256B57,#1A4B55 70%);--frame-end:#1A4B55;--frame-well:#33796A;--frame-well-hover:#2D7061;
+  --on-frame:#F2FAF6;--on-frame-rgb:242,250,246;--on-frame-mute:#D3E8DF;--frame-mark:#A6F0D2;
+  --sheet-r:16px;--sheet-gap:12px;--rail-w:50px;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --button-radius:999px;--chip-radius:999px;--float-radius:14px;--surface-card-radius:12px;--row-radius:8px;
+  --tab-active-indicator:inset 0 -2px 0 var(--accent);
+}
+body.theme-sheet.is-dark{
+  --canvas:#0B100F;--card:#101514;--ink:#E7ECE9;--ink-rgb:231,236,233;--on-ink:#0C1F19;--on-ink-rgb:12,31,25;
+  --accent:#6FE0B5;--accent-rgb:111,224,181;--solid-bg:#6FE0B5;--solid-fg:#0C1F19;--solid-edge:#6FE0B5;--solid-hover:#8AE8C5;
+  --easy:#6FE0B5;--easy-rgb:111,224,181;--med:#F0C27A;--med-rgb:240,194,122;--hard:#FF8F7E;--hard-rgb:255,143,126;
+  --verdict-easy:#6FE0B5;--verdict-med:#F0C27A;--verdict-hard:#FF8F7E;--tok-kw:#6FE0B5;--tok-def:#8CC7F0;
+  --shadow:none;--shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.6);
+  --frame:linear-gradient(160deg,#1E4A3F,#122B2F 70%);--frame-end:#122B2F;--frame-well:#2A574B;--frame-well-hover:#316355;
+  --on-frame:#E4F2EC;--on-frame-rgb:228,242,236;--on-frame-mute:#B4CFC4;--frame-mark:#6FE0B5;
+}
+
+/* ---- The frame. The page is the colour; the app bar and the rail are written on it. ---- */
+body.theme-sheet.layout-docked{background:var(--frame-end) var(--frame) fixed}
+body.theme-sheet .topbar{background:var(--frame) fixed;border:0;color:var(--on-frame);
+  --ink:var(--on-frame);--ink-rgb:var(--on-frame-rgb);--ink-70:var(--on-frame);--ink-50:var(--on-frame-mute);--ink-35:var(--on-frame-mute);
+  --hair-20:rgba(var(--on-frame-rgb),.28);--hair-10:rgba(var(--on-frame-rgb),.18);--hair-06:var(--frame-well);--row-hover-bg:var(--frame-well);
+  --accent:var(--frame-mark);--accent-soft:var(--frame-well)}
+body.theme-sheet .topbar .wordmark{color:var(--on-frame)}
+body.theme-sheet .topbar .wordmark .outline{color:var(--on-frame-mute)}
+body.theme-sheet .topbar .topnav{gap:2px}
+body.theme-sheet .topbar .topnav .navlink{height:28px;border-radius:999px;color:var(--on-frame-mute);font:500 13px/1 var(--ui)}
+body.theme-sheet .topbar .topnav .navlink:hover{background:var(--frame-well-hover);color:var(--on-frame)}
+body.theme-sheet .topbar .topnav .navlink[aria-current="page"]{background:var(--frame-well);color:var(--on-frame);font-weight:600}
+body.theme-sheet .topbar .searchbox{background:var(--frame-well);border:0;border-radius:999px;padding:6px 14px;color:var(--on-frame-mute)}
+body.theme-sheet .topbar .searchbox:focus-within{box-shadow:0 0 0 2px var(--frame-mark)}
+body.theme-sheet .topbar .searchbox svg{opacity:.9}
+body.theme-sheet .topbar .searchbox input{color:var(--on-frame);font:13px var(--ui)}
+body.theme-sheet .topbar .searchbox input::placeholder{color:var(--on-frame-mute);font:13px var(--ui)}
+body.theme-sheet .topbar .searchbox kbd{color:var(--on-frame-mute);border-color:rgba(var(--on-frame-rgb),.3);border-radius:999px}
+body.theme-sheet .topbar :focus-visible{outline-color:var(--frame-mark)}
+
+/* ---- The sheet. Whatever a screen shows sits on one rounded surface inset in the frame. ---- */
+body.theme-sheet main{width:auto;margin:0 var(--sheet-gap) var(--sheet-gap);background:var(--card);border-radius:var(--sheet-r);min-height:calc(100vh - var(--topbar-h) - var(--sheet-gap))}
+body.theme-sheet main>:first-child,body.theme-sheet main .ui-screen-header{border-radius:var(--sheet-r) var(--sheet-r) 0 0}
+@media (min-width:1081px){
+  body.theme-sheet.ws-wide main{height:calc(100vh - var(--topbar-h) - var(--sheet-gap))}
+  body.theme-sheet.ws-wide.has-banner main{height:calc(100vh - var(--topbar-h) - 39px - var(--sheet-gap))}
+  /* With a rail, the rail stands on the frame and the header plus panes make the sheet. */
+  body.theme-sheet.ws-wide main:has(.workspace-rail){margin-left:0;background:transparent;border-radius:0;overflow:visible}
+  body.theme-sheet.ws-wide .view:has(>.workspace-rail)>.ui-screen-header{width:auto;margin-left:var(--rail-w);border-radius:var(--sheet-r) var(--sheet-r) 0 0}
+  body.theme-sheet.ws-wide .view:has(>.workspace-rail)>.pbody.with-workspace{margin-left:var(--rail-w);background:var(--card);border-radius:0 0 var(--sheet-r) var(--sheet-r);overflow:hidden}
+  body.theme-sheet.ws-wide .workspace-rail{top:0;width:var(--rail-w);padding-top:var(--space-2);gap:var(--space-1);background:transparent;border:0}
+  body.theme-sheet.ws-wide .workspace-rail button{width:34px;height:34px;border-radius:10px;color:var(--on-frame-mute)}
+  body.theme-sheet.ws-wide .workspace-rail button:hover{background:var(--frame-well-hover);color:var(--on-frame)}
+  body.theme-sheet.ws-wide .workspace-rail button[aria-pressed="true"]{background:var(--frame-well);color:var(--on-frame)}
+  body.theme-sheet.ws-wide .workspace-rail button[aria-pressed="true"]::before{display:none}
+  body.theme-sheet.ws-wide .workspace-rail button:focus-visible{outline-color:var(--frame-mark);outline-offset:1px}
+}
+
+/* ---- Controls: pills, and a selected tab in ink over a mint rule. ---- */
+body.theme-sheet .ui-tab[aria-selected=true]{color:var(--ink);font-weight:600}
+body.theme-sheet .btn.btn.ui-tab:is([aria-selected=true],[aria-pressed=true]){color:var(--ink);font-weight:600}
+body.theme-sheet .ui-composer{border-radius:14px}
+body.theme-sheet .ui-composer .ui-composer-send{border-radius:999px}
+body.theme-sheet .rich.ui-conversation-text--user{border-radius:14px 14px 4px 14px}
+/* Sheet's card and canvas are so close that the shared well vanishes; a published test value
+   sits on the same ink tint as inline code and the traceback. */
+body.theme-sheet .tc-input[readonly]{background:rgba(var(--ink-rgb),.045)}
+
+/* While a long page scrolls, the frame stays put: a fixed ring of frame colour keeps the
+   sheet's rounded window in place. Fixed-height workspaces already fit the window. */
+body.theme-sheet::after{content:'';position:fixed;z-index:55;pointer-events:none;box-sizing:border-box;
+  inset:calc(var(--topbar-h) - 52px) -40px -40px;padding:52px;border-radius:calc(52px + var(--sheet-r));
+  background:var(--frame) fixed;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0) border-box;-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0) border-box}
+@media (min-width:901px){body.theme-sheet:has(main>.ui-workspace)::after{display:none}}
+@media (min-width:1081px){body.theme-sheet.ws-wide::after{display:none}}
+
+/* The streak pill is a well in the frame, like the search field. */
+body.theme-sheet .topbar .streakpill{background:var(--frame-well);border:0;color:var(--on-frame)}
+body.theme-sheet .topbar .streakpill.cold{color:var(--on-frame)}
+body.theme-sheet .topbar .streakpill .flame{color:currentColor}
+body.theme-sheet .topbar .streakpill .flame.lit{color:var(--frame-mark)}
+body.theme-sheet .topbar .streakpill .flame.lit .flame-core{fill:var(--frame-well)}
+
+/* ---- Explorer: an overview band, then a pattern pane and a ruled list, split by hairlines. ---- */
+body.theme-sheet .catalog{--page-surface:var(--card)}
+body.theme-sheet .catalog .ov{margin:0;border:0;border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:transparent}
+body.theme-sheet .catalog-layout{gap:0}
+@media (min-width:851px){
+  body.theme-sheet .catalog-tree{top:var(--topbar-h);max-height:calc(100vh - var(--topbar-h) - var(--sheet-gap));padding:var(--space-4) var(--space-3)}
+}
+@media (max-width:850px){
+  body.theme-sheet .catalog-tree{border:0;border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:transparent;padding:var(--space-3)}
+}
+body.theme-sheet .catalog .filterbar{margin:0;padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--hair-10)}
+body.theme-sheet .catalog .sections{gap:0}
+body.theme-sheet .catalog .psec{border:0;border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:transparent}
+body.theme-sheet .catalog .phead{padding-inline:var(--space-5)}
+body.theme-sheet .catalog .prow{padding-inline:var(--space-5)}
+body.theme-sheet .catalog :is(.tree-root,.tree-pattern){border-radius:999px}
+
+/* ---- System Design and LLD homes: two panes side by side, then a ruled list. ---- */
+body.theme-sheet .th-wrap{max-width:none;padding:0;gap:0}
+body.theme-sheet .th-pair{gap:0;border-bottom:1px solid var(--hair-10)}
+body.theme-sheet .th-box{background:transparent;border:0;border-radius:0;box-shadow:none;padding:var(--space-4) var(--space-5)}
+body.theme-sheet .th-box+.th-box{border-left:1px solid var(--hair-10)}
+body.theme-sheet .th-recent{padding:var(--space-7) 0 0;gap:var(--space-3)}
+body.theme-sheet .th-recent>h2{padding-inline:calc(var(--space-5) + var(--space-6))}
+body.theme-sheet .th-list{background:transparent;border:0;border-top:1px solid var(--hair-10);border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none}
+body.theme-sheet .th-item-open.ui-action-row{padding-left:calc(var(--space-5) + var(--space-6))}
+body.theme-sheet .th-again{margin-right:var(--space-5)}
+body.theme-sheet .th-recent .th-all.btn{margin-left:calc(var(--space-5) + var(--space-3))}
+@media (max-width:820px){
+  body.theme-sheet .th-box{padding:0}
+  body.theme-sheet .th-box+.th-box{border-left:0;border-top:1px solid var(--hair-10)}
+  body.theme-sheet .th-recent>h2{padding-inline:var(--space-4)}
+  body.theme-sheet .th-item-open.ui-action-row{padding-left:var(--space-4)}
+  body.theme-sheet .th-recent .th-all.btn{margin-left:var(--space-1)}
+}
+
+/* ---- Roadmap: a filter band over a full-width map. ---- */
+body.theme-sheet .roadmap{max-width:none}
+body.theme-sheet .roadmap-chips{margin:0;padding:var(--space-3) var(--space-5)}
+body.theme-sheet .roadmap-query{margin:0;padding:0 var(--space-5) var(--space-3)}
+body.theme-sheet .roadmap-graph-col{border:0;border-top:1px solid var(--hair-10);border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:transparent}
+body.theme-sheet .roadmap-toolbar{padding-inline:var(--space-5)}
+body.theme-sheet .roadmap-detail{margin:0;border:0;border-bottom:1px solid var(--hair-10);border-radius:0;box-shadow:none;background:transparent}
+
+/* ---- Progress: a totals band, then patterns and a side pane split by a hairline. ---- */
+body.theme-sheet .dash-body{padding:0;gap:0}
+body.theme-sheet .dash-overall{padding:var(--space-6) var(--space-7);border-bottom:1px solid var(--hair-10)}
+@media (min-width:1260px){body.theme-sheet .dash-body{border-inline:1px solid var(--hair-10);min-height:calc(100vh - var(--topbar-h) - var(--sheet-gap) - var(--header-height))}}
+body.theme-sheet .dash-layout{gap:0;align-items:stretch}
+body.theme-sheet .dash-main{padding:var(--space-6) var(--space-7) var(--space-8)}
+body.theme-sheet .dash-side{padding:var(--space-6) var(--space-7) var(--space-8);border-left:1px solid var(--hair-10)}
+
+/* ---- Add a problem: the form and its preview are bands of the sheet. ---- */
+body.theme-sheet :is(.import-card,.import-preview){background:transparent;border:0;border-radius:0;box-shadow:none;padding-inline:var(--space-4)}
+body.theme-sheet .import-preview{margin-top:0;border-top:1px solid var(--hair-10)}
+
+/* The notice band is a strip of sheet above the sheet, never text on the frame. */
+body.theme-sheet .banner{margin:0 var(--sheet-gap) var(--space-2);border:0;border-radius:var(--sheet-r);background:linear-gradient(var(--med-soft),var(--med-soft)),var(--card)}
+@media (min-width:1081px){body.theme-sheet.ws-wide.has-banner main{height:calc(100vh - var(--topbar-h) - 47px - var(--sheet-gap))}}

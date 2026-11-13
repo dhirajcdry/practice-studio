@@ -1,0 +1,348 @@
+/* Console: a terminal. One monospace face, square 1px frames with their titles sitting on
+   the top border, inverse-video selection, dashed rules, and the screen's title bar as a
+   status line along the bottom of the window.
+   Every signature rule is written `body.theme-console:not(#_) ...`. The `:not(#_)` matches
+   everything and only raises specificity: this sheet loads before ui.css and the feature
+   sheets, and a terminal restyles nearly every component they define. */
+body.theme-console{
+  --canvas:#F1EFE4;--card:#F1EFE4;--ink:#141C14;--ink-rgb:20,28,20;--on-ink:#F1EFE4;--on-ink-rgb:241,239,228;
+  --accent:#9A4705;--accent-rgb:154,71,5;--solid-bg:#9A4705;--solid-fg:#F1EFE4;--solid-edge:#9A4705;--solid-hover:#7F3A04;
+  --easy:#256030;--easy-rgb:37,96,48;--med:#6F4B00;--med-rgb:111,75,0;--hard:#A8321A;--hard-rgb:168,50,26;
+  --verdict-easy:#256030;--verdict-med:#6F4B00;--verdict-hard:#A8321A;--tok-kw:#9A4705;--tok-def:#1F6A6A;--tok-num:#7A3E8F;
+  --shadow:none;--shadow-lift:none;
+  --r-sm:0px;--r-md:0px;--r-pane:0px;--pane-gap:10px;
+  --line:#BDBBA9;--bar:#E4E1D3;--ft:14px;--bar-h:28px;--topbar-h:32px;--header-height:28px;--pane-header-height:28px;
+  --rule:1px dashed var(--line);
+  --frame-open:linear-gradient(var(--line),var(--line)) 0 var(--ft)/100% 1px no-repeat,linear-gradient(var(--line),var(--line)) 0 var(--ft)/1px 100% no-repeat,linear-gradient(var(--line),var(--line)) 100% var(--ft)/1px 100% no-repeat;
+  --frame:linear-gradient(var(--line),var(--line)) 0 100%/100% 1px no-repeat,var(--frame-open);
+  --ui:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Monaco,Consolas,monospace;--mono:var(--ui);
+  --btn-transform:uppercase;--btn-tracking:.06em;--title-weight:700;
+  --text-xs:10.5px;--text-sm:12px;--text-md:13.5px;--text-lg:17px;--text-xl:22px;
+  --conversation-text-size:12.5px;--conversation-line-height:1.6;
+  --surface-card-border:1px solid var(--line);--surface-card-radius:0px;--surface-card-shadow:none;--surface-card-hover-bg:var(--bar);--surface-card-hover-shadow:none;
+  --row-radius:0px;--row-hover-bg:var(--bar);--row-rule:var(--rule);
+  --tab-radius:0px;--tab-active-bg:var(--solid-bg);--tab-active-fg:var(--solid-fg);--tab-active-indicator:0 0 0 transparent;
+  --chip-radius:0px;--float-radius:0px;--float-shadow:none;--float-border:1px solid var(--ink-50);
+  --control-border:1px dashed var(--line);--button-radius:0px;--button-outline:1px solid var(--line);
+  --composer-radius:0px;--well:var(--canvas);--focus-halo:0 0 0 transparent;--surface-inset:var(--bar);
+  --mode:"NORMAL";
+}
+body.theme-console.is-dark{
+  --canvas:#0B0E0C;--card:#0B0E0C;--ink:#D3DCCD;--ink-rgb:211,220,205;--on-ink:#0B0E0C;--on-ink-rgb:11,14,12;
+  --accent:#FFB454;--accent-rgb:255,180,84;--solid-bg:#FFB454;--solid-fg:#0B0E0C;--solid-edge:#FFB454;--solid-hover:#FFC578;
+  --easy:#8FD694;--easy-rgb:143,214,148;--med:#E8C860;--med-rgb:232,200,96;--hard:#FF8A7A;--hard-rgb:255,138,122;
+  --verdict-easy:#8FD694;--verdict-med:#E8C860;--verdict-hard:#FF8A7A;--tok-kw:#FFB454;--tok-def:#8FD6D0;--tok-num:#D6A0E0;
+  --shadow:none;--shadow-lift:none;
+  --line:#2C362D;--bar:#182019;
+}
+
+/* ---- Nothing is rounded. The whiteboard and the editor keep their own widgets. ---- */
+body.theme-console:not(#_) *:not(.excalidraw *,.monaco-editor *),body.theme-console:not(#_) *:not(.excalidraw *,.monaco-editor *)::before,body.theme-console:not(#_) *:not(.excalidraw *,.monaco-editor *)::after{border-radius:0!important}
+
+/* ---- Type: one face, small, measured. ---- */
+body.theme-console:not(#_){font-family:var(--ui);font-size:12.5px;font-feature-settings:"liga" 0}
+body.theme-console:not(#_) ::selection{background:var(--solid-bg);color:var(--solid-fg)}
+body.theme-console:not(#_) :is(input,textarea){caret-color:var(--accent);caret-shape:block}
+body.theme-console:not(#_) :is(button,input,textarea,select,kbd){font-family:var(--ui)}
+
+/* ---- App bar: one uppercase line. ---- */
+body.theme-console:not(#_) .topbar{min-height:var(--topbar-h);padding-inline:12px;gap:18px;background:var(--canvas);border:0;box-shadow:none;text-transform:uppercase;letter-spacing:.06em}
+@media(min-width:701px){body.theme-console:not(#_) .topbar{height:var(--topbar-h)}}
+@media(max-width:700px){body.theme-console:not(#_) .topbar{height:auto;padding:6px 10px;gap:4px 8px}}
+body.theme-console:not(#_) .wordmark{gap:.6ch;align-items:center}
+body.theme-console:not(#_) .wordmark::before{content:"";width:7px;height:13px;background:var(--accent)}
+body.theme-console:not(#_) .wordmark :is(.solid,.outline){font:700 12px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);-webkit-text-stroke:0}
+body.theme-console:not(#_) .topnav{gap:2px}
+body.theme-console:not(#_) .navlink{height:20px;min-height:20px;padding:0 8px;font:500 11px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-70)}
+body.theme-console:not(#_) .topnav .navlink[aria-current=page]{background:var(--solid-bg);color:var(--solid-fg);font-weight:700}
+body.theme-console:not(#_) .searchbox{height:22px;padding:0;gap:.6ch;border:0;border-bottom:var(--rule);border-radius:0;background:transparent;box-shadow:none}
+body.theme-console:not(#_) .searchbox::before{content:"/";color:var(--accent);font-weight:700}
+body.theme-console:not(#_) .searchbox :is(svg,kbd){display:none}
+body.theme-console:not(#_) .searchbox input{font:12px/1 var(--ui);letter-spacing:0}
+body.theme-console:not(#_) .searchbox:focus-within{border-bottom:1px solid var(--accent)}
+body.theme-console:not(#_) .streakpill{height:22px;border:0;border-radius:0;background:transparent;padding:0 6px}
+
+/* ---- Buttons: words in brackets; the primary one is inverse video. ---- */
+body.theme-console:not(#_) .btn.btn{border-radius:0;font:500 11px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .btn.btn--secondary{border:0}
+body.theme-console:not(#_) .btn:is(.btn--secondary,.btn--primary):not(.btn--icon,.ui-select-button,.ui-composer-send)::before{content:"["}
+body.theme-console:not(#_) .btn:is(.btn--secondary,.btn--primary):not(.btn--icon,.ui-select-button,.ui-composer-send)::after{content:"]"}
+body.theme-console:not(#_) .btn.btn--primary{background:var(--solid-bg);color:var(--solid-fg);font-weight:700}
+body.theme-console:not(#_) .btn.btn--primary:hover:not(:disabled){background:var(--solid-hover);filter:none}
+body.theme-console:not(#_) .btn.btn[aria-pressed=true]:not(.btn--icon,.btn--primary,.ui-tab){background:var(--solid-bg);color:var(--solid-fg);font-weight:700}
+body.theme-console:not(#_) .btn.btn kbd{font:10px/1 var(--ui);letter-spacing:0}
+body.theme-console:not(#_) .ui-select-button{border:0;border-bottom:var(--rule);border-radius:0;background:transparent;font:500 11px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .segmented{padding:0;gap:0;border-radius:0;background:transparent}
+body.theme-console:not(#_) .segmented .btn{font-size:11px;padding:0 8px}
+body.theme-console:not(#_) .segmented .btn:is([aria-pressed=true],[aria-selected=true],[aria-current=page]){background:var(--solid-bg);color:var(--solid-fg);font-weight:700}
+
+/* ---- Tabs and labels: uppercase, letterspaced; the selected one is a block. ---- */
+body.theme-console:not(#_) .ui-tabs{height:38px;margin-block:-5px;gap:0;align-items:center;border:0}
+/* A tab keeps the shared 38px hit area; only the 18px block in its middle is painted. */
+body.theme-console:not(#_) .btn.btn.ui-tab,body.theme-console:not(#_) .ui-tab{height:38px;min-height:38px;padding:0 8px;border-radius:0;font:500 11px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-70);box-shadow:none}
+body.theme-console:not(#_) .btn.btn.ui-tab:is([aria-pressed=true],[aria-selected=true]),body.theme-console:not(#_) .ui-tab:is([aria-pressed=true],[aria-selected=true]){background:linear-gradient(var(--solid-bg),var(--solid-bg)) center/100% 18px no-repeat!important;color:var(--solid-fg);font-weight:700;box-shadow:none}
+body.theme-console:not(#_) .btn.btn.ui-tab:hover:not([aria-pressed=true],[aria-selected=true]),body.theme-console:not(#_) .ui-tab:hover:not([aria-pressed=true],[aria-selected=true]){background:linear-gradient(var(--bar),var(--bar)) center/100% 18px no-repeat!important;color:var(--ink)}
+body.theme-console:not(#_) .tag{padding:0;border:0;border-radius:0;background:transparent;font:500 10.5px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .ptags .tag::before{content:"#"}
+body.theme-console:not(#_) .ui-badge{height:auto;padding:0;border:0;border-radius:0;background:transparent;font:500 10.5px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .ui-badge::before{content:"["}
+body.theme-console:not(#_) .ui-badge::after{content:"]"}
+body.theme-console:not(#_) .ui-count{border-radius:0;background:transparent}
+
+/* ---- Frames. A pane is a 1px box whose top edge runs through the middle of its header,
+   so the title and tabs sit on the border. The box is painted as a background: it stays put
+   while the pane scrolls and needs no overflow. ---- */
+body.theme-console:not(#_) :is(.pcol,.coach,.ui-pane,.ui-board-pane,.lld-document,.pr-work,.ws-results){box-sizing:border-box;border:0;border-radius:0;box-shadow:none;background:var(--frame),var(--canvas);padding:0 1px 1px}
+body.theme-console:not(#_) :is(.ui-pane,.ui-board-pane):not(:has(>.ui-pane-header)){padding-top:calc(var(--ft) + 1px)}
+body.theme-console:not(#_) :is(.coach,.ui-pane) :is(.ui-pane,.ui-board-pane){background:transparent;padding:0}
+body.theme-console:not(#_) .ui-pane-header{height:auto;min-height:var(--bar-h);flex-wrap:wrap;padding:0 9px;gap:0;border:0;background:transparent;font-size:11px;text-transform:uppercase;letter-spacing:.06em;position:relative;z-index:2}
+body.theme-console:not(#_) .ui-pane-header>*{background:var(--canvas);padding-inline:7px}
+body.theme-console:not(#_) .ui-pane-header>strong{font-weight:700;color:var(--accent);flex:none}
+body.theme-console:not(#_) .ui-pane-header>:is(.dim,.lld-notice,.pr-save,p,span){flex:0 1 auto;font-size:10.5px}
+body.theme-console:not(#_) .ui-pane-header .ui-pane-tools{gap:0}
+/* The statement pane scrolls as a whole, so a pinned strip keeps the frame's top edge. */
+body.theme-console:not(#_) .pcol::before{content:"";display:block;position:sticky;top:0;z-index:1;height:var(--bar-h);margin-bottom:calc(-1 * var(--bar-h));background:var(--frame-open),var(--canvas);pointer-events:none}
+body.theme-console:not(#_) .pcol .ui-pane-header{padding-inline:9px}
+body.theme-console:not(#_) .pcol>.card{background:transparent;border:0}
+/* The editor and its results are two frames in one column. */
+body.theme-console:not(#_) .ws{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
+body.theme-console:not(#_) .editor-tabs{height:var(--bar-h);min-height:var(--bar-h);align-items:center;padding:0 9px;border:0;background:var(--frame-open),var(--canvas);text-transform:uppercase;letter-spacing:.06em}
+body.theme-console:not(#_) .editor-file{height:18px;margin:0;padding:0 8px;border:0;background:var(--solid-bg);color:var(--solid-fg);font:700 11px/1 var(--ui)}
+body.theme-console:not(#_) .editor-file .file-language{color:inherit;font:700 9px/1 var(--ui)}
+body.theme-console:not(#_) .editor-meta{gap:0;padding:0;background:transparent}
+body.theme-console:not(#_) .editor-meta>*{background:var(--canvas);padding-inline:7px}
+body.theme-console:not(#_) .editor-meta :is(.editor-path,.editor-cursor){font:10.5px/1 var(--ui);letter-spacing:.04em;color:var(--ink-50)}
+body.theme-console:not(#_) .editor-meta>.btn--icon{padding:0}
+body.theme-console:not(#_) .ws-host{border:1px solid var(--line);border-top:0}
+body.theme-console:not(#_) .ws-results{border:0}
+
+/* ---- Status line: the screen's title bar, at the bottom of the window. ---- */
+body.theme-console:not(#_) .ui-screen-header{height:var(--bar-h);min-height:var(--bar-h);padding:0;gap:0;margin:0;border:0;border-radius:0;box-shadow:none;background:var(--bar);text-transform:uppercase;letter-spacing:.05em;font-size:11px}
+body.theme-console:not(#_) .ui-screen-header::before{content:var(--mode);align-self:stretch;display:flex;align-items:center;flex:none;padding:0 10px;background:var(--solid-bg);color:var(--solid-fg);font:700 11px/1 var(--ui);letter-spacing:.06em}
+body.theme-console:not(#_) .ui-screen-header .ui-header-crumb{padding-left:10px;font-size:11px}
+body.theme-console:not(#_) .ui-screen-header .ui-workspace-identity{gap:10px;padding-inline:10px}
+body.theme-console:not(#_) .ui-screen-header .ui-workspace-identity h1{font:700 11px/1.2 var(--ui);letter-spacing:.06em}
+body.theme-console:not(#_) .ui-screen-header .ui-header-meta{font-size:10.5px;gap:10px}
+body.theme-console:not(#_) .ui-screen-header .ui-header-meta>*:not(:empty)~*:not(:empty)::before{content:"|";margin-right:10px;color:var(--ink-35)}
+body.theme-console:not(#_) .ui-screen-header :is(.ui-header-actions,.ui-header-secondary){gap:0}
+body.theme-console:not(#_) .ui-screen-header .btn{height:var(--bar-h);min-height:var(--bar-h)}
+body.theme-console:not(#_) .ui-screen-header .ui-header-separator{height:14px;margin-inline:4px;border-left:1px solid var(--line)}
+body.theme-console:not(#_) .ws-status{font:10.5px/1 var(--ui);letter-spacing:.05em}
+body.theme-console:not(#_).browse-page{--mode:"BROWSE"}
+body.theme-console:not(#_) .pr-view{--mode:"PRACTICE"}
+body.theme-console:not(#_) .dz-view{--mode:"DESIGN"}
+body.theme-console:not(#_) .lld-view{--mode:"LLD"}
+@media(min-width:901px){
+  body.theme-console:not(#_).ws-wide .view>.ui-screen-header,body.theme-console:not(#_) .ui-workspace>.ui-screen-header,body.theme-console:not(#_) .ui-workspace>div:has(>.ui-screen-header){order:9}
+}
+@media(min-width:1081px){
+  /* The pane switches ride in the status line instead of a rail of their own. */
+  body.theme-console:not(#_).ws-wide .pbody.with-workspace{margin-left:0}
+  body.theme-console:not(#_).ws-wide .workspace-rail{top:auto;right:auto;bottom:0;left:0;width:auto;height:var(--bar-h);flex-direction:row;align-items:center;gap:0;padding:0;border:0;background:transparent;z-index:3}
+  body.theme-console:not(#_).ws-wide .workspace-rail button{width:var(--bar-h);height:var(--bar-h);border-radius:0}
+  body.theme-console:not(#_).ws-wide .workspace-rail button[aria-pressed=true]::before{left:6px;right:6px;top:auto;bottom:0;width:auto;height:2px}
+  body.theme-console:not(#_).ws-wide .workspace-rail svg{width:16px;height:16px}
+  body.theme-console:not(#_).ws-wide .view:has(>.workspace-rail)>.ui-screen-header{padding-left:calc(3 * var(--bar-h))}
+}
+body.theme-console:not(#_) :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:0 var(--pane-gap) 8px}
+body.theme-console:not(#_) .ui-workspace{padding:0}
+
+/* ---- Fields: a dashed underline, never a box. ---- */
+body.theme-console:not(#_) :is(input:not([type=checkbox],[type=radio],[type=range]),textarea,select):not(.ui-composer-input,#q){border:0;border-bottom:var(--rule);border-radius:0;background:transparent;box-shadow:none;font-family:var(--ui)}
+body.theme-console:not(#_) :is(input:not([type=checkbox],[type=radio],[type=range]),textarea,select):not(.ui-composer-input,#q):focus{border-bottom:1px solid var(--accent);outline:none}
+body.theme-console:not(#_) .ui-switch{border-radius:0;border:1px solid var(--line);background:transparent}
+body.theme-console:not(#_) .ui-switch::after{border-radius:0;background:var(--ink-50)}
+body.theme-console:not(#_) .ui-switch:checked{background:var(--solid-bg);border-color:var(--solid-bg)}
+body.theme-console:not(#_) .ui-switch:checked::after{background:var(--solid-fg)}
+
+/* ---- Conversation: a session log. ---- */
+body.theme-console:not(#_) .ui-message,body.theme-console:not(#_) .ui-message .ui-conversation-text{font:400 12.5px/1.6 var(--ui)}
+body.theme-console:not(#_) .ui-question{align-items:stretch}
+/* The learner's line keeps the shared right edge and 88% bound, read as an indented log entry. */
+body.theme-console:not(#_) .ui-question .ui-conversation-text{box-sizing:border-box;width:auto;max-width:88%;margin-left:auto;padding:0 0 0 10px;border-left:1px dashed var(--line);background:transparent;border-radius:0;color:var(--accent)}
+body.theme-console:not(#_) .ui-question .ui-conversation-text>:first-child::before{content:"you> ";font-weight:700}
+body.theme-console:not(#_) .ui-turn-head strong{color:var(--tok-def);font-weight:700;text-transform:lowercase}
+body.theme-console:not(#_) .ui-turn-head strong::after{content:">"}
+body.theme-console:not(#_) .ui-conversation-text code{background:transparent;padding:0;color:var(--accent);font:inherit}
+body.theme-console:not(#_) .ui-conversation-text pre{border:0;border-left:2px solid var(--accent);border-radius:0;background:transparent;padding:2px 0 2px 12px}
+body.theme-console:not(#_) .ui-conversation-text pre code{color:var(--ink)}
+body.theme-console:not(#_) :is(.ui-conversation-separator,.ui-phase-divider){text-transform:uppercase;letter-spacing:.08em;font:500 10.5px/1.6 var(--ui)}
+body.theme-console:not(#_) :is(.ui-conversation-separator,.ui-phase-divider)::before,body.theme-console:not(#_) :is(.ui-conversation-separator,.ui-phase-divider)::after{height:0;background:transparent;border-top:var(--rule)}
+body.theme-console:not(#_) .ui-composer{margin:0;padding:8px 10px;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none}
+body.theme-console:not(#_) .ui-composer:focus-within{border-color:var(--accent);background:transparent;box-shadow:0 -1px 0 var(--accent)}
+body.theme-console:not(#_) .ui-composer .ui-composer-body{position:relative;padding-left:2ch}
+body.theme-console:not(#_) .ui-composer .ui-composer-body::before{content:">";position:absolute;left:0;top:8px;font:700 12.5px/1.6 var(--ui);color:var(--accent)}
+body.theme-console:not(#_) .ui-composer textarea.ui-composer-input{font:400 12.5px/1.6 var(--ui);padding-left:0}
+body.theme-console:not(#_) .ui-composer .ui-composer-send{border-radius:0}
+body.theme-console:not(#_) .ui-composer .ui-composer-send:disabled{background:var(--bar);color:var(--ink-35)}
+body.theme-console:not(#_) .ui-thread-strip{border-bottom:var(--rule);text-transform:uppercase;letter-spacing:.04em}
+body.theme-console:not(#_) .ui-turn-change{border:0;border-left:2px solid var(--accent);border-radius:0;background:transparent}
+
+/* ---- Floats: boxes drawn on top, no shadow. ---- */
+body.theme-console:not(#_) .ui-menu{border:1px solid var(--ink-50);border-radius:0;box-shadow:none;background:var(--canvas);padding:0}
+body.theme-console:not(#_) .ui-menu-item{border-radius:0;font:500 11px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .ui-menu-item:is(:hover,:focus-visible,[aria-checked=true],[aria-selected=true]){background:var(--solid-bg);color:var(--solid-fg)}
+body.theme-console:not(#_) dialog{border:1px solid var(--ink-50);border-radius:0;box-shadow:none}
+body.theme-console:not(#_) .ui-dialog-header{height:var(--bar-h);min-height:var(--bar-h);background:var(--bar);border:0;text-transform:uppercase;letter-spacing:.06em}
+body.theme-console:not(#_) .ui-dialog-header h2{font:700 11px/1.2 var(--ui);letter-spacing:.06em}
+
+/* ---- Statement prose: headed sections with a dashed rule, examples behind an accent bar. ---- */
+body.theme-console:not(#_) .desc{font:12.5px/1.7 var(--ui)}
+body.theme-console:not(#_) .rich{font-family:var(--ui);font-size:12.5px;line-height:1.7;color:var(--ink)}
+body.theme-console:not(#_) .rich code{border:0;background:transparent;padding:0;color:var(--accent);font:inherit}
+body.theme-console:not(#_) .rich pre{border:0;border-left:2px solid var(--accent);border-radius:0;background:transparent;box-shadow:none;padding:2px 0 2px 12px;font:12px/1.7 var(--ui)}
+body.theme-console:not(#_) .rich pre code{color:inherit}
+body.theme-console:not(#_) .rich :is(h1,h2,h3,h4,h5,h6),body.theme-console:not(#_) .rich p>strong:only-child{font:700 11px/1.6 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+
+/* A narrow status line gives the mode block's room to the title. */
+@container(max-width:640px){body.theme-console:not(#_) .ui-screen-header::before{display:none}}
+
+/* ---- Narrow dialogs: the primary action drops its brackets so its label can shorten. ---- */
+@container(max-width:640px){
+  body.theme-console:not(#_) .ui-header-actions>.btn--primary::before,body.theme-console:not(#_) .ui-header-actions>.btn--primary::after{content:none}
+  body.theme-console:not(#_) .ui-header-actions>.btn--primary span{min-width:0}
+}
+@media(max-width:800px){
+  body.theme-console:not(#_) .ui-dialog-header .btn--primary::before,body.theme-console:not(#_) .ui-dialog-header .btn--primary::after{content:none}
+  body.theme-console:not(#_) .ui-dialog-header .btn--primary span{min-width:0}
+  body.theme-console:not(#_) .ui-dialog-header .btn--primary{max-width:none;letter-spacing:0}
+}
+
+/* ---- Document pages: the status line is pinned to the window's bottom edge. ---- */
+@media(min-width:901px){
+  body.theme-console:not(#_):not(.ws-wide) main:not(:has(>.ui-workspace)) .ui-screen-header{position:fixed;left:0;right:0;bottom:0;width:auto;z-index:40}
+  body.theme-console:not(#_):not(.ws-wide) main:not(:has(>.ui-workspace)):has(.ui-screen-header){padding-bottom:calc(var(--bar-h) + 24px)}
+}
+body.theme-console:not(#_).browse-page main{padding:14px 10px 40px}
+
+/* ---- Explorer: a dense listing. ---- */
+body.theme-console:not(#_) .meter{border-radius:0;background:repeating-linear-gradient(90deg,var(--line) 0 3px,transparent 3px 5px)}
+body.theme-console:not(#_) .meter>i{border-radius:0}
+body.theme-console:not(#_) .catalog .ov{position:relative;overflow:visible;margin:18px 0 24px;padding:20px 0}
+body.theme-console:not(#_) .catalog .ov:not(.ov-unavailable)::before{content:"OVERVIEW";position:absolute;top:-8px;left:9px;padding:0 7px;background:var(--canvas);font:700 11px/16px var(--ui);letter-spacing:.06em;color:var(--accent)}
+body.theme-console:not(#_) .ov>*+*{border-left:var(--rule)}
+body.theme-console:not(#_) :is(.ov-kicker,.ov-ring-label){font:700 10.5px/1.4 var(--ui);letter-spacing:.08em;text-transform:uppercase}
+body.theme-console:not(#_) .catalog-layout{gap:10px}
+body.theme-console:not(#_) .catalog-tree{top:calc(var(--topbar-h) + 10px);max-height:calc(100vh - var(--topbar-h) - var(--bar-h) - 30px);padding:0 1px 1px;border:0;background:var(--frame),var(--canvas)}
+body.theme-console:not(#_) .tree-heading{position:sticky;top:0;z-index:2;align-items:center;height:var(--bar-h);padding:0 9px;background:var(--frame-open),var(--canvas);font:700 11px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+body.theme-console:not(#_) .tree-heading>*{background:var(--canvas);padding-inline:7px}
+body.theme-console:not(#_) .tree-legend{font:500 10.5px/1 var(--ui);letter-spacing:.06em;color:var(--ink-50)}
+body.theme-console:not(#_) :is(.tree-root,.tree-pattern){min-height:26px;padding-block:3px;border-radius:0;font:12px/1.35 var(--ui)}
+body.theme-console:not(#_) .tree-root{margin-bottom:0}
+body.theme-console:not(#_) :is(.tree-root,.tree-pattern)[aria-pressed=true]{background:var(--solid-bg);color:var(--solid-fg)}
+body.theme-console:not(#_) :is(.tree-root,.tree-pattern)[aria-pressed=true] :is(.tree-count,.folder-icon){color:inherit}
+body.theme-console:not(#_) .tree-pattern::before{border-left:var(--rule)}
+body.theme-console:not(#_) .tree-pattern::after{border-top:var(--rule)}
+body.theme-console:not(#_) .tree-done{border-radius:0}
+body.theme-console:not(#_) .catalog .filterbar{margin-bottom:10px}
+body.theme-console:not(#_) .catalog .seg-dot{border-radius:0;box-shadow:none}
+body.theme-console:not(#_) .catalog .sections{gap:10px}
+body.theme-console:not(#_) .catalog .psec{border:1px solid var(--line);border-radius:0;box-shadow:none;background:transparent}
+body.theme-console:not(#_) .catalog .psec.open>.phead{position:static}
+body.theme-console:not(#_) .catalog .phead{min-height:30px;padding-block:4px;background:var(--bar);box-shadow:none}
+body.theme-console:not(#_) .catalog .phead:hover{background:var(--bar)}
+body.theme-console:not(#_) .catalog .phead .pname{font:700 11px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .catalog .prow{min-height:30px;padding-block:5px}
+body.theme-console:not(#_) .catalog .prow .ptitle{font:500 12.5px/1.4 var(--ui);letter-spacing:0}
+body.theme-console:not(#_) .catalog .prow:hover{background:var(--bar)}
+body.theme-console:not(#_) .catalog .prow.sel{background:var(--solid-bg);border-left-color:var(--solid-bg)}
+body.theme-console:not(#_) .catalog .prow.sel :is(.ptitle,.pnum,.tag,.plist-note){color:var(--solid-fg)}
+body.theme-console:not(#_) .psec-more{border-top:var(--rule)}
+
+/* ---- Test cases: labelled rows; your own values get a prompt and an underline, published
+   ones are plain printed text. The prompt is a grid item laid over the value's cell, so it
+   sits before the value whether the label is beside it or above it. ---- */
+body.theme-console:not(#_) .tc-tab{padding:0 8px}
+body.theme-console:not(#_) .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);font-weight:700;border:0}
+body.theme-console:not(#_) :is(.tc-label,.submission-label){font:500 10.5px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .tc-label{padding-top:5px}
+body.theme-console:not(#_) .tc-field.is-expected{border-top:var(--rule)}
+body.theme-console:not(#_) .tc-input{padding:4px 0 4px 2ch;border:0;border-bottom:var(--rule);background:transparent;font:12.5px/18px var(--ui)}
+/* Two id-weights: the shared field underline above is written with `:not(#q)`. */
+body.theme-console:not(#_) .tc-input[readonly]:not(#_){padding-left:0;border-bottom-color:transparent;background:transparent}
+body.theme-console:not(#_) .tc-field>.tc-label{grid-row:1;grid-column:1}
+body.theme-console:not(#_) .tc-field>.tc-input{grid-row:1;grid-column:2}
+body.theme-console:not(#_) .tc-field:has(>.tc-input:not([readonly]))::after{content:">";grid-row:1;grid-column:2;align-self:start;justify-self:start;padding-top:4px;font:700 12.5px/18px var(--ui);color:var(--accent);pointer-events:none}
+@container cases (max-width:420px){
+  body.theme-console:not(#_) .tc-label{padding-top:0}
+  body.theme-console:not(#_) .tc-field>.tc-input,body.theme-console:not(#_) .tc-field:has(>.tc-input:not([readonly]))::after{grid-row:2;grid-column:1}
+}
+body.theme-console:not(#_) .tc-origin{font:500 10.5px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-50)}
+body.theme-console:not(#_) .tc-why{border-radius:0}
+
+/* ---- Run results: the summary is a status line, each case reads like a statement example. ---- */
+body.theme-console:not(#_) .rr-summary{border-bottom:var(--rule);background:transparent}
+body.theme-console:not(#_) .rr-headline{font:700 11px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) :is(.rr-detail,.rr-total){font:500 10.5px/1.5 var(--ui);letter-spacing:.04em}
+body.theme-console:not(#_) .rr-casetab.is-on .rr-dot{box-shadow:0 0 0 1px var(--solid-fg)}
+body.theme-console:not(#_) .rr-why{padding:2px 0 2px 12px;border-left:2px solid var(--rr-tone,var(--accent));background:transparent;font:12.5px/1.6 var(--ui)}
+body.theme-console:not(#_) .rr-why strong{font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px}
+body.theme-console:not(#_) .rr-label{font:500 10.5px/1.7 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .rr-value{font:12.5px/1.6 var(--ui)}
+body.theme-console:not(#_) .rr-mark{padding:0 1px;color:var(--canvas);background:var(--hard)}
+body.theme-console:not(#_) .rr-mark.is-expected{color:var(--canvas);background:var(--easy)}
+body.theme-console:not(#_) .rr-trace-text{padding:2px 0 2px 12px;border-left:2px solid var(--hard);background:transparent;font:12px/1.6 var(--ui)}
+body.theme-console:not(#_) .rr-foot{padding-top:6px;border-top:var(--rule);font:500 10.5px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .rr-foot b{font:700 10.5px/1.5 var(--ui)}
+
+/* ---- Settings and choice lists. ---- */
+body.theme-console:not(#_) .set-nav{background:transparent;border-right:1px solid var(--line)}
+body.theme-console:not(#_) .set-label{font:700 11px/1.5 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+body.theme-console:not(#_) .set-group+.set-group,body.theme-console:not(#_) .set-row~.set-row,body.theme-console:not(#_) .rr-case+.rr-case{border-top:var(--rule)}
+body.theme-console:not(#_) .settings .btn.set-nav-item[aria-selected=true],body.theme-console:not(#_) .set-nav-item[aria-selected=true]{background:var(--solid-bg);color:var(--solid-fg);font-weight:700}
+body.theme-console:not(#_) .th-pick[aria-pressed=true]{background:var(--solid-bg);color:var(--solid-fg)}
+body.theme-console:not(#_) .th-pick[aria-pressed=true] *{color:inherit}
+body.theme-console:not(#_) .th-pick[aria-pressed=true]>.th-radio{border:4px solid var(--solid-fg)}
+body.theme-console:not(#_) :is(.th-radio,.problem-state,.ui-live-dot,.streak-dot){border-radius:0}
+
+/* ---- Track homes and Progress: titled frames, dashed rows. ---- */
+body.theme-console:not(#_) .th h2,body.theme-console:not(#_) .dash-sec>header h2{font:700 11px/16px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+body.theme-console:not(#_) .th-wrap{padding-top:24px;gap:24px}
+body.theme-console:not(#_) .th-pair{gap:10px}
+body.theme-console:not(#_) .th-box{position:relative}
+body.theme-console:not(#_) .th-box-body{padding-top:var(--space-3)}
+body.theme-console:not(#_) .th-box-head{justify-content:flex-end;min-height:0}
+body.theme-console:not(#_) .th-box-head h2{position:absolute;top:-9px;left:17px;padding:0 7px;background:var(--canvas)}
+body.theme-console:not(#_) .th-radio{border:1px solid var(--ink-50)}
+body.theme-console:not(#_) .th-recent{gap:0}
+body.theme-console:not(#_) .th-recent>h2{position:relative;z-index:1;align-self:flex-start;margin:0 0 -8px 17px;padding:0 7px;background:var(--canvas)}
+body.theme-console:not(#_) .th-list{padding-top:8px}
+body.theme-console:not(#_) .th-item+.th-item{border-top:var(--rule)}
+body.theme-console:not(#_) .th-recent .th-all.btn{margin-top:var(--space-2)}
+body.theme-console:not(#_) .dash-body{padding-top:16px;gap:20px}
+body.theme-console:not(#_) .dash-layout{gap:20px 24px}
+body.theme-console:not(#_) .dash-sec{box-sizing:border-box;padding:0 14px 12px;background:var(--frame),var(--canvas)}
+body.theme-console:not(#_) .dash-sec>header{align-items:center;height:var(--bar-h);margin-inline:-5px;padding:0}
+body.theme-console:not(#_) .dash-sec>header>*{padding:0 7px;background:var(--canvas)}
+body.theme-console:not(#_) .dash-sec>header .note{font:500 10.5px/16px var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-50)}
+body.theme-console:not(#_) .dash-prow .pcells i{border-radius:0}
+body.theme-console:not(#_) .dash-meter,body.theme-console:not(#_) .dash-meter i{border-radius:0}
+
+/* ---- Results: the submission lane's own head sits on the frame like a pane header. ---- */
+body.theme-console:not(#_) .sub-head{height:var(--bar-h);min-height:var(--bar-h);padding:0 9px;gap:0;border:0;background:transparent;text-transform:uppercase;letter-spacing:.06em}
+body.theme-console:not(#_) .sub-head>*{padding:0 7px;background:var(--canvas)}
+body.theme-console:not(#_) .sub-head .sub-mark{font:700 11px/16px var(--ui);color:var(--accent)}
+body.theme-console:not(#_) .sub-head .sub-scope{font:500 10.5px/16px var(--ui);color:var(--ink-50)}
+/* Reports: dashed rules, uppercase labels, the next-level note as an accent-barred block. */
+body.theme-console:not(#_) .rp-body{--rp-rule:var(--rule);--rp-quote-rule:2px solid var(--accent);--rp-inverse-bg:transparent;--rp-inverse-fg:var(--ink)}
+body.theme-console:not(#_) .rp-move-up{border:1px solid var(--line);border-left:2px solid var(--accent)}
+body.theme-console:not(#_) .rp-move-up .rp-h{font:700 11px/1.6 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+body.theme-console:not(#_) .rp-move-up p{font-size:var(--text-md)}
+body.theme-console:not(#_) .rp-stat-label{font:500 10.5px/1.4 var(--ui);letter-spacing:.08em;text-transform:uppercase}
+
+/* ---- The rebuilt statement: headed sections, examples behind an accent bar. ---- */
+body.theme-console:not(#_) .stmt .stmt-h{display:flex;align-items:center;gap:8px;font:700 11px/1.5 var(--ui);letter-spacing:.08em;color:var(--accent)}
+body.theme-console:not(#_) .stmt .stmt-h::after{content:"";flex:1;border-top:var(--rule)}
+body.theme-console:not(#_) .stmt-example{border:0;border-left:2px solid var(--accent);border-radius:0;background:transparent}
+body.theme-console:not(#_) .ex-head{border-bottom:0;padding-left:12px}
+body.theme-console:not(#_) .ex-head strong{font:700 11px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .ex-rows{padding:2px 12px 6px}
+body.theme-console:not(#_) .ex-label{text-transform:uppercase;letter-spacing:.06em}
+body.theme-console:not(#_) .ex-value,body.theme-console:not(#_) .ex-value.is-prose{font-family:var(--ui)}
+body.theme-console:not(#_) .stmt-constraints li::before{border-radius:0;background:var(--accent)}
+body.theme-console:not(#_) .stmt-follow{border:var(--rule);border-radius:0;background:transparent}
+body.theme-console:not(#_) .pane-links{min-height:var(--bar-h)}
+
+/* ---- Solution and Article tabs: the reference code is a listing behind an accent bar on the
+   pane's own ground. ---- */
+body.theme-console:not(#_) .pcol>.card.ref-tab pre.solutioncode{background:var(--canvas)}

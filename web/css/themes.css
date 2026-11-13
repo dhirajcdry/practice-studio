@@ -1,151 +1,72 @@
-/* Each family owns its palettes and geometry. Text surfaces are always opaque. */
-body.theme-studio{
-  --control-border:1px solid var(--hair-20);--surface-card-bg:var(--card);--surface-card-border:1px solid var(--hair-10);
-  --surface-card-radius:0;--surface-card-shadow:none;--surface-card-hover-bg:var(--hair-06);--surface-card-hover-shadow:var(--shadow);
-  --row-radius:var(--r-sm);--row-hover-bg:var(--hair-06);--row-gap:var(--space-2);--row-border:var(--surface-card-border);
-  --tab-radius:var(--r-sm);--tab-active-bg:transparent;--tab-active-fg:var(--ink);--tab-active-indicator:inset 0 -2px 0 var(--accent);
-  --tab-active-shadow:0 0 0 transparent;--chip-radius:var(--r-sm);--chip-border:0;--chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
-  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);--focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);
-  --verdict-easy:#246044;--verdict-hard:#B33A1A;--verdict-med:#795400;--ink-rgb:17,17,17;--on-ink-rgb:243,244,246;
-  --on-ink:#F3F4F6;--canvas:#F3F4F6;--card:#FFFFFF;--ink:#111111;--ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
-  --hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);--accent:#355DCC;--accent-rgb:53,93,204;
-  --accent-soft:rgba(var(--accent-rgb),.09);--solid-bg:#345BCC;--solid-fg:#FFFFFF;--solid-edge:#345BCC;
-  --solid-hover:#2C4FB5;--easy:#2E6B4F;--easy-rgb:46,107,79;--easy-soft:rgba(var(--easy-rgb),.09);
-  --med:#93650B;--med-rgb:147,101,11;--med-soft:rgba(var(--med-rgb),.09);--hard:#B33A1A;--hard-rgb:179,58,26;
-  --hard-soft:rgba(var(--hard-rgb),.09);--tok-kw:#7A3E8F;--tok-def:#1E5A8A;--shadow:none;--shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
-  --texture:none;--r-sm:6px;--r-md:6px;--r-pane:0;--pane-gap:0;--display:var(--ui);--prose:var(--ui);
-  --serif:var(--ui);--ui:"Avenir Next",Avenir,sans-serif;--btn-font:var(--ui);--btn-transform:none;
-  --btn-tracking:normal;--title-font:var(--ui);--title-weight:600;
-}
-body.theme-studio.is-dark{
-  --verdict-easy:#5FCF97;--verdict-hard:#FF7A6B;--verdict-med:#E3B457;--ink-rgb:232,232,232;--on-ink-rgb:18,18,18;
-  --on-ink:#121212;--canvas:#121212;--card:#1A1A1A;--ink:#E8E8E8;--ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
-  --hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);--accent:#91A7FF;--accent-rgb:145,167,255;
-  --accent-soft:rgba(var(--accent-rgb),.14);--solid-bg:#4465ED;--solid-fg:#FFFFFF;--solid-edge:#5474FF;
-  --solid-hover:#5574F0;--easy:#5FCF97;--easy-rgb:95,207,151;--easy-soft:rgba(var(--easy-rgb),.13);
-  --med:#E3B457;--med-rgb:227,180,87;--med-soft:rgba(var(--med-rgb),.13);--hard:#FF7A6B;--hard-rgb:255,122,107;
-  --hard-soft:rgba(var(--hard-rgb),.13);--tok-kw:#C7A0E8;--tok-def:#86C2EC;--shadow:none;--shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
-  --texture:none;--ui:"Avenir Next",Avenir,sans-serif;--btn-font:var(--ui);--btn-transform:none;
-  --btn-tracking:normal;--title-font:var(--ui);--title-weight:600;--r-sm:6px;--r-md:6px;--r-pane:0;
-  --pane-gap:0;--surface-card-radius:0;--surface-card-shadow:none;--display:var(--ui);--prose:var(--ui);
-}
-body.theme-desk{
-  --control-border:1px solid var(--hair-20);--surface-card-bg:var(--card);--surface-card-border:1px solid var(--hair-10);
-  --surface-card-radius:var(--r-md);--surface-card-shadow:var(--shadow);--surface-card-hover-bg:var(--hair-06);
-  --surface-card-hover-shadow:var(--shadow);--row-radius:var(--r-sm);--row-hover-bg:var(--hair-06);
-  --row-gap:var(--space-2);--row-border:var(--surface-card-border);--tab-radius:var(--r-sm);--tab-active-bg:transparent;
-  --tab-active-fg:var(--ink);--tab-active-indicator:inset 0 -2px 0 var(--accent);--tab-active-shadow:0 0 0 transparent;
-  --chip-radius:var(--r-sm);--chip-border:0;--chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
-  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);--focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);
-  --verdict-easy:#356747;--verdict-hard:#B4432A;--verdict-med:#805700;--ink-rgb:24,24,24;--on-ink-rgb:246,244,240;
-  --on-ink:#F6F4F0;--canvas:#F6F4F0;--card:#FFFDF9;--ink:#181818;--ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
-  --hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);--accent:#AC5636;--accent-rgb:172,86,54;
-  --accent-soft:rgba(var(--accent-rgb),.09);--solid-bg:#AC5636;--solid-fg:#FFFFFF;--solid-edge:#AC5636;
-  --solid-hover:#9A4A2C;--easy:#3F7A55;--easy-rgb:63,122,85;--easy-soft:rgba(var(--easy-rgb),.09);
-  --med:#8A5D0E;--med-rgb:138,93,14;--med-soft:rgba(var(--med-rgb),.09);--hard:#B4432A;--hard-rgb:180,67,42;
-  --hard-soft:rgba(var(--hard-rgb),.09);--tok-kw:#A34A2A;--tok-def:#2F5D7C;--shadow:0 1px 2px rgba(24,24,24,.04), 0 10px 30px rgba(24,24,24,.06);
-  --shadow-lift:0 4px 12px rgba(24,24,24,.08), 0 30px 70px rgba(24,24,24,.16);--texture:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.035' filter='url(%23n)'/%3E%3C/svg%3E");
-  --r-sm:9px;--r-md:14px;--r-pane:14px;--pane-gap:10px;--display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
-  --prose:var(--ui);--serif:var(--ui);--ui:"Avenir Next",Avenir,sans-serif;--btn-font:var(--ui);
-  --btn-transform:none;--btn-tracking:normal;--title-font:"Iowan Old Style",Georgia,serif;--title-weight:500;
-}
-body.theme-desk.is-dark{
-  --verdict-easy:#7BC796;--verdict-hard:#F08A72;--verdict-med:#E0B060;--ink-rgb:238,232,224;--on-ink-rgb:23,21,19;
-  --on-ink:#171513;--canvas:#171513;--card:#211E1B;--ink:#EEE8E0;--ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
-  --hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);--accent:#E2875F;--accent-rgb:226,135,95;
-  --accent-soft:rgba(var(--accent-rgb),.14);--solid-bg:#B35733;--solid-fg:#FFF8F2;--solid-edge:#D97650;
-  --solid-hover:#A24E2E;--easy:#7BC796;--easy-rgb:123,199,150;--easy-soft:rgba(var(--easy-rgb),.13);
-  --med:#E0B060;--med-rgb:224,176,96;--med-soft:rgba(var(--med-rgb),.13);--hard:#F08A72;--hard-rgb:240,138,114;
-  --hard-soft:rgba(var(--hard-rgb),.13);--tok-kw:#E59A78;--tok-def:#8FB8D8;--shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);
-  --shadow-lift:0 4px 12px rgba(0,0,0,.5), 0 30px 70px rgba(0,0,0,.6);--texture:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.035' filter='url(%23n)'/%3E%3C/svg%3E");
-  --ui:"Avenir Next",Avenir,sans-serif;--btn-font:var(--ui);--btn-transform:none;--btn-tracking:normal;
-  --title-font:"Iowan Old Style",Georgia,serif;--title-weight:500;--r-sm:9px;--r-md:14px;--r-pane:14px;
-  --pane-gap:10px;
-}
-body.theme-dunes{
-  isolation:isolate;
-  --control-border:1px solid var(--hair-20);--surface-card-bg:var(--card);--surface-card-border:1.5px solid var(--ink);
-  --surface-card-radius:var(--r-md);--surface-card-shadow:-4px 4px 0 var(--sun-a),4px 4px 0 var(--sun-b);
-  --surface-card-hover-bg:var(--hair-06);--surface-card-hover-shadow:var(--shadow);--row-radius:var(--r-sm);
-  --row-hover-bg:var(--hair-06);--row-gap:var(--space-2);--row-border:var(--surface-card-border);
-  --tab-radius:var(--r-sm);--tab-active-bg:transparent;--tab-active-fg:var(--ink);--tab-active-indicator:inset 0 -2px 0 var(--accent);
-  --tab-active-shadow:0 0 0 transparent;--chip-radius:var(--r-sm);--chip-border:0;--chip-font:500 var(--text-xs)/var(--line-sm) var(--ui);
-  --float-radius:var(--r-md);--float-shadow:var(--shadow-lift);--float-border:1px solid var(--hair-20);--focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);
-  --verdict-easy:#246044;--verdict-hard:#B33A1A;--verdict-med:#795400;--ink-rgb:42,26,16;--on-ink-rgb:251,242,232;
-  --on-ink:#FBF2E8;--canvas:#FBF2E8;--card:#FFF9F0;--ink:#2A1A10;--ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
-  --hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);--accent:#B94219;--accent-rgb:185,66,25;
-  --accent-soft:rgba(var(--accent-rgb),.09);--solid-bg:#C2491D;--solid-fg:#FFFFFF;--solid-edge:#C2491D;
-  --solid-hover:#A93D17;--easy:#2E6B4F;--easy-rgb:46,107,79;--easy-soft:rgba(var(--easy-rgb),.09);
-  --med:#8C5A06;--med-rgb:140,90,6;--med-soft:rgba(var(--med-rgb),.09);--hard:#B33A1A;--hard-rgb:179,58,26;
-  --hard-soft:rgba(var(--hard-rgb),.09);--tok-kw:#B0431C;--tok-def:#2F5D7C;--shadow:0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
-  --shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);--texture:none;--r-sm:3px;
-  --r-md:3px;--r-pane:3px;--pane-gap:14px;--display:Futura,"Avenir Next",var(--ui);--prose:var(--ui);
-  --serif:var(--ui);--art:url(../img/themes/dunes-light.jpg);--glass:rgba(255,250,244,.55);--ui:"Avenir Next",Avenir,sans-serif;
-  --btn-font:Futura,"Avenir Next",sans-serif;--btn-transform:uppercase;--btn-tracking:.14em;--title-font:Futura,"Avenir Next",sans-serif;
-  --title-weight:600;--sun-a:var(--accent);--sun-b:rgba(var(--ink-rgb),.25);
-}
-body.theme-dunes.is-dark{
-  --verdict-easy:#7FD4A0;--verdict-hard:#FF8A80;--verdict-med:#F2CB6C;--ink-rgb:233,228,218;--on-ink-rgb:8,20,26;
-  --on-ink:#08141A;--canvas:#08141A;--card:#10232A;--ink:#E9E4DA;--ink-70:rgba(var(--ink-rgb),.72);
-  --ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);--hair-20:rgba(var(--ink-rgb),.2);
-  --hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);--accent:#FF9A62;--accent-rgb:255,154,98;
-  --accent-soft:rgba(var(--accent-rgb),.14);--solid-bg:#E0703A;--solid-fg:#1A0B03;--solid-edge:#E0703A;
-  --solid-hover:#EE8350;--easy:#7FD4A0;--easy-rgb:127,212,160;--easy-soft:rgba(var(--easy-rgb),.14);
-  --med:#F2CB6C;--med-rgb:242,203,108;--med-soft:rgba(var(--med-rgb),.14);--hard:#FF8A80;--hard-rgb:255,138,128;
-  --hard-soft:rgba(var(--hard-rgb),.14);--tok-kw:#FF9A62;--tok-def:#8CC7D9;--shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35);
-  --shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);--texture:none;--r-sm:3px;
-  --r-md:3px;--r-pane:3px;--pane-gap:14px;--display:Futura,"Avenir Next",var(--ui);--prose:var(--ui);
-  --serif:var(--ui);--art:url(../img/themes/dunes-dark.jpg);--glass:rgba(8,20,26,.50);--ui:"Avenir Next",Avenir,sans-serif;
-  --btn-font:Futura,"Avenir Next",sans-serif;--btn-transform:uppercase;--btn-tracking:.14em;--title-font:Futura,"Avenir Next",sans-serif;
-  --title-weight:600;--surface-card-border:1.5px solid var(--ink);--surface-card-shadow:-4px 4px 0 var(--sun-a),4px 4px 0 var(--sun-b);
-  --sun-a:var(--accent);--sun-b:rgba(0,0,0,.55);
-}
+@import "./themes/studio.css";
+@import "./themes/desk.css";
+@import "./themes/dunes.css";
+@import "./themes/console.css";
+@import "./themes/sheet.css";
+@import "./themes/broadsheet.css";
+@import "./themes/dock.css";
 
-body.theme-studio :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane){background:var(--card);border-radius:0;box-shadow:none}
-body.theme-studio :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:0}
-body.theme-studio :is(.ws,.coach,.dz-side){border-left:1px solid var(--hair-10)}
-body.theme-desk:not(.theme-studio){background:var(--texture),var(--canvas)}
-body.theme-desk :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:var(--pane-gap)}
-body.theme-desk :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.lld-document){background:var(--card);border-radius:var(--r-pane);box-shadow:var(--shadow);overflow:hidden}
+/* Themes.
+   A family is a pair of files and two lines:
+   - web/js/themes/<id>.js   its row: name, blurb, layout, Settings swatch, editor colours.
+   - web/css/themes/<id>.css its light and dark palette blocks, then its signature.
+   - one import line in web/js/themes.js and one @import line above.
+   A palette block lists only what is the family's own: surfaces, ink, accent, the three
+   status hues, verdict and syntax colours, shadows, and (light block only) radii and pane gap.
+   Everything derived from those is computed once in the shared block below. Component shapes
+   (cards, rows, tabs, chips, floats) default in ui.css; a family overrides only what it changes.
+   Pane structure belongs to the layout the family picks (docked, floating or boards), written
+   once at the end of this file. A family's signature may restyle or reposition anything, but
+   only under its own `body.theme-<id>` selector and only in its own file.
+   Text surfaces are always opaque. */
+body{
+  --soft-alpha:.09;--status-soft-alpha:.09;
+  --ink-70:rgba(var(--ink-rgb),.72);--ink-50:rgba(var(--ink-rgb),.68);--ink-35:rgba(var(--ink-rgb),.65);
+  --hair-20:rgba(var(--ink-rgb),.2);--hair-10:rgba(var(--ink-rgb),.11);--hair-06:rgba(var(--ink-rgb),.07);
+  --accent-soft:rgba(var(--accent-rgb),var(--soft-alpha));--easy-soft:rgba(var(--easy-rgb),var(--status-soft-alpha));
+  --med-soft:rgba(var(--med-rgb),var(--status-soft-alpha));--hard-soft:rgba(var(--hard-rgb),var(--status-soft-alpha));
+  --focus-halo:0 0 0 3px rgba(var(--accent-rgb),.14);--texture:none;
+  --ui:"Avenir Next",Avenir,sans-serif;--display:var(--ui);--prose:var(--ui);--serif:var(--ui);
+  --btn-font:var(--ui);--btn-transform:none;--btn-tracking:normal;--title-font:var(--ui);--title-weight:600;
+}
+body.is-dark{--soft-alpha:.14;--status-soft-alpha:.13}
+
+/* ---- Layout: docked. Panes meet edge to edge with hairline dividers. ---- */
+body.layout-docked :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane){background:var(--card);border-radius:0;box-shadow:none}
+body.layout-docked :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:0}
+body.layout-docked :is(.ws,.coach,.dz-side){border-left:1px solid var(--hair-10)}
+body.layout-docked main{padding:0;max-width:none}
+body.layout-docked :is(.dz-view,.lld-view,.pr-view){padding:0;gap:0}
+body.layout-docked :is(.ui-screen-header,.dz-split,.lld-workspace,.pr-split){margin:0;border-radius:0;box-shadow:none}
+body.layout-docked .catalog>.ui-screen-header{margin:0}
+body.layout-docked .dzl{max-width:none}
+body.layout-docked .dzl>:not(.ui-screen-header){width:100%;max-width:none;margin-inline:0}
+body.layout-docked .ui-screen-header{width:100%}
+body.layout-docked :is(.dz-side,.lld-document,.pr-work,.pr-coach){border-radius:0;box-shadow:none}
+
+/* ---- Layout: floating. Rounded panes with gaps, on the page's own ground. ---- */
+body.layout-floating{--surface-card-shadow:var(--shadow);--surface-card-hover-shadow:var(--shadow)}
+body.layout-floating:not(.layout-docked){background:var(--texture),var(--canvas)}
+body.layout-floating :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:var(--pane-gap)}
+body.layout-floating :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.lld-document){background:var(--card);border-radius:var(--r-pane);box-shadow:var(--shadow);overflow:hidden}
 /* The problem pane is its own scroller; rounding it must not stop a long statement scrolling. */
-body.theme-desk .pbody.with-workspace .pcol{overflow:hidden auto}
-body.theme-dunes::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;contain:strict;background:var(--art) center/cover no-repeat}
-body.theme-dunes :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:var(--pane-gap)}
-body.theme-dunes :is(.topbar,.ui-screen-header,.ui-dialog-header,.ui-pane-header,.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.card,.settings,.drawer){background:var(--card)}
-body.theme-dunes :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.lld-document,.pr-work){border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
-body.theme-dunes.ws-wide .view>.ui-screen-header{margin:var(--pane-gap) var(--pane-gap) 0}
+body.layout-floating .pbody.with-workspace .pcol{overflow:hidden auto}
+body.layout-floating .ui-screen-header{background:transparent;border:0}
+
+/* ---- Layout: boards. Solid bordered boards with hard shadows; the page may carry a painting. ---- */
+body.layout-boards{isolation:isolate}
+body.theme-art::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;contain:strict;background:var(--art) center/cover no-repeat}
+body.layout-boards :is(.pbody.with-workspace,.dz-split,.lld-workspace,.pr-split){gap:var(--pane-gap);padding:var(--pane-gap)}
+body.layout-boards :is(.topbar,.ui-screen-header,.ui-dialog-header,.ui-pane-header,.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.card,.settings){background:var(--card)}
+body.layout-boards :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.lld-document,.pr-work){border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
+body.layout-boards.ws-wide .view>.ui-screen-header{margin:var(--pane-gap) var(--pane-gap) 0}
 /* The header board sits one gap lower here, so the rail starts below it instead of across its corner. */
-body.theme-dunes.ws-wide .workspace-rail{top:calc(46px + var(--pane-gap))}
-body.theme-dunes .topbar::after{content:'';position:absolute;inset:auto 0 -3px;height:3px;background:repeating-linear-gradient(110deg,var(--accent) 0 10px,var(--card) 10px 14px)}
-body.theme-dunes :is(.btn,.ui-tab,.ui-badge,.ui-pane-header>strong,.ui-screen-header h1,.ui-dialog-header h2){font-family:var(--btn-font);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
-body.theme-dunes .ui-screen-header{border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
-body.theme-dunes :is(.ui-pane-header,.ui-dialog-header){border:0;border-bottom:1px solid var(--hair-10);box-shadow:none}
-body.theme-dunes .wordmark{font-family:var(--btn-font);font-size:16px;letter-spacing:.22em;text-transform:uppercase}
-body.theme-dunes .wordmark .solid,body.theme-dunes .wordmark .outline{font:inherit;letter-spacing:inherit;text-transform:inherit}
-body.theme-dunes .wordmark .outline{-webkit-text-stroke:0;color:var(--accent)}
-
-body.theme-studio main{padding:0;max-width:none}
-body.theme-studio :is(.dz-view,.lld-view,.pr-view){padding:0;gap:0}
-body.theme-studio :is(.ui-screen-header,.dz-split,.lld-workspace,.pr-split){margin:0;border-radius:0;box-shadow:none}
-body.theme-studio .catalog>.ui-screen-header{margin:0}
-
-body.theme-studio .dzl{max-width:none}
-body.theme-studio .dzl>:not(.ui-screen-header){width:100%;max-width:none;margin-inline:0}
-body.theme-studio .ui-screen-header{width:100%}
-
-body.theme-studio :is(.dz-side,.lld-document,.pr-work,.pr-coach){border-radius:0;box-shadow:none}
-
-body.theme-dunes :is(.catalog-content,.catalog-tree,.roadmap-chips,.roadmap-query,.learner-context){background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow);padding:var(--space-3)}
-body.theme-desk .ui-screen-header{background:transparent;border:0}
-body.theme-dunes .catalog{--page-surface:var(--card)}
-body.theme-dunes :is(.dash-warn,.dash-foot){background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
-
-body.theme-dunes .dzl{gap:var(--pane-gap)}
-body.theme-dunes .dzl>:not(.ui-screen-header){margin-block:0}
-
-body.theme-dunes .dzl :is(.card){border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
+body.layout-boards.ws-wide .workspace-rail{top:calc(46px + var(--pane-gap))}
+body.layout-boards .ui-screen-header{border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
+body.layout-boards :is(.ui-pane-header,.ui-dialog-header){border:0;border-bottom:1px solid var(--hair-10);box-shadow:none}
+body.layout-boards :is(.catalog-content,.catalog-tree,.roadmap-chips,.roadmap-query,.learner-context){background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow);padding:var(--space-3)}
+body.layout-boards .catalog{--page-surface:var(--card)}
+body.layout-boards :is(.dash-warn,.dash-foot){background:var(--card);border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}
+body.layout-boards .dzl{gap:var(--pane-gap)}
+body.layout-boards .dzl>:not(.ui-screen-header){margin-block:0}
+body.layout-boards .dzl :is(.card){border:var(--surface-card-border);border-radius:var(--r-pane);box-shadow:var(--surface-card-shadow)}

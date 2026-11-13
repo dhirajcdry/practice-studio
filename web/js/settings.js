@@ -1,4 +1,5 @@
 import { segmented } from './ui/segmented.js';
+import { THEMES, themeById, LAYOUTS } from './themes.js';
 import { dialogHeader } from './ui/headers.js';
 import { openContextInspector } from './context-inspector.js';
 // Settings: the theme, and how the editor reads.
@@ -36,16 +37,8 @@ function shuffleSourceControl() {
   });
 }
 
-// A family keeps its character in either appearance.
-export const THEMES = [
-  { id: 'studio', name: 'Studio', blurb: 'Clean and docked. Panes meet edge to edge.', light: { paper: '#F3F4F6', ink: '#111111', accent: '#355DCC' }, dark: { paper: '#121212', ink: '#E8E8E8', accent: '#91A7FF' } },
-  { id: 'desk', name: 'Desk', blurb: 'Soft and rounded. Panes float on warm paper.', light: { paper: '#F6F4F0', ink: '#181818', accent: '#AC5636' }, dark: { paper: '#171513', ink: '#EEE8E0', accent: '#E2875F' } },
-  { id: 'dunes', name: 'Twin Suns', blurb: 'Matte field kit: survey stripes, two suns, two shadows.', art: true, light: { paper: '#FBF2E8', ink: '#2A1A10', accent: '#C2491D' }, dark: { paper: '#08141A', ink: '#E9E4DA', accent: '#FF9A62' } },
-];
-
-export function themeById(id) {
-  return THEMES.find((t) => t.id === id) || THEMES[0];
-}
+// A family keeps its character in either appearance. The list lives in themes.js.
+export { THEMES, themeById };
 
 export function isDark() {
   return current.mode === 'dark' || (current.mode === 'system' && systemPrefersDark());
@@ -128,8 +121,11 @@ export function apply() {
   for (const name of [...document.body.classList]) {
     if (name.startsWith('theme-')) document.body.classList.remove(name);
   }
-  document.body.classList.add(`theme-${current.theme}`);
-  document.body.classList.toggle('theme-art', Boolean(themeById(current.theme).art));
+  const family = themeById(current.theme);
+  document.body.classList.add(`theme-${family.id}`);
+  document.body.classList.toggle('theme-art', Boolean(family.art));
+  // Pane structure is styled per layout, never per family, so a new family needs no layout CSS.
+  for (const layout of LAYOUTS) document.body.classList.toggle(`layout-${layout}`, layout === family.layout);
   // Monaco cannot read CSS variables, so a dark theme has to be told explicitly.
   document.body.classList.toggle('is-dark', isDark());
   root.style.setProperty('--code-size', `${current.codeSize}px`);
@@ -141,16 +137,22 @@ export function toggleDark() { setSetting('mode', isDark() ? 'light' : 'dark'); 
 
 /* ------------------------------- the panel -------------------------------- */
 
+/** The thumbnail shape a theme row may give as `preview` (docs/UI.md, Themes). */
+const PREVIEW_KEYS = ['gap', 'radius', 'border', 'shadow', 'frame', 'bar'];
+
 function themeCard(theme, onPick) {
   const chosen = current.theme === theme.id;
+  // On the halves, not the card: a value naming --preview-ink must resolve where that is defined.
+  const shape = Object.entries(theme.preview || {}).filter(([key, value]) => PREVIEW_KEYS.includes(key) && value)
+    .map(([key, value]) => `--pv-${key}:${value}`).join(';');
   const previewStyle = `--pl-paper:${theme.light.paper};--pl-ink:${theme.light.ink};--pl-accent:${theme.light.accent};--pd-paper:${theme.dark.paper};--pd-ink:${theme.dark.ink};--pd-accent:${theme.dark.accent}`;
   return el('button', {
     class: 'ui-action-row set-card set-theme ui-inset', type: 'button', 'aria-pressed': String(chosen),
     onclick: () => onPick(theme.id),
   }, [
     el('div', {
-      class: 'theme-preview', 'data-theme-preview': theme.id, 'aria-hidden': 'true', ...(theme.art ? { 'data-art': '' } : {}), style: previewStyle,
-    }, ['light', 'dark'].map((mode) => el('i', { class: `theme-half ${mode}` }, [
+      class: 'theme-preview', 'data-theme-preview': theme.id, 'data-layout': theme.layout, 'aria-hidden': 'true', ...(theme.art ? { 'data-art': '' } : {}), style: previewStyle,
+    }, ['light', 'dark'].map((mode) => el('i', { class: `theme-half ${mode}`, ...(shape ? { style: shape } : {}) }, [
       el('b', { class: 'theme-preview-bar' }),
       el('span', { class: 'theme-preview-panes' }, [el('b'), el('b'), el('b')]),
     ]))),

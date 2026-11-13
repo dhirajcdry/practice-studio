@@ -211,7 +211,7 @@ Codex gets them as app-server `dynamicTools` (`item/tool/call`); Claude gets the
 Both paths were verified live on 2026-10-17.
 
 - Test cases, runs and notes are applied by the server; line marks, code edits and the
-  reference drawer by the page (`web/js/coach-actions.js`), which answers each action.
+  reference tabs by the page (`web/js/coach-actions.js`), which answers each action.
 - Every action is a receipt in the chat. Case changes are undoable by Studio, code edits by
   the editor. Tutor runs are labelled and never counted as the learner's runs.
 - `edit_code` is the one sanctioned way the coach changes `solution.py`: an undoable editor

@@ -246,46 +246,72 @@ try {
   if (chromeGeometry.length) bad('workspace chrome geometry', chromeGeometry.join('; '));
   else ok('navigation, tabs and editor controls meet the shared geometry');
 
-  /* ---- 4. Reference drawer: real pointer resize, persistence and scrim ---- */
-  const openReference = async () => {
-    await evaluate(`(async () => {
-      for (let i = 0; i < 100 && !document.querySelector('[data-panel="solution"]'); i++) await new Promise(r => setTimeout(r, 100));
-      document.querySelector('[data-panel="solution"]').click();
-    })()`);
-    await sleep(350);
+  /* ---- 4. Reference tabs: Solution / Article switch the problem pane in place ---- */
+  const key = async (k) => {
+    await evaluate(`document.activeElement?.blur?.()`);
+    const code = k === 'Escape' ? 'Escape' : 'Key' + k.toUpperCase();
+    const vk = k === 'Escape' ? 27 : k.toUpperCase().charCodeAt(0);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(k.length === 1 ? { text: k } : {}) });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
+    await sleep(150);
   };
-  const width = () => evaluate(`document.querySelector('#drawer').getBoundingClientRect().width`);
-  await openReference();
-  await evaluate(`document.querySelector('.drawer-resize').focus()`);
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
-  if (!await evaluate(`document.querySelector('#drawer').contains(document.activeElement)`)) throw Error('Reference focus escaped on Shift-Tab');
-  const originalWidth = await width();
-  const handle = await evaluate(`(() => { const r = document.querySelector('.drawer-resize').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 180 }; })()`);
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...handle });
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...handle, button: 'left', clickCount: 1 });
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: handle.x - 120, y: handle.y, button: 'left', buttons: 1 });
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: handle.x - 120, y: handle.y, button: 'left', clickCount: 1 });
-  const draggedWidth = await width();
-  if (Math.abs(draggedWidth - originalWidth - 120) > 2) throw Error('Reference drag did not grow width by 120px');
-  await send('Page.reload', { ignoreCache: true });
-  await sleep(500);
-  await openReference();
-  if (Math.abs(await width() - draggedWidth) > 1) throw Error('Reference width did not survive reload');
-  await evaluate(`document.querySelector('.drawer-resize').focus()`);
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 8 });
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 8 });
-  if (Math.abs(await width() - draggedWidth + 80) > 1) throw Error('Shift-arrow did not resize reference by 80px');
-  const scrim = await evaluate(`(() => {
-    const n = document.querySelector('#scrim'); const css = getComputedStyle(n);
-    return !n.hidden && n.classList.contains('show') && css.backdropFilter === 'none' && css.backgroundColor !== 'rgba(0, 0, 0, 0)' && css.backgroundColor !== 'transparent' && Number(css.opacity) === 1;
+  const tabState = () => evaluate(`(() => {
+    const shown = n => !!n && n.getClientRects().length > 0;
+    const selected = [...document.querySelectorAll('.problem-tabs [role=tab][aria-selected=true]')].map(n => n.dataset.panel);
+    const panel = [...document.querySelectorAll('.pcol .ref-tab')].find(shown);
+    return { selected: selected.join(','), statement: shown(document.querySelector('#ref-problem')), panel: panel?.dataset.panel ?? null,
+      inPane: !!panel && document.querySelector('.pcol').contains(panel), connected: !!document.querySelector('#ref-problem')?.isConnected,
+      drawer: !!document.querySelector('#drawer,.drawer,.scrim'), hidden: document.body.classList.contains('hide-problem') };
   })()`);
-  if (!scrim) throw Error('Reference scrim must visibly dim the background without blur');
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 20, y: 200, button: 'left', clickCount: 1 });
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 20, y: 200, button: 'left', clickCount: 1 });
-  await sleep(350);
-  if (!await evaluate(`document.querySelector('#drawer').hidden && document.querySelector('#scrim').hidden`)) throw Error('Scrim click did not close reference');
-  ok('reference drag, persisted width, keyboard resize, and scrim dismissal');
+  const expectTab = async (what, want) => {
+    const got = await tabState();
+    const good = got.selected === want && !got.drawer && got.connected
+      && (want === 'problem' ? got.statement && !got.panel : !got.statement && got.panel === want && got.inPane && !got.hidden);
+    if (good) ok(what); else bad(what, JSON.stringify(got));
+  };
+  await evaluate(`(async () => {
+    for (let i = 0; i < 100 && !document.querySelector('[data-panel="solution"]'); i++) await new Promise(r => setTimeout(r, 100));
+  })()`);
+  await expectTab('the problem pane opens on the Problem tab', 'problem');
+  // Count the reveal events the page logs: one per open that put a reference on screen.
+  await evaluate(`(() => { window.__reveals = { revealed_solution: 0, revealed_article: 0 }; const f = window.fetch;
+    window.fetch = (url, init) => { if (String(url).includes('/api/sessions/event')) { const t = JSON.parse(init?.body || '{}').type; if (t in window.__reveals) window.__reveals[t]++; } return f(url, init); }; })()`);
+  // Give the statement something to scroll, so the per-tab positions can be told apart.
+  await evaluate(`(() => { const d = document.querySelector('#ref-problem .desc'); d.append(Object.assign(document.createElement('div'), { className: 'toolbar-check-pad', style: 'height:3000px' })); document.querySelector('.pcol').scrollTop = 400; })()`);
+  await evaluate(`document.querySelector('[data-panel="solution"]').click()`);
+  await sleep(300);
+  await expectTab('clicking Solution shows it inside the problem pane, statement hidden', 'solution');
+  await evaluate(`document.querySelector('[data-panel="problem"]').click()`);
+  await sleep(100);
+  await expectTab('clicking Problem brings the statement back', 'problem');
+  const restored = await evaluate(`document.querySelector('.pcol').scrollTop`);
+  if (Math.abs(restored - 400) <= 1) ok('the statement keeps its scroll position across tabs');
+  else bad('the statement keeps its scroll position across tabs', `scrollTop ${restored}`);
+  await key('s'); await expectTab('s switches to the Solution tab', 'solution');
+  await key('a'); await expectTab('a switches to the Article tab', 'article');
+  await key('a'); await expectTab('a again returns to Problem', 'problem');
+  await key('s'); await key('Escape'); await expectTab('Escape on a reference tab returns to Problem', 'problem');
+  if (await evaluate(`location.hash`) === '#/p/contains-duplicate') ok('Escape on a reference tab stays on the problem');
+  else bad('Escape on a reference tab stays on the problem', await evaluate(`location.hash`));
+  // The coach's open_panel, with the problem pane collapsed (⌘B): the pane comes back on that tab.
+  await evaluate(`document.querySelector('.ws-run')?.focus()`);
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, modifiers: 4 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, modifiers: 4 });
+  await sleep(150);
+  if (!await evaluate(`document.body.classList.contains('hide-problem')`)) bad('⌘B collapses the problem pane', 'still showing');
+  const coach = await evaluate(`(async () => {
+    const m = await import('/js/coach-actions.js');
+    return m.applyAction({ id: 'toolbar-open-panel-' + Date.now(), needsAck: true, tool: 'open_panel', slug: 'contains-duplicate', args: { panel: 'article' } });
+  })()`);
+  await sleep(300);
+  if (coach?.ok) ok('the coach open_panel action answers ok'); else bad('the coach open_panel action answers ok', JSON.stringify(coach));
+  await expectTab('the coach open_panel shows the collapsed pane on the Article tab', 'article');
+  await evaluate(`document.querySelector('[data-panel="problem"]').click()`);
+  // Opens: Solution by click, s, s again (before Escape); Article by a, then the coach.
+  const reveals = await evaluate(`({ ...window.__reveals, solutionShown: !!document.querySelector('.ref-tab[data-panel="solution"] pre.solutioncode'), articleShown: !!document.querySelector('.ref-tab[data-panel="article"] .rich') })`);
+  const wantSolution = reveals.solutionShown ? 3 : 0, wantArticle = reveals.articleShown ? 2 : 0;
+  if (reveals.revealed_solution === wantSolution && reveals.revealed_article === wantArticle) ok(`reveal events logged once per open (solution ${wantSolution}, article ${wantArticle})`);
+  else bad('reveal events logged once per open', JSON.stringify(reveals));
 
   close();
 } finally {

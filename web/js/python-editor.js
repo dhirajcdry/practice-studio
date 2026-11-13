@@ -3,6 +3,7 @@
 import { el } from './dom.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { getSettings, isDark, onSettingsChange } from './settings.js';
+import { THEMES, editorThemeName } from './themes.js';
 import { attachTypingFx } from './typing-fx.js';
 import { attachTypingReveal } from './typing-reveal.js';
 import { icon } from './ui/icon.js';
@@ -59,7 +60,7 @@ export function loadMonaco() {
 
 /** Monaco follows the selected family and effective appearance. */
 export function monacoThemeFor(theme, dark = false) {
-  return `ps-${theme}-${dark ? 'dark' : 'light'}`;
+  return editorThemeName(theme, dark);
 }
 
 /**
@@ -205,16 +206,12 @@ function defineTheme(monaco) {
     },
   });
 
-  // Each generated row supplies syntax hues as well as the editor surfaces.
-  const palettes = [
-    ['ps-desk-light', 'vs', '#FFFDF9', '#181818', '#F6F2EA', '#756C63', '#BD5F3C', '#A34A2A', '#2F5D7C', '#3F7A55', '#8A5D0E', '#BD5F3C2E', ''],
-    ['ps-desk-dark', 'vs-dark', '#211E1B', '#EEE8E0', '#2A2622', '#A3998F', '#E2875F', '#E59A78', '#8FB8D8', '#9ACB9F', '#E0B060', '#E2875F33', ''],
-    ['ps-dunes-light', 'vs', '#FBF2E800', '#2A1A10', '#C2491D12', '#75685E', '#C2491D', '#B0431C', '#2F5D7C', '#2E6B4F', '#8C5A06', '#C2491D33', ''],
-    ['ps-dunes-dark', 'vs-dark', '#08141A00', '#E9E4DA', '#FF9A6212', '#999C99', '#FF9A62', '#FF9A62', '#8CC7D9', '#7FD4A0', '#F2CB6C', '#FF9A6233', ''],
-  ];
-  for (const [name, base, background, foreground, line, dim, accent, keyword, type, string, number, selection, fontStyle] of palettes) {
-    const dark = base === 'vs-dark';
-    const art = name.startsWith('ps-dunes-');
+  // Every other family is generated from its row in themes.js.
+  const palettes = THEMES.flatMap(theme => ['light', 'dark'].filter(mode => theme[mode].editor)
+    .map(mode => ({ name: editorThemeName(theme.id, mode === 'dark'), dark: mode === 'dark', art: Boolean(theme.art), raised: theme[mode].raised, colors: theme[mode].editor })));
+  for (const { name, dark, art, raised, colors } of palettes) {
+    const [background, foreground, line, dim, accent, keyword, type, string, number, selection] = colors;
+    const base = dark ? 'vs-dark' : 'vs', fontStyle = '';
     monaco.editor.defineTheme(name, {
       base, inherit: true,
       rules: [
@@ -234,12 +231,17 @@ function defineTheme(monaco) {
         'editor.selectionBackground': selection, 'editorIndentGuide.background1': dark ? '#FFFFFF12' : '#00000012',
         'editorIndentGuide.activeBackground1': dark ? '#FFFFFF2E' : '#0000002E',
         'editorWhitespace.foreground': dark ? '#FFFFFF18' : '#00000018',
+        // Monaco's own bracket-pair blue/gold/purple would show through every theme.
+        'editorBracketHighlight.foreground1': keyword, 'editorBracketHighlight.foreground2': type,
+        'editorBracketHighlight.foreground3': number, 'editorBracketHighlight.foreground4': keyword,
+        'editorBracketHighlight.foreground5': type, 'editorBracketHighlight.foreground6': number,
+        'editorBracketHighlight.unexpectedBracket.foreground': dim,
         // Sticky scroll pins scope headers over the code and defaults to the editor
         // background. Art themes make that transparent, so the pinned lines drew
         // straight over the real ones. The band must be solid, hovered or not.
         'editorStickyScroll.background': background.slice(0, 7),
-        'editorStickyScrollHover.background': art ? (dark ? '#10232A' : '#FFF9F0') : line,
-        ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? (dark ? '#10232A' : '#FFF9F0') : line, ink: foreground, dim,
+        'editorStickyScrollHover.background': art ? raised : line,
+        ...widgetColors({ ground: art ? background.slice(0, 7) : background, raised: art ? raised : line, ink: foreground, dim,
           edge: dark ? '#FFFFFF22' : '#00000022', accent, onAccent: art ? (dark ? background.slice(0, 7) : '#FFFFFF') : (dark ? background : '#FFFFFF'), match: `${accent}40`,
           matchDim: `${accent}1F`, hoverWash: dark ? '#FFFFFF12' : '#0000000D' }),
       },

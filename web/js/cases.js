@@ -19,6 +19,7 @@
 import { el, replace, clear } from './dom.js';
 import { loadTestcases, saveTestcases } from './api.js';
 import { icon } from './ui/icon.js';
+import { button } from './ui/button.js';
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -173,7 +174,7 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
     return new Array(perCase).fill('').join('\n');
   }
 
-  function field(label, value, { readOnly, onInput, placeholder = '' }) {
+  function field(label, value, { readOnly, onInput, placeholder = '', className = '' }) {
     const input = el('textarea', {
       class: 'tc-input mono', rows: '1', spellcheck: 'false', placeholder,
       ...(readOnly ? { readonly: 'readonly' } : {}),
@@ -185,8 +186,10 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
     };
     input.addEventListener('input', () => { size(); onInput?.(input.value); });
     requestAnimationFrame(size);
-    return el('label', { class: 'tc-field' }, [
-      el('span', { class: 'mono dim tc-label', text: label }),
+    // A row of the case form: its name in the label column, its value beside it, the way
+    // the statement's examples read. `className` marks the Expected row.
+    return el('label', { class: 'tc-field' + (className ? ' ' + className : '') }, [
+      el('span', { class: 'tc-label', text: label }),
       input,
     ]);
   }
@@ -194,6 +197,7 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
   function paintPanel() {
     const list = all();
     if (!list.length) {
+      clear(caseActions);   // no case, so nothing to duplicate or delete
       // When the runner cannot drive this problem the notice above already says why, in
       // one sentence. A second line here saying there are no cases, next to a button to
       // add one, reads as a contradiction of it.
@@ -229,31 +233,30 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
 
     const expected = field('Expected', c.expected ?? '', {
       readOnly: !isMine,
+      className: 'is-expected',
       placeholder: isMine ? 'optional — leave empty to just see the output' : 'not published',
       onInput: (next) => editCase(index, { expected: next.trim() === '' ? null : next }),
     });
 
-    const foot = el('div', { class: 'tc-foot' }, [
+    // Where the case came from sits beside the case tabs, next to the one thing you can do
+    // with it, so "read only" is said before you try to type rather than under the fields.
+    replace(caseActions, [
+      el('span', { class: 'tc-origin', text: isMine ? caseOrigin(c.source) : 'Published example \u00b7 read only' }),
       isMine
-        ? el('span', { class: 'mono dim tc-origin', text: caseOrigin(c.source) })
-        : el('span', { class: 'mono dim tc-origin', text: "Published example — read only" }),
-      el('span', { class: 'spacer' }),
-    ]);
-
-    replace(caseActions, [isMine
-        ? el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: 'Delete', onclick: () => removeCase(index) })
-        : el('button', {
-          class: 'btn btn--quiet ws-mini', type: 'button', text: 'Duplicate',
+        ? button({ label: 'Delete', icon: 'trash', danger: true, className: 'ws-mini', onClick: () => removeCase(index) })
+        : button({
+          label: 'Duplicate', icon: 'copy', className: 'ws-mini',
           title: 'An editable copy, so the example itself stays what the problem published',
-          onclick: () => addCase({ input: c.input, expected: c.expected }),
-        })]);
+          onClick: () => addCase({ input: c.input, expected: c.expected }),
+        }),
+    ]);
 
     // The tutor's reason for the case, as plain text under the fields it explains.
     const why = isMine && c.source === 'coach' && String(c.note ?? '').trim()
       ? el('p', { class: 'tc-why' }, [el('span', { class: 'tc-why-who', text: 'Why' }), el('span', { text: String(c.note).trim() })])
       : null;
 
-    replace(panelEl, [el('div', { class: 'tc-fields' }, [...fields, expected]), why, foot]);
+    replace(panelEl, [el('div', { class: 'tc-fields' }, [...fields, expected]), why]);
   }
 
   function paint() {
@@ -293,6 +296,8 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
 
   return {
     root,
+    /** The parameter names, in input order, so a result can name its input lines. */
+    params: () => params.slice(),
     /** What a run should execute right now. */
     payload() {
       const list = all();
@@ -318,6 +323,12 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
       const index = addCase({ input: String(input).trim(), expected, source: 'leetcode' });
       select(index);
       return index;
+    },
+    /** Put case `number` (1-based, as its tab reads) on screen. False when there is no such case. */
+    show(number) {
+      if (!Number.isInteger(number) || number < 1 || number > all().length) return false;
+      select(number - 1);
+      return true;
     },
     dispose() { clearTimeout(saveTimer); },
   };

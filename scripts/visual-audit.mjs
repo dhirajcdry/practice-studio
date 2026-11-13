@@ -99,6 +99,39 @@ export async function runVisualAudit({ origin, target, output }) {
     const error=document.querySelector('.rr-tutorbody > .state');
     if (error) { const e=error.getBoundingClientRect(); if (Math.abs(e.left-b.left)>1 || Math.abs(e.right-b.right)>1) throw Error('Nested tutor error does not share the notice inset'); }
   `;
+  // The case form: every label sits in one column and every field starts at the same edge.
+  const caseForm = `
+    const pane = need('.ws-results').getBoundingClientRect();
+    const fields = [...document.querySelectorAll('.tc-panel .tc-field')].filter(visible);
+    if (!fields.length) throw Error('No case fields');
+    const lefts = new Set(fields.map(f => Math.round(f.querySelector('.tc-input').getBoundingClientRect().left)));
+    if (lefts.size !== 1) throw Error('Case fields do not share a left edge: ' + [...lefts].join(','));
+    for (const f of fields) { const r = f.getBoundingClientRect(); if (r.right > pane.right + 1) throw Error('Case field overflows the pane'); }
+    if (need('.ws-results').scrollWidth > need('.ws-results').clientWidth + 1) throw Error('Case panel scrolls sideways');`;
+  // Result tab: the verdict first, never pinned over a case; one case at a time from tabs;
+  // values as labelled rows sharing one left edge; no sideways scroll.
+  const resultLayout = `
+    const pane = need('.ws-results'), summary = need('.rr-summary').getBoundingClientRect();
+    if (pane.scrollWidth > pane.clientWidth + 1) throw Error('Result panel scrolls sideways');
+    if (getComputedStyle(need('.rr-summary')).position === 'sticky') throw Error('The verdict is pinned over the cases');
+    const tabs = need('.rr-casetabs').getBoundingClientRect();
+    if (tabs.top < summary.bottom - 1) throw Error('The case tabs sit under the verdict');
+    if (document.querySelectorAll('.rr-case').length !== 1) throw Error('More than one case is on screen');
+    const lefts = new Set([...document.querySelectorAll('.rr-case .rr-value')].map(v => Math.round(v.getBoundingClientRect().left)));
+    if (lefts.size > 1) throw Error('Result values do not share a left edge');
+    const tone = getComputedStyle(need('.rr-casetab.is-on .rr-dot')).backgroundColor;
+    const why = getComputedStyle(need('.rr-why strong')).color;
+    if (tone !== why) throw Error('The selected tab and its reason disagree on status colour');`;
+  // The results pane is short; these states scroll it to the end so the rows and footer show.
+  const scrollEnd = `await sleep(100); need('.ws-results').scrollTop = 1e6;`;
+  // A run whose output is tree nodes where values were expected, through the real panel body.
+  const nodeRun = `clickText('.rr-tab', 'Result');
+    const run = await import('/js/run.js');
+    const look = (i, input, expected, values) => ({ index: i, input, expected, actual: '[' + values.map(v => 'TreeNode(' + v + ')').join(', ') + ']', passed: null, ms: 30 + i,
+      note: 'Your code returned a TreeNode, which cannot be compared automatically.' });
+    run.renderRunResult(need('.rr-body'), run.shapeRunResult({ ok: true, summary: { totalMs: 158 }, cases: [
+      look(0, '[1,2,3,null,5,null,4]', '[1,3,4]', [1, 3, 4]), look(1, '[1,2,3,4,null,null,null,5]', '[1,3,4,5]', [1, 3, 4, 5]),
+      look(2, '[1,null,3]', '[1,3]', [1, 3]), { index: 3, input: '[]', expected: '[]', actual: '[]', passed: true, ms: 35 }] }), { params: ['root'] });`;
   const historySpacing = `
     for (const row of document.querySelectorAll('.recent-chat')) {
       if (!visible(row)) continue;
@@ -284,6 +317,25 @@ export async function runVisualAudit({ origin, target, output }) {
   const mockTimeSetup = `for(let i=0;i<100&&document.querySelector('.mock-add-time')?.disabled;i++)await sleep(50);need('.ci-clock').textContent='+03:00';need('.mock-add-time').click();`;
   const mockCustomSetup = `${mockTimeSetup} [...document.querySelectorAll('.ui-menu-item')].find(n=>n.textContent.includes('Custom')).click();`;
   const importPreview = `need('#problem-url').value='https://leetcode.com/problems/import-sample/description/'; need('.import-form').requestSubmit(); for(let i=0;i<100&&!document.querySelector('.import-save');i++)await sleep(100);need('.import-save');`;
+  // Solution and Article are tabs of the problem pane: the solution replaces the statement
+  // inside .pcol, the statement stays in the DOM, and Problem brings it back without a fetch.
+  const referenceTab = { url: problem, setup: `for (let i = 0; i < 100 && !document.querySelector('#ref-problem .stmt'); i++) await sleep(50);
+      need('#ref-problem .stmt'); window.__stmt = need('#ref-problem'); window.__stmtFetches = 0;
+      const originalFetch = window.fetch; window.fetch = (...args) => { if (/\\/api\\/problems\\/jump-game(\\?|$)/.test(String(args[0]))) window.__stmtFetches++; return originalFetch(...args); };
+      need('[data-panel="solution"]').click();`, ready: '.pcol .ref-tab[data-panel="solution"] pre.solutioncode', assert: `
+      const tab = name => need('.problem-tabs [role=tab][data-panel="' + name + '"]');
+      const pane = need('.pcol'), stmt = document.querySelector('#ref-problem'), solution = need('.ref-tab[data-panel="solution"]');
+      if (!pane.contains(solution) || !visible(solution)) throw Error('Solution is not shown inside the problem pane');
+      if (document.querySelector('#drawer,.drawer,.scrim')) throw Error('The reference drawer is still in the page');
+      if (stmt !== window.__stmt || !stmt.isConnected || visible(stmt) || visible(document.querySelector('.pcol .ptags'))) throw Error('Statement must stay in the DOM, hidden');
+      if (tab('solution').getAttribute('aria-selected') !== 'true' || tab('problem').getAttribute('aria-selected') !== 'false') throw Error('Solution tab is not the selected one');
+      if (!need('.ref-tab .copy').textContent.includes('Copy')) throw Error('Copy button missing');
+      tab('problem').click(); await sleep(50);
+      if (document.querySelector('#ref-problem') !== window.__stmt || !visible(stmt) || !stmt.querySelector('.stmt') || visible(solution)) throw Error('Problem did not restore the same statement');
+      if (tab('problem').getAttribute('aria-selected') !== 'true') throw Error('Problem tab is not selected after switching back');
+      if (window.__stmtFetches) throw Error('Switching back refetched the statement');
+      tab('solution').click(); await sleep(50);
+      if (!visible(solution) || visible(stmt)) throw Error('Solution did not come back');` };
   const states = {
     importEmpty: { url: '/#/add', ready: '.import-form' },
     importPreview: { url: '/#/add', ready: '.import-form', setup: importPreview },
@@ -345,7 +397,9 @@ export async function runVisualAudit({ origin, target, output }) {
     lldLongDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1024, height: 650, setup: `for(let i=0;i<100 && !document.querySelector('.ci-composer .ui-mode-switch:not(:disabled)');i++) await sleep(50); const log=need('.ci-log'); for(let i=0;i<20;i++){const p=document.createElement('p');p.textContent='Interviewer: How does reservation ownership prevent conflicting updates?';log.append(p);} log.scrollTop=log.scrollHeight;`, ready: '.ci-contained .ci-log' },
     lldDocumentNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.lld-workspace .ci-panel', setup: `for(let i=0;i<100 && !document.querySelector('.ci-panel');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'center'});` },
     lldDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.lld-workspace .ci-panel' },
-    reference: { url: problem, setup: `need('[data-panel="solution"]').click();`, ready: '.drawer.show .drawer-resize', assert: `need('.scrim.show'); const d=need('.drawer.show'); const s=getComputedStyle(d); if (s.backgroundColor==='transparent' || s.backgroundColor==='rgba(0, 0, 0, 0)') throw Error('Reference surface must be opaque'); if (d.getBoundingClientRect().width<280) throw Error('Reference surface too narrow');` },
+    referenceTab,
+    // Stacked (below 1081px) the pane sits above the editor; the tabs switch the same way.
+    referenceTabNarrow: { ...referenceTab, width: 900 },
     interviewLive: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-panel[data-mode="typed"] .ci-input', assert: `need('.ci-phases');` },
     interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-voice .voice-state');` },
     interviewNoResponse: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/1760000000000-00000003')) { const data = await response.json(); data.completionReason = 'no-response'; data.report = null; delete data.hireSignal; data.turns = data.turns.filter(t => t.kind === 'opening'); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; (await import('/js/interview.js')).openInterviewRecord('jump-game', '1760000000000-00000003');`, ready: '.ci-empty-session', assert: `if (document.querySelector('.ci-open-report,.ci-mini-dim')) throw Error('Empty interview displays a report');` },
@@ -436,6 +490,41 @@ export async function runVisualAudit({ origin, target, output }) {
     subsNarrow: { url: problem, setup: `${submissions} need('.submissions').style.width='260px';`, ready: '.submission-row' },
     interviewsNarrow: { url: problem, setup: `${coach} clickText('.coach-tab', 'Interviews'); document.querySelector('.interview-back')?.click(); need('.interviews-view').style.width='280px';`, ready: '.interviews-overview .interview-row' },
     catalogScrolled: { url: '/#/', setup: `for (let i=0; i<100 && !document.querySelector('.catalog .psec .prow'); i++) await sleep(50); document.scrollingElement.scrollTo({ top: 520, behavior: 'instant' }); await sleep(200);`, ready: '.catalog .filterbar' },
+    stmtNarrow: { url: problem, ready: '.stmt-example .ex-value', assert: `
+      const rows = [...document.querySelectorAll('.stmt-example')].map(n => [...n.querySelectorAll('.ex-label')].map(l => l.textContent).join(','));
+      if (rows[0] !== 'Input,Output,Explanation') throw Error('Example rows were not read: ' + rows[0]);
+      if (!document.querySelector('.stmt-constraints li') || !document.querySelector('.stmt-follow p')) throw Error('Constraints or follow-up missing');
+      if (document.querySelector('.stmt-follow strong')) throw Error('The follow-up kept its duplicate bold label');
+      const links = [...document.querySelectorAll('.pcol .pane-links a')].map(a => a.textContent);
+      if (!links.includes('LeetCode')) throw Error('Problem links are not beside the tabs: ' + links.join(','));
+      const second = [...document.querySelectorAll('.stmt-example')][1].querySelector('.ex-value').textContent;
+      if (second !== 'nums = [3,2,1,0,4]\\nlimit = 2') throw Error('Each parameter of an input should be on its own line: ' + JSON.stringify(second));
+      const starts = [...document.querySelectorAll('.stmt-example .ex-value')].map(n => Math.round(n.getBoundingClientRect().left));
+      if (new Set(starts).size !== 1) throw Error('Example values do not start on one line down the list: ' + starts.join(','));
+      const tries = document.querySelectorAll('.ex-try');
+      if (tries.length !== 1) throw Error('Only an example that exists as a test case may offer to open it; found ' + tries.length);
+      for (const n of document.querySelectorAll('.stmt-example')) { const p = need('.pcol').getBoundingClientRect(), r = n.getBoundingClientRect(); if (r.right > p.right + 1) throw Error('An example overflows the pane'); }` },
+    stmtWide: { url: problem, width: 2200, setup: `need('.pbody.with-workspace').style.gridTemplateColumns = '1100px minmax(0,1fr)'; await sleep(200);`, ready: '.stmt-example .ex-value', assert: `
+      const lead = need('.stmt-lead').getBoundingClientRect(), examples = need('.stmt-examples').getBoundingClientRect();
+      if (need('.pcol').getBoundingClientRect().width < 880) throw Error('Fixture pane is not wide');
+      if (examples.left < lead.right) throw Error('In a wide pane the examples sit beside the description');
+      if (Math.abs(examples.top - lead.top) > 2) throw Error('Description and examples should start level');
+      const rest = need('.stmt-rest').getBoundingClientRect(); if (rest.top - lead.bottom > 40) throw Error('Tall examples push the constraints away from the description: ' + Math.round(rest.top - lead.bottom) + 'px');` },
+    // Fixture statements carry no pictures (they would need the network), so one is drawn here.
+    stmtFigure: { url: problem, width: 2200, setup: `need('.pbody.with-workspace').style.gridTemplateColumns = '1100px minmax(0,1fr)'; for (let i = 0; i < 40 && !document.querySelector('.stmt-example .ex-body'); i++) await sleep(100); const c = document.createElement('canvas'); c.width = 420; c.height = 460; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 420, 460); g.strokeStyle = '#222'; g.lineWidth = 4; for (const [x, y] of [[210, 60], [110, 220], [310, 220], [250, 390], [370, 390]]) { g.beginPath(); g.arc(x, y, 44, 0, 7); g.stroke(); } const img = new Image(); img.alt = ''; img.src = c.toDataURL(); await img.decode(); const fig = document.createElement('div'); fig.className = 'ex-figure'; fig.append(img); need('.stmt-example .ex-body').prepend(fig); await sleep(200);`, ready: '.stmt-example .ex-figure img', assert: `
+      const img = need('.stmt-example .ex-figure img').getBoundingClientRect(), rows = need('.stmt-example .ex-rows').getBoundingClientRect(), card = need('.stmt-example').getBoundingClientRect();
+      if (img.height > 261) throw Error('An example diagram is taller than its cap: ' + img.height);
+      if (card.width >= 420 && rows.left < img.right) throw Error('In a wide card the diagram sits beside its values');
+      if (img.right > card.right || rows.right > card.right + 1) throw Error('Example content overflows its card');
+      if (card.width >= 420 && rows.height < img.height && Math.abs((rows.top + rows.bottom) / 2 - (img.top + img.bottom) / 2) > 24) throw Error('Short rows beside a diagram should sit level with its middle');` },
+    // Newer LeetCode problems put "Explanation:" on its own line and let a picture be the explanation.
+    stmtPictureExplanation: { url: problem, setup: `for (let i = 0; i < 40 && !document.querySelector('.stmt'); i++) await sleep(100); const { structureStatement } = await import('/js/statement.js'); const c = document.createElement('canvas'); c.width = 400; c.height = 207; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 400, 207); g.strokeStyle = '#222'; g.lineWidth = 3; g.beginPath(); g.arc(200, 100, 40, 0, 7); g.stroke(); const rich = document.createElement('div'); rich.className = 'rich'; rich.innerHTML = '<p>Return what can be seen from the right side.</p><p><strong>Example 1:</strong></p><p><strong>Input:</strong> root = [1,2,3,null,5,null,4]</p><p><strong>Output:</strong> [1,3,4]</p><p><strong>Explanation:</strong></p><p><img alt=""></p><p><strong>Example 2:</strong></p><p><strong>Input:</strong> root = []</p><p><strong>Output:</strong> []</p><p><strong>Constraints:</strong></p><ul><li>The tree has at most 100 nodes.</li></ul>'; const img = rich.querySelector('img'); img.src = c.toDataURL(); await img.decode(); need('.stmt').replaceWith(structureStatement(rich)); await sleep(200);`, ready: '.stmt-example .ex-value', assert: `
+      const first = need('.stmt-example');
+      const labels = [...first.querySelectorAll('.ex-label')].map(n => n.textContent).join(',');
+      if (labels !== 'Input,Output,Explanation') throw Error('A picture explanation lost its row: ' + labels);
+      if (!first.querySelector('.ex-row .ex-value.is-figure img')) throw Error('The picture is not in the Explanation row');
+      if (first.querySelector('.ex-raw') || first.querySelector('.ex-figure')) throw Error('The explanation label or picture was left outside its row');
+      if (need('.stmt-example .ex-value.is-figure img').getBoundingClientRect().height > 261) throw Error('The picture exceeds its cap');` },
     problemScroll: { url: problem, setup: `const pane=need('.pcol'); pane.lastElementChild.style.minHeight='2400px'; await sleep(100);`, ready: '.pcol', assert: `
       // overflow:hidden still scrolls from script, so the computed value is the test:
       // only auto or scroll lets a wheel or trackpad move it.
@@ -448,7 +537,7 @@ export async function runVisualAudit({ origin, target, output }) {
     subsTle: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Time Limit Exceeded')); if (!row) throw Error('No TLE fixture'); row.click();`, ready: '.submission-hero.rejected' },
     resetNotice: { url: problem, setup: `${editor} inst.setValue('# something of my own\\nclass Solution:\\n    pass\\n'); await sleep(600); need('.ws-reset').click(); await sleep(300);`, ready: '.ws-notice:not([hidden])', assert: `
       if (![...document.querySelectorAll('.ws-notice button')].some(b => b.textContent.trim() === 'Undo')) throw Error('Reset must offer Undo');` },
-    moreMenu: { url: problem, setup: `need('.ui-screen-header .ui-header-more').click(); await sleep(200);`, ready: '.ui-menu-item', assert: `
+    moreMenu: { url: problem, width: 600, setup: `need('.ui-screen-header .ui-header-more').click(); await sleep(200);`, ready: '.ui-menu-item', assert: `
       for (const item of document.querySelectorAll('.ui-menu-item')) if (item.querySelector('button, a, input')) throw Error('A menu item contains another control: ' + item.textContent.trim());` },
     subsWrong: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Wrong Answer')); if (!row) throw Error('No wrong-answer fixture'); row.click(); await sleep(400); const pane = need('.submissions'); pane.scrollTop = 220;`, ready: '.failure-block pre', assert: `
       const pane = need('.submissions'), bar = need('.submission-action-bar').getBoundingClientRect(), box = pane.getBoundingClientRect();
@@ -464,7 +553,7 @@ export async function runVisualAudit({ origin, target, output }) {
       inst.setPosition({ lineNumber: 3, column: 9 });
       inst.trigger('keyboard', 'type', { text: 'num' });
       await inst.getAction('editor.action.triggerSuggest').run();`, ready: '.suggest-widget.visible' },
-    runResult: { url: '/?simrun=pass#/p/jump-game', setup: `need('.ui-screen-header .ws-run').click();`, ready: '.rr-case' },
+    runResult: { url: '/?simrun=pass#/p/jump-game', setup: `need('.ui-screen-header .ws-run').click();`, ready: '.rr-case', assert: resultLayout },
     tutorRun: { url: '/?simrun=pass#/p/jump-game', setup: learnerRun + tutorRun, ready: '.rr-tutor button', assert: tutorSpacing },
     tutorRunNoHistory: { url: '/?simrun=pass#/p/jump-game', setup: tutorRun, ready: '.rr-tutor', assert: tutorSpacing + `if (document.querySelector('.rr-tutor button')) throw Error('No learner run exists to restore');` },
     tutorRunNarrow: { url: '/?simrun=pass#/p/jump-game', setup: learnerRun + tutorRun + `need('.ws-results').style.width='360px';`, ready: '.rr-tutor button', assert: tutorSpacing },
@@ -479,7 +568,30 @@ export async function runVisualAudit({ origin, target, output }) {
         if (box.top < pane.top - 1 || box.bottom > pane.bottom + 1) throw Error('Failure comparison is below the results fold');
       }` },
     verdictAccepted: { url: '/?simsubmit=accepted&motion=0#/p/jump-game', setup: `need('.ui-screen-header .ws-submit').click();`, ready: '.sub-verdict.v-accepted' },
-    cases: { url: '/#/p/cheapest-flights-within-k-stops', setup: `need('.tc-tab.is-mine').click();`, ready: '.tc-panel' },
+    cases: { url: '/#/p/cheapest-flights-within-k-stops', setup: `need('.tc-tab.is-mine').click();`, ready: '.tc-panel', assert: caseForm },
+    // A published example with five parameters: read-only, labelled like the statement's rows.
+    casesExample: { url: '/#/p/cheapest-flights-within-k-stops', ready: '.tc-panel .tc-input[readonly]', assert: caseForm + `
+      if (!need('.tc-row-actions').textContent.includes('Duplicate')) throw Error('An example offers Duplicate');
+      if (!need('.tc-row').textContent.includes('read only')) throw Error('Read-only is not said beside the case');` },
+    // One parameter with a long value of your own: it wraps inside its field, never widens the pane.
+    casesLong: { url: problem, setup: `need('.tc-tab.is-mine').click(); await sleep(100);
+      const box = need('.tc-panel .tc-input:not([readonly])');
+      box.value = '[' + Array.from({ length: 90 }, (_, i) => (i * 37) % 11).join(',') + ']';
+      box.style.height = 'auto'; box.style.height = Math.min(160, box.scrollHeight) + 'px';`, ready: '.tc-panel', assert: caseForm },
+    casesNarrow: { url: '/#/p/cheapest-flights-within-k-stops', setup: `need('.ws-results').style.width='360px';`, ready: '.tc-panel', assert: caseForm },
+    casesShort: { url: '/#/p/cheapest-flights-within-k-stops', height: 640, ready: '.tc-panel', assert: caseForm },
+    resultEmpty: { url: problem, setup: `clickText('.rr-tab', 'Result');`, ready: '.rr-empty' },
+    resultLook: { url: problem, setup: nodeRun + scrollEnd, ready: '.rr-case.s-look', assert: resultLayout + `
+      if (!need('.rr-summary').textContent.includes('3 of 4 need a look')) throw Error('Wrong needs-a-look headline');
+      if (!need('.rr-why').textContent.includes('node.val')) throw Error('The node hint is missing');` },
+    resultFail: { url: '/?simrun=fail#/p/jump-game', setup: learnerRun + scrollEnd, ready: '.rr-case.s-wrong', assert: resultLayout + `
+      if (!need('.rr-mark.is-expected') || !need('.rr-mark:not(.is-expected)')) throw Error('The difference is not marked on both sides');` },
+    resultError: { url: '/?simrun=runtime#/p/jump-game', setup: learnerRun + scrollEnd, ready: '.rr-field.trace', assert: resultLayout + `
+      if (!/IndexError on line/.test(need('.rr-why strong').textContent)) throw Error('The error does not lead with its type and line');` },
+    resultTimeout: { url: '/?simrun=timeout#/p/jump-game', setup: learnerRun, ready: '.rr-case.k-timeout', assert: resultLayout },
+    resultStdout: { url: '/?simrun=pass#/p/jump-game', setup: learnerRun + `document.querySelectorAll('.rr-casetab')[1].click();`, ready: '.rr-printed', assert: resultLayout },
+    resultShort: { url: '/?simrun=fail#/p/jump-game', height: 640, setup: learnerRun, ready: '.rr-case.s-wrong', assert: resultLayout },
+    resultNarrow: { url: '/?simrun=runtime#/p/jump-game', setup: learnerRun + `need('.ws-results').style.width='360px';`, ready: '.rr-case.s-error', assert: resultLayout },
     settingsVoice: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings('voice'));`, ready: '.set-voice', assert: `need('[aria-label^="Speech output"]'); need('[aria-label^="Natural voice"]'); need('[aria-label="Speech speed"]'); need('[aria-label="Preview voice"]');` },
     settingsPractice: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings('practice'));`, ready: '.settings', assert: `const d=need('.settings').getBoundingClientRect(),p=need('.set-page:not([hidden])').getBoundingClientRect();if(d.left<0||d.right>innerWidth||d.bottom>innerHeight)throw Error('Settings dialog outside viewport');if(p.right>d.right+.5||need('.set-body').scrollWidth>need('.set-body').clientWidth)throw Error('Settings page overflows');` },
     settingsAppearance: { url: problem, setup: `await import('/js/settings.js').then(m => m.openSettings('appearance'));`, ready: '.settings', assert: `const d=need('.settings').getBoundingClientRect(),p=need('.set-page:not([hidden])').getBoundingClientRect();if(d.left<0||d.right>innerWidth||d.bottom>innerHeight)throw Error('Settings dialog outside viewport');if(p.right>d.right+.5||need('.set-body').scrollWidth>need('.set-body').clientWidth)throw Error('Settings page overflows');` },
@@ -555,9 +667,9 @@ export async function runVisualAudit({ origin, target, output }) {
           if (['chat', 'subsList', 'interviewDebrief', 'interviewLive'].includes(state)) {
             await checkSidebar(expression => evaluate('return ' + expression));
           }
-          if (state === 'reference') {
-            // Exercise every token through the real highlighter on the real drawer
-            // surface, including tokens absent from the selected reference solution.
+          if (state === 'referenceTab') {
+            // Exercise every token through the real highlighter on the real solution
+            // tab surface, including tokens absent from the selected reference solution.
             const samples = await evaluate(`
               const pre = need('pre.solutioncode');
               const probe = document.createElement('span');

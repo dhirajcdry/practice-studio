@@ -1,5 +1,8 @@
 import { icon } from './ui/icon.js';
 import { paneHeader } from './ui/headers.js';
+import { button } from './ui/button.js';
+import { createBadge } from './ui/badge.js';
+import { firstDifferingValue } from './submission-presentation.js';
 // The run panel: turning a POST /api/run response into something true.
 //
 // Everything above the render functions is pure and covered by tests.js. The one
@@ -29,7 +32,8 @@ function text(value) {
 /**
  * One case, normalised. `kind` is the single source of truth for how the row
  * reads; `passed` is only ever true when the server said `passed === true` and
- * attached no error to the case.
+ * attached no error to the case. `status` folds the kinds into the four things a
+ * learner is told: passed, wrong answer, error, or needs a look.
  */
 function shapeCase(raw, fallbackIndex) {
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -43,27 +47,120 @@ function shapeCase(raw, fallbackIndex) {
     ms: typeof source.ms === 'number' ? source.ms : null,
     message: text(error?.message),
     traceback: text(error?.traceback) || null,
+    line: Number.isInteger(error?.line) && error.line > 0 ? error.line : null,
     note: '',
   };
 
+  let shaped;
   if (error && error.kind === 'timeout') {
-    return { ...base, kind: 'timeout', passed: false, label: 'Timed out',
+    shaped = { ...base, kind: 'timeout', status: 'error', passed: false, label: 'Timed out',
       message: base.message || 'This case was still running when the time limit was reached.' };
-  }
-  if (error) {
-    return { ...base, kind: 'runtime', passed: false, label: 'Error',
+  } else if (error) {
+    shaped = { ...base, kind: 'runtime', status: 'error', passed: false, label: 'Error',
       message: base.message || 'This case raised an exception.' };
-  }
-  if (source.passed === true) {
-    return { ...base, kind: 'pass', passed: true, label: 'Passed',
+  } else if (source.passed === true) {
+    shaped = { ...base, kind: 'pass', status: 'pass', passed: true, label: 'Passed',
       note: source.orderInsensitive === true ? 'Same values in a different order — accepted' : text(source.note) };
+  } else if (source.passed === false) {
+    shaped = { ...base, kind: 'fail', status: 'wrong', passed: false, label: 'Wrong answer', note: text(source.note) };
+  } else {
+    // The server did not commit to a verdict. Neither do we.
+    shaped = { ...base, kind: 'unknown', status: 'look', passed: false, label: 'Needs a look',
+      note: text(source.note) || 'The result could not be compared with confidence — both values are shown.' };
   }
-  if (source.passed === false) {
-    return { ...base, kind: 'fail', passed: false, label: 'Failed', note: text(source.note) };
+  return { ...shaped, reason: caseReason(shaped) };
+}
+
+const NODE_ITEM = /^(TreeNode|ListNode)\((.*)\)$/;
+
+/** `[TreeNode(1), TreeNode(3)]` → { type: 'TreeNode', values: ['1', '3'] }; anything else → null. */
+export function returnedNodes(actual) {
+  const value = String(actual ?? '').trim();
+  if (!value.startsWith('[') || !value.endsWith(']')) return null;
+  const inner = value.slice(1, -1).trim();
+  if (!inner) return null;
+  const items = inner.split(/,\s*(?=(?:TreeNode|ListNode)\()/);
+  const values = [];
+  let type = null;
+  for (const item of items) {
+    const hit = NODE_ITEM.exec(item.trim());
+    if (!hit || (type && hit[1] !== type) || /[()]/.test(hit[2])) return null;
+    type = hit[1];
+    values.push(hit[2]);
   }
-  // The server did not commit to a verdict. Neither do we.
-  return { ...base, kind: 'unknown', passed: false, label: 'Differs from expected',
-    note: text(source.note) || 'The result could not be compared with confidence — both values are shown.' };
+  return { type, values };
+}
+
+/** What a list of primitives holds, in words, or null when it is not one. */
+function primitiveListKind(expected) {
+  let parsed;
+  try { parsed = JSON.parse(expected); } catch { return null; }
+  if (!Array.isArray(parsed) || !parsed.length) return null;
+  if (parsed.every(v => Number.isInteger(v))) return 'integers';
+  if (parsed.every(v => typeof v === 'number')) return 'numbers';
+  if (parsed.every(v => typeof v === 'string')) return 'strings';
+  return null;
+}
+
+/**
+ * Where a wrong answer parts from the expected value, in words, when that is certain:
+ * both values are JSON arrays. Anything else gets no location rather than a guess.
+ */
+export function describeDifference(expected, actual) {
+  let a, b;
+  try { a = JSON.parse(expected); b = JSON.parse(actual); } catch { return ''; }
+  if (!Array.isArray(a) || !Array.isArray(b)) return '';
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  let at = 0;
+  while (at < a.length && at < b.length && same(a[at], b[at])) at += 1;
+  const items = n => `${n} item${n === 1 ? '' : 's'}`;
+  const parts = [];
+  if (a.length !== b.length) parts.push(`The output has ${items(b.length)}; ${a.length} ${a.length === 1 ? 'was' : 'were'} expected.`);
+  if (at < Math.max(a.length, b.length)) parts.push(`The first difference is at index ${at}.`);
+  return parts.join(' ');
+}
+
+/** Exception type and its message, from the runner's one-line summary (`IndexError: ...`). */
+function splitException(message) {
+  const hit = /^([A-Za-z_][\w.]*):\s?([\s\S]*)$/.exec(String(message || '').trim());
+  return hit ? { type: hit[1], detail: hit[2].trim() } : { type: '', detail: String(message || '').trim() };
+}
+
+/** The line in solution.py the error happened on: the runner's own field, else the last frame in the file. */
+function errorLine(shaped) {
+  if (shaped.line) return shaped.line;
+  const frames = [...String(shaped.traceback || '').matchAll(/File "(?:[^"]*\/)?solution\.py", line (\d+)/g)];
+  return frames.length ? Number(frames.at(-1)[1]) : null;
+}
+
+/**
+ * The one-sentence reason a case shows above its values. A likely fix appears only when
+ * the values themselves prove it: a list of nodes returned where a list of plain values
+ * was expected. Otherwise the reason says what happened and nothing more.
+ */
+function caseReason(shaped) {
+  if (shaped.kind === 'pass') {
+    return { title: 'Passed', text: shaped.note || 'Your output matches the expected value.' };
+  }
+  if (shaped.kind === 'fail') {
+    return { title: 'Wrong answer', text: describeDifference(shaped.expected, shaped.actual) || shaped.note || 'Your output differs from the expected value.' };
+  }
+  if (shaped.kind === 'timeout') return { title: 'Timed out', text: shaped.message };
+  if (shaped.kind === 'runtime') {
+    const { type, detail } = splitException(shaped.message);
+    const line = errorLine(shaped);
+    return { title: `${type || 'Error'}${line ? ` on line ${line}` : ''}`, text: detail || shaped.message, line };
+  }
+  const nodes = returnedNodes(shaped.actual);
+  const wanted = nodes && primitiveListKind(shaped.expected);
+  if (nodes && wanted) {
+    return {
+      title: `Returned ${nodes.type} objects, not their values`,
+      text: `Expected a list of ${wanted}. If the values are right, append node.val instead of node.`,
+      values: nodes.values,
+    };
+  }
+  return { title: 'Needs a look', text: shaped.note };
 }
 
 const BLOCKED = {
@@ -197,18 +294,39 @@ export function shapeRunResult(raw) {
 
   let status = 'pass';
   let tone = '';
+  let verdict = 'pass';
   let headline = cases.length === 1 ? 'The case passed' : `All ${cases.length} cases passed`;
+  const count = s => cases.filter(c => c.status === s).length;
+  const errors = cases.filter(c => c.status === 'error');
+  const wrong = count('wrong');
+  const look = count('look');
+  const n = cases.length;
 
-  if (failed > 0) {
-    status = 'fail'; tone = 'err';
-    headline = `${passed} of ${cases.length} cases passed`;
-  } else if (unknown > 0) {
-    status = 'unclear'; tone = 'warn';
-    headline = `${passed} of ${cases.length} matched — ${unknown} could not be verified`;
+  // The headline names the most serious thing that happened; the line under it counts the
+  // rest. Both use the same four words as the case tabs, so the two can never disagree.
+  if (errors.length) {
+    status = 'fail'; tone = 'err'; verdict = 'error';
+    const what = errors.every(c => c.kind === 'timeout') ? 'Timed out' : 'Error';
+    headline = errors.length === 1 ? `${what} on Case ${cases.indexOf(errors[0]) + 1}` : `${what} on ${errors.length} of ${n}`;
+  } else if (wrong) {
+    status = 'fail'; tone = 'err'; verdict = 'wrong';
+    headline = `Wrong answer on ${wrong} of ${n}`;
+  } else if (look) {
+    status = 'unclear'; tone = 'warn'; verdict = 'look';
+    headline = `${look} of ${n} need${look === 1 ? 's' : ''} a look`;
   }
+  const objects = cases.filter(c => c.status === 'look').every(c => returnedNodes(c.actual) || /<[\w.]+ object at 0x[0-9a-f]+>/.test(c.actual));
+  const rest = [
+    verdict !== 'wrong' && wrong ? `${wrong} wrong answer${wrong === 1 ? '' : 's'}` : null,
+    verdict !== 'look' && look ? `${look} need${look === 1 ? 's' : ''} a look` : null,
+    passed ? `${passed} passed` : null,
+    verdict === 'look' ? `${look} ${objects ? 'returned objects that' : ''} could not be compared`.replace(/\s+/g, ' ') : null,
+  ].filter(Boolean);
+  const detail = verdict === 'pass' ? '' : rest.join(' · ');
+  const firstOpen = Math.max(0, cases.findIndex(c => c.status !== 'pass'));
 
   return {
-    status, tone, headline,
+    status, tone, headline, verdict, detail, firstOpen,
     message: error ? text(error.message) : '',
     traceback: error ? (text(error.traceback) || null) : null,
     cases, summary, orderInsensitive, source,
@@ -229,55 +347,122 @@ export function summaryLine(shaped) {
 
 /* ================================ rendering ================================ */
 
-function labelled(label, value, className = '') {
-  return el('div', { class: 'rr-field ' + className }, [
-    el('div', { class: 'mono dim', text: label }),
-    el('pre', {}, dataText(value === '' ? '—' : value)),
+/** A value with the part where it first differs marked; a gap mark where one value simply stops. */
+function marked(value, range, className) {
+  if (!range) return dataText(value);
+  const [start, end] = range;
+  return [
+    ...dataText(value.slice(0, start)),
+    end > start
+      ? el('mark', { class: className, text: value.slice(start, end) })
+      : el('mark', { class: className + ' is-gap', 'aria-label': 'missing here', text: ' ' }),
+    ...dataText(value.slice(end)),
+  ];
+}
+
+/** One labelled row, mirroring the statement's examples: the name on the left, the value beside it. */
+function row(label, value, className = '') {
+  return el('div', { class: 'rr-row ' + className }, [
+    el('span', { class: 'rr-label', text: label }),
+    el('div', { class: 'rr-value' }, value),
   ]);
 }
 
-function caseRow(shapedCase, index, forceOpen) {
-  const open = forceOpen;
-  const bodyId = `result-case-${index}`;
-  const body = el('div', { class: 'rr-casebody', id: bodyId, hidden: !open });
+/** An absent value is said to be absent, in words, so it never reads as a printed value. */
+const absent = words => el('span', { class: 'rr-absent', text: words });
 
-  if (shapedCase.kind === 'timeout' || shapedCase.kind === 'runtime') {
-    body.append(el('p', { class: 'rr-msg', text: shapedCase.message }));
-  } else if (shapedCase.note) {
-    body.append(el('p', { class: 'rr-note', text: shapedCase.note }));
+/** The input, one line per parameter, named when the parameter names line up with its lines. */
+function inputValue(input, params) {
+  if (!input) return absent('None');
+  const lines = input.split('\n');
+  if (!params.length || params.length !== lines.length) return dataText(input);
+  return lines.map((line, i) => el('div', {}, [el('span', { class: 'rr-param', text: `${params[i]} = ` }), ...dataText(line)]));
+}
+
+/**
+ * The frames from the learner's own file, plus the exception line. Null when that would
+ * leave nothing, or would be the whole traceback anyway.
+ */
+export function ownFrames(traceback) {
+  const lines = String(traceback || '').replace(/\s+$/, '').split('\n');
+  const kept = [];
+  let keep = false;
+  for (const line of lines) {
+    const frame = /^\s*File "([^"]*)", line \d+/.exec(line);
+    if (frame) { keep = /(^|\/)solution\.py$/.test(frame[1]); if (keep) kept.push(line); continue; }
+    if (/^\S/.test(line)) { keep = false; if (!/^Traceback \(most recent call last\)/.test(line)) kept.push(line); continue; }
+    if (keep && line.trim()) kept.push(line);
   }
+  if (!kept.some(line => /solution\.py/.test(line))) return null;
+  const text = kept.join('\n');
+  const whole = lines.filter(line => !/^Traceback \(most recent call last\)/.test(line)).join('\n');
+  return text === whole ? null : text;
+}
 
-  body.append(el('div', { class: 'rr-grid' }, [
-    labelled('Input', shapedCase.input),
-    labelled('Expected', shapedCase.expected),
-    labelled('Actual', shapedCase.actual, shapedCase.kind === 'fail' || shapedCase.kind === 'unknown' ? 'bad' : ''),
-  ]));
+/** Text with its frames' shared indentation removed, so a traceback starts at the left edge. */
+function dedent(value) {
+  const lines = String(value).replace(/^Traceback \(most recent call last\):\n/, '').split('\n');
+  const indents = lines.filter(line => line.trim() && /^\s/.test(line)).map(line => /^\s*/.exec(line)[0].length);
+  const cut = Math.min(2, ...(indents.length ? indents : [0]));
+  return lines.map(line => (line.slice(0, cut).trim() === '' ? line.slice(cut) : line)).join('\n');
+}
 
-  if (shapedCase.stdout) body.append(labelled('Printed output', shapedCase.stdout, 'wide'));
-  if (shapedCase.traceback) {
-    body.append(el('div', { class: 'rr-field wide trace' }, [
-      el('div', { class: 'mono dim', text: 'Traceback — line numbers point at your code' }),
-      el('pre', { text: shapedCase.traceback }),
-    ]));
+function traceBlock(traceback) {
+  const own = ownFrames(traceback);
+  const shown = el('pre', { class: 'rr-trace-text', text: dedent(own || traceback) });
+  const parts = [shown];
+  if (own) {
+    const full = el('pre', { class: 'rr-trace-text is-full', text: traceback, hidden: true });
+    const toggle = button({
+      label: 'Show full traceback', variant: 'quiet', className: 'rr-trace-toggle',
+      onClick: () => {
+        full.hidden = !full.hidden;
+        shown.hidden = !full.hidden;
+        toggle.setAttribute('aria-expanded', String(!full.hidden));
+        toggle.querySelector('span').textContent = full.hidden ? 'Show full traceback' : 'Show only your code';
+      },
+    });
+    toggle.setAttribute('aria-expanded', 'false');
+    parts.push(full, toggle);
   }
+  return el('div', { class: 'rr-field trace' }, parts);
+}
 
-  const head = el('button', {
-    class: 'btn btn--quiet rr-casehead', type: 'button', 'aria-expanded': String(open), 'aria-controls': bodyId,
-    onclick: (event) => {
-      const next = body.hidden;
-      body.hidden = !next;
-      event.currentTarget.setAttribute('aria-expanded', String(next));
-    },
-  }, [
-    el('span', { class: 'rr-caret' }, icon('forward', 15)),
-    el('span', { class: 'mono dim rr-caseno', text: `Case ${index + 1}` }),
-    el('span', { class: 'rr-preview', text: shapedCase.input.replace(/\s+/g, ' ').trim() }),
-    shapedCase.note && shapedCase.kind === 'pass' ? el('span', { class: 'tag quiet', text: 'any order' }) : null,
-    el('span', { class: `tag rr-verdict k-${shapedCase.kind}`, text: shapedCase.label }),
-    el('span', { class: 'mono dim rr-ms tnum', text: formatMs(shapedCase.ms) }),
+/** The selected case: why, then its values as labelled rows, then a quiet footer. */
+function caseDetail(c, params, slug) {
+  const reason = c.reason;
+  const wrongRange = c.kind === 'fail' && c.expected && c.actual ? firstDifferingValue(c.expected, c.actual) : null;
+  const errored = c.status === 'error';
+  const rows = [
+    row('Input', inputValue(c.input, params)),
+    row('Expected', c.expected
+      ? marked(c.expected, wrongRange && [wrongRange.start, wrongRange.endExpected], 'rr-mark is-expected')
+      : absent('Not given')),
+    // An error or a timeout returned nothing; saying "Your output: nothing" under the error says it twice.
+    errored && !c.actual ? null : row('Your output', c.actual
+      ? [...marked(c.actual, wrongRange && [wrongRange.start, wrongRange.endActual], 'rr-mark'),
+        reason.values ? el('span', { class: 'rr-aside', text: `values ${reason.values.join(', ')}` }) : null]
+      : absent('Nothing returned'), c.status === 'wrong' ? 'is-bad' : ''),
+    c.stdout ? row('Printed', el('pre', { class: 'rr-printed' }, dataText(c.stdout))) : null,
+  ];
+  const ms = formatMs(c.ms);
+  const goTo = reason.line && slug
+    ? button({ label: `Go to line ${reason.line}`, variant: 'quiet', className: 'rr-goto',
+      onClick: async () => (await import('./editor.js')).submissionEditor(slug)?.jumpToLine(reason.line) })
+    : null;
+  return el('div', { class: `rr-case k-${c.kind} s-${c.status}` }, [
+    el('div', { class: `rr-why s-${c.status}` }, [
+      el('strong', { text: reason.title }),
+      reason.text ? el('span', { text: reason.text }) : null,
+    ]),
+    el('div', { class: 'rr-rows' }, rows),
+    c.traceback ? traceBlock(c.traceback) : null,
+    el('div', { class: 'rr-foot' }, [
+      ms ? el('span', {}, ['Time ', el('b', { class: 'tnum', text: ms })]) : null,
+      c.stdout ? null : el('span', { text: 'Nothing printed' }),
+      goTo,
+    ]),
   ]);
-
-  return el('div', { class: 'rr-case k-' + shapedCase.kind }, [head, body]);
 }
 
 function block({ tone = '', head, lines = [], traceback = null, actions = [] }) {
@@ -293,7 +478,8 @@ function block({ tone = '', head, lines = [], traceback = null, actions = [] }) 
 
 /**
  * Render a shaped result into `target`. `handlers.onRerun` is optional and only
- * used by the states where trying again is the sensible next move.
+ * used by the states where trying again is the sensible next move. `handlers.params`
+ * names each input line; `handlers.slug` lets an error offer Go to line.
  */
 export function renderRunResult(target, shaped, handlers = {}) {
   clear(target);
@@ -338,21 +524,35 @@ export function renderRunResult(target, shaped, handlers = {}) {
     return target;
   }
 
-  const verdict = el('div', { class: 'rr-summary s-' + shaped.status }, [
-    el('span', { class: 'rr-dot' }),
-    el('span', { class: 'rr-headline', text: shaped.headline }),
+  const verdict = el('div', { class: 'rr-summary s-' + shaped.verdict }, [
+    el('span', { class: 'rr-headline' }, [el('span', { class: 'rr-dot', 'aria-hidden': 'true' }), el('span', { text: shaped.headline })]),
+    shaped.detail ? el('span', { class: 'rr-detail', text: shaped.detail }) : null,
     el('span', { class: 'spacer' }),
-    shaped.orderInsensitive ? el('span', { class: 'tag quiet', text: 'order ignored' }) : null,
-    el('span', { class: 'mono dim tnum', text: formatMs(shaped.summary.totalMs) }),
+    shaped.orderInsensitive ? createBadge('order ignored', 'neutral') : null,
+    el('span', { class: 'rr-total tnum', text: formatMs(shaped.summary.totalMs) }),
   ]);
   target.append(verdict);
 
   if (shaped.message) target.append(el('p', { class: 'rr-msg', text: shaped.message }));
 
-  const list = el('div', { class: 'rr-cases' });
-  // Passing cases collapse; anything you need to look at is already open.
-  for (const [i, c] of shaped.cases.entries()) list.append(caseRow(c, i, c.kind !== 'pass'));
-  target.append(list);
+  // One case at a time, chosen from tabs like the Testcase tab's: the first case that is not
+  // a pass is the one on screen after a run, or Case 1 when everything passed.
+  const params = handlers.params || [];
+  const pane = el('div', { class: 'rr-casepane' });
+  const tabs = shaped.cases.map((c, i) => el('button', {
+    class: `btn btn--quiet tc-tab rr-casetab s-${c.status}`, type: 'button',
+    'aria-label': `Case ${i + 1}, ${c.label.toLowerCase()}`,
+    onclick: () => select(i),
+  }, [el('span', { class: 'rr-dot', 'aria-hidden': 'true' }), el('span', { text: `Case ${i + 1}` })]));
+  function select(index) {
+    tabs.forEach((tab, i) => {
+      tab.classList.toggle('is-on', i === index);
+      tab.setAttribute('aria-pressed', String(i === index));
+    });
+    replace(pane, caseDetail(shaped.cases[index], params, handlers.slug));
+  }
+  target.append(el('div', { class: 'rr-cases' }, [el('div', { class: 'tc-tabs rr-casetabs' }, tabs), pane]));
+  select(shaped.firstOpen || 0);
   return target;
 }
 
@@ -393,6 +593,13 @@ export function createRunPanel({ slug, getCode, onCollapse, onEvent = () => {} }
     tabCases.setAttribute('aria-pressed', String(!onResult));
     tabResult.setAttribute('aria-pressed', String(onResult));
   }
+  // An example in the statement asks for its case: bring the cases forward and select it.
+  const onShowCase = event => {
+    if (event.detail?.slug !== slug) return;
+    showTab('cases');
+    editor.show(event.detail.number);
+  };
+  window.addEventListener('studio:show-case', onShowCase);
   tabCases.addEventListener('click', () => showTab('cases'));
   tabResult.addEventListener('click', () => showTab('result'));
 
@@ -440,19 +647,10 @@ export function createRunPanel({ slug, getCode, onCollapse, onEvent = () => {} }
     controller = null;
     if (ticker) { clearInterval(ticker); ticker = null; }
     last = shaped;
-    renderRunResult(body, shaped, { onRerun: run });
+    renderRunResult(body, shaped, { onRerun: run, params: editor.params(), slug });
     onEvent({ type: 'result', shaped });
-    requestAnimationFrame(() => {
-      const comparison = body.querySelector('.rr-case.k-fail .rr-grid');
-      const pane = root.closest('.ws-results');
-      if (!comparison || !pane || last !== shaped) return;
-      const block = comparison.getBoundingClientRect();
-      const viewport = pane.getBoundingClientRect();
-      if (block.top < viewport.top || block.bottom > viewport.bottom) {
-        pane.scrollTo({ top: pane.scrollTop + block.top - viewport.top - 8,
-          behavior: document.body.classList.contains('motion-off') || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-      }
-    });
+    // The verdict and the selected case are at the top of the result; start the pane there.
+    root.closest('.ws-results')?.scrollTo({ top: 0 });
   }
 
   async function run() {
@@ -493,7 +691,7 @@ export function createRunPanel({ slug, getCode, onCollapse, onEvent = () => {} }
       if (running) return false;
       const shaped = shapeRunResult(raw);
       const out = el('div', { class: 'rr-tutorbody' });
-      renderRunResult(out, shaped);
+      renderRunResult(out, shaped, { params: editor.params(), slug });
       replace(body, [
         el('div', { class: 'rr-tutor ui-inset ui-cluster' }, [
           el('div', { class: 'rr-tutor-copy ui-cluster-content ui-stack' }, [
@@ -503,7 +701,7 @@ export function createRunPanel({ slug, getCode, onCollapse, onEvent = () => {} }
           last
             ? el('button', {
               class: 'btn btn--secondary', type: 'button', text: 'Show your last run',
-              onclick: () => renderRunResult(body, last, { onRerun: run }),
+              onclick: () => renderRunResult(body, last, { onRerun: run, params: editor.params(), slug }),
             })
             : null,
         ]),
@@ -518,6 +716,7 @@ export function createRunPanel({ slug, getCode, onCollapse, onEvent = () => {} }
       showTab('cases');
     },
     dispose() {
+      window.removeEventListener('studio:show-case', onShowCase);
       if (ticker) clearInterval(ticker);
       if (controller) { try { controller.abort(); } catch { /* noop */ } }
       editor.dispose();

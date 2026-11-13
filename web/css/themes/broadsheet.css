@@ -1,0 +1,424 @@
+/* Broadsheet: a printed newspaper page. One sheet of paper, ink and a single red.
+   Nothing is boxed, filled, shadowed or rounded: panes are columns between thin rules,
+   headings are serif headlines, labels are letterspaced small caps, actions are words. */
+body.theme-broadsheet{
+  --canvas:#FAF8F2;--card:#FAF8F2;--ink:#161512;--ink-rgb:22,21,18;--on-ink:#FAF8F2;--on-ink-rgb:250,248,242;
+  --accent:#C4102A;--accent-rgb:196,16,42;--solid-bg:#161512;--solid-fg:#FAF8F2;--solid-edge:#161512;--solid-hover:#C4102A;
+  --easy:#1E5236;--easy-rgb:30,82,54;--med:#6B4E00;--med-rgb:107,78,0;--hard:#C4102A;--hard-rgb:196,16,42;
+  --verdict-easy:#1E5236;--verdict-med:#6B4E00;--verdict-hard:#C4102A;--tok-kw:#C4102A;--tok-def:#161512;
+  --shadow:0 0 0 transparent;--shadow-lift:0 0 0 transparent;
+  --r-sm:0px;--r-md:0px;--r-pane:0px;--pane-gap:0px;
+  --bs-line:#C9C4B6;--bs-hair:#E6E1D4;--bs-rule:1px solid var(--ink);--bs-g:22px;--bs-m:24px;
+  --ui:-apple-system,"SF Pro Text",system-ui,"Helvetica Neue",sans-serif;--serif:"New York","Iowan Old Style",Charter,Georgia,serif;
+  --display:var(--serif);--prose:var(--serif);--title-font:var(--serif);--title-weight:700;
+  --btn-font:var(--ui);--btn-transform:uppercase;--btn-tracking:.14em;
+  --soft-alpha:0;--status-soft-alpha:0;--focus-halo:0 0 0 transparent;
+  --topbar-h:58px;--header-height:66px;--dialog-header-height:64px;
+  --surface-card-bg:var(--canvas);--surface-card-border:0 solid transparent;--surface-card-radius:0;--surface-card-shadow:none;
+  --surface-card-hover-bg:transparent;--surface-card-hover-shadow:none;
+  --row-radius:0;--row-hover-bg:transparent;--row-border:0 solid transparent;--row-rule:1px solid var(--bs-line);
+  --tab-radius:0;--tab-active-fg:var(--ink);--tab-active-indicator:inset 0 3px 0 var(--ink);
+  --chip-radius:0;--chip-font:600 10.5px/1.4 var(--ui);
+  --float-radius:0;--float-shadow:none;--float-border:1px solid var(--ink);
+  --control-border:1px solid var(--bs-line);--button-radius:0;--button-outline:0 solid transparent;
+  --phase-rule:1px solid var(--ink);--chart-marker-border:2px solid var(--canvas);
+  --conversation-text-size:14px;--conversation-line-height:1.6;
+}
+body.theme-broadsheet.is-dark{
+  --canvas:#131210;--card:#131210;--ink:#EEE9DF;--ink-rgb:238,233,223;--on-ink:#131210;--on-ink-rgb:19,18,16;
+  --accent:#FF5F52;--accent-rgb:255,95,82;--solid-bg:#EEE9DF;--solid-fg:#131210;--solid-edge:#EEE9DF;--solid-hover:#FF5F52;
+  --easy:#A8D5B5;--easy-rgb:168,213,181;--med:#D9C48A;--med-rgb:217,196,138;--hard:#FF5F52;--hard-rgb:255,95,82;
+  --verdict-easy:#A8D5B5;--verdict-med:#D9C48A;--verdict-hard:#FF5F52;--tok-kw:#FF5F52;--tok-def:#EEE9DF;
+  --shadow:0 0 0 transparent;--shadow-lift:0 0 0 transparent;
+  --bs-line:#3A372F;--bs-hair:#24221D;--soft-alpha:0;--status-soft-alpha:0;
+}
+
+/* ---- Type: small caps for every label and action, serif for every headline and paragraph. ---- */
+body.theme-broadsheet :is(.navlink,.ui-tab,.ui-badge,.ui-count,.tag,.ui-header-crumb,.ui-header-meta,.ui-pane-header>strong,.ui-menu-heading,
+  .tc-label,.tc-origin,.rr-tabmark,.editor-file,.editor-cursor,.ui-turn-head,.ui-turn-stamp,.ui-conversation-separator,.ui-phase-divider,
+  .ui-thread-strip>span,.tree-heading,.tree-legend,.ov-kicker,.ov-ring-label,.ov-ring-of,.plist-note,.countpill,.chat-history-heading,
+  .submission-tag,.graph-caption,.node-meta,.map-start,.th-pick-hint,.th-item-kind,.th-item-date,.dash-sec .note,.ptag){
+  font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet .btn.btn,body.theme-broadsheet .ui-select-button{border-radius:0;font:700 10.5px/1 var(--ui);text-transform:uppercase;letter-spacing:.14em;color:var(--ink)}
+body.theme-broadsheet .btn.btn kbd{font:600 10px/1 var(--ui);letter-spacing:.04em;border:0;padding:0;background:transparent;color:inherit;opacity:.6}
+
+/* ---- Actions are words. Secondary is underlined, primary is a block of ink, hover is red. ---- */
+body.theme-broadsheet .btn.btn--secondary{padding-inline:2px;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:6px}
+body.theme-broadsheet .btn.btn:hover:not(:disabled),body.theme-broadsheet .ui-select-button:hover:not(:disabled){background:transparent;color:var(--accent)}
+body.theme-broadsheet .btn.btn--primary{background:var(--solid-bg);color:var(--solid-fg);padding-inline:14px;text-decoration:none}
+body.theme-broadsheet .btn.btn--primary:hover:not(:disabled){background:var(--solid-hover);color:var(--solid-fg);filter:none}
+body.theme-broadsheet .btn.btn:is([aria-pressed="true"],[aria-current="page"]):not(.btn--primary){background:transparent;color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+body.theme-broadsheet .btn.btn.btn--icon:is([aria-pressed="true"],[aria-current="page"]){color:var(--accent);box-shadow:none}
+body.theme-broadsheet .btn.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+body.theme-broadsheet .segmented{padding:0;gap:16px;background:transparent}
+body.theme-broadsheet .segmented .btn{padding-inline:0}
+body.theme-broadsheet .segmented .btn:is([aria-pressed="true"],[aria-current="page"]){background:transparent;color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+
+/* ---- Tabs: a heavy rule above the current one. ---- */
+body.theme-broadsheet .ui-tabs{gap:18px;border-bottom:0}
+body.theme-broadsheet .btn.btn.ui-tab{font:600 10.5px/1 var(--ui);color:var(--ink-50);padding:0}
+body.theme-broadsheet .btn.btn.ui-tab:is([aria-pressed="true"],[aria-selected="true"]){color:var(--ink);box-shadow:inset 0 3px 0 var(--ink)}
+body.theme-broadsheet .btn.btn.ui-tab:hover:not(:is([aria-pressed="true"],[aria-selected="true"])){background:transparent;color:var(--accent)}
+
+/* ---- Labels have no box. Status is the colour of the word. ---- */
+body.theme-broadsheet :is(.ui-badge,.tag,.ui-count,.submission-tag){height:auto;padding:0;border:0;border-radius:0;background:transparent}
+body.theme-broadsheet.ws-wide .tag{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;text-transform:uppercase;padding:0;background:transparent}
+body.theme-broadsheet :is(.tag.easy,.tag.medium,.tag.hard,.tag.pattern){background:transparent}
+body.theme-broadsheet .ui-count{color:var(--accent)}
+
+/* ---- Masthead: the wordmark centred in a large serif, a double rule beneath. ---- */
+body.theme-broadsheet .topbar{height:58px;min-height:58px;padding-inline:var(--bs-m);gap:20px;border-bottom:0;box-shadow:none;
+  background:linear-gradient(var(--ink),var(--ink)) var(--bs-m) 100%/calc(100% - 2 * var(--bs-m)) 1px no-repeat,
+    linear-gradient(var(--ink),var(--ink)) var(--bs-m) calc(100% - 2px)/calc(100% - 2 * var(--bs-m)) 1px no-repeat,var(--canvas)}
+body.theme-broadsheet .wordmark{gap:.28em}
+body.theme-broadsheet .wordmark :is(.solid,.outline){font:700 26px/1 var(--serif);letter-spacing:-.01em;color:var(--ink);-webkit-text-stroke:0;transform:none}
+body.theme-broadsheet .topnav{gap:18px}
+body.theme-broadsheet .topnav .navlink{height:28px;padding:0;border:0;border-radius:0;background:transparent;color:var(--ink-50)}
+body.theme-broadsheet .topnav .navlink:hover{color:var(--accent)}
+body.theme-broadsheet .topnav .navlink[aria-current="page"]{background:transparent;color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+body.theme-broadsheet .searchwrap{justify-content:flex-end}
+body.theme-broadsheet .searchbox{width:min(230px,100%);padding:4px 0;gap:8px;border:0;border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .searchbox:focus-within{border-color:var(--ink);box-shadow:0 1px 0 var(--ink)}
+body.theme-broadsheet .searchbox input{font:400 13px/1.3 var(--ui)}
+body.theme-broadsheet .searchbox kbd{border:0;padding:0;font:600 10px var(--ui)}
+body.theme-broadsheet .streakpill{border:0;border-radius:0;background:transparent;box-shadow:none}
+@media (min-width:1001px){
+  body.theme-broadsheet .topbar{position:sticky}
+  body.theme-broadsheet .wordmark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+}
+@media (max-width:1000px){
+  body.theme-broadsheet .wordmark :is(.solid,.outline){font-size:21px}
+  body.theme-broadsheet .searchbox{width:min(170px,100%)}
+}
+@media (max-width:700px){
+  body.theme-broadsheet .topbar{height:auto;padding:10px 16px 12px;--bs-m:16px}
+  body.theme-broadsheet .searchbox{width:100%}
+}
+
+/* ---- Screen title: a headline over a rule, metadata in small caps. ---- */
+body.theme-broadsheet :is(.ui-workspace-header,.ui-dialog-header,.ui-pane-header){background:var(--canvas)}
+body.theme-broadsheet .ui-screen-header{padding-inline:var(--bs-m);gap:14px;border-bottom:0;
+  background:linear-gradient(var(--ink),var(--ink)) var(--bs-m) 100%/calc(100% - 2 * var(--bs-m)) 1px no-repeat,var(--canvas)}
+body.theme-broadsheet :is(.ui-workspace-identity,.ui-dialog-identity){gap:14px;align-items:baseline}
+body.theme-broadsheet .ui-workspace-identity h1{font:700 30px/1.15 var(--serif);letter-spacing:-.015em}
+body.theme-broadsheet .ui-dialog-identity h2{font:700 24px/1.15 var(--serif);letter-spacing:-.01em}
+body.theme-broadsheet :is(.ui-header-crumb,.ui-header-meta){color:var(--ink-50)}
+body.theme-broadsheet .ui-screen-header .tag{color:var(--accent)}
+body.theme-broadsheet .ui-header-actions{gap:14px}
+body.theme-broadsheet .ui-header-secondary{gap:10px}
+body.theme-broadsheet .ui-header-separator{border-color:var(--bs-line)}
+body.theme-broadsheet .ws-status{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;text-transform:uppercase}
+@media (max-width:700px){
+  body.theme-broadsheet .ui-screen-header{height:52px;padding-inline:16px;--bs-m:16px}
+  body.theme-broadsheet .ui-workspace-identity h1{font-size:22px}
+}
+
+body.theme-broadsheet .card{border:0;border-radius:0;box-shadow:none;background:transparent}
+/* ---- Columns: no pane surfaces, thin rules between, a gutter either side of the rule. ---- */
+body.theme-broadsheet.layout-docked :is(.ws,.coach,.dz-side){border-left:1px solid var(--bs-line)}
+body.theme-broadsheet.ws-wide :is(.pcol,.coach,.ws,.ws-results){background:var(--canvas)}
+body.theme-broadsheet.ws-wide .ws{border-inline:0;border-left:1px solid var(--bs-line)}
+/* Labels sit on the column edge; tools keep 6px clear of the rule's end. */
+body.theme-broadsheet .ui-pane-header{margin-inline:var(--bs-g);padding-inline:0 6px;border-bottom:1px solid var(--bs-line);background:var(--canvas)}
+body.theme-broadsheet.ws-wide .pcol .ui-pane-header{padding-inline:0 6px}
+body.theme-broadsheet .ui-pane-header>strong{color:var(--ink)}
+@media (min-width:901px){
+  body.theme-broadsheet.ws-wide .workspace-rail{top:66px;background:var(--canvas);border-right:1px solid var(--bs-line)}
+}
+body.theme-broadsheet .workspace-rail button[aria-pressed="true"]::before{content:none}
+
+/* ---- The statement: reading-size serif, a red drop cap, examples between rules. ---- */
+body.theme-broadsheet.ws-wide .pcol>.card>.ptags{padding:14px var(--bs-g) 0;gap:14px}
+body.theme-broadsheet.ws-wide .desc{padding:14px var(--bs-g) 20px;font:16px/1.62 var(--serif)}
+body.theme-broadsheet :is(.desc .rich,.stmt){font:16px/1.62 var(--serif);color:var(--ink)}
+body.theme-broadsheet :is(.desc .rich,.stmt-lead)>p:first-child::first-letter{float:left;font:700 54px/.82 var(--serif);padding:4px 8px 0 0;color:var(--accent)}
+body.theme-broadsheet.ws-wide .desc pre,body.theme-broadsheet .stmt-example{border:0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent;padding:8px 0;box-shadow:none}
+body.theme-broadsheet .desc :not(pre)>code{background:transparent;padding:0;border:0;font-style:italic}
+body.theme-broadsheet :is(.ex-head,.ex-label,.stmt h3,.stmt h4,.desc .rich strong.example){font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em;color:var(--ink-50)}
+
+/* ---- The editor column. ---- */
+body.theme-broadsheet .editor-tabs{margin-inline:var(--bs-g);background:var(--canvas);border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet .editor-file{padding-inline:0;border:0;margin:0;background:transparent;color:var(--ink);box-shadow:inset 0 3px 0 var(--ink)}
+body.theme-broadsheet .file-language{color:var(--accent)}
+body.theme-broadsheet .ws-results{border-top:1px solid var(--ink)}
+body.theme-broadsheet .tc-tabs{gap:16px;padding-inline:var(--bs-g)}
+body.theme-broadsheet .btn.btn.tc-tab{padding:0;border:0;background:transparent;color:var(--ink-50);font-weight:600}
+body.theme-broadsheet .btn.btn.tc-tab.is-on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+body.theme-broadsheet .tc-panel{padding-inline:var(--bs-g)}
+
+/* ---- The Testcase tab: a form set like the statement's examples. Small-caps names in the
+   margin column, published values printed bare, your own values on a line to write on. ---- */
+/* The case tabs and "where it came from" share the column's gutter, also when they wrap. */
+body.theme-broadsheet .tc-row{padding-inline:var(--bs-g);column-gap:18px}
+body.theme-broadsheet .tc-row>.tc-tabs{padding-inline:0}
+body.theme-broadsheet .tc-row-actions{padding-right:0;gap:14px}
+body.theme-broadsheet .tc-row-actions .btn{padding-inline:0}
+body.theme-broadsheet .tc-row-actions .btn.btn[data-danger=true]{color:var(--hard)}
+body.theme-broadsheet .tc-origin{color:var(--ink-50)}
+@container cases (max-width:420px){
+  body.theme-broadsheet .tc-row-actions{flex:1 1 auto;justify-content:space-between}
+  body.theme-broadsheet .tc-origin{white-space:normal;letter-spacing:.1em}
+}
+body.theme-broadsheet .tc-fields{column-gap:var(--bs-g)}
+body.theme-broadsheet .tc-label{color:var(--ink-50)}
+body.theme-broadsheet .tc-field.is-expected{border-top:1px solid var(--bs-line)}
+body.theme-broadsheet .tc-field.is-expected>.tc-label{color:var(--ink)}
+body.theme-broadsheet .tc-input{border:0;border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent;padding-inline:0;box-shadow:none}
+body.theme-broadsheet .tc-input:focus{border-color:var(--ink);box-shadow:0 1px 0 var(--ink)}
+body.theme-broadsheet[class] .tc-input[readonly]{border-bottom-color:transparent;background:transparent;box-shadow:none}
+body.theme-broadsheet .tc-why{padding:0 0 0 12px;border-left:3px solid var(--accent);border-radius:0;background:transparent;font:italic 14px/1.5 var(--serif);color:var(--ink-70)}
+body.theme-broadsheet .tc-why-who{font:600 10.5px/1.5 var(--ui);font-style:normal;letter-spacing:.14em;color:var(--accent)}
+
+/* ---- The conversation: set like a column of copy. A question is an italic pull quote. ---- */
+body.theme-broadsheet.ws-wide .coach-log{padding:16px var(--bs-g)}
+body.theme-broadsheet .ui-message,body.theme-broadsheet .ui-message .ui-conversation-text,body.theme-broadsheet .rich.ui-conversation-text{font:400 14px/1.6 var(--serif)}
+body.theme-broadsheet .ui-conversation-text>:is(h1,h2,h3,h4,h5,h6){font:700 16px/1.3 var(--serif)}
+body.theme-broadsheet .ui-conversation-text pre{border:0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);background:transparent;padding:8px 0}
+body.theme-broadsheet .ui-question{align-items:stretch}
+body.theme-broadsheet .ui-question .ui-conversation-text,body.theme-broadsheet .rich.ui-conversation-text--user{width:auto;max-width:none;padding:0 0 0 12px;border-left:3px solid var(--accent);border-radius:0;background:transparent;font-style:italic}
+body.theme-broadsheet .ui-question .ui-turn-stamp{padding-left:15px}
+body.theme-broadsheet .ui-turn-head strong{color:var(--ink);font-weight:700}
+body.theme-broadsheet :is(.ui-conversation-separator,.ui-phase-divider)::before,body.theme-broadsheet :is(.ui-conversation-separator,.ui-phase-divider)::after{background:var(--bs-line);border-color:var(--bs-line)}
+body.theme-broadsheet .ui-thread-strip{margin-inline:var(--bs-g);padding-inline:0;background:transparent;border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet .ui-thread-strip>strong{font:italic 400 14px/1.3 var(--serif)}
+body.theme-broadsheet[class] .ui-composer{margin:0 var(--bs-g);padding:10px 0;border:0;border-top:1px solid var(--ink);border-radius:0;background:var(--canvas);box-shadow:none}
+body.theme-broadsheet[class] .ui-composer:focus-within{border-top-color:var(--ink);box-shadow:inset 0 2px 0 var(--ink)}
+body.theme-broadsheet[class] .ui-composer textarea.ui-composer-input{padding:4px 0;font:400 15px/1.5 var(--serif)}
+body.theme-broadsheet[class] .ui-composer textarea.ui-composer-input::placeholder{font-style:italic;color:var(--ink-50)}
+body.theme-broadsheet[class] .ui-composer .ui-select-button{padding-left:0;font:600 10px/1 var(--ui);color:var(--ink-50)}
+body.theme-broadsheet[class] .ui-composer-send{border-radius:0}
+
+/* ---- Menus, dialogs and anything that floats: paper with an ink edge and a heavy top rule. ---- */
+body.theme-broadsheet .ui-menu{padding:6px;border:1px solid var(--ink);border-top:3px solid var(--ink);border-radius:0;box-shadow:none;background:var(--canvas)}
+body.theme-broadsheet .ui-menu-item{border-radius:0;font:400 14px/1.4 var(--serif)}
+body.theme-broadsheet .ui-menu-item:is(:hover,:focus-visible):not(:disabled){background:transparent;color:var(--accent)}
+body.theme-broadsheet .ui-menu-heading{color:var(--ink-50)}
+body.theme-broadsheet .ui-menu [role=group]+[role=group]{border-top:1px solid var(--ink)}
+body.theme-broadsheet .ui-action-row:hover{background:transparent}
+body.theme-broadsheet .ui-action-row:hover :is(.recent-title,.ptitle,.th-pick-title,.th-item-title,.node-title,.ov-next-title,.pname){color:var(--accent)}
+
+/* ---- The statement's parts (examples, constraints, follow-up) between rules, never in boxes. ---- */
+body.theme-broadsheet .stmt .stmt-h{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;color:var(--ink-50)}
+body.theme-broadsheet .stmt-example{padding:0;overflow:visible}
+body.theme-broadsheet .ex-head{padding:6px 0 0;border-bottom:0}
+body.theme-broadsheet .ex-head strong{font:700 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet :is(.ex-rows,.ex-raw){padding:6px 0 10px}
+body.theme-broadsheet .ex-figure{padding:8px 0 0}
+body.theme-broadsheet .ex-value.is-prose{font:14px/1.5 var(--serif)}
+body.theme-broadsheet .stmt-constraints li{font:14px/1.5 var(--serif)}
+body.theme-broadsheet .stmt-follow{padding:0 0 0 12px;border-left:3px solid var(--accent);border-radius:0;background:transparent}
+body.theme-broadsheet .stmt-follow p{font:italic 15px/1.55 var(--serif)}
+body.theme-broadsheet .pane-links{gap:14px}
+body.theme-broadsheet .pane-links .pane-link{padding:0}
+
+/* ---- Explorer: an index. Patterns down the margin, problems as contents lines with leaders. ---- */
+body.theme-broadsheet.browse-page main{padding:0 0 48px;max-width:none}
+body.theme-broadsheet .catalog>:not(.ui-screen-header){margin-inline:var(--bs-m)}
+body.theme-broadsheet .ov{border-bottom:1px solid var(--ink)}
+body.theme-broadsheet :is(.ov-next-title,.ov-streak-n,.ov-ring-centre b,.ov-count b){font-family:var(--serif)}
+body.theme-broadsheet .catalog-tree{border-right:1px solid var(--bs-line)}
+body.theme-broadsheet .tree-heading{padding:4px 0 8px;margin-bottom:6px;border-bottom:1px solid var(--ink);color:var(--ink)}
+body.theme-broadsheet :is(.tree-root,.tree-pattern){padding:7px 0;border-radius:0;font:400 15px/1.3 var(--serif);color:var(--ink)}
+body.theme-broadsheet .tree-root{font-weight:700;margin-bottom:0}
+body.theme-broadsheet :is(.tree-root,.tree-pattern) .folder-icon{display:none}
+body.theme-broadsheet .tree-pattern::before{content:none}
+body.theme-broadsheet .tree-pattern::after{position:static;order:2;flex:1 1 12px;min-width:12px;width:auto;border-top:0;border-bottom:1px dotted var(--bs-line);align-self:flex-end;margin-bottom:5px}
+body.theme-broadsheet .tree-label{flex:0 1 auto}
+body.theme-broadsheet .tree-root .tree-count{margin-left:auto}
+body.theme-broadsheet .tree-pattern .tree-count{margin-left:0}
+body.theme-broadsheet .tree-count{order:3;font:500 11px var(--mono);color:var(--ink-50)}
+body.theme-broadsheet :is(.tree-root,.tree-pattern):hover{background:transparent;color:var(--accent)}
+body.theme-broadsheet :is(.tree-root,.tree-pattern)[aria-pressed=true]{background:transparent;color:var(--accent);font-weight:700}
+body.theme-broadsheet .catalog .filterbar{gap:10px 18px}
+body.theme-broadsheet .catalog .filterbar>.seg+.seg{padding-left:18px;border-left:1px solid var(--bs-line)}
+body.theme-broadsheet .catalog .filter-actions{gap:16px}
+body.theme-broadsheet .catalog .filter-actions .btn{padding-inline:0}
+body.theme-broadsheet .catalog .countpill{font:600 10.5px/1.4 var(--ui);padding:0}
+body.theme-broadsheet .catalog .sections{gap:26px}
+body.theme-broadsheet .catalog .psec{border:0;border-top:3px solid var(--ink);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .catalog .phead{grid-template-columns:12px minmax(0,1fr) auto auto;padding:10px 0;min-height:48px;background:var(--canvas)}
+body.theme-broadsheet .catalog .phead:hover{background:var(--canvas)}
+body.theme-broadsheet .catalog .phead .folder-icon{display:none}
+body.theme-broadsheet .catalog .phead .pname{font:700 22px/1.2 var(--serif);letter-spacing:-.01em}
+body.theme-broadsheet .catalog .plist{border-top:1px solid var(--bs-line)}
+body.theme-broadsheet .catalog .prow{padding:8px 0;min-height:40px}
+body.theme-broadsheet .catalog .plist li+li .prow{border-top:0}
+body.theme-broadsheet .catalog .prow:hover,body.theme-broadsheet .catalog .prow.sel{background:transparent}
+body.theme-broadsheet .catalog .prow:hover{border-left-color:transparent}
+body.theme-broadsheet .catalog .prow.sel{box-shadow:inset 3px 0 0 var(--accent)}
+body.theme-broadsheet .catalog .prow .ptitle{font:400 16px/1.35 var(--serif);letter-spacing:0}
+body.theme-broadsheet .catalog .prow .pmain::after{content:'';order:1;flex:1 1 16px;min-width:16px;align-self:flex-end;margin-bottom:6px;border-bottom:1px dotted var(--bs-line)}
+body.theme-broadsheet .catalog .plist-note{order:2;font:600 10.5px/1.4 var(--ui)}
+body.theme-broadsheet .catalog .prow .pmain .tag{order:3;min-width:62px;text-align:right;font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;text-transform:uppercase;padding:0}
+body.theme-broadsheet .catalog .tag{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;text-transform:uppercase;padding:0;border-radius:0}
+
+/* ---- Track homes: two columns either side of a rule, then the record as a ruled list. ---- */
+body.theme-broadsheet .th-box{border:0;border-top:2px solid var(--ink);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .th-box-head h2{font:700 28px/1.15 var(--serif);letter-spacing:-.015em}
+body.theme-broadsheet .th-box-text{font:14px/1.45 var(--serif);color:var(--ink-70)}
+body.theme-broadsheet .th-picks{gap:0}
+body.theme-broadsheet .th-pick.ui-action-row:is(:hover,[aria-pressed="true"]){background:transparent}
+body.theme-broadsheet .th-pick-title{font:400 15px/1.25 var(--serif)}
+body.theme-broadsheet .th-pick[aria-pressed="true"] .th-pick-title{font-weight:700}
+body.theme-broadsheet .th-box-foot .btn.btn--secondary{border:1px solid var(--ink);text-decoration:none}
+body.theme-broadsheet .th-recent h2{font:700 22px/1.2 var(--serif);padding-top:10px;border-top:3px solid var(--ink)}
+body.theme-broadsheet .th-item+.th-item{border-top:1px solid var(--bs-hair)}
+body.theme-broadsheet .th-item-open.ui-action-row{padding-left:0}
+body.theme-broadsheet .th-item-title{font:400 16px/1.4 var(--serif)}
+body.theme-broadsheet .th-recent .th-all.btn{margin-left:0;padding-inline:0}
+
+/* ---- The sidebar's records: submissions, interviews, past chats. Ruled lists, bare data. ---- */
+body.theme-broadsheet .coach{--sidebar-inset:var(--bs-g)}
+body.theme-broadsheet :is(.submissions pre,.rich code,.ui-conversation-text code,.submission-diff summary,.empty-icon,.ov-flame,.submission-count,.submission-attachment,.hover-surface:hover){background:transparent}
+body.theme-broadsheet .submissions pre{padding:8px 0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);border-radius:0}
+body.theme-broadsheet :is(.rich code,.ui-conversation-text code){border:0;padding:0;font-style:italic}
+body.theme-broadsheet :is(.rich pre code,.ui-conversation-text pre code){font-style:normal}
+body.theme-broadsheet :is(.submission-label,.submissions .failure-label h4,.submission-stat>span,.submission-best){font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet .submission-stat strong{font:700 24px/1.1 var(--serif)}
+body.theme-broadsheet .submission-hero h3{font:700 34px/1.05 var(--serif);letter-spacing:-.02em}
+body.theme-broadsheet .submission-row-top strong{font:700 16px/1.3 var(--serif)}
+body.theme-broadsheet :is(.submission-section,.submission-metrics){border-top:1px solid var(--bs-line)}
+body.theme-broadsheet .submission-overview{border-bottom:1px solid var(--ink)}
+body.theme-broadsheet .submission-navigation{background:var(--canvas);border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet .submission-action-bar{background:var(--canvas);border-top:1px solid var(--ink)}
+body.theme-broadsheet .sidebar-record{border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet :is(.recent-title,.interview-row-title){font:700 16px/1.3 var(--serif)}
+body.theme-broadsheet .coach .coach-empty h3,body.theme-broadsheet .submission-empty h3{font:700 22px/1.2 var(--serif)}
+
+/* ---- Settings and every dialog: a sheet with a heavy top edge and a double rule under its title. ---- */
+body.theme-broadsheet :is(.settings,.rp-sheet,.ln-sheet,dialog.ui-dialog){border:1px solid var(--ink);border-top:3px solid var(--ink);border-radius:0;box-shadow:none;background:var(--canvas)}
+body.theme-broadsheet .ui-dialog-header{border-bottom:3px double var(--ink)}
+body.theme-broadsheet .set-nav{background:transparent;border-right:1px solid var(--bs-line);padding-inline:var(--space-5) var(--space-3)}
+body.theme-broadsheet .settings .btn.set-nav-item{padding:0;color:var(--ink-50)}
+body.theme-broadsheet .settings .btn.set-nav-item[aria-selected="true"]{background:transparent;color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+body.theme-broadsheet .settings .btn.set-nav-item{width:auto;align-self:flex-start}
+body.theme-broadsheet :is(.set-label,.set-rowname,.set-cardname,.set-keywhat){font:700 16px/1.3 var(--serif)}
+body.theme-broadsheet :is(.set-rowhint,.set-cardblurb){font:14px/1.45 var(--serif)}
+body.theme-broadsheet :is(.set-group+.set-group,.set-row~.set-row){border-top:1px solid var(--bs-line)}
+body.theme-broadsheet .set-keyrow{border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet .set-card{border:0;border-top:1px solid var(--bs-line);border-radius:0;background:transparent}
+body.theme-broadsheet .set-card:hover{border-color:var(--ink)}
+body.theme-broadsheet .set-card[aria-pressed="true"]{border-top:3px solid var(--ink);background:transparent}
+body.theme-broadsheet .set-card[aria-pressed="true"] .set-cardname{color:var(--accent)}
+body.theme-broadsheet .set-keyrow kbd{border:0;border-bottom:1px solid var(--ink);border-radius:0;background:transparent;box-shadow:none}
+
+/* ---- The report: a front page. Double rule, banner headline, a deck, columns between rules. ---- */
+body.theme-broadsheet .rp-body{--report-rule:1px solid var(--ink);--report-heavy-rule:3px double var(--ink);--report-quote-rule:3px solid var(--accent);--rp-rule:1px solid var(--ink);--rp-heavy-rule:3px double var(--ink);--rp-quote-rule:3px solid var(--accent);--rp-hover-shadow:inset 3px 0 var(--bs-line);--rp-selected-shadow:inset 3px 0 var(--accent)}
+body.theme-broadsheet .rp-masthead,body.theme-broadsheet .rp-masthead strong{font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet .rp-masthead strong{font-weight:700;color:var(--ink)}
+body.theme-broadsheet .rp-signal{font-family:var(--serif);letter-spacing:-.03em}
+body.theme-broadsheet .rp-headline{font:italic 400 22px/1.35 var(--serif)}
+body.theme-broadsheet :is(.rp-stat-label,.rp-stat-detail,.rp-scale-step span,.rp-assessment){font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet .rp-stat,body.theme-broadsheet .rp-stat:nth-child(even){border-color:var(--bs-line)}
+body.theme-broadsheet :is(.rp-scale-step i,.rp-meter i,.rp-track,.rp-legend i){border-radius:0}
+body.theme-broadsheet .rp-h{padding:8px 0 0;border-bottom:0;border-top:3px solid var(--ink);font:700 11px/1.4 var(--ui);letter-spacing:.14em}
+body.theme-broadsheet :is(.rp-code-head,.rp-move-up) .rp-h{padding:0;border:0}
+body.theme-broadsheet .rp-move-up{padding:var(--space-5) 0;border-radius:0;background:transparent;color:var(--ink);border-top:3px double var(--ink);border-bottom:1px solid var(--ink)}
+body.theme-broadsheet .rp-move-up .rp-h{font:700 24px/1.2 var(--serif);letter-spacing:-.01em;text-transform:none}
+body.theme-broadsheet .rp-move-up p{font:400 18px/1.5 var(--serif)}
+body.theme-broadsheet .rp-practice li{padding:0 var(--space-5);border:0;border-left:1px solid var(--bs-line);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .rp-practice li:first-child{padding-left:0;border-left:0}
+body.theme-broadsheet :is(.rp-practice p,.rp-dim-summary,.rp-list li,.rp-moments li,.rp-body .rp-note,.rp-section>p){font-family:var(--serif)}
+body.theme-broadsheet .rp-quote{font:italic 400 18px/1.5 var(--serif)}
+body.theme-broadsheet .rp-dim-rows .rp-dim-row.ui-action-row{border-bottom:1px solid var(--bs-line);font:400 16px/1.3 var(--serif)}
+body.theme-broadsheet :is(.rp-code,.rp-transcript){border:0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent}
+body.theme-broadsheet .rp-code pre{background:transparent;padding-inline:0}
+body.theme-broadsheet .rp-ask{background:var(--canvas)}
+body.theme-broadsheet .rp-ask .ui-pane-header{margin-inline:0}
+body.theme-broadsheet .rp-ask .ui-composer{margin-inline:0}
+body.theme-broadsheet .rp-ask-resize{border-left:1px solid var(--bs-line)}
+body.theme-broadsheet .rp-ask-resize::after{border-radius:0}
+body.theme-broadsheet .ui-starter{font:italic 15px/1.45 var(--serif)}
+body.theme-broadsheet .monaco-editor [class*="bracket-highlighting-"]{color:var(--ink)}
+@container (max-width:380px){
+  body.theme-broadsheet .coach-tabs{gap:10px}
+  body.theme-broadsheet .coach-tabs .btn.btn.ui-tab{letter-spacing:.06em}
+}
+
+/* ---- Interviews and practice: the live header sits between two rules; notices get a red margin rule. ---- */
+body.theme-broadsheet .ci-live-header{border:0;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);border-radius:0;background:var(--canvas);box-shadow:none}
+body.theme-broadsheet :is(.ci-notice,.ci-paused,.interviews-notice,.ci-empty-session){border:0;border-left:3px solid var(--accent);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .ci-score-hero{border:0;border-top:3px double var(--ink);border-bottom:1px solid var(--ink);border-radius:0;background:transparent}
+body.theme-broadsheet .interviews-notice:empty{border:0}
+body.theme-broadsheet .ci-empty-icon{background:transparent;border-radius:0}
+
+/* ---- Every workspace pane is a column: no frame, the same gutter, a rule on its left. ---- */
+body.theme-broadsheet .ui-pane{--content-inset:var(--bs-g)}
+body.theme-broadsheet :is(.dz-canvas,.dz-side,.pr-work,.pr-coach,.lld-document,.ui-board-pane){border:0;border-radius:0;background:var(--canvas);box-shadow:none}
+body.theme-broadsheet :is(.dz-side,.pr-coach,.lld-interviewer){border-left:1px solid var(--bs-line)}
+body.theme-broadsheet .dz-input{border:0;border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent}
+body.theme-broadsheet .dz-input:focus{border-color:var(--ink);box-shadow:0 1px 0 var(--ink)}
+
+/* ---- Roadmap: a chart printed on the page. Each pattern hangs from a heavy rule. ---- */
+body.theme-broadsheet .roadmap-chips{gap:10px 18px}
+body.theme-broadsheet .roadmap-chips>.seg+.seg{padding-left:18px;border-left:1px solid var(--bs-line)}
+body.theme-broadsheet .roadmap-graph-col{border:0;border-top:1px solid var(--ink);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .roadmap-toolbar{padding-inline:0;border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet .ui-action-row.roadmap-node{border:0;border-top:3px solid var(--ink);border-radius:0;background:var(--canvas);box-shadow:none}
+body.theme-broadsheet .ui-action-row.roadmap-node.empty{border-top-color:var(--bs-line)}
+body.theme-broadsheet .ui-action-row.roadmap-node.selected{border-top-color:var(--accent);box-shadow:none}
+body.theme-broadsheet .node-title{font:700 16px/1.25 var(--serif)}
+body.theme-broadsheet .roadmap-detail{border:0;border-top:3px double var(--ink);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .roadmap-detail :is(h2,h3){font-family:var(--serif)}
+body.theme-broadsheet .detail-list .detail-problem.ui-action-row{border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet .lld-interviewer>.ci-panel>.ci-paused{border-left:0;border-bottom:1px solid var(--bs-line)}
+@media (max-width:850px){
+  body.theme-broadsheet .catalog-tree{border-right:0}
+}
+@media (max-width:700px){
+  body.theme-broadsheet .ui-screen-header:has(.leetcode-views){height:auto;flex-wrap:wrap;gap:2px 14px;padding-block:10px 6px}
+  body.theme-broadsheet .ui-screen-header:has(.leetcode-views) .ui-workspace-identity{flex:1 1 100%}
+  body.theme-broadsheet .ui-screen-header:has(.leetcode-views) .ui-header-actions{margin-left:0}
+}
+body.theme-broadsheet .ui-starter{border:0}
+body.theme-broadsheet[class] .ci-score-hero>.ui-badge{font:700 28px/1.1 var(--serif);letter-spacing:-.01em;text-transform:none}
+body.theme-broadsheet .ci-score-hero p{font-family:var(--serif)}
+
+/* ---- Results and verdicts share the editor column's gutter; figures are set bare between rules. ---- */
+body.theme-broadsheet :is(.rr-summary,.sub-head,.sub-verdict,.sub-stats){padding-inline:var(--bs-g)}
+body.theme-broadsheet .btn.btn.ws-stub{padding-inline:var(--bs-g)}
+body.theme-broadsheet .sub-foot{margin-inline:var(--bs-g);border-top:1px solid var(--bs-line)}
+body.theme-broadsheet :is(.rr-summary,.sub-head){background:var(--canvas);border-bottom:1px solid var(--bs-line);box-shadow:none}
+body.theme-broadsheet :is(.sub-mark,.sub-scope,.ws-stubmark,.sub-stat .mono.dim){font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+/* The run: a serif verdict with its status dot, the case as labelled rows like an example,
+   a reason set as a line of copy, the first difference underlined in its status colour. */
+body.theme-broadsheet .rr{--result-inset:var(--bs-g)}
+body.theme-broadsheet .rr-summary{column-gap:18px}
+body.theme-broadsheet .rr-headline{font:700 20px/1.2 var(--serif);letter-spacing:-.01em}
+body.theme-broadsheet :is(.rr-detail,.rr-label,.rr-foot){font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em;color:var(--ink-50)}
+body.theme-broadsheet .rr-total{font:500 11px/1 var(--mono);color:var(--ink-50)}
+body.theme-broadsheet .rr-case{padding:var(--space-4) var(--bs-g)}
+body.theme-broadsheet .rr-why{padding:0;border-radius:0;background:transparent;font:15px/1.5 var(--serif);color:var(--ink)}
+body.theme-broadsheet .rr-why strong{font:700 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet .rr-rows{column-gap:var(--bs-g)}
+body.theme-broadsheet .rr-label{line-height:var(--line-md)}
+body.theme-broadsheet :is(.rr-absent,.rr-aside){font:italic 14px/1.4 var(--serif);text-transform:none;letter-spacing:0;color:var(--ink-50)}
+body.theme-broadsheet .rr-mark{padding:0;border-radius:0;background:transparent;font-weight:700;text-decoration:underline 2px;text-underline-offset:3px}
+body.theme-broadsheet .rr-trace-text,body.theme-broadsheet .rr-trace{margin-top:0;padding:8px 0;border:0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent}
+body.theme-broadsheet .state .rr-trace{margin-top:11px}
+body.theme-broadsheet .rr-foot{column-gap:18px}
+body.theme-broadsheet .rr-foot b{font:500 11px/1 var(--mono);letter-spacing:0;color:var(--ink)}
+body.theme-broadsheet .btn.btn:is(.rr-goto,.rr-trace-toggle){padding-inline:0}
+body.theme-broadsheet .rr-trace-toggle{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:6px}
+body.theme-broadsheet .rr-tutor{padding:var(--space-3);border:0;border-left:3px solid var(--accent);border-radius:0;background:transparent}
+body.theme-broadsheet .rr-tutor-mark{font:700 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
+body.theme-broadsheet .rr-tutor-what{font:italic 14px/1.4 var(--serif)}
+body.theme-broadsheet .sub-vname{font:700 26px/1.1 var(--serif);letter-spacing:-.015em}
+body.theme-broadsheet .sub-stats{gap:0}
+body.theme-broadsheet .sub-stat{padding:0 0 0 14px;border:0;border-left:1px solid var(--bs-line);border-radius:0;background:transparent}
+body.theme-broadsheet .sub-stat:first-child{padding-left:0;border-left:0}
+body.theme-broadsheet .sub-statv{font:700 22px/1.15 var(--serif)}
+body.theme-broadsheet .ws-lane+.btn.btn.ws-stub{background:var(--canvas);border-top:1px solid var(--ink)}
+body.theme-broadsheet .ws-lane+.btn.btn.ws-stub:hover{background:var(--canvas)}
+body.theme-broadsheet .fx-toast{border:1px solid var(--ink);border-top:3px solid var(--ink);border-radius:0;box-shadow:none;background:var(--canvas)}
+body.theme-broadsheet .fx-toast-head{font:700 18px/1.2 var(--serif)}
+
+/* ---- Fields are a line to write on; remaining headings take the serif. ---- */
+body.theme-broadsheet :is(.import-form,.settings,.ln-sheet,.ci-setup) :is(input:not([type]),input[type="text"],input[type="url"],input[type="number"],textarea){border:0;border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet :is(.import-form,.settings,.ln-sheet,.ci-setup) :is(input,textarea):focus{outline:none;border-bottom-color:var(--ink);box-shadow:0 1px 0 var(--ink)}
+body.theme-broadsheet :is(.pr-empty h2,.pr-launch h2,.dash-sec h2,.import-preview h2,.ln-saved h3,.ln-compose label,.roadmap-detail h2,.rp-dim h4,.rp-practice h4){font-family:var(--serif);font-weight:700}
+body.theme-broadsheet :is(.pr-empty p,.pr-launch p,.pr-problem,.ln-scroll,.ln-saved .rich){font-family:var(--serif)}
+/* Solution and Article tabs replace the statement in the same column; the licence is a credit line. */
+body.theme-broadsheet .ref-tab .dfoot{margin:8px var(--bs-g) 0;padding:8px 0 16px;border-top:1px solid var(--bs-line);background:transparent;font:italic 12px/1.5 var(--serif);letter-spacing:0;color:var(--ink-50)}
+body.theme-broadsheet .ref-tab .dfoot a{color:inherit}
+body.theme-broadsheet pre.solutioncode{border:0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent}

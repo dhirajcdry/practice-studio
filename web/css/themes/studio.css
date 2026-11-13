@@ -1,0 +1,16 @@
+/* Studio: clean and docked. Panes meet edge to edge. */
+body.theme-studio{
+  --canvas:#F3F4F6;--card:#FFFFFF;--ink:#111111;--ink-rgb:17,17,17;--on-ink:#F3F4F6;--on-ink-rgb:243,244,246;
+  --accent:#355DCC;--accent-rgb:53,93,204;--solid-bg:#345BCC;--solid-fg:#FFFFFF;--solid-edge:#345BCC;--solid-hover:#2C4FB5;
+  --easy:#2E6B4F;--easy-rgb:46,107,79;--med:#93650B;--med-rgb:147,101,11;--hard:#B33A1A;--hard-rgb:179,58,26;
+  --verdict-easy:#246044;--verdict-med:#795400;--verdict-hard:#B33A1A;--tok-kw:#7A3E8F;--tok-def:#1E5A8A;
+  --shadow:none;--shadow-lift:0 2px 6px rgba(17,17,17,.06), 0 24px 60px rgba(17,17,17,.14);
+  --r-sm:6px;--r-md:6px;--r-pane:0;--pane-gap:0;--surface-card-radius:0;--surface-card-shadow:none;
+}
+body.theme-studio.is-dark{
+  --canvas:#121212;--card:#1A1A1A;--ink:#E8E8E8;--ink-rgb:232,232,232;--on-ink:#121212;--on-ink-rgb:18,18,18;
+  --accent:#91A7FF;--accent-rgb:145,167,255;--solid-bg:#4465ED;--solid-fg:#FFFFFF;--solid-edge:#5474FF;--solid-hover:#5574F0;
+  --easy:#5FCF97;--easy-rgb:95,207,151;--med:#E3B457;--med-rgb:227,180,87;--hard:#FF7A6B;--hard-rgb:255,122,107;
+  --verdict-easy:#5FCF97;--verdict-med:#E3B457;--verdict-hard:#FF7A6B;--tok-kw:#C7A0E8;--tok-def:#86C2EC;
+  --shadow:none;--shadow-lift:0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+}

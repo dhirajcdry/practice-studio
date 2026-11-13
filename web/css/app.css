@@ -70,7 +70,7 @@
   --dur-hover:120ms;   /* colour, border, background on hover */
   --dur-turn:150ms;    /* carets, icon lifts, press feedback (movement) */
   --dur-fade:150ms;    /* opacity fades */
-  --dur-drawer:150ms;  /* drawer and settings sheet slides (movement) */
+  --dur-drawer:150ms;  /* settings sheet slides (movement) */
 }
 /* Reduced motion zeroes the movement tokens and keeps the fades. */
 body.motion-off{--dur-turn:0ms;--dur-drawer:0ms}
@@ -365,34 +365,14 @@ body.has-banner .filterbar{top:calc(var(--topbar-h) + 39px)}
 .tok-def{color:var(--tok-def);font-weight:600}
 .tok-bi{color:var(--tok-def)}
 
-/* ---------------- drawer ---------------- */
+/* ---------------- reference tabs ---------------- */
+/* The interview report's sheet still dims the page with this. */
 body{--reference-scrim:rgba(var(--ink-rgb),.12)}
 body.is-dark{--reference-scrim:rgba(var(--on-ink-rgb),.32)}
-.scrim{position:fixed;inset:0;z-index:70;background:var(--reference-scrim);opacity:0;transition:opacity var(--dur-drawer) var(--ease-drawer)}
-.scrim.show{opacity:1}
-.drawer{
-  position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(760px,80vw);
-  background:var(--card);border-left:1px solid var(--hair-20);box-shadow:var(--shadow-lift);
-  display:flex;flex-direction:column;
-  transform:translateX(100%);transition:transform var(--dur-drawer) var(--ease-drawer);
-}
-.drawer.show{transform:translateX(0)}
-.drawer-resize{position:absolute;left:-4px;top:0;bottom:0;width:9px;z-index:1;cursor:col-resize;touch-action:none;outline:none}
-.drawer-resize::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:3px;background:var(--accent);opacity:0;transition:opacity var(--dur-hover) ease}
-.drawer-resize:hover::after,.drawer-resize:focus-visible::after{opacity:1}
-/* Opened or closed from the keyboard (s, a, Esc): no slide, no fade. */
-:is(.drawer,.scrim).is-instant{transition:none}
-.dhead{min-width:0}
-/* The tabs start on the body's left edge; the title is context, not a third tab. */
-.drawer .dhead{padding-left:var(--space-5);gap:var(--space-4)}
-.dhead .dtabs{flex:none}
-.dhead .dtitle{overflow:hidden;text-overflow:ellipsis}
-/* The same underline tabs as the problem pane they mirror, the full height of the header
-   so the indicator sits on its rule. A box around them cut the indicator off. */
-body .dhead .dtabs{align-self:stretch;height:auto;border-bottom:0}
-body .dhead .btn.btn.dtab{height:100%}
-.dhead .dtitle{flex:1;min-width:0;font:400 var(--text-sm)/var(--line-sm) var(--ui);color:var(--ink-50);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dbody{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none;padding:18px 20px 24px}
+/* Solution and Article replace the statement inside the problem pane. The statement stays
+   in the DOM, hidden, so coming back to it is instant and keeps its scroll. */
+.pcol>.card[hidden],.pcol .ptags[hidden]{display:none}
+body .desc.ref-body{max-width:none}
 .dfoot{
   flex:0 0 auto;border-top:1px solid var(--hair-10);padding:9px 16px;background:rgba(var(--ink-rgb),.015);
   font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-35);line-height:1.6;
@@ -434,7 +414,6 @@ body .dhead .btn.btn.dtab{height:100%}
   .desc{font-family:var(--prose);padding:16px 16px 20px}
   .phero{padding:15px 16px}
   .paneltoggles{padding:11px 16px}
-  .dbody{padding:15px 15px 20px}
 }
 
 /* ======================= Phase 2 — the code workspace =======================
@@ -582,64 +561,63 @@ body.hide-results .ws-results{display:none}
 .rr-running .rr-msg{padding:8px 16px 0;margin:0;font-size:12.5px;color:var(--ink-35)}
 
 .rr-summary{
-  display:flex;align-items:center;gap:10px;padding:11px 16px;
-  border-bottom:1px solid var(--hair-10);position:sticky;top:0;z-index:2;
-  /* Sticky, so it must be opaque — the cases scroll under it. Derived from the ink,
-     not from a grey someone eyedropped off the Paper theme: that literal was a white
-     bar across every dark theme, which is what made a passing run look like an error. */
-  background:var(--card);
-  box-shadow:0 1px 0 var(--hair-06);
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-4);padding:var(--space-3) var(--space-4);
+  border-bottom:1px solid var(--hair-10);background:var(--card);
 }
+/* The verdict is in normal flow, not pinned: a pinned bar painted over the case under it. */
 .rr-summary .spacer{flex:1 1 auto}
 /* A fresh result fades in, once per render. Opacity only: it lands where it belongs. */
 .rr-summary,.rr-cases{transition:opacity 120ms var(--ease-out)}
 @starting-style{.rr-summary,.rr-cases{opacity:0}}
-.rr-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-35);flex:0 0 auto}
-.rr-headline{font-weight:700;font-size:15px;letter-spacing:-.02em}
-.rr-summary.s-pass .rr-dot{background:var(--easy)}
-.rr-summary.s-pass .rr-headline{color:var(--easy)}
-.rr-summary.s-fail .rr-dot{background:var(--hard)}
-.rr-summary.s-fail .rr-headline{color:var(--hard)}
-.rr-summary.s-unclear .rr-dot{background:var(--med)}
-.rr-summary.s-unclear .rr-headline{color:var(--med)}
+.rr-headline{display:inline-flex;align-items:center;gap:var(--space-2);font:600 var(--text-md)/var(--line-sm) var(--ui);letter-spacing:-.01em;color:var(--ink)}
+.rr-detail{font:var(--text-xs)/var(--line-sm) var(--ui);color:var(--ink-50)}
+.rr-total{font:var(--text-xs)/1 var(--mono);color:var(--ink-50)}
+.rr-dot{flex:none;width:var(--space-2);height:var(--space-2);border-radius:50%;background:currentColor}
+/* Four statuses, one colour each, the same in the summary, the case tabs and the reason. */
+.rr .s-pass{--rr-tone:var(--easy);--rr-soft:var(--easy-soft)}
+.rr :is(.s-wrong,.s-error){--rr-tone:var(--hard);--rr-soft:var(--hard-soft)}
+.rr .s-look{--rr-tone:var(--med);--rr-soft:var(--med-soft)}
+.rr-summary .rr-headline{color:var(--rr-tone,var(--ink))}
 
-.rr-case + .rr-case{border-top:1px solid var(--hair-06)}.rr-casehead{width:100%;display:flex;align-items:center;text-align:left}
-/* A full-width row, not a toolbar button: it shares the summary's inset on both sides. */
-body .btn.btn.rr-casehead{justify-content:flex-start;height:var(--control-md);padding:0 var(--space-4);border-radius:0}
-.rr-caret{color:var(--ink-35);font-size:12px;line-height:1;flex:0 0 auto;transition:transform var(--dur-turn) var(--ease-out)}
-@media (prefers-reduced-motion:reduce){.rr-caret{transition:none}}
-.rr-casehead[aria-expanded="true"] .rr-caret{transform:rotate(90deg)}
-.rr-caseno{flex:0 0 auto;font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
-.rr-preview{
-  flex:1 1 auto;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--ink-35);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-.rr-verdict{flex:0 0 auto}
-.rr-verdict.k-pass{color:var(--easy);border-color:rgba(var(--easy-rgb),.35);background:var(--easy-soft)}
-.rr-verdict.k-fail,.rr-verdict.k-runtime{color:var(--hard);border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
-.rr-verdict.k-timeout,.rr-verdict.k-unknown{color:var(--med);border-color:rgba(var(--med-rgb),.35);background:var(--med-soft)}
-.rr-ms{flex:0 0 auto;width:58px;text-align:right;font-size:var(--text-xs);letter-spacing:0}
+/* Case tabs: the Testcase tab's own tabs, each with its status dot. */
+.rr-cases{min-width:0}
+.tc-tabs.rr-casetabs{padding:var(--space-3) var(--space-4) 0}
+.rr-casetab .rr-dot{width:7px;height:7px;color:var(--rr-tone)}
+.rr-casetab{gap:var(--space-2)}
 
-.rr-casebody{padding:2px 16px 16px}
-.rr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.rr-field > .mono{margin-bottom:4px}
-.rr-field pre{
-  font-family:var(--mono);font-size:12px;line-height:1.65;background:var(--card);
-  border:1px solid var(--hair-10);border-radius:var(--r-md);padding:8px 10px;
-  white-space:pre-wrap;word-break:break-word;max-height:170px;overflow:auto;
-}
-.rr-field.bad pre{border-color:rgba(var(--hard-rgb),.35);background:var(--hard-soft)}
-.rr-field.wide{margin-top:10px}
-/* Printed output runs to its full length: the results pane is the one scroller. A capped
-   box scrolling inside a scrolling pane caught the wheel, and the rest of the output read
-   as unreachable. Long lines still wrap. */
-.rr-field.wide:not(.trace) pre{max-height:none;overflow:visible}
-.rr-field.trace pre{border-color:rgba(var(--hard-rgb),.3);background:var(--hard-soft);white-space:pre;max-height:230px}
-.rr-msg{font-size:13.5px;color:var(--ink-70);margin:0 0 10px;max-width:70ch}
-.rr-note{font-size:13px;color:var(--med);margin:0 0 10px}
+/* The selected case reads like an example in the statement: a reason, labelled rows with
+   values starting at one edge, nothing boxed like an input, and a quiet footer. */
+.rr-case{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-4);min-width:0}
+.rr-why{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px var(--space-2);padding:var(--space-2) var(--space-3);border-radius:var(--r-md);background:var(--rr-soft);font:var(--text-sm)/var(--line-md) var(--ui);color:var(--ink);overflow-wrap:anywhere}
+.rr-why strong{font-weight:600;color:var(--rr-tone)}
+.rr-rows{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--space-2) var(--space-5);align-items:baseline}
+.rr-row{display:contents}
+.rr-label{font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50);white-space:nowrap}
+.rr-value{min-width:0;font:var(--text-sm)/var(--line-md) var(--mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.rr-printed{margin:0;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}
+.rr-param{color:var(--ink-50)}
+.rr-absent{font-family:var(--ui);color:var(--ink-50)}
+.rr-aside{margin-left:var(--space-3);font:var(--text-xs) var(--ui);color:var(--ink-50);white-space:nowrap}
+.rr-mark{padding:0 2px;border-radius:var(--r-sm);color:var(--hard);background:var(--hard-soft)}
+.rr-mark.is-expected{color:var(--easy);background:var(--easy-soft)}
+.rr-field.trace{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-1);min-width:0}
+.rr-trace-text{align-self:stretch;margin:0;padding:var(--space-3) var(--space-4);border-radius:var(--r-md);background:rgba(var(--ink-rgb),.045);font:var(--text-xs)/1.6 var(--mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto}
+.rr-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-5);font:var(--text-xs)/var(--line-sm) var(--ui);color:var(--ink-50)}
+.rr-foot b{font:500 var(--text-xs) var(--mono);color:var(--ink)}
+body .btn.rr-goto{margin-left:auto}
+/* A run-level message under the verdict shares the result inset. */
+.rr-msg{margin:var(--space-3) var(--result-inset) 0;max-width:70ch;font-size:var(--text-sm);color:var(--ink-70)}
 .rr-trace{
   font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--card);
   border:1px solid var(--hair-20);border-radius:var(--r-md);padding:10px 12px;margin-top:11px;
   white-space:pre;overflow:auto;max-height:240px;
+}
+/* In a narrow pane each label goes above its value instead of squeezing it. */
+.rr{container:results / inline-size}
+@container results (max-width:440px){
+  .rr-rows{grid-template-columns:minmax(0,1fr);row-gap:0}
+  .rr-row+.rr-row>.rr-label{margin-top:var(--space-3)}
+  .rr-aside{display:block;margin-left:0}
 }
 
 /* ---- narrow: the two panes stack and the editor gets a real height ---- */
@@ -660,7 +638,6 @@ body .btn.btn.rr-casehead{justify-content:flex-start;height:var(--control-md);pa
   .ws-bar{flex-wrap:wrap;gap:8px}
   .ws-status{order:3;flex-basis:100%}
   .ws-host{height:46vh;min-height:240px}
-  .rr-grid{grid-template-columns:minmax(0,1fr)}
 }
 
 /* ================== Phase 3 & 5 — the coach, voice, diagrams ==================
@@ -1208,20 +1185,31 @@ body .ui-pane-header.rr-tabs{padding-inline:var(--space-4)}
 }
 
 .tc-panel{padding:var(--space-3) var(--space-4) var(--space-4)}
-.tc-fields{display:flex;flex-direction:column;gap:8px}
-.tc-field{display:flex;flex-direction:column;gap:3px}
-.tc-label{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+/* The case is a form of labelled rows, the way the statement's examples read: each parameter's
+   name in one column, every value starting at the same edge, Expected ruled off below them. */
+.tc{container:cases / inline-size}
+.tc-fields{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:var(--space-2) var(--space-4);align-items:start}
+.tc-field{grid-column:1 / -1;display:grid;grid-template-columns:subgrid;align-items:start;min-width:0}
+.tc-label{max-width:20ch;padding-top:calc(var(--space-1) + 3px);font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50);letter-spacing:0;text-transform:none;overflow-wrap:anywhere}
+.tc-field.is-expected{margin-top:var(--space-1);padding-top:var(--space-3);border-top:1px solid var(--hair-10)}
+.tc-field.is-expected>.tc-label{color:var(--ink-70)}
 .tc-input{
-  width:100%;resize:none;border:1px solid var(--hair-20);border-radius:var(--r-md);
-  background:var(--card);padding:7px 10px;font-size:12.5px;line-height:1.45;
-  color:var(--ink);outline:none;min-height:30px;
-  text-transform:none;letter-spacing:0;
+  display:block;width:100%;min-width:0;resize:none;border:1px solid var(--hair-20);border-radius:var(--r-md);
+  background:var(--card);padding:var(--space-1) var(--space-3);font-size:var(--text-sm);line-height:var(--line-md);
+  color:var(--ink);outline:none;min-height:var(--control-sm);
+  text-transform:none;letter-spacing:0;overflow-wrap:anywhere;
 }
-.tc-input:focus{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
-.tc-input[readonly]{background:rgba(var(--ink-rgb),.025);color:var(--ink-70);border-style:dashed}
+.tc-input:focus{border-color:var(--ink);box-shadow:var(--focus-halo)}
+/* A published value is printed matter, set on the statement's well with no edge to type into.
+   "Read only" is said beside the case tabs. */
+.tc-input[readonly]{background:var(--well);border-color:transparent;color:var(--ink)}
 .tc-input::placeholder{color:var(--ink-35)}
-.tc-foot{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
-.tc-origin{font:500 11px/1.4 var(--ui);letter-spacing:0;text-transform:none}
+.tc-origin{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 var(--text-xs)/var(--line-sm) var(--ui);color:var(--ink-50);letter-spacing:0;text-transform:none}
+@container cases (max-width:420px){
+  .tc-fields{grid-template-columns:minmax(0,1fr);row-gap:var(--space-3)}
+  .tc-field{grid-template-columns:minmax(0,1fr);row-gap:var(--space-1)}
+  .tc-label{padding-top:0;max-width:none}
+}
 
 .tc-empty{padding:14px 4px;font-size:13px;color:var(--ink-50);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tc-notice{margin:var(--space-2) var(--space-4) 0;font-size:12px;color:var(--ink-50)}
@@ -1316,12 +1304,10 @@ body .monaco-editor .find-widget>.button.codicon-widget-close{top:7.5px;right:8p
 .pnav-shuffle .shuffle-label:empty{display:none}
 
 .theme-preview{display:grid;grid-template-columns:1fr 1fr;height:76px;overflow:hidden;border-radius:var(--r-sm)}
-.theme-half{--preview-paper:var(--pl-paper);--preview-ink:var(--pl-ink);--preview-accent:var(--pl-accent);display:flex;flex-direction:column;background:var(--preview-paper);padding:var(--space-2);gap:var(--space-1)}
+/* A thumbnail's shape comes from its row's `preview` (themes.js): settings.js sets each
+   value as --pv-* on both halves, where --preview-* are defined. The fallbacks are Studio. */
+.theme-half{--preview-paper:var(--pl-paper);--preview-ink:var(--pl-ink);--preview-accent:var(--pl-accent);display:flex;flex-direction:column;background:var(--pv-frame,var(--preview-paper));padding:var(--space-2);gap:var(--space-1)}
 .theme-half.dark{--preview-paper:var(--pd-paper);--preview-ink:var(--pd-ink);--preview-accent:var(--pd-accent)}
-.theme-preview-bar{height:6px;background:var(--preview-ink);opacity:.65}
-.theme-preview-panes{display:grid;grid-template-columns:1fr 1.5fr 1fr;flex:1;gap:1px}
-.theme-preview-panes>b{background:color-mix(in srgb,var(--preview-paper) 90%,var(--preview-ink));border-top:2px solid var(--preview-accent)}
-[data-theme-preview=desk] .theme-preview-panes{gap:4px}
-[data-theme-preview=desk] .theme-preview-panes>b{border-radius:var(--r-sm);box-shadow:var(--shadow)}
-[data-theme-preview=dunes] .theme-preview-panes{gap:5px}
-[data-theme-preview=dunes] .theme-preview-panes>b{border:1px solid var(--preview-ink);box-shadow:-2px 2px 0 var(--preview-accent),2px 2px 0 var(--preview-ink)}
+.theme-preview-bar{height:6px;background:var(--pv-bar,var(--preview-ink));opacity:.65}
+.theme-preview-panes{display:grid;grid-template-columns:1fr 1.5fr 1fr;flex:1;gap:var(--pv-gap,1px)}
+.theme-preview-panes>b{background:color-mix(in srgb,var(--preview-paper) 90%,var(--preview-ink));border:var(--pv-border,0 none);border-top:var(--pv-border,2px solid var(--preview-accent));border-radius:var(--pv-radius,0);box-shadow:var(--pv-shadow,none)}

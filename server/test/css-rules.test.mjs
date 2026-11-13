@@ -15,8 +15,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { THEMES, LAYOUTS } from '../../web/js/themes.js';
 
 const WEB_CSS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/css');
+const THEME_DIR = path.join(WEB_CSS, 'themes');
+/** The shared theme sheet followed by every family's own file, as the browser loads them. */
+const themesCss = () => [path.join(WEB_CSS, 'themes.css'), ...fs.readdirSync(THEME_DIR).filter(f => f.endsWith('.css')).sort().map(f => path.join(THEME_DIR, f))]
+  .map(file => fs.readFileSync(file, 'utf8')).join('\n');
 
 /** Every `selector { body }` pair. Good enough: this stylesheet has no nesting or @supports. */
 function rules(css) {
@@ -189,44 +194,63 @@ test('the coach log is block flow, not a flex column', () => {
   assert.ok(!rule.body.includes('flex-direction:column'), '.coach-log must not be a flex column');
 });
 
-// A missing palette token must not silently inherit a different family's colour.
-test('all core families define a complete light and dark palette', () => {
-  const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
-  const tokens = `ink-rgb on-ink-rgb on-ink canvas card ink ink-70 ink-50 ink-35
-    hair-20 hair-10 hair-06 accent accent-rgb accent-soft solid-bg solid-fg solid-edge
-    solid-hover easy easy-rgb easy-soft med med-rgb med-soft hard hard-rgb hard-soft
-    tok-kw tok-def shadow shadow-lift texture`.split(/\s+/);
-  for (const family of ['studio', 'desk', 'dunes']) {
+// A family lists only its own colours; everything derived comes from the shared `body` block.
+// A missing raw colour must not silently inherit a different family's, so each one is required
+// in both of a family's blocks, and the derived tokens are required in the shared block.
+test('every family defines its own palette in light and dark', () => {
+  const css = themesCss();
+  const own = `ink-rgb on-ink-rgb on-ink canvas card ink accent accent-rgb solid-bg solid-fg solid-edge
+    solid-hover easy easy-rgb med med-rgb hard hard-rgb verdict-easy verdict-med verdict-hard
+    tok-kw tok-def shadow shadow-lift`.split(/\s+/);
+  const geometry = 'r-sm r-md r-pane pane-gap'.split(' ');
+  for (const { id } of THEMES) {
     for (const mode of ['', '.is-dark']) {
-      const selector = `body.theme-${family}${mode}`;
+      const selector = `body.theme-${id}${mode}`;
       const palette = rules(css).filter(rule => rule.selector === selector);
       assert.equal(palette.length, 1, `${selector}: exactly one palette block`);
-      for (const token of tokens) assert.ok(palette[0].body.includes(`--${token}:`), `${selector}: missing ${token}`);
+      for (const token of own) assert.ok(palette[0].body.includes(`--${token}:`), `${selector}: missing ${token}`);
+      if (!mode) for (const token of geometry) assert.ok(palette[0].body.includes(`--${token}:`), `${selector}: missing ${token}`);
     }
   }
 });
 
-test('all theme families define the component shape token contract', () => {
-  const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
-  const contract = `surface-card-bg surface-card-border surface-card-radius surface-card-shadow surface-card-hover-bg surface-card-hover-shadow
-    row-radius row-hover-bg row-gap row-border tab-radius tab-active-bg tab-active-fg tab-active-indicator tab-active-shadow
-    chip-radius chip-border chip-font float-radius float-shadow float-border`.split(/\s+/);
-  const families = ['studio', 'desk', 'dunes'];
-  for (const family of families) {
-    const base = rules(css).find(rule => rule.selector === `body.theme-${family}`);
-    const dark = rules(css).find(rule => rule.selector === `body.theme-${family}.is-dark`);
-    assert.ok(base, `body.theme-${family}: missing palette block`);
-    assert.ok(dark, `body.theme-${family}.is-dark: missing palette block`);
-    for (const token of contract) {
-      assert.ok(base.body.includes(`--${token}:`), `body.theme-${family}: missing --${token}`);
-      // Dark themes may inherit geometry, but must define their palette-relative values.
-      assert.ok(dark.body.includes(`--${token}:`) || base.body.includes(`--${token}:`), `body.theme-${family}.is-dark: missing --${token}`);
-    }
+test('the shared block defines every derived token', () => {
+  const css = themesCss();
+  const shared = `ink-70 ink-50 ink-35 hair-20 hair-10 hair-06 accent-soft easy-soft med-soft hard-soft texture
+    focus-halo ui display title-font title-weight btn-font`.split(/\s+/);
+  const base = rules(css).filter(rule => rule.selector === 'body');
+  assert.equal(base.length, 1, 'themes.css: exactly one shared body block');
+  for (const token of shared) assert.ok(base[0].body.includes(`--${token}:`), `body: missing --${token}`);
+});
+
+// A family's file may restyle anything, but only for itself. One stray selector there would
+// change every other family, and nobody would look for it in a file named after a different one.
+test('a family file styles only its own family, and every family is wired in', () => {
+  const shared = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
+  const files = fs.readdirSync(THEME_DIR).filter(f => f.endsWith('.css')).map(f => f.slice(0, -4)).sort();
+  assert.deepEqual(files, THEMES.map(t => t.id).sort(), 'web/css/themes/ holds exactly one file per family in themes.js');
+  for (const id of files) {
+    assert.ok(shared.includes(`@import "./themes/${id}.css";`), `themes.css does not import ${id}.css`);
+    const css = fs.readFileSync(path.join(THEME_DIR, `${id}.css`), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.equal((css.match(/\(/g) || []).length, (css.match(/\)/g) || []).length, `${id}.css: unbalanced parentheses`);
+    const selectors = [...css.matchAll(/(?:^|[{}])\s*([^{}@]+?)\s*\{/g)].map(m => m[1].trim()).filter(sel => !/^(from|to|\d+%)/.test(sel));
+    const stray = selectors.flatMap(sel => sel.split(/,(?![^()]*\))/).map(part => part.trim())).filter(part => !part.startsWith(`body.theme-${id}`));
+    assert.deepEqual(stray, [], `${id}.css: selectors must start with body.theme-${id}`);
+  }
+});
+
+// Pane structure is written once per layout. A rule keyed on a family may only be that
+// family's palette or its signature; structure keyed on a family is what made adding one hard.
+test('every family picks a layout that the stylesheet implements', () => {
+  const css = themesCss();
+  for (const { id, layout } of THEMES) {
+    assert.ok(LAYOUTS.includes(layout), `${id}: unknown layout ${layout}`);
+    assert.ok(rules(css).some(rule => rule.selector.includes(`body.layout-${layout}`)), `${id}: no rules for layout ${layout}`);
   }
 });
 
 test('theme tab selectors support aria-selected wherever they support aria-pressed', () => {
-  const css = fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8');
+  const css = themesCss();
   const offenders = rules(css).filter(({ selector }) =>
     /\.(?:ui|rr|coach|tc)-tab/.test(selector) && selector.includes('[aria-pressed="true"]')
     && selector.replaceAll(':is([aria-pressed="true"],[aria-selected="true"])', '').includes('[aria-pressed="true"]')
@@ -237,7 +261,7 @@ test('theme tab selectors support aria-selected wherever they support aria-press
 test('component defaults exist and no shape token refers to itself', () => {
   const ui = rules(fs.readFileSync(path.join(WEB_CSS, 'ui.css'), 'utf8'));
   const defaults = ui.filter(({ selector }) => selector.includes(':root')).map(({ body }) => body).join(';');
-  const theme = rules(fs.readFileSync(path.join(WEB_CSS, 'themes.css'), 'utf8'));
+  const theme = rules(themesCss());
   for (const { body } of [...ui, ...theme]) {
     for (const [, token, value] of body.matchAll(/(?:^|;)(--[\w-]+):([^;]+)/g)) {
       assert.ok(!value.includes(`var(${token})`), `${token} cannot refer to itself`);

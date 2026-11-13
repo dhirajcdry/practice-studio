@@ -107,8 +107,8 @@ the sheet or move the close control. Practice adds open/empty desktop and narrow
 
 ## Themes
 
-Studio, Desk and Twin Suns (`dunes`) are the only families. Each has a light and
- dark palette in `themes.css`; retired saved selections fall back to Studio without
+Studio, Desk and Twin Suns (`dunes`) are the original families; Console, Sheet, Broadsheet and Dock were added on the same contract. Each has a light and
+dark palette in `themes.css`; retired saved selections fall back to Studio without
 changing light/dark mode. Semantic verdict and syntax colours remain independent
 of control geometry.
 
@@ -118,6 +118,48 @@ of control geometry.
 - Twin Suns: the painting is behind solid boards, never text. Boards have ink borders,
   3px corners, 14px gaps and two hard offset shadows. Controls and titles use Futura
   stencil capitals. The survey stripe belongs only beneath the app bar.
+- Console: a terminal. One monospace face, square 1px frames with titles on the border,
+  inverse-video selection, dashed rules and bracketed actions. The screen header becomes a
+  status line with a mode block, at the bottom of workspaces.
+- Sheet: a fixed green/teal gradient frame carries the app bar and workspace rail in light
+  text; each screen is one 16px-rounded sheet inset 12px, its panes split by hairlines only.
+  System sans, pill buttons and chips; lists and homes are ruled bands, never cards.
+- Broadsheet: a printed page. One paper surface, columns split by thin rules, serif headlines
+  and prose, small-caps labels, a centred masthead over a double rule. Nothing is boxed,
+  filled, rounded or shadowed; ink with one red, and the primary action is a solid ink block.
+- Dock: graphite or warm off-white with electric yellow. The screen title bar is a floating
+  pill at the bottom and the rail a pill on the left edge. Panes are unframed on open ground;
+  only the editor, document or board has a surface. Every scrolling pane reserves room so
+  nothing ends behind the dock.
+
+### How a family is built
+
+A family is a pair of files and two wiring lines, and nothing else:
+
+1. `web/js/themes/<id>.js`: its row. Id, name, blurb, `layout`, the Settings swatch, the
+   editor colours for each appearance, and an optional `preview` that shapes its thumbnail. `web/js/themes.js` imports every row into one list
+   that the page, the editor, the unit tests and the browser checks all read.
+2. `web/css/themes/<id>.css`: one light and one dark palette block listing only the family's
+   own values (surfaces, ink, accent, the three status hues, verdict and syntax colours,
+   shadows, and in the light block the corner radii and pane gap), then its signature rules.
+   `web/css/themes.css` imports it. Everything derived from the palette (muted inks,
+   hairlines, soft fills, the focus halo) is computed once in the shared `body` block there.
+   Component shapes default in `ui.css`; a family overrides only what it changes.
+
+Every selector in a family's file starts with `body.theme-<id>`. A unit test enforces this,
+so a family can restyle or reposition anything without being able to change another family.
+
+Pane structure belongs to the `layout` the family picks, never to the family:
+
+- `docked`: panes meet edge to edge with hairline dividers.
+- `floating`: rounded panes with gaps on the page's own ground (`--texture` over `--canvas`).
+- `boards`: bordered boards with hard shadows; with `art: true` a painting sits behind them.
+
+`settings.js` puts `layout-<name>` on `body`.
+Shared structure is written against that class in `themes.css`. Structure that only one
+family has (Console's framed windows, Dock's floating title bar) is that family's signature
+and lives in its own file. A new family should pass `npm test` and
+`STUDIO_VISUAL_THEMES=<id> npm run check:visual`.
 
 No app stylesheet may use backdrop filtering. Floating layers use solid surfaces.
 
@@ -156,6 +198,37 @@ error cards use that same inset. Do not insert a new notice flush into `.rr-body
 or add competing margins in `workspace.css`. Check its bounds at narrow widths
 and with and without an action button in the visual audit.
 
+
+## Test cases
+
+The Testcase tab is a form of labelled rows, like the statement's examples: each parameter's
+name in one column, every value starting at one edge, Expected ruled off below. Published
+values sit on the well with no input edge; your own cases have editable fields. Where the case
+came from ("Published example · read only", "Yours", …) sits beside the case tabs with its one
+action (Duplicate or Delete). Under 420px each label goes above its field.
+
+## Run results
+
+`web/js/run.js` shapes a run, then draws it; the shaping is pure and tested in `web/js/tests.js`.
+
+- The summary comes first and is never pinned over a case. Four statuses only, with one colour
+  each in the summary, the case tabs and the reason: passed, wrong answer, error (a timeout is an
+  error), needs a look (could not be compared). The headline names the most serious one
+  ("Wrong answer on 1 of 4", "Error on Case 2", "3 of 4 need a look"); the line under it counts
+  the rest. Every case runs in its own process, so never say other cases were skipped.
+- Cases are the Testcase tab's tabs, with a status dot. One case shows at a time: the first that
+  did not pass, else Case 1.
+- A case shows a one-sentence reason, then Input / Expected / Your output / Printed as labelled
+  rows (the `.ex-rows` pattern), then a quiet footer with its time and "Nothing printed" when
+  stdout was empty. Absent values are said in words ("Not given", "Nothing returned").
+- A wrong answer marks the first differing value on both sides and says where in words only when
+  both values are JSON arrays (length, first differing index).
+- An error leads with its exception type and the line in solution.py, shows only that file's
+  frames (the full text behind "Show full traceback") and offers Go to line.
+- A hint appears only when the data proves it: a list of `TreeNode`/`ListNode` returned where a
+  list of plain values was expected. The runner prints such nodes as `TreeNode(1)`
+  (`readable_repr` in `server/runner/_studio_driver.py`); a node whose value cannot be read keeps
+  Python's own repr. Display never changes a comparison or a verdict.
 
 ## Content spacing contracts
 
@@ -236,8 +309,8 @@ The action placement contract for the redesign is:
 
 Reset sits in the editor's file row beside the file it resets. It is immediate and
 undoable (⌘Z, or Undo on the notice it shows) and is absent while the buffer is the
-starter: prefer undo to a confirm step wherever the work can be put back. Reference tabs retain their drawers and S/A
-shortcuts. The coding screen rail replaces the old editor run bar. The case row
+starter: prefer undo to a confirm step wherever the work can be put back. Problem, Solution
+and Article are real tabs of the problem pane (S/A switch, the same key or Esc returns). The coding screen rail replaces the old editor run bar. The case row
 owns Duplicate; there is only one Run control.
 
 Conversation controls use the UI font even in themes with serif prose. Show one
@@ -574,7 +647,11 @@ without requesting the painting. Quiet prompt rows are content actions: 32px min
 Design and LLD saved mocks are listed on the track home (see "Track homes"). Opening an
 unfinished one resumes it. Coding history retains its Open
 and resume behavior; practice branching is supported only for LLD and system design.
-Reference drawers retain Solution / Article tabs and shortcuts with a separate close rail.
+Solution and Article are tabs of the problem pane, not a drawer: the selected one replaces
+the tags row and statement in place (`.pcol .ref-tab`, keeping the pane header), the statement
+stays in the DOM hidden so Problem restores it without a refetch, and each tab keeps its own
+scroll while the problem is open. `s` / `a` switch tabs; the same key again, or Esc, returns to
+Problem. The coach's `open_panel` shows a collapsed pane first. Notes remains a dialog.
 
 Twin Suns owns the only painting layer, a fixed contained pseudo-element behind
 opaque boards. Pane headers have only a bottom hairline. Avoid background attachment
@@ -614,3 +691,21 @@ streaming prose never rebuilds activity or change controls. `questionNode`,
 Interview, practice, design and report screens retain the existing conversation and
 receipt components until round 2. The visual audit includes working, writing,
 changed, expanded, note-only, stopped, failed, pinned and restored coach states.
+
+## Problem statement
+
+`web/js/statement.js` turns the sanitized LeetCode statement into parts; `web/css/statement.css`
+lays them out from theme tokens.
+
+- Each example is a card of labelled rows (Input, Output, Explanation). Values are monospace;
+  explanations are prose. A figure stays at the top of its example.
+- Constraints and the follow-up are their own sections. The follow-up's bold label is
+  replaced by the section label, never shown twice.
+- In a pane at least 880px wide the examples sit beside the description. Narrower, everything
+  stacks. The pane's width is never left empty beside a capped column.
+- "Open as test case" appears only on an example that exists as a published case, and selects
+  that case in the test panel.
+- Nothing is rewritten. Nodes are moved from the statement; a statement with no readable
+  examples is shown exactly as it arrived.
+- The problem's outside links (video, NeetCode, LeetCode) sit at the right of the pane's tabs
+  and take their own line under the tabs in a pane too narrow for both.

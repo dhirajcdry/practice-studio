@@ -10,7 +10,7 @@ import { submitViaConnector } from './leetcode-bridge.js';
 
 import { sanitizeHtml, safeUrl, isBlankHtml } from './sanitize.js';
 import { renderMarkdown } from './markdown.js';
-import { shapeRunResult, renderRunResult, summaryLine, formatMs } from './run.js';
+import { shapeRunResult, renderRunResult, summaryLine, formatMs, describeDifference, returnedNodes, ownFrames } from './run.js';
 import { SseDecoder } from './api.js';
 import {
   splitDiagramBlocks, sanitizeSvg, isSafeSvgValue, parseMermaid, parseLink,
@@ -289,9 +289,52 @@ check('a case with no verdict is reported as unverified, not as a pass or a fail
 
 const allPass = shapeRunResult({ ok: true, cases: [oneCase(), oneCase({ index: 1 })], summary: { passed: 2, total: 2, totalMs: 24 } });
 check('all passing gives a pass status and headline', allPass.status === 'pass' && allPass.headline === 'All 2 cases passed', allPass.headline);
-check('passing cases start collapsed', rendered(allPass).querySelector('.rr-casebody').hidden === true);
-check('failing cases start expanded', rendered(runtime).querySelectorAll('.rr-casebody')[1].hidden === false);
-check('a mixed run counts honestly', shapeRunResult({ ok: true, cases: [oneCase(), oneCase({ index: 1, passed: false })] }).headline === '1 of 2 cases passed');
+check('an all-passing run shows Case 1', rendered(allPass).querySelector('.rr-casetab.is-on')?.textContent === 'Case 1');
+check('a run opens on its first case that did not pass', rendered(runtime).querySelector('.rr-casetab.is-on')?.textContent === 'Case 2');
+check('one case is on screen at a time', rendered(runtime).querySelectorAll('.rr-case').length === 1);
+check('a passing case still shows its rows, with a Passed reason', (() => {
+  const box = rendered(allPass);
+  return box.querySelector('.rr-why strong').textContent === 'Passed' && box.querySelectorAll('.rr-row').length >= 3;
+})());
+check('a mixed run names the wrong answers', (() => {
+  const r = shapeRunResult({ ok: true, cases: [oneCase(), oneCase({ index: 1, passed: false })] });
+  return r.headline === 'Wrong answer on 1 of 2' && r.detail === '1 passed';
+})(), shapeRunResult({ ok: true, cases: [oneCase(), oneCase({ index: 1, passed: false })] }).headline);
+check('an error names its case and never claims the other cases were skipped', (() => {
+  const text = rendered(runtime).textContent;
+  return runtime.headline === 'Error on Case 2' && !/not run/i.test(text);
+})(), runtime.headline);
+check('an error leads with its type and line', (() => {
+  const r = shapeRunResult({ ok: true, cases: [oneCase({ passed: false, actual: '', error: { kind: 'runtime', line: 14,
+    message: "AttributeError: 'NoneType' object has no attribute 'val'", traceback: 'Traceback (most recent call last):\n  File "solution.py", line 14, in f\n    x.val\nAttributeError: boom' } })] });
+  return r.cases[0].reason.title === 'AttributeError on line 14' && r.cases[0].reason.text.startsWith("'NoneType'");
+})());
+const unverified = shapeRunResult({ ok: true, cases: [oneCase(), oneCase({ index: 1, passed: null, actual: '[TreeNode(1), TreeNode(3)]', expected: '[1,3]' })] });
+check('an uncompared case and the summary use the same words', unverified.headline === '1 of 2 needs a look'
+  && unverified.cases[1].label === 'Needs a look' && unverified.cases[1].status === 'look', unverified.headline);
+check('returned nodes where values were expected get the one fix the data proves',
+  unverified.cases[1].reason.title === 'Returned TreeNode objects, not their values'
+  && unverified.cases[1].reason.text.includes('node.val') && unverified.detail.includes('returned objects'), JSON.stringify(unverified.cases[1].reason));
+check('an uncompared case with nothing provable gets no hint', (() => {
+  const r = shapeRunResult({ ok: true, cases: [oneCase({ passed: null, actual: '0.33333', expected: '0.3333', note: 'Could not compare.' })] });
+  return r.cases[0].reason.title === 'Needs a look' && !/node\.val/.test(r.cases[0].reason.text);
+})());
+check('returnedNodes reads only well-formed node lists',
+  returnedNodes('[ListNode(1), ListNode(2)]')?.values.join() === '1,2' && returnedNodes('[TreeNode(1), ListNode(2)]') === null
+  && returnedNodes('[1,2]') === null && returnedNodes('<__main__.TreeNode object at 0x1>') === null);
+check('a wrong answer says where it differs only when that is certain',
+  describeDifference('[1,3,4,5]', '[1,3,4]') === 'The output has 3 items; 4 were expected. The first difference is at index 3.'
+  && describeDifference('[1,2]', '[1,5]') === 'The first difference is at index 1.' && describeDifference('true', 'false') === '');
+check('a wrong answer marks the differing value on both sides', (() => {
+  const box = rendered(shapeRunResult({ ok: true, cases: [oneCase({ passed: false, expected: '[1,3,4,5]', actual: '[1,3,4,6]' })] }));
+  return box.querySelector('.rr-mark.is-expected')?.textContent === '5' && box.querySelector('.rr-mark:not(.is-expected)')?.textContent === '6';
+})());
+check('a traceback keeps only frames from solution.py, with the full text behind a toggle', (() => {
+  const full = 'Traceback (most recent call last):\n  File "solution.py", line 3, in f\n    heapq.heappush(h, x)\n  File "/usr/lib/heapq.py", line 9, in heappush\n    boom()\nTypeError: bad';
+  return ownFrames(full) === '  File "solution.py", line 3, in f\n    heapq.heappush(h, x)\nTypeError: bad'
+    && ownFrames('Traceback (most recent call last):\n  File "solution.py", line 3, in f\nTypeError: bad') === null;
+})(), ownFrames('Traceback (most recent call last):\n  File "solution.py", line 3, in f\n    x\n  File "/usr/lib/heapq.py", line 9, in g\n    y\nTypeError: bad'));
+check('an empty stdout is stated, not left blank', rendered(allPass).querySelector('.rr-foot').textContent.includes('Nothing printed'));
 
 check('totalMs comes from the server when it sends one', allPass.summary.totalMs === 24);
 check('totalMs is derived from the cases when it does not',

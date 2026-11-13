@@ -419,6 +419,52 @@ test('returning the wrong kind of thing says so, and is not scored as a fail', a
   assert.match(r.cases[0].note, /returns a ListNode and your code returned a list/i);
 });
 
+test('returned tree nodes print as TreeNode(val), stay uncompared, and keep an unreadable node raw', async () => {
+  const meta = {
+    name: 'rightSideView',
+    params: [{ name: 'root', type: 'TreeNode' }],
+    return: { type: 'list<integer>' },
+  };
+  const r = await runCode({
+    code: [
+      'class Solution:',
+      '    def rightSideView(self, root):',
+      '        return [root, root.right]',
+    ].join('\n'),
+    metaData: meta,
+    exampleTestcases: '[1,2,3]',
+    descriptionHtml: '<pre><strong>Output:</strong> [1,3]</pre>',
+  });
+  assert.equal(r.cases[0].passed, null, JSON.stringify(r.cases[0]));
+  assert.equal(r.cases[0].actual, '[TreeNode(1), TreeNode(3)]');
+
+  // A node whose value is not a plain scalar is shown exactly as Python prints it.
+  const raw = await runCode({
+    code: [
+      'class Solution:',
+      '    def rightSideView(self, root):',
+      '        root.val = object()',
+      '        return [root]',
+    ].join('\n'),
+    metaData: meta,
+    exampleTestcases: '[1]',
+    descriptionHtml: '<pre><strong>Output:</strong> [1]</pre>',
+  });
+  assert.equal(raw.cases[0].passed, null);
+  assert.match(raw.cases[0].actual, /^\[<.*TreeNode object at 0x[0-9a-f]+>\]$/);
+});
+
+test('a returned ListNode prints as ListNode(val) when the signature wanted a number', async () => {
+  const r = await runCode({
+    code: 'class Solution:\n    def middle(self, head):\n        return head\n',
+    metaData: { name: 'middle', params: [{ name: 'head', type: 'ListNode' }], return: { type: 'integer' } },
+    exampleTestcases: '[5,6]',
+    descriptionHtml: '<pre><strong>Output:</strong> 5</pre>',
+  });
+  assert.equal(r.cases[0].passed, null, JSON.stringify(r.cases[0]));
+  assert.equal(r.cases[0].actual, 'ListNode(5)');
+});
+
 test('a case that is not shaped like a linked list blames the case, not the code', async () => {
   const r = await runCode({
     code: 'class Solution:\n    def reverseList(self, head):\n        return head\n',

@@ -687,11 +687,54 @@ def run_adapter(driver, cfg, user_module, target, values, classes, notes=None):
     raise BadNode("The local runner has no recipe named %s." % driver)
 
 
+READABLE_NODES = ("TreeNode", "ListNode")
+
+
+def node_label(value):
+    """`TreeNode(1)` for a tree or list node whose own value can be read, else None.
+
+    Only the node's `val` is shown, never its children: following them could loop, and the
+    one value is what tells you which node came back. A value that cannot be read, or is not
+    a plain scalar, gives None so the caller keeps Python's own repr instead of inventing one.
+    """
+    if type(value).__name__ not in READABLE_NODES:
+        return None
+    try:
+        val = getattr(value, "val")
+    except Exception:
+        return None
+    if val is not None and not isinstance(val, (bool, int, float, str)):
+        return None
+    try:
+        return "%s(%s)" % (type(value).__name__, repr(val))
+    except Exception:
+        return None
+
+
+def readable_repr(value, depth=0):
+    """Python's repr, except that tree and list nodes — alone or inside lists, tuples and
+    dicts — print as `TreeNode(1)` instead of `<__main__.TreeNode object at 0x...>`."""
+    label = node_label(value)
+    if label is not None:
+        return label
+    if depth < 20 and type(value) in (list, tuple):
+        parts = [readable_repr(item, depth + 1) for item in value]
+        if type(value) is tuple:
+            return "(" + ", ".join(parts) + ("," if len(parts) == 1 else "") + ")"
+        return "[" + ", ".join(parts) + "]"
+    if depth < 20 and type(value) is dict:
+        return "{" + ", ".join("%s: %s" % (repr(k), readable_repr(v, depth + 1)) for k, v in value.items()) + "}"
+    return repr(value)
+
+
 def safe_repr(value, limit=2000):
     try:
-        text = repr(value)
+        text = readable_repr(value)
     except Exception:
-        return "<un-representable object>"
+        try:
+            text = repr(value)
+        except Exception:
+            return "<un-representable object>"
     return text if len(text) <= limit else text[:limit] + "…"
 
 

@@ -1,0 +1,165 @@
+/* Dock: the chrome lifts off the page. The screen's title bar is a pill docked at the bottom
+   of the window, the workspace rail is a pill on the left edge, and the work sits unframed on
+   open ground. Only the thing being written (editor, document, board) has a surface. */
+body.theme-dock{
+  --canvas:#F5F5F2;--card:#F5F5F2;--ink:#17181A;--ink-rgb:23,24,26;--on-ink:#F5F5F2;--on-ink-rgb:245,245,242;
+  --accent:#735600;--accent-rgb:115,86,0;--solid-bg:#F2C200;--solid-fg:#17150A;--solid-edge:#F2C200;--solid-hover:#E3B600;
+  --easy:#256B2E;--easy-rgb:37,107,46;--med:#8A5A00;--med-rgb:138,90,0;--hard:#B33A1A;--hard-rgb:179,58,26;
+  --verdict-easy:#23682C;--verdict-med:#775000;--verdict-hard:#AB3517;--tok-kw:#735600;--tok-def:#1F5FB8;
+  --shadow:none;--shadow-lift:0 18px 50px rgba(20,20,10,.16),0 0 0 1px rgba(0,0,0,.06);
+  --r-sm:10px;--r-md:14px;--r-pane:22px;--pane-gap:36px;
+  --dock-hair:#EAEAE6;--dock-raised:#FFFFFF;--dock-yellow:#F2C200;--dock-solid:#17181A;--dock-on-solid:#F5F5F2;--dock-board:#FFFFFF;
+  --dock-h:52px;--dock-clear:92px;--dock-gutter:28px;--topbar-h:44px;
+  --accent-soft:#FBF1C4;--well:var(--dock-hair);--surface-inset:var(--dock-hair);
+  --surface-card-border:0 solid transparent;--surface-card-radius:18px;--row-border:0 solid transparent;
+  --button-radius:999px;--button-outline:0 solid transparent;--chip-radius:999px;--tab-active-indicator:0 0 0 transparent;
+  --float-radius:18px;--float-border:0 solid transparent;--control-border:0 solid transparent;--composer-radius:20px;
+}
+body.theme-dock.is-dark{
+  --canvas:#0F1012;--card:#0F1012;--ink:#EEEFF1;--ink-rgb:238,239,241;--on-ink:#0F1012;--on-ink-rgb:15,16,18;
+  --accent:#FFD84A;--accent-rgb:255,216,74;--solid-bg:#FFD84A;--solid-fg:#17150A;--solid-edge:#FFD84A;--solid-hover:#FFE27A;
+  --easy:#9BE28F;--easy-rgb:155,226,143;--med:#FFB86B;--med-rgb:255,184,107;--hard:#FF9E8A;--hard-rgb:255,158,138;
+  --verdict-easy:#9BE28F;--verdict-med:#FFB86B;--verdict-hard:#FF9E8A;--tok-kw:#FFD84A;--tok-def:#9CC8FF;
+  --shadow:none;--shadow-lift:0 18px 50px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07);
+  --dock-hair:#1B1D21;--dock-raised:#1F2126;--dock-yellow:#FFD84A;--dock-solid:#EEEFF1;--dock-on-solid:#0F1012;--dock-board:#121212;
+  --accent-soft:#2B2713;
+}
+
+/* ---- The quiet app bar ---- */
+body.theme-dock.layout-docked .topbar{border:0;background:var(--canvas);box-shadow:none}
+@media(min-width:701px){body.theme-dock.layout-docked .topbar{height:44px;min-height:44px;padding-inline:var(--dock-gutter)}}
+body.theme-dock.layout-docked .wordmark :is(.solid,.outline){font-size:13px;font-weight:600;letter-spacing:0;color:var(--ink-50)}
+body.theme-dock.layout-docked .topnav .navlink{background:transparent;color:var(--ink-50)}
+body.theme-dock.layout-docked .topnav .navlink[aria-current="page"]{background:transparent;color:var(--ink);font-weight:600}
+body.theme-dock.layout-docked .searchbox{border:0;background:var(--dock-hair);border-radius:999px;max-width:300px;box-shadow:none}
+body.theme-dock.layout-docked .searchbox:focus-within{box-shadow:var(--focus-halo)}
+body.theme-dock.layout-docked .searchbox kbd{border:0}
+
+/* ---- The dock: every screen's title bar floats at the bottom of the window ---- */
+body.theme-dock.layout-docked .ui-screen-header{
+  position:fixed;z-index:55;inset:auto auto 20px 50%;transform:translateX(-50%);container-type:normal;
+  width:max-content;max-width:calc(100vw - 32px);height:var(--dock-h);margin:0;padding:0 10px 0 22px;gap:12px;
+  border:0;border-radius:999px;background:var(--dock-raised);box-shadow:var(--shadow-lift);
+}
+body.theme-dock.layout-docked .ui-screen-header:has(>.ui-workspace-back){padding-left:10px}
+body.theme-dock.layout-docked .ui-screen-header .ui-header-crumb{display:none}
+body.theme-dock.layout-docked .ui-screen-header .ui-workspace-identity{gap:10px}
+body.theme-dock.layout-docked .ui-screen-header .ui-header-actions{margin-left:var(--space-2);gap:6px}
+body.theme-dock.layout-docked .ui-screen-header .ui-header-secondary{gap:6px}
+body.theme-dock.layout-docked .ui-screen-header .btn:not(.btn--icon,.ui-tab){height:28px;min-height:28px;padding:0 14px}
+body.theme-dock.layout-docked .ui-screen-header .segmented .btn.btn{height:28px;min-height:28px;padding:0 14px}
+body.theme-dock.layout-docked .ui-screen-header .btn--icon{width:28px;height:28px;min-height:28px;border-radius:50%}
+/* On the problem screen the dock keeps the saved state and drops what the tags already say. */
+body.theme-dock.layout-docked .ui-screen-header .ui-header-meta:has(.ws-status)>span:not([class]){display:none}
+body.theme-dock.layout-docked .ui-screen-header .ui-header-meta:has(.ws-status)>*::before{content:none}
+/* The page keeps the dock's footprint clear, so nothing is ever read through it. */
+body.theme-dock.layout-docked main{box-sizing:border-box;padding:0 0 40px}
+body.theme-dock.layout-docked main:has(.ui-screen-header){padding-bottom:var(--dock-clear)}
+
+/* ---- The rail: a pill on the left edge ---- */
+@media(min-width:1081px){
+  body.theme-dock.layout-docked.ws-wide .workspace-rail{
+    left:18px;top:50%;bottom:auto;transform:translateY(-50%);z-index:5;width:44px;padding:10px 0;gap:2px;
+    border:0;border-radius:999px;background:var(--dock-raised);box-shadow:var(--shadow-lift);
+  }
+  body.theme-dock.layout-docked.ws-wide .workspace-rail button{width:36px;height:36px;border-radius:50%;color:var(--ink-50)}
+  body.theme-dock.layout-docked.ws-wide .workspace-rail button[aria-pressed="true"]{color:var(--ink);background:var(--hair-06)}
+  body.theme-dock.layout-docked.ws-wide .workspace-rail button[aria-pressed="true"]::before{left:-1px;top:50%;bottom:auto;width:5px;height:5px;margin-top:-2.5px;border-radius:50%;background:var(--dock-yellow)}
+  body.theme-dock.layout-docked.ws-wide .pbody.with-workspace{margin-left:0;padding:4px var(--dock-gutter) 0 84px;gap:var(--pane-gap)}
+}
+/* Laptop widths: resize.js gives the three columns 1000px of minimums (280 + 420 + 300),
+   so the open ground tightens to fit them. The rail moves toward the edge and the gaps
+   and right gutter grow back with the window until they reach the wide-screen values. */
+@media(min-width:1081px) and (max-width:1280px){
+  body.theme-dock.layout-docked.ws-wide .workspace-rail{left:8px}
+  body.theme-dock.layout-docked.ws-wide .pbody.with-workspace{
+    --dock-tight:clamp(6px,calc((100vw - 1084px) / 3),28px);
+    padding:4px var(--dock-tight) 0 58px;gap:var(--dock-tight);
+  }
+}
+
+/* ---- Open ground: panes have no frames, borders or fills ---- */
+body.theme-dock.layout-docked :is(.pcol,.ws,.coach,.ui-pane,.ui-board-pane,.dz-side,.lld-document,.pr-work,.pr-coach,.card){background:transparent;border:0;box-shadow:none}
+body.theme-dock.layout-docked :is(.ui-pane-header,.ui-dialog-header){background:transparent;border:0}
+body.theme-dock.layout-docked :is(.dz-view,.lld-view,.pr-view) :is(.dz-split,.lld-workspace,.pr-split){padding:4px var(--dock-gutter) 0;gap:var(--pane-gap)}
+body.theme-dock.layout-docked :is(.coach-identity,.coach-bar,.ws-results,.paneltoggles,.ws-bar,.ui-thread-strip){background:transparent;border:0}
+
+/* ---- Only the work has a surface: a large rounded well ---- */
+body.theme-dock.layout-docked .ws>.editor-tabs{background:var(--dock-hair);border:0;border-radius:var(--r-pane) var(--r-pane) 0 0;height:42px;min-height:42px;padding-inline:var(--space-2)}
+body.theme-dock.layout-docked .ws>.ws-host{background:var(--dock-hair);border-radius:0 0 var(--r-pane) var(--r-pane)}
+body.theme-dock.layout-docked .editor-file{background:transparent;border:0;margin:0}
+body.theme-dock.layout-docked .ws>.ws-results{margin-top:14px}
+body.theme-dock.layout-docked :is(.lld-document,.pr-work){background:var(--dock-hair);border-radius:var(--r-pane);overflow:hidden}
+body.theme-dock.layout-docked .ui-board-pane,body.theme-dock.layout-docked .pr-work:has(>.dz-canvas){background:var(--dock-board);border-radius:var(--r-pane);overflow:hidden;box-shadow:0 0 0 1px var(--hair-10)}
+body.theme-dock.layout-docked :is(.ui-board-pane,.pr-work)>.dz-canvas{background:var(--dock-board);border:0;border-radius:0}
+
+/* ---- Tabs: larger text, a small yellow dot under the active one ---- */
+body.theme-dock.layout-docked .ui-tabs{gap:22px;border-bottom:0}
+body.theme-dock.layout-docked :is(.ui-tab,.btn.btn.ui-tab){font-size:14px;border-radius:0;box-shadow:none}
+body.theme-dock.layout-docked :is(.ui-tab,.btn.btn.ui-tab):hover{background:transparent;color:var(--ink)}
+body.theme-dock.layout-docked :is(.ui-tab,.btn.btn.ui-tab):is([aria-pressed="true"],[aria-selected="true"]){color:var(--ink);font-weight:600;box-shadow:none;background:transparent}
+body.theme-dock.layout-docked :is(.ui-tab,.btn.btn.ui-tab):is([aria-pressed="true"],[aria-selected="true"])::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--dock-yellow)}
+
+/* ---- Pills: buttons, switches, case tabs; soft filled inputs ---- */
+body.theme-dock.layout-docked .btn.btn--secondary{border:0;background:var(--hair-06)}
+body.theme-dock.layout-docked .btn.btn--secondary:hover:not(:disabled){background:var(--hair-10)}
+body.theme-dock.layout-docked .segmented .btn:is([aria-pressed="true"],[aria-current="page"]){background:var(--dock-solid);color:var(--dock-on-solid)}
+body.theme-dock.layout-docked .tc-tab{border:0;border-radius:999px;padding:5px 14px;background:transparent}
+body.theme-dock.layout-docked.ws-wide .tc-tab.is-on{background:var(--dock-solid);color:var(--dock-on-solid)}
+body.theme-dock.layout-docked .tc-tab.is-on .tc-mark{color:inherit}
+body.theme-dock.layout-docked .tc-input,body.theme-dock.layout-docked.ws-wide .tc-input[readonly]{border:0;background:var(--dock-hair);border-radius:12px}
+body.theme-dock.layout-docked .tc-input:focus{box-shadow:var(--focus-halo)}
+body.theme-dock.layout-docked .ui-switch:checked{background:var(--dock-yellow)}
+/* The tutor's reason for a case is a soft well, not a stripe. */
+body.theme-dock.layout-docked .tc-why{border:0;border-radius:var(--r-md);padding:8px 14px}
+
+/* ---- Run results: open ground, soft wells, dot-marked case pills ---- */
+body.theme-dock.layout-docked .rr-summary{border-bottom:0;background:transparent}
+/* A status dot stays legible on the solid pill of the selected case, light or dark. */
+body.theme-dock.layout-docked .rr-casetab.is-on .rr-dot{box-shadow:0 0 0 1.5px var(--dock-on-solid)}
+body.theme-dock.layout-docked .rr-trace-text,body.theme-dock.layout-docked .rr-trace{border:0;border-radius:var(--r-md);background:var(--dock-hair)}
+body.theme-dock.layout-docked .rr-mark{border-radius:6px}
+body.theme-dock.layout-docked :is(.rr-body,.rr-tutorbody)>.state{border:0;border-radius:var(--r-md)}
+
+/* ---- Solution and Article tabs: the source note is quiet text, not a ruled band ---- */
+body.theme-dock.layout-docked .ref-tab .dfoot{border-top:0;background:transparent}
+
+/* ---- Reading: a slightly larger size ---- */
+body.theme-dock.layout-docked.ws-wide .desc{font-size:15px;line-height:1.65}
+body.theme-dock.layout-docked .stmt{font-size:15px;line-height:1.65}
+
+/* ---- Conversation: the question is a solid yellow bubble; the composer a soft well ---- */
+body.theme-dock.layout-docked .ui-question .ui-conversation-text,body.theme-dock.layout-docked .rich.ui-conversation-text--user{background:var(--solid-bg);color:var(--solid-fg);border-radius:18px 18px 4px 18px;padding:var(--space-2) var(--space-4)}
+body.theme-dock.layout-docked.theme-dock .ui-composer{border:0;background:var(--dock-hair);padding:var(--space-3) var(--space-4)}
+body.theme-dock.layout-docked.theme-dock .ui-composer:focus-within{background:var(--dock-hair);box-shadow:var(--focus-halo)}
+body.theme-dock.layout-docked.theme-dock .ui-composer .ui-composer-send{border-radius:50%}
+
+/* ---- Floats are the only raised things ---- */
+body.theme-dock.layout-docked :is(.ui-menu,.ui-popover,dialog,.settings){background:var(--dock-raised);--card:var(--dock-raised)}
+
+/* ---- Browsing pages sit on the same open ground, inside the page gutter ---- */
+body.theme-dock.layout-docked .view.catalog{padding-inline:16px}
+@media(min-width:701px){body.theme-dock.layout-docked .view.catalog{padding-inline:var(--dock-gutter)}}
+/* The sticky pattern tree scrolls on its own, so it ends above the dock instead of behind it. */
+@media(min-width:851px){body.theme-dock.layout-docked .catalog-tree{max-height:calc(100vh - var(--topbar-h) - 20px - var(--dock-clear))}}
+
+/* ---- Yellow is a fill, never text: progress, done marks and live dots ---- */
+body.theme-dock.layout-docked :is(.tree-done,.sec-check,.ov-done-check,.problem-state.state-accepted){background:var(--dock-yellow);color:var(--solid-fg)}
+body.theme-dock.layout-docked :is(.meter:not([class*="tone-"])>i,.rr-bar i,.sub-progress i,.dash-days i.on,.ov-days li.on,.ui-turn-dot,.dash-meter i.solved,.dash-meterkey i.solved,.dash-patterns .pcells i.solved){background:var(--dock-yellow)}
+
+/* ---- Small pieces that follow the same shapes ---- */
+body.theme-dock.layout-docked.ws-wide .desc pre{border:0;background:var(--dock-hair);border-radius:14px}
+body.theme-dock.layout-docked .ui-jump-latest.ui-jump-latest{border:0;border-radius:999px;background:var(--dock-raised);box-shadow:var(--shadow-lift)}
+/* The coach button floats too; it sits above the dock instead of beside it. */
+body.theme-dock.layout-docked .coach-launch{bottom:calc(var(--dock-h) + 32px);border:0;background:var(--dock-raised);box-shadow:var(--shadow-lift)}
+body.theme-dock.layout-docked :is(.gi-input,.import-input-row input,.mock-time-input){background:var(--dock-hair)}
+
+/* ---- Narrow windows: the dock stays, tighter; stacked panes keep the page gutter ---- */
+@media(max-width:1080px){body.theme-dock.layout-docked.ws-wide main{padding-inline:14px}}
+@media(max-width:600px){
+  body.theme-dock.layout-docked .ui-screen-header{bottom:12px;max-width:calc(100vw - 16px);padding:0 8px 0 16px;gap:8px}
+  body.theme-dock.layout-docked .ui-screen-header:has(>.ui-workspace-back){padding-left:8px}
+  body.theme-dock.layout-docked .ui-screen-header .btn:not(.btn--icon,.ui-tab){padding:0 12px}
+  body.theme-dock.layout-docked .ui-screen-header .ui-header-actions{margin-left:0}
+  body.theme-dock.layout-docked :is(.lld-view,.dz-view) .ui-screen-header:has(.mock-time-controls) .ui-workspace-identity{display:none}
+}

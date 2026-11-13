@@ -1,43 +1,24 @@
 import { openLearningNotes } from './learning.js';
 import { screenHeader, paneHeader } from './ui/headers.js';
-// The problem screen: description on the left, quick facts on the right, and the
-// Solution / Article reference panels as a slide-open drawer. The panels are always
-// one keystroke away and never open on their own — seeing the answer before you have
+// The problem screen: the problem pane beside the editor, whose Problem / Solution /
+// Article tabs switch the pane's own content in place. The references are always one
+// keystroke away and never open on their own — seeing the answer before you have
 // tried is the one thing that would make this app useless.
 
 import { icon } from './ui/icon.js';
 import { currentCollection } from './browse.js';
 import { el, replace, clear, frag } from './dom.js';
 import { sanitizeHtml, isBlankHtml } from './sanitize.js';
+import { structureStatement } from './statement.js';
 import { renderMarkdown, codeBlock } from './markdown.js';
 import { loadProblem, loadSolution, loadArticle, logSessionEvent, api } from './api.js';
 import { mountWorkspace, enableWideLayout } from './editor.js';
 import { mountCoach } from './coach.js';
 import { workspaceRail } from './workspace.js';
-import { installDrawerResizer } from './resize.js';
 
-const drawerEl = document.getElementById('drawer');
-const scrimEl = document.getElementById('scrim');
-
-let drawerState = { slug: null, kind: null };
-let onDrawerChange = () => {};
-let removeResizer = () => {};
-let returnFocus = null;
-const drawerFocusable = () => [...drawerEl.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')]
-  .filter(node => !node.disabled && node.getClientRects().length);
-drawerEl.setAttribute('role', 'dialog');
-drawerEl.setAttribute('aria-modal', 'true');
-drawerEl.setAttribute('aria-label', 'Reference');
-drawerEl.addEventListener('keydown', event => {
-  if (event.key !== 'Tab' || !isDrawerOpen()) return;
-  const items = drawerFocusable();
-  const index = items.indexOf(document.activeElement);
-  event.preventDefault();
-  items[(index + (event.shiftKey ? -1 : 1) + items.length) % items.length]?.focus();
-});
-document.addEventListener('focusin', event => {
-  if (isDrawerOpen() && !drawerEl.contains(event.target)) drawerFocusable()[0]?.focus();
-});
+// One tab view per open problem. The statement is rendered once and only hidden while
+// Solution or Article shows, so coming back to it costs no fetch and keeps its scroll.
+let tabs = null;
 
 /* ------------------------------- small pieces ------------------------------- */
 
@@ -68,98 +49,91 @@ function licenseFooter(license, sourcePath) {
   ]);
 }
 
-/* ---------------------------------- drawer ---------------------------------- */
+/* ----------------------------------- tabs ----------------------------------- */
 
-export function isDrawerOpen() { return drawerState.kind !== null; }
+const TAB_KINDS = ['problem', 'solution', 'article'];
 
-// The slide's length lives in CSS (--dur-drawer, 0ms under reduced motion). A timer,
-// not transitionend: a 0ms transition never fires one.
-function drawerMs() {
-  const value = parseFloat(getComputedStyle(document.body).getPropertyValue('--dur-drawer'));
-  return Number.isFinite(value) ? value : 240;
+/** The tab showing in the problem pane: 'problem', 'solution' or 'article'. */
+export function currentTab(slug = null) {
+  if (!tabs || !tabs.pcol.isConnected || (slug && tabs.slug !== slug)) return 'problem';
+  return tabs.kind;
 }
 
-// Keyboard opens and closes (s, a, Esc) are instant; pointer ones slide.
-function setInstant(instant) {
-  drawerEl.classList.toggle('is-instant', instant);
-  scrimEl.classList.toggle('is-instant', instant);
+// Wide, the pane scrolls itself; stacked (below 1081px) the page does.
+function scroller() {
+  const overflow = getComputedStyle(tabs.pcol).overflowY;
+  return overflow === 'auto' || overflow === 'scroll' ? tabs.pcol : document.scrollingElement;
 }
 
-export function closeDrawer({ instant = false } = {}) {
-  if (!drawerState.kind) return;
-  drawerState = { slug: null, kind: null };
-  removeResizer();
-  returnFocus?.isConnected && returnFocus.focus({ preventScroll: true });
-  returnFocus = null;
-  setInstant(instant);
-  drawerEl.classList.remove('show');
-  scrimEl.classList.remove('show');
-  drawerEl.setAttribute('aria-hidden', 'true');
-  setTimeout(() => {
-    if (drawerState.kind) return;
-    drawerEl.hidden = true; scrimEl.hidden = true; clear(drawerEl);
-  }, instant ? 0 : drawerMs());
-  onDrawerChange();
+function syncTabs() {
+  for (const button of tabs.pcol.querySelectorAll('.problem-tabs [role=tab]')) {
+    button.setAttribute('aria-selected', String((button.dataset.panel || 'notes') === tabs.kind));
+  }
+  const onProblem = tabs.kind === 'problem';
+  tabs.tags.hidden = !onProblem;
+  for (const node of tabs.statement) node.hidden = !onProblem;
+  tabs.pcol.dataset.tab = tabs.kind;
+  for (const kind of ['solution', 'article']) {
+    const panel = tabs.panels[kind];
+    if (panel) panel.hidden = kind !== tabs.kind;
+  }
 }
 
-function drawerShell(entry, kind) {
-  const tabs = el('div', { class: 'ui-tabs dtabs', role: 'tablist' }, [
-    el('button', {
-      class: 'btn btn--quiet ui-tab dtab', role: 'tab', type: 'button', 'aria-selected': String(kind === 'solution'),
-      text: 'Solution', onclick: () => openPanel(entry, 'solution'),
-    }),
-    el('button', {
-      class: 'btn btn--quiet ui-tab dtab', role: 'tab', type: 'button', 'aria-selected': String(kind === 'article'),
-      text: 'Article', onclick: () => openPanel(entry, 'article'),
-    }),
-  ]);
-  const head = el('div', { class: 'dhead ui-dialog-header' }, [
-    tabs,
-    el('span', { class: 'dtitle', text: entry.title }),
-    el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }),
-    el('button', { class: 'btn btn--icon dclose ui-dialog-close', type: 'button', 'aria-label': 'Close reference', onclick: closeDrawer }, icon('close', 15)),
-  ]);
-  const body = el('div', { class: 'dbody' });
-  removeResizer();
-  replace(drawerEl, [head, body]);
-  removeResizer = installDrawerResizer(drawerEl);
-  return body;
-}
+/**
+ * Show one tab of the problem pane in place. `toggle` (the s / a keys) turns a second
+ * press of the same tab back into Problem.
+ */
+export async function showTab(entry, kind, { toggle = false, retry = false } = {}) {
+  if (!tabs || !tabs.pcol.isConnected || tabs.slug !== entry.slug || !TAB_KINDS.includes(kind)) return;
+  // A reference opened while the problem pane is collapsed brings the pane back first.
+  const collapsed = document.body.classList.contains('hide-problem');
+  if (collapsed && kind !== 'problem') {
+    window.dispatchEvent(new Event('studio:show-problem'));
+    if (tabs.kind === kind && !retry) return;
+  }
+  if (tabs.kind === kind && !retry) {
+    if (toggle && kind !== 'problem') return showTab(entry, 'problem');
+    return;
+  }
+  const scroll = scroller();
+  if (tabs.kind !== kind && !collapsed) tabs.scroll[tabs.kind] = scroll.scrollTop;
+  tabs.kind = kind;
+  // Kept once it has loaded; a panel still loading keeps its skeleton.
+  if (kind !== 'problem' && !tabs.results[kind] && !tabs.loading[kind]) {
+    const panel = tabs.panels[kind] || el('section', {
+      class: 'card ref-tab', role: 'tabpanel', id: `ref-${kind}`,
+      'aria-label': kind === 'solution' ? 'Solution' : 'Article', dataset: { panel: kind },
+    });
+    replace(panel, el('div', { class: 'desc ref-body' }, skeleton(5)));
+    if (!tabs.panels[kind]) { tabs.panels[kind] = panel; tabs.pcol.append(panel); }
+  }
+  syncTabs();
+  restoreScroll(scroll, kind);
+  if (kind === 'problem') return;
 
-export async function openPanel(entry, kind, { instant = false } = {}) {
-  const sameAgain = drawerState.slug === entry.slug && drawerState.kind === kind;
-  if (sameAgain) { closeDrawer({ instant }); return; }
-
-  if (!isDrawerOpen()) returnFocus = document.activeElement;
-  drawerState = { slug: entry.slug, kind };
-  setInstant(instant);
-  drawerEl.hidden = false; scrimEl.hidden = false;
-  drawerEl.setAttribute('aria-hidden', 'false');
-  // Coming out of display:none, the closed position has to be computed once before
-  // .show lands, or the browser starts from the open position and nothing slides.
-  drawerEl.getBoundingClientRect();
-  drawerEl.classList.add('show'); scrimEl.classList.add('show');
-  onDrawerChange();
-
-  const body = drawerShell(entry, kind);
-  drawerEl.querySelector('.dclose').focus({ preventScroll: true });
-  body.append(skeleton(5));
-
-  const result = kind === 'solution'
-    ? await loadSolution(entry.slug, entry)
-    : await loadArticle(entry.slug, entry);
-
+  const owner = tabs;
+  const open = ++tabs.opens;
+  let result = tabs.results[kind];
+  if (!result) {
+    const pending = tabs.loading[kind] ||= (kind === 'solution' ? loadSolution : loadArticle)(entry.slug, entry).then(loaded => {
+      if (tabs !== owner) return loaded; // left the problem while it loaded
+      delete owner.loading[kind];
+      if (kind === 'solution') renderSolutionInto(owner.panels[kind], entry, loaded);
+      else renderArticleInto(owner.panels[kind], entry, loaded);
+      // A failed load is not kept: the next open asks again.
+      if (loaded.ok) owner.results[kind] = loaded;
+      if (owner.kind === kind && owner.scroll[kind] != null) scroller().scrollTop = owner.scroll[kind];
+      return loaded;
+    });
+    result = await pending;
+  }
   // The user may have moved on while we were waiting.
-  if (drawerState.slug !== entry.slug || drawerState.kind !== kind) return;
-
-  clear(body);
-  if (kind === 'solution') renderSolutionInto(body, entry, result);
-  else renderArticleInto(body, entry, result);
+  if (tabs !== owner || tabs.kind !== kind || tabs.opens !== open) return;
 
   // Phase 3: revealing the answer is a real signal about how the solve went, and the
   // session log is what later turns it into "you reveal on 70% of DP problems". It is
-  // logged only once the reference is actually on screen — a panel that failed to load
-  // revealed nothing, and a log line for it would be a lie.
+  // logged once per open, and only once the reference is actually on screen — a panel
+  // that failed to load revealed nothing, and a log line for it would be a lie.
   if (result.ok) {
     logSessionEvent(entry.slug, kind === 'solution' ? 'revealed_solution' : 'revealed_article', {
       title: entry.title || entry.slug,
@@ -167,11 +141,20 @@ export async function openPanel(entry, kind, { instant = false } = {}) {
   }
 }
 
-function renderSolutionInto(body, entry, result) {
+function restoreScroll(scroll, kind) {
+  const saved = tabs.scroll[kind];
+  if (saved != null) { scroll.scrollTop = saved; return; }
+  if (scroll === tabs.pcol) { scroll.scrollTop = 0; return; }
+  // Stacked, a first visit starts at the pane's tabs if they have scrolled away.
+  if (tabs.hero.getBoundingClientRect().top < 0) tabs.hero.scrollIntoView({ block: 'start', behavior: 'instant' });
+}
+
+function renderSolutionInto(panel, entry, result) {
+  const body = el('div', { class: 'desc ref-body' });
   if (!result.ok) {
     const actions = [];
-    if (entry.hasArticle) actions.push({ label: 'Open the article instead', onClick: () => openPanel(entry, 'article') });
-    if (result.kind !== 'missing') actions.push({ label: 'Try again', onClick: () => openPanel(entry, 'solution') });
+    if (entry.hasArticle) actions.push({ label: 'Open the article instead', onClick: () => showTab(entry, 'article') });
+    if (result.kind !== 'missing') actions.push({ label: 'Try again', onClick: () => showTab(entry, 'solution', { retry: true }) });
 
     body.append(stateBlock({
       tone: result.kind === 'missing' ? '' : 'warn',
@@ -189,7 +172,7 @@ function renderSolutionInto(body, entry, result) {
         : [result.message],
       actions,
     }));
-    drawerEl.append(licenseFooter(null, null));
+    replace(panel, [body, licenseFooter(null, null)]);
     return;
   }
 
@@ -211,21 +194,22 @@ function renderSolutionInto(body, entry, result) {
   if (result.source === 'mock') {
     body.append(el('div', { class: 'mono dim', style: 'margin-top:6px;font:500 11px/1.4 var(--ui);letter-spacing:0', text: 'Bundled sample — the studio server serves the full set.' }));
   }
-  drawerEl.append(licenseFooter(result.license, result.sourcePath));
+  replace(panel, [body, licenseFooter(result.license, result.sourcePath)]);
 }
 
-function renderArticleInto(body, entry, result) {
+function renderArticleInto(panel, entry, result) {
+  const body = el('div', { class: 'desc ref-body' });
   if (!result.ok) {
     const actions = [];
-    if (entry.hasPythonSolution) actions.push({ label: 'Open the solution instead', onClick: () => openPanel(entry, 'solution') });
-    if (result.kind !== 'missing') actions.push({ label: 'Try again', onClick: () => openPanel(entry, 'article') });
+    if (entry.hasPythonSolution) actions.push({ label: 'Open the solution instead', onClick: () => showTab(entry, 'solution') });
+    if (result.kind !== 'missing') actions.push({ label: 'Try again', onClick: () => showTab(entry, 'article', { retry: true }) });
     body.append(stateBlock({
       tone: result.kind === 'missing' ? '' : 'warn',
       head: result.kind === 'missing' ? 'No article for this one' : 'Could not load the article',
       body: [result.message],
       actions,
     }));
-    drawerEl.append(licenseFooter(null, null));
+    replace(panel, [body, licenseFooter(null, null)]);
     return;
   }
 
@@ -242,7 +226,7 @@ function renderArticleInto(body, entry, result) {
   if (result.source === 'mock') {
     body.append(el('div', { class: 'mono dim', style: 'margin-top:14px;font:500 11px/1.4 var(--ui);letter-spacing:0', text: 'Bundled sample — the studio server serves the full set.' }));
   }
-  drawerEl.append(licenseFooter(result.license, result.sourcePath));
+  replace(panel, [body, licenseFooter(result.license, result.sourcePath)]);
 }
 
 /* -------------------------------- the screen -------------------------------- */
@@ -318,25 +302,40 @@ export function renderProblem(entry, context) {
   const workspace = mountWorkspace(entry, { contentPromise, headerActions: actions => { workspaceActions = actions; } });
   const nav = [...hero.querySelectorAll('.pnav-btn')];
   const links = [...hero.querySelectorAll('.plink')];
+  // The three ways out sit beside the pane's tabs, one click away, not folded into a menu.
   for (const link of links) {
-    link.textContent = link.textContent.includes('Video') ? 'Watch the video' : `Open on ${link.textContent}`;
+    const name = link.textContent;
+    link.className = 'btn btn--quiet pane-link plink';
+    link.setAttribute('aria-label', name === 'Video' ? 'Watch the video walkthrough (opens in a new tab)' : `Open on ${name} (opens in a new tab)`);
+    link.title = name === 'Video' ? 'Watch the video walkthrough' : `Open on ${name}`;
+    link.replaceChildren(icon(name === 'Video' ? 'play' : 'external', 13), el('span', { text: name }));
   }
   const header = screenHeader({ back: { href: '#/', label: 'Back to problems' },
     crumb: context.listLabel || 'Problems', title: titleEl,
     badges: [hero.querySelector('.tag.' + entry.difficulty.toLowerCase()), badgeRow],
     meta: [entry.number ? `No. ${entry.number}` : '', entry.pattern, workspaceActions.status],
-    actions: { primary: workspaceActions.submit, secondary: [...nav, el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }), workspaceActions.run], overflow: links },
+    actions: { primary: workspaceActions.submit, secondary: [...nav, el('span', { class: 'ui-header-separator', 'aria-hidden': 'true' }), workspaceActions.run] },
   });
   const toggles = hero.querySelector('.paneltoggles');
   toggles.className = 'ui-tabs problem-tabs';
   toggles.setAttribute('role', 'tablist');
   toggles.querySelector('.plinks')?.remove();
-  toggles.prepend(el('button', { class: 'btn btn--quiet ui-tab', role: 'tab', 'aria-selected': 'true', text: 'Problem', onclick: () => closeDrawer() }));
-  toggles.append(el('button', { class: 'btn btn--quiet ui-tab', role: 'tab', text: 'Notes', onclick: () => openLearningNotes(entry.slug, entry.title) }));
-  hero.replaceChildren(paneHeader({ tabs: toggles }), tags);
+  toggles.prepend(el('button', { class: 'btn btn--quiet ui-tab', type: 'button', role: 'tab', 'aria-selected': 'true', 'aria-controls': 'ref-problem', dataset: { panel: 'problem' }, text: 'Problem', onclick: () => showTab(entry, 'problem') }));
+  // Notes is a larger surface of its own, so it stays a dialog rather than a tab body.
+  toggles.append(el('button', { class: 'btn btn--quiet ui-tab', type: 'button', role: 'tab', 'aria-selected': 'false', text: 'Notes', onclick: () => openLearningNotes(entry.slug, entry.title) }));
+  hero.replaceChildren(paneHeader({ tabs: toggles, tools: [el('nav', { class: 'pane-links', 'aria-label': 'This problem elsewhere' }, links)] }), tags);
   view.append(header, workspaceRail());
+  const prepCard = interviewPrepCard(entry);
+  descCard.id = 'ref-problem';
+  descCard.setAttribute('role', 'tabpanel');
+  descCard.setAttribute('aria-label', 'Problem');
+  const pcol = el('div', { class: 'pcol', dataset: { tab: 'problem' } }, [hero, prepCard, descCard]);
+  tabs = {
+    slug: entry.slug, kind: 'problem', pcol, hero, tags, statement: [prepCard, descCard].filter(Boolean),
+    panels: {}, results: {}, loading: {}, scroll: {}, opens: 0,
+  };
   view.append(el('div', { class: 'pbody with-workspace' }, [
-    el('div', { class: 'pcol' }, [hero, interviewPrepCard(entry), descCard]),
+    pcol,
     workspace,
     mountCoach(entry),
   ]));
@@ -381,10 +380,9 @@ function panelToggle(entry, kind, label, key, available) {
   const button = el('button', {
     class: 'btn btn--quiet ui-tab ptoggle' + (available ? '' : ' miss'),
     type: 'button', role: 'tab',
-    'aria-selected': String(drawerState.slug === entry.slug && drawerState.kind === kind),
-    'aria-pressed': String(drawerState.slug === entry.slug && drawerState.kind === kind),
+    'aria-selected': 'false', 'aria-controls': `ref-${kind}`,
     dataset: { panel: kind },
-    onclick: () => openPanel(entry, kind),
+    onclick: () => showTab(entry, kind),
   }, [
     label,
     available ? null : el('span', { class: 'ptag', text: '· none' }),
@@ -442,8 +440,8 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
           : 'There is no article or reference solution for this one either; you will have to read it on LeetCode directly.',
       ],
       actions: [
-        entry.hasArticle ? { label: 'Open the article', onClick: () => openPanel(entry, 'article') } : null,
-        entry.hasPythonSolution ? { label: 'Open the solution', onClick: () => openPanel(entry, 'solution') } : null,
+        entry.hasArticle ? { label: 'Open the article', onClick: () => showTab(entry, 'article') } : null,
+        entry.hasPythonSolution ? { label: 'Open the solution', onClick: () => showTab(entry, 'solution') } : null,
       ].filter(Boolean),
     }));
     return;
@@ -454,7 +452,7 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
       tone: 'err',
       head: 'No description came back',
       body: ['The server answered, but this problem had no statement attached. That usually means LeetCode moved or renamed the slug.'],
-      actions: entry.hasArticle ? [{ label: 'Open the article', onClick: () => openPanel(entry, 'article') }] : [],
+      actions: entry.hasArticle ? [{ label: 'Open the article', onClick: () => showTab(entry, 'article') }] : [],
     }));
     return;
   }
@@ -483,7 +481,14 @@ function fillDescription(card, tags, titleEl, badgeRow, entry, result) {
   const rich = el('div', { class: 'rich' });
   rich.append(content.descriptionMarkdown ? renderMarkdown(content.descriptionMarkdown) : sanitizeHtml(content.descriptionHtml));
   dropSpacerParagraphs(rich);
-  target.append(rich);
+  // Example N is published case N in the test panel, so an example can be opened there.
+  const perCase = content.metaData?.params?.length || 0;
+  const published = perCase && typeof content.exampleTestcases === 'string'
+    ? Math.floor(content.exampleTestcases.trim().split('\n').length / perCase) : 0;
+  target.append(structureStatement(rich, { onTryExample: {
+    available: number => number <= published,
+    open: number => window.dispatchEvent(new CustomEvent('studio:show-case', { detail: { slug: entry.slug, number } })),
+  } }));
   if (content.statementSource) {
     target.append(el('p', { class: 'dim', style: 'font-size:11px' }, el('a', {
       href: content.statementSource.url, target: '_blank', rel: 'noopener noreferrer',
@@ -500,7 +505,4 @@ function dropSpacerParagraphs(root) {
   }
 }
 
-/** Let main.js keep the toggle buttons in sync with the drawer. */
-export function setDrawerListener(fn) { onDrawerChange = fn; }
-export function drawerKind() { return drawerState.kind; }
 export { api };

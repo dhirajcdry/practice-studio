@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { THEMES } from '../../web/js/themes.js';
 
-const css = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/css/themes.css'), 'utf8');
-const themes = ['studio', 'desk', 'dunes'];
+const cssDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/css');
+const css = [path.join(cssDir, 'themes.css'), ...fs.readdirSync(path.join(cssDir, 'themes')).filter(f => f.endsWith('.css')).map(f => path.join(cssDir, 'themes', f))]
+  .map(file => fs.readFileSync(file, 'utf8')).join('\n');
+const themes = THEMES.map(theme => theme.id);
 const declarations = (selector) => {
   const matches = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
     m[1].split(',').map((s) => s.trim().split('\n').pop().trim()).includes(selector));
@@ -13,6 +16,11 @@ const declarations = (selector) => {
   return Object.fromEntries(matches.flatMap((m) =>
     [...m[2].matchAll(/--([\w-]+):\s*([^;]+);/g)].map((hit) => [hit[1], hit[2].trim()])));
 };
+// What a family resolves to: the shared tokens, then its light block, then its dark block.
+const paletteOf = (theme, mode) => ({
+  ...declarations('body'), ...(mode ? declarations('body.is-dark') : {}),
+  ...declarations(`body.theme-${theme}`), ...(mode ? declarations(`body.theme-${theme}${mode}`) : {}),
+});
 const channel = (value) => {
   const n = parseInt(value, 16) / 255;
   return n <= .03928 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4;
@@ -35,7 +43,7 @@ const blend = (foreground, background, alpha) => {
 test('submission verdict tokens meet 4.5:1 against every theme card', () => {
   for (const theme of themes) {
     for (const mode of ['', '.is-dark']) {
-      const palette = declarations(`body.theme-${theme}${mode}`);
+      const palette = paletteOf(theme, mode);
       for (const token of ['verdict-easy', 'verdict-hard', 'verdict-med']) {
         assert.ok(palette[token], `${theme}${mode}: missing --${token}`);
         assert.ok(contrast(palette[token], palette.card) >= 4.5,
@@ -67,7 +75,7 @@ test('submission verdict tokens meet 4.5:1 against every theme card', () => {
 test('muted text meets AA after compositing on theme surfaces', () => {
   for (const theme of themes) {
     for (const mode of ['', '.is-dark']) {
-      const palette = declarations(`body.theme-${theme}${mode}`);
+      const palette = paletteOf(theme, mode);
       for (const token of ['ink-50', 'ink-35']) {
         const alpha = Number(palette[token].match(/,([.\d]+)\)$/)[1]);
         for (const base of ['card', 'canvas']) {

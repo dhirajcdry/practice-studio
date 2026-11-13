@@ -584,6 +584,10 @@ export function mountWorkspace(entry, options = {}) {
 
   releaseChords.push(onChord('problem', () => setProblemHidden(!isProblemHidden())));
   releaseChords.push(onChord('results', () => setResultsHidden(!isResultsHidden())));
+  // A Solution or Article tab opened while the problem pane is collapsed brings the pane back.
+  const onShowProblem = () => { if (isProblemHidden()) setProblemHidden(false); };
+  window.addEventListener('studio:show-problem', onShowProblem);
+  releaseChords.push(() => window.removeEventListener('studio:show-problem', onShowProblem));
 
   /* ---- keyboard ---- */
 
@@ -762,12 +766,13 @@ export function mountWorkspace(entry, options = {}) {
       }
       // Loaded when needed: problem.js imports this file.
       const problem = await import('./problem.js');
-      if (problem.isDrawerOpen() && problem.drawerKind() === kind) {
+      if (problem.currentTab(entry.slug) === kind && !isProblemHidden()) {
         return { ok: true, message: `The ${kind} is already open.` };
       }
-      // Not awaited: it logs revealed_* itself once the panel has actually loaded.
-      problem.openPanel(entry, kind);
-      return { ok: true, message: `Opened the ${kind} panel.` };
+      // Not awaited: it logs revealed_* itself once the tab has actually loaded.
+      // It also shows the problem pane first if it is collapsed.
+      problem.showTab(entry, kind);
+      return { ok: true, message: `Opened the ${kind} tab.` };
     },
     refreshCases(select) {
       if (disposed) return;

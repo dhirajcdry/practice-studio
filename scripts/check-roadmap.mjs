@@ -74,7 +74,7 @@ try {
   const transform = await evaluate(`(()=>{const c=document.querySelector('.roadmap-canvas');const before=c.style.transform;document.querySelector('[aria-label="Zoom in"]').click();return [before,c.style.transform];})()`);
   if (!transform[1] || transform[0] === transform[1]) throw Error('Zoom in did not change canvas transform');
 
-  for (const theme of ['studio', 'desk', 'dunes']) {
+  for (const { id: theme } of (await import('../web/js/themes.js')).THEMES) {
     await evaluate(`(async()=>{const {setSetting}=await import('/js/settings.js');setSetting('theme',${JSON.stringify(theme)});})()`);
     await until(`document.querySelectorAll('.roadmap-node').length===18`);
     for (const width of [390, 768, 1140, 1600]) {

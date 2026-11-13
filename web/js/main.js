@@ -12,7 +12,7 @@ import { renderProblemImport } from './problem-import.js';
 import { randomProblem, createLeetCodeShuffle } from './shuffle.js';
 import { randomViaConnector } from './leetcode-bridge.js';
 import { renderRoadmap } from './roadmap.js';
-import { renderProblem, openPanel, closeDrawer, isDrawerOpen, setDrawerListener, drawerKind } from './problem.js';
+import { renderProblem, showTab, currentTab } from './problem.js';
 import { init as initDashboard } from './dashboard.js';
 import { initDesign } from './design.js';
 import { initLLD } from './lld.js';
@@ -31,7 +31,6 @@ let lld = null;
 const appEl = document.getElementById('app');
 const searchEl = document.getElementById('q');
 const bannerEl = document.getElementById('banner');
-const scrimEl = document.getElementById('scrim');
 
 const STORE_KEY = 'studio.browse.v1';
 
@@ -215,7 +214,6 @@ function render() {
   if (problemImport) { problemImport.destroy(); problemImport = null; }
   if (lld) { lld.destroy(); lld = null; }
   if (location.hash === '#/add') {
-    closeDrawer({ instant: true });
     problemImport = renderProblemImport({ onAdded: async ({ entry, slug }) => {
       if (!bySlug.has(slug)) data.problems.push(entry);
       bySlug.set(slug, entry);
@@ -265,7 +263,6 @@ function render() {
     return;
   }
 
-  closeDrawer({ instant: true });
   if (location.hash === '#/roadmap') {
     state.catalogMode = 'roadmap';
     // The roadmap draws the curated lists only.
@@ -355,21 +352,8 @@ function inTextField() {
 
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.isComposing) return;
-  // Native dialogs own Escape themselves. The reference drawer is an ARIA dialog,
-  // so retain its close action without navigating the workspace behind any overlay.
-  if (hasOpenOverlay()) {
-    // The drawer's own keys still work while it is the only overlay: Escape closes
-    // it, `s` and `a` switch between the solution and the article.
-    if (!isDrawerOpen() || hasOpenOverlay(document.getElementById('drawer'))) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || inTextField()) return;
-    if (event.key === 'Escape') { event.preventDefault(); closeDrawer({ instant: true }); return; }
-    const entry = bySlug.get(currentSlug());
-    if (entry && (event.key === 's' || event.key === 'a')) {
-      event.preventDefault();
-      openPanel(entry, event.key === 's' ? 'solution' : 'article', { instant: true });
-    }
-    return;
-  }
+  // Native dialogs and menus own their keys; nothing behind them is navigated.
+  if (hasOpenOverlay()) return;
   // Catalog navigation belongs to coding routes, not every screen without a
   // coding slug. Whiteboards deliberately bubble keys to their own listeners.
   const codingRoute = currentSlug() || ['', '#/', '#/roadmap'].includes(location.hash);
@@ -388,7 +372,7 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
     && (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
-    if (inTextField() || isDrawerOpen()) return;
+    if (inTextField()) return;
     const slug = currentSlug();
     const entry = slug && bySlug.get(slug);
     if (!entry) return;
@@ -401,7 +385,9 @@ document.addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
 
   if (event.key === 'Escape') {
-    if (isDrawerOpen()) { closeDrawer({ instant: true }); return; }
+    const open = currentSlug() && bySlug.get(currentSlug());
+    // Solution or Article showing: Escape is the way back to the statement.
+    if (open && !inTextField() && currentTab(open.slug) !== 'problem') { event.preventDefault(); showTab(open, 'problem'); return; }
     if (inTextField()) { searchEl.blur(); return; }
     if (state.query) { state.query = ''; searchEl.value = ''; render(); return; }
     if (currentSlug()) goBrowse();
@@ -430,10 +416,12 @@ document.addEventListener('keydown', (event) => {
   if (slug) {
     const entry = bySlug.get(slug);
     if (!entry) return;
-    // Keyboard opens skip the slide: a shortcut is for getting there now.
-    if (event.key === 's') { event.preventDefault(); openPanel(entry, 'solution', { instant: true }); return; }
-    if (event.key === 'a') { event.preventDefault(); openPanel(entry, 'article', { instant: true }); return; }
-    if (isDrawerOpen()) return;
+    // s / a switch the problem pane to that tab; the same key again returns to Problem.
+    if (event.key === 's' || event.key === 'a') {
+      event.preventDefault();
+      showTab(entry, event.key === 's' ? 'solution' : 'article', { toggle: true });
+      return;
+    }
     if (event.key === 'r') { event.preventDefault(); if (!event.repeat) handlers.onShuffle(); return; }
     const { previous, next } = neighboursOf(slug);
     if ((event.key === 'j' || event.key === 'ArrowDown') && next) { event.preventDefault(); handlers.onOpen(next.slug); }
@@ -455,20 +443,12 @@ searchEl.addEventListener('input', () => {
   render();
 });
 
-scrimEl.addEventListener('click', () => closeDrawer());
 window.addEventListener('hashchange', render);
 // Leaving the page tears the design interview down so its last words are saved. A page
 // restored from the back/forward cache comes back with that screen already torn down,
 // so build it again rather than showing a dead board.
 window.addEventListener('pageshow', (event) => { if (event.persisted) render(); });
 
-setDrawerListener(() => {
-  for (const button of document.querySelectorAll('.problem-tabs [role=tab]')) {
-    const selected = button.dataset.panel ? drawerKind() === button.dataset.panel : !drawerKind() && button.textContent === 'Problem';
-    button.setAttribute('aria-pressed', String(selected));
-    button.setAttribute('aria-selected', String(selected));
-  }
-});
 
 /* ----------------------------------- boot ---------------------------------- */
 

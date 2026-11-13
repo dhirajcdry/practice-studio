@@ -1,0 +1,18 @@
+/* Desk: soft and rounded. Panes float on warm paper. */
+body.theme-desk{
+  --canvas:#F6F4F0;--card:#FFFDF9;--ink:#181818;--ink-rgb:24,24,24;--on-ink:#F6F4F0;--on-ink-rgb:246,244,240;
+  --accent:#AC5636;--accent-rgb:172,86,54;--solid-bg:#AC5636;--solid-fg:#FFFFFF;--solid-edge:#AC5636;--solid-hover:#9A4A2C;
+  --easy:#3F7A55;--easy-rgb:63,122,85;--med:#8A5D0E;--med-rgb:138,93,14;--hard:#B4432A;--hard-rgb:180,67,42;
+  --verdict-easy:#356747;--verdict-med:#805700;--verdict-hard:#B4432A;--tok-kw:#A34A2A;--tok-def:#2F5D7C;
+  --shadow:0 1px 2px rgba(24,24,24,.04), 0 10px 30px rgba(24,24,24,.06);--shadow-lift:0 4px 12px rgba(24,24,24,.08), 0 30px 70px rgba(24,24,24,.16);
+  --texture:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.035' filter='url(%23n)'/%3E%3C/svg%3E");
+  --r-sm:9px;--r-md:14px;--r-pane:14px;--pane-gap:10px;
+  --display:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--title-font:"Iowan Old Style",Georgia,serif;--title-weight:500;
+}
+body.theme-desk.is-dark{
+  --canvas:#171513;--card:#211E1B;--ink:#EEE8E0;--ink-rgb:238,232,224;--on-ink:#171513;--on-ink-rgb:23,21,19;
+  --accent:#E2875F;--accent-rgb:226,135,95;--solid-bg:#B35733;--solid-fg:#FFF8F2;--solid-edge:#D97650;--solid-hover:#A24E2E;
+  --easy:#7BC796;--easy-rgb:123,199,150;--med:#E0B060;--med-rgb:224,176,96;--hard:#F08A72;--hard-rgb:240,138,114;
+  --verdict-easy:#7BC796;--verdict-med:#E0B060;--verdict-hard:#F08A72;--tok-kw:#E59A78;--tok-def:#8FB8D8;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);--shadow-lift:0 4px 12px rgba(0,0,0,.5), 0 30px 70px rgba(0,0,0,.6);
+}

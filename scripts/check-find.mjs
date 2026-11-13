@@ -73,7 +73,7 @@ const chrome = spawn(CHROME, [
 
 // Every theme, because the widget's colours are defined per theme and "invisible" is a
 // thing that happens in exactly one of them.
-const THEMES = ['ps-studio-light', 'ps-studio-dark', 'ps-desk-light', 'ps-desk-dark', 'ps-dunes-light', 'ps-dunes-dark'];
+const { EDITOR_THEMES: THEMES } = await import('../web/js/themes.js');
 
 try {
   await sleep(2500);
