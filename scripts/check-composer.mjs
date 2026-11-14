@@ -52,9 +52,9 @@ async function shot(name) {
 async function checkPractice(route, name) {
   await viewport(1440);
   await send('Page.navigate', { url: ORIGIN + route });
-  await until(() => evaluate("return !!document.querySelector('.th-practice')"), `${name} launcher`);
-  await evaluate("document.querySelector('.th-practice').click()");
-  await until(() => evaluate("return !!document.querySelector('.ui-composer')"), `${name} composer`);
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), `${name} launcher`);
+  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
+  await until(() => evaluate("return !!document.querySelector('.pr-compose .ui-mode-switch[data-mode=typed]')"), `${name} composer`);
   await evaluate(`
     document.querySelector('.pr-compose .ui-mode-switch[data-mode=typed]').click();
   `);

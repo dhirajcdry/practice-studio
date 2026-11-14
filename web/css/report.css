@@ -91,6 +91,23 @@ body .rp-body .btn.rp-time:hover{text-decoration-color:currentColor}
 .rp-seg[data-phase=code],.rp-legend i[data-phase=code]{background:var(--accent)}
 .rp-seg[data-phase=test],.rp-legend i[data-phase=test]{background:rgba(var(--easy-rgb),.75)}
 .rp-seg[data-phase=followup],.rp-legend i[data-phase=followup]{background:rgba(var(--med-rgb),.7)}
+/* System design's seven phases: the accent deepens through the build, status hues for the late discussion. */
+.rp-seg[data-phase=requirements],.rp-legend i[data-phase=requirements]{background:rgba(var(--accent-rgb),.28)}
+.rp-seg[data-phase=entities],.rp-legend i[data-phase=entities]{background:rgba(var(--accent-rgb),.48)}
+.rp-seg[data-phase=api],.rp-legend i[data-phase=api]{background:rgba(var(--accent-rgb),.7)}
+.rp-seg[data-phase=estimates],.rp-legend i[data-phase=estimates]{background:var(--accent)}
+.rp-seg[data-phase=design],.rp-legend i[data-phase=design]{background:rgba(var(--easy-rgb),.75)}
+.rp-seg[data-phase=deepdive],.rp-legend i[data-phase=deepdive]{background:rgba(var(--med-rgb),.7)}
+.rp-seg[data-phase=bottlenecks],.rp-legend i[data-phase=bottlenecks]{background:rgba(var(--hard-rgb),.6)}
+/* Time the record cannot place in a phase: drawn, but unfilled. */
+.rp-seg[data-phase=unplaced],.rp-legend i[data-phase=unplaced]{background:transparent;border:1px solid var(--hair-20)}
+.rp-legend-missing{font-style:italic}
+/* The final board: a static picture fitted to the column, never wider than its section. */
+.rp-board{margin:0;padding:var(--space-4);border:var(--surface-card-border);border-radius:var(--surface-card-radius);background:var(--surface-card-bg);box-shadow:var(--surface-card-shadow);display:flex;justify-content:center;min-width:0;overflow:hidden}
+.rp-board .rp-board-status{margin:0}
+.rp-board-svg{display:block;width:100%;height:auto;max-height:70vh;aspect-ratio:var(--rp-board-ratio,auto)}
+/* Dark themes invert the light export, as the live whiteboard does; paper always prints it as drawn. */
+body.is-dark .rp-board-svg{filter:invert(93%) hue-rotate(180deg)}
 .rp-track-ends{display:flex;justify-content:space-between;margin-top:var(--space-1);font-size:var(--text-xs);color:var(--ink-70)}
 .rp-legend{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);margin-top:var(--space-3);font-size:var(--text-xs);color:var(--ink-70)}
 .rp-legend-item{display:inline-flex;align-items:center;gap:var(--space-2)}
@@ -209,6 +226,8 @@ details:not([open])>summary .rp-disclosure{transform:rotate(-90deg)}
   .rp-transcript:not([open]){display:none}
   .rp-transcript-body{max-height:none}
   .rp-code pre{overflow:visible;white-space:pre-wrap}
+  body.is-dark .rp-board-svg{filter:none}
+  .rp-board{break-inside:avoid}
   .rp-h{break-after:avoid}
   .rp-dim,.rp-practice li,.rp-moments li,.rp-list li,.rp-move-up,.rp-verdict{break-inside:avoid}
 }
@@ -228,7 +247,13 @@ details:not([open])>summary .rp-disclosure{transform:rotate(-90deg)}
 .ln-note-text h2{font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
 .ln-evidence-list{display:flex;flex-direction:column;gap:0}
 .ln-evidence{padding:var(--space-3);border:0;border-bottom:1px solid var(--hair-10);border-radius:0;background:transparent}
-.ln-evidence summary{cursor:pointer;font:500 var(--text-sm)/var(--line-md) var(--ui)}
-.ln-evidence summary>span+span{margin-left:var(--space-3)}
+.ln-evidence summary{display:flex;align-items:center;gap:var(--space-2);list-style:none;cursor:pointer;font:500 var(--text-sm)/var(--line-md) var(--ui)}
+.ln-evidence summary::-webkit-details-marker{display:none}
+/* The drawn chevron replaces the native marker: right when closed, down when open. */
+.ln-evidence summary>svg{flex:none;color:var(--ink-50);transform:rotate(-90deg)}
+.ln-evidence[open]>summary>svg{transform:none}
+.ln-evidence summary:hover>svg{color:var(--ink)}
+.ln-evidence summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ln-evidence summary>span+span{margin-left:var(--space-1)}
 .ln-evidence .rich{margin-top:var(--space-4)}
 @media(max-width:600px){.ln-scroll{padding:var(--space-4)}}

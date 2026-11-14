@@ -76,7 +76,29 @@ try {
     return after > before ? '' : 'editor/results divider did not resize results with ArrowUp';
   })()`);
   if (splitCheck) throw new Error(splitCheck);
+  // Alone, the editor is a centred column whose two edges resize it together.
+  await sleep(200);
+  const soloBox = () => evaluate(`(() => {
+    const ws = document.querySelector('.ws').getBoundingClientRect(), body = document.querySelector('.pbody').getBoundingClientRect();
+    const handles = [...document.querySelectorAll('.split-solo')].filter(h => !h.hidden).map(h => { const r = h.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    return { width: ws.width, offCentre: Math.abs((ws.left + ws.right) / 2 - (body.left + body.right) / 2), handles };
+  })()`);
+  const soloBefore = await soloBox();
+  if (soloBefore.handles.length !== 2) throw new Error('The lone editor has no width handles');
+  if (soloBefore.offCentre > 1 || soloBefore.width > 1061) throw new Error('The lone editor is not a centred column: ' + JSON.stringify(soloBefore));
+  const grip = soloBefore.handles[1];
+  await send('Input.dispatchMouseEvent', {type:'mousePressed',x:grip.x,y:grip.y,button:'left',clickCount:1});
+  await send('Input.dispatchMouseEvent', {type:'mouseMoved',x:grip.x-100,y:grip.y,button:'left',buttons:1});
+  await send('Input.dispatchMouseEvent', {type:'mouseReleased',x:grip.x-100,y:grip.y,button:'left',clickCount:1});
+  await sleep(100);
+  const soloAfter = await soloBox();
+  if (Math.abs(soloBefore.width - soloAfter.width - 200) > 2 || soloAfter.offCentre > 1) throw new Error('Dragging one edge did not narrow both sides: ' + JSON.stringify([soloBefore, soloAfter]));
+  await evaluate(`document.querySelector('.split-solo').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+  await sleep(100);
+  if (Math.abs((await soloBox()).width - soloBefore.width) > 1) throw new Error('Double-click did not reset the lone editor width');
   await evaluate(`document.body.classList.remove('hide-problem')`);
+  await sleep(100);
+  if (await evaluate(`[...document.querySelectorAll('.split-solo')].some(h => !h.hidden)`)) throw new Error('Editor width handles stayed after the statement came back');
 
   await evaluate(`document.body.classList.add('coach-open')`);
   await sleep(800);

@@ -10,7 +10,15 @@ if (process.env.FAKE_INTERVIEW_PROMPT) fs.appendFileSync(process.env.FAKE_INTERV
 const debrief = prompt.includes("Write the candidate's report");
 const review = (prompt + args.join('\n')).includes('going over it with the candidate afterwards');
 const selection = prompt.includes('INTERVIEW_PROBLEM_SELECTION');
-const selected = {
+// A second preparation in the same home must not repeat the first problem, so once the
+// museum is a known family the fake proposes a different one.
+const selected = prompt.includes('"family":"museum-ticket-reservations"') ? {
+  title: 'Bike dock rentals', family: 'bike-dock-rentals',
+  statement: 'Design a bike dock rental system.',
+  facts: 'Each dock holds one bike. A rental ends at any dock with space. Python in-memory implementation.',
+  curveball: 'A dock goes offline while a bike is being returned to it.',
+  rationale: 'No prior evidence; a realistic mid-level problem.',
+} : {
   title: 'Museum ticket reservations', family: 'museum-ticket-reservations',
   statement: 'Design a museum ticket reservation system.',
   facts: 'Timed visits have finite capacity. Reservations may be cancelled by their owner. Reject invalid intervals and overbooking before mutation. Python in-memory implementation.',

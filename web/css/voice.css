@@ -4,7 +4,9 @@
 .voice-lead:empty,.voice-actions:empty,.voice-duration:empty,.voice-hint:empty{display:none}
 .voice-lead{display:flex;flex:none}
 .voice-actions{display:flex;align-items:center;gap:var(--space-1);margin-left:auto;flex:none}
-.voice-state,.voice-hint{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+/* A status breaks between words, never inside one ("Microphon / e off"); when the bar is
+   too narrow for its longest word, the actions wrap to their own line instead. */
+.voice-state,.voice-hint{flex:1;min-width:auto;font-weight:600;overflow-wrap:break-word}
 .voice-hint{font-variant-numeric:tabular-nums}
 .voice-duration{font-size:var(--text-xs);color:var(--ink-60)}
 .voice-wave{display:flex;align-items:center;gap:2px;height:var(--control-sm);width:48px;color:var(--ink-35);flex:none}

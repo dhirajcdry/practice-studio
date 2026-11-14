@@ -435,6 +435,36 @@ test('every interview is listed, newest last, with enough to choose between them
   } finally { await close(); }
 });
 
+test('list, reopen and resume all name the interview by its title, never its private facts', async () => {
+  const root = await workspace();
+  const { origin, close } = await serve(root, { reply: CLEAN });
+  try {
+    // A preset topic: the title is the topic's, the prompt stays the statement.
+    const preset = (await readStream(await post(origin, '/api/design/start', { prompt: 'Design a URL-shortening service.' })))
+      .events.find((e) => e.name === 'interview').payload.id;
+    // A prepared problem: its public title wins; its private facts stay on disk.
+    const prepared = (await readStream(await post(origin, '/api/design/start', { prompt: 'Design a made-up parcel locker.' })))
+      .events.find((e) => e.name === 'interview').payload.id;
+    const store = new DesignStore({ root });
+    const state = await store.readState(prepared);
+    state.problem = { slug: 'design-parcel-locker', title: 'Parcel locker', statement: state.prompt, facts: ['private-fact-marker'] };
+    await store.writeState(prepared, state);
+
+    const { interviews } = await (await fetch(`${origin}/api/design`)).json();
+    assert.equal(interviews.find((i) => i.id === preset).title, 'URL shortener');
+    assert.equal(interviews.find((i) => i.id === prepared).title, 'Parcel locker');
+    const reopened = await fetch(`${origin}/api/design/${preset}`).then((r) => r.json());
+    assert.equal(reopened.title, 'URL shortener');
+    assert.equal(reopened.prompt, 'Design a URL-shortening service.');
+    const raw = await fetch(`${origin}/api/design/${prepared}`).then((r) => r.text());
+    assert.equal(JSON.parse(raw).title, 'Parcel locker');
+    assert.doesNotMatch(raw, /private-fact-marker/);
+    await post(origin, '/api/design/pause', { interviewId: preset });
+    const resumed = await (await post(origin, '/api/design/resume', { interviewId: preset })).json();
+    assert.equal(resumed.title, 'URL shortener');
+  } finally { await close(); }
+});
+
 test('the phase tag is never shown, never spoken, never filed', async () => {
   const root = await workspace();
   // Exactly what the interviewer is told to emit.

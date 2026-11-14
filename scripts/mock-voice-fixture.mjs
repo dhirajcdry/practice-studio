@@ -23,7 +23,8 @@ export async function checkMockVoice(kind) {
   prefs.saveAutoSend(false); prefs.saveVoicePreferences({ ...oldVoice, engine: 'system' });
   const original = { fetch: window.fetch, media: navigator.mediaDevices.getUserMedia, recorder: window.MediaRecorder,
     context: window.AudioContext, speak: speechSynthesis.speak, cancel: speechSynthesis.cancel };
-  const stats = { captures: 0, stops: 0, plays: 0, cancels: 0, level: 0, words: '', asks: [] };
+  const stats = { captures: 0, stops: 0, plays: 0, cancels: 0, level: 0, words: '', asks: [], events: 0 };
+  const realNow = Date.now; let skew = 0;
   Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { configurable: true, writable: true, value: async () => {
     stats.captures++;
     return { getTracks: () => [{ stop() { stats.stops++; }, addEventListener() {} }] };
@@ -46,7 +47,7 @@ export async function checkMockVoice(kind) {
   const json = data => new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
   window.fetch = async (url, options) => {
     if (String(url).includes('/api/asr')) return json({ text: stats.words });
-    if (String(url) === '/api/interview/event') return json({ interjected: false });
+    if (String(url) === '/api/interview/event') { stats.events++; return json({ interjected: false }); }
     if (String(url) === (design ? '/api/design/turn' : '/api/interview/turn')) {
       const ask = JSON.parse(options.body); stats.asks.push(ask);
       return new Response(new ReadableStream({ start(controller) {
@@ -105,9 +106,47 @@ export async function checkMockVoice(kind) {
     mic().click(); await until(() => stats.stops === 1, 'explicit mute closes capture');
     play(2); stats.asks[2].finish(); await sleep(100);
     require(stats.captures === 1 && stats.stops === 1, 'reply unmuted an explicitly muted microphone');
+    // Away (another window in front): no idle prompt to an empty room, and words left
+    // from before leaving wait for new speech after return. The clock is skewed so the
+    // design mock's 60 s step-in wait can be crossed in a check.
+    Date.now = () => realNow.call(Date) + skew;
+    const leave = () => { Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => false }); window.dispatchEvent(new Event('blur')); };
+    const back = () => { delete document.hasFocus; window.dispatchEvent(new Event('focus')); };
+    const prompts = () => design ? stats.asks.filter(ask => ask.said === '').length : stats.events;
+    // The fake synthesis never ends a reply; interrupt it so the room is quiet.
+    [...document.querySelectorAll(root + ' button')].find(b => b.textContent.startsWith('Interrupt') && !b.hidden)?.click();
+    await sleep(100);
+    if (panel().dataset.capture !== 'recording') mic().click();
+    await until(() => stats.captures === 2 && panel().dataset.capture === 'recording', 'unmuted');
+    const promptsBefore = prompts();
+    leave(); await until(() => stats.stops === 2, 'away releases the microphone');
+    skew += 130000; await sleep(1500);
+    require(prompts() === promptsBefore, 'the interviewer was prompted while you were away');
+    back(); await until(() => panel().dataset.capture === 'recording', 'listening on return');
+    await sleep(1500);
+    require(prompts() === promptsBefore, 'returning fired the skipped idle prompts at once');
+    skew += 130000;
+    await until(() => prompts() > promptsBefore, 'idle prompts resume after return');
+    for (const ask of stats.asks) if (!ask.closed) ask.finish();
+    await sleep(200);
+    prefs.saveAutoSend(true);
+    const sent = stats.asks.length;
+    stats.words = 'Leftover words.'; stats.level = .08; await sleep(600);
+    leave(); stats.level = 0;
+    await until(() => input.value === 'Leftover words.' && panel().dataset.capture !== 'recording', 'words heard before leaving kept');
+    back(); await until(() => panel().dataset.capture === 'recording', 'listening after the second return');
+    await sleep(3000);
+    require(stats.asks.length === sent && input.value === 'Leftover words.', 'returning and staying quiet sent the leftover words');
+    require(!panel().querySelector('.voice-hint').textContent.includes('Sending'), 'the bar promised to send the leftover words');
+    await speak('And the rest.'); await sleep(2000);
+    await until(() => stats.asks.length === sent + 1, 'new speech then quiet sends');
+    require(stats.asks[sent].said === 'Leftover words. And the rest.', 'both parts in order, sent: ' + stats.asks[sent].said);
+    accept(sent); stats.asks[sent].finish(); await sleep(300);
+    require(stats.asks.length === sent + 1, 'sent more than once');
+    prefs.saveAutoSend(false);
     return { captures: stats.captures, stops: stats.stops, turns: stats.asks.length, interruptMs: Math.round(interruptMs) };
   } finally {
-    stats.level = 0;
+    stats.level = 0; Date.now = realNow; delete document.hasFocus;
     for (const ask of stats.asks) if (!ask.closed) ask.finish();
     typed()?.click();
     await sleep(150);

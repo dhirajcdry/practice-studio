@@ -17,16 +17,22 @@
 //      still a hot microphone.
 //   3. A recording with no speech in it is an ERROR and is shown as one. An empty
 //      transcript is never dressed up as a successful take.
+//   4. The microphone is live only while you are here: the page is visible and its
+//      window has focus (voice-loop.js `watchPresence`). Leaving releases the tracks;
+//      the words already heard drain into the draft and are never sent because you
+//      left. The take is held and resumes by itself when you come back.
 
 import { icon } from './ui/icon.js';
 import { el, clear, replace } from './dom.js';
 import { transcribeAudio, logSessionEvent } from './api.js';
 import { filterTranscript, hasVoicedAudio } from './transcript-filter.js';
+import { watchPresence, AWAY_HEAD } from './voice-loop.js';
 
 /** A hard ceiling, so a stuck key cannot leave the microphone open all afternoon. */
 const MAX_TAKE_MS = 5 * 60 * 1000;
 /** Below this there is nothing to transcribe — say so rather than posting silence. */
 const PREVIEW_MS = 900;
+const AWAY_BODY = 'It turns back on when you return. Words already heard are kept.';
 
 /* ============================== shaping (pure) ============================== */
 
@@ -36,6 +42,22 @@ export const SILENCE_MS = 700;
 export const MIN_PHRASE_MS = 900;
 /** A monologue with no pauses still arrives, in pieces, rather than after it ends. */
 export const MAX_PHRASE_MS = 12_000;
+/**
+ * Past MAX_PHRASE_MS a phrase is cut at the next gap between words (two quiet meter
+ * frames), not mid-word: a cut through a word splits it across two transcriptions
+ * ("bottom, bottom") and loses the instant between recorders. Uninterrupted sound
+ * is still cut here, well inside Whisper's 30 s window.
+ */
+export const WORD_GAP_MS = 200;
+export const HARD_PHRASE_MS = 18_000;
+/**
+ * Before any speech, a phrase restarts after this much quiet so long thinking pauses
+ * are not sent ahead of the next answer. WhisperKit 0.18 does not compute its
+ * no-speech probability, so seconds of room tone before speech are where it invents
+ * stock video phrases. Restarting happens only after 3 s without a single loud frame;
+ * a phrase that has heard speech is never dropped.
+ */
+export const LEAD_SILENCE_MS = 3000;
 
 /**
  * When to close the current phrase — the whole of the cutting logic, with no audio in it.
@@ -47,8 +69,8 @@ export const MAX_PHRASE_MS = 12_000;
  * @returns {'wait'|'cut'|'drop'} cut sends it to be transcribed; drop bins it as silence
  */
 export function phraseDecision({ age, sinceLoud, hadSpeech }) {
-  if (!hadSpeech) return age > MAX_PHRASE_MS ? 'drop' : 'wait';
-  if (age > MAX_PHRASE_MS) return 'cut';
+  if (!hadSpeech) return age > MAX_PHRASE_MS || (age > LEAD_SILENCE_MS && sinceLoud > LEAD_SILENCE_MS) ? 'drop' : 'wait';
+  if (age > HARD_PHRASE_MS || (age > MAX_PHRASE_MS && sinceLoud >= WORD_GAP_MS)) return 'cut';
   if (age > MIN_PHRASE_MS && sinceLoud > SILENCE_MS) return 'cut';
   return 'wait';
 }
@@ -188,7 +210,7 @@ function micGlyph() {
 export function createVoiceControl({
   getSlug, onTranscript, onPreview, onState = () => {}, logTakes = true, onLevel = () => {},
   recordingMode = 'dictation', getAttemptId = () => null, maxTakeMs = MAX_TAKE_MS,
-  reportEmptyTake = true, onSettled = () => {},
+  reportEmptyTake = true, onSettled = () => {}, onReturn = null, awayNote = true,
 }) {
   // Dictation, not think-aloud. The floating recorder owns thinking aloud; this is here
   // so a long message to the coach can be spoken instead of typed, and it must not be
@@ -204,6 +226,12 @@ export function createVoiceControl({
   let wantRecording = false;     // the button is *currently* held
   let disposed = false;
   let finishing = false;
+  // A take this surface wants but presence denies (voice-loop.js): the page is hidden
+  // or another window has focus. It resumes on return; a surface's own stop() clears it.
+  let heldAway = false;
+  // Words left from before you left (or before a reload) wait for new speech: going quiet
+  // on return must not send them. Surfaces read it as `armed` on each level sample.
+  let freshSpeechNeeded = false;
 
   const clock = el('span', { class: 'mono tnum vc-clock', text: '0:00' });
   const indicator = el('span', { class: 'vc-rec', hidden: true }, [
@@ -249,14 +277,18 @@ export function createVoiceControl({
     root.classList.toggle('is-working', next === 'working');
     indicator.hidden = next !== 'recording';
     talkButton.setAttribute('aria-pressed', String(next === 'recording'));
+    paintTalk();
+    onState(next);
+  }
+  function paintTalk() {
+    const next = state;
     talkButton.disabled = next === 'working';
     talkButton.setAttribute('aria-label', next === 'recording' ? 'Stop recording'
-      : next === 'working' ? 'Transcribing' : 'Record a message for the coach');
+      : next === 'working' ? 'Transcribing' : heldAway ? AWAY_HEAD : 'Record a message for the coach');
     talkLabel.textContent = next === 'recording' ? 'Stop'
       : next === 'working' ? 'Transcribing…'
       : next === 'opening' ? 'Opening mic…'
-      : 'Speak';
-    onState(next);
+      : heldAway ? 'Away' : 'Speak';
   }
 
   /** The one place tracks are released. Called from every exit, success or not. */
@@ -409,10 +441,11 @@ export function createVoiceControl({
         sustainedMs = Math.max(sustainedMs, currentVoicedMs);
       } else currentVoicedMs = 0;
       phraseHadSpeech = hasVoicedAudio({ voicedMs, sustainedMs, energy });
+      if (loud && phraseHadSpeech) freshSpeechNeeded = false;
 
       // The same signal, offered to whoever is listening. The design interview uses it
       // to decide the turn is over; nothing here needs to know that.
-      onLevel({ loud: loud && phraseHadSpeech, level: Math.min(1, Math.sqrt(rms * 9)), elapsedMs: now - startedAt, sinceLoud: now - lastLoudAt, pending: sending + closing, failed: takeError });
+      onLevel({ loud: loud && phraseHadSpeech, armed: !freshSpeechNeeded, level: Math.min(1, Math.sqrt(rms * 9)), elapsedMs: now - startedAt, sinceLoud: now - lastLoudAt, pending: sending + closing, failed: takeError });
 
       const decision = phraseDecision({
         age: now - phraseStartedAt,
@@ -447,14 +480,15 @@ export function createVoiceControl({
       if (hadSpeech && blob && blob.size > 0) {
         sendPhrase(blob, current.mimeType, Date.now() - startedThisPhrase, phraseSequence);
       } else { finalized.add(phraseSequence); emitInOrder(phraseSequence, '', 0); }
-      if (!final && state === 'recording' && stream) beginPhrase();
+      // A dropped silent phrase is the same silence continuing: keep its quiet clock.
+      if (!final && state === 'recording' && stream) beginPhrase({ quietContinues: drop });
       else settle();
     }, { once: true });
 
     try { current.stop(); } catch { closing -= 1; settle(); }
   }
 
-  function beginPhrase() {
+  function beginPhrase({ quietContinues = false } = {}) {
     if (!stream || disposed) return;
     const mimeType = pickMimeType();
     try {
@@ -469,7 +503,7 @@ export function createVoiceControl({
     currentSequence = seq++;
     phraseStartedAt = Date.now();
     lastPreviewAt = phraseStartedAt;
-    lastLoudAt = phraseStartedAt;
+    if (!quietContinues) lastLoudAt = phraseStartedAt;
     phraseHadSpeech = false;
     voicedMs = sustainedMs = currentVoicedMs = energy = 0;
     const current = recorder;
@@ -573,7 +607,9 @@ export function createVoiceControl({
     const elapsed = Date.now() - startedAt;
     if (takeError) { if (retryWhenSettled) { retry(); return; } showRecovery(); return; }
     clearPreview();
-    if (spokenChars === 0 && reportEmptyTake) {
+    // Leaving ended this take, not you: no "nothing heard" error, and it resumes on return.
+    if (heldAway) { if (awayNote) note('', AWAY_HEAD, AWAY_BODY); }
+    else if (spokenChars === 0 && reportEmptyTake) {
       note('warn', '', 'No speech detected. Try again.');
     } else {
       note('', '', '');
@@ -586,7 +622,9 @@ export function createVoiceControl({
         characters: spokenChars,
       }).catch(() => {});
     }
+    if (heldAway && logTakes && spokenChars > 0) logSessionEvent(getSlug(), 'recorded_audio', { mode, durationSeconds: Math.round(elapsed / 1000), characters: spokenChars }).catch(() => {});
     onSettled();
+    resumeFromAway();
   }
 
   async function start() {
@@ -596,6 +634,9 @@ export function createVoiceControl({
       note('err', 'Voice needs a newer browser', 'This browser has no MediaRecorder, so recording is not possible here. Typing to the coach still works.');
       return;
     }
+    // Never acquire a microphone for a page you are not looking at. The take waits.
+    if (!presence.present) { holdForReturn(); return; }
+    heldAway = false;
     wantRecording = true;
     takeGeneration += 1;
     settleFlushes();
@@ -623,6 +664,7 @@ export function createVoiceControl({
     if (!wantRecording || disposed) {
       for (const track of granted.getTracks()) track.stop();
       setState('idle');
+      queueMicrotask(resumeFromAway);   // left and came back while the prompt was up
       return;
     }
 
@@ -658,7 +700,7 @@ export function createVoiceControl({
       return;
     }
 
-    if (!wantRecording || disposed) { releaseMicrophone(); setState('idle'); return; }
+    if (!wantRecording || disposed) { releaseMicrophone(); setState('idle'); queueMicrotask(resumeFromAway); return; }
     startedAt = Date.now();
     setState('recording');
     beginPhrase();
@@ -676,6 +718,8 @@ export function createVoiceControl({
 
   function stop() {
     wantRecording = false;
+    // A surface stopping on purpose (pause, mode, finish, off screen) cancels a held take.
+    if (heldAway) { heldAway = false; if (awayNote) note('', '', ''); paintTalk(); onState(state); }
     if (state === 'opening') { setState('idle'); return; }
     if (state !== 'recording') return;
     clearInterval(ticker); ticker = null;
@@ -700,7 +744,26 @@ export function createVoiceControl({
   // Nothing here starts recording on its own, which is the property worth keeping — a
   // microphone that opens without being asked is not a feature.
 
-  const release = () => { if (wantRecording || state === 'recording') stop(); };
+  // Away: release the tracks now (the last phrase still drains into the draft, and is
+  // never sent because you left) and hold the take until you are back.
+  function holdForReturn() {
+    heldAway = true; freshSpeechNeeded = true;
+    if (awayNote && state === 'idle') note('', AWAY_HEAD, AWAY_BODY);
+    paintTalk(); onState(state);
+  }
+  function resumeFromAway() {
+    if (!heldAway || disposed || state !== 'idle' || !presence.present) return;
+    heldAway = false;
+    if (awayNote) note('', '', '');
+    paintTalk(); onState(state);
+    if (onReturn) onReturn(); else start();
+  }
+  const presence = watchPresence(present => {
+    if (disposed) return;
+    if (!present) {
+      if (wantRecording || state === 'recording' || state === 'opening') { stop(); holdForReturn(); }
+    } else resumeFromAway();   // still draining? settle() resumes once it is idle
+  });
   const beforeUnload = (event) => {
     if (state === 'recording' || state === 'opening' || state === 'working' || failedPhrases.size) {
       event.preventDefault(); event.returnValue = '';
@@ -712,9 +775,6 @@ export function createVoiceControl({
     if (state === 'recording' || state === 'opening' || wantRecording) stop();
     else start();
   });
-
-  // A tab that goes away mid-take should not leave the microphone live behind it.
-  window.addEventListener('blur', release);
 
   if (!voiceSupported()) {
     talkButton.disabled = true;
@@ -728,6 +788,10 @@ export function createVoiceControl({
     start,
     isRecording: () => state === 'recording' || state === 'opening',
     isBusy: () => state !== 'idle',
+    /** True while a wanted take is held off because you are away (voice-loop.js presence). */
+    awaitingReturn: () => heldAway,
+    /** Going quiet sends nothing until new speech is heard (a restored draft after a reload). */
+    requireFreshSpeech() { freshSpeechNeeded = true; },
     hasTranscriptionError: () => takeError,
     currentMode: () => mode,
     stop,
@@ -750,7 +814,7 @@ export function createVoiceControl({
       recorder = null;
       releaseMicrophone();
       settleFlushes();
-      window.removeEventListener('blur', release);
+      heldAway = false; presence.dispose();
       // Keep the navigation guard until a finishing disposal has drained all
       // outstanding transcription promises. `settle()` removes it at idle.
       if (!finish || state === 'idle') window.removeEventListener('beforeunload', beforeUnload);

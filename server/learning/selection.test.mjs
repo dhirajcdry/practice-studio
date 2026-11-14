@@ -132,3 +132,11 @@ test('system design selection cannot reuse a LeetCode identity',()=>{
   const problem=validateProposal({title:'Twitter service',statement:'Design Twitter.',family:'twitter',facts:'Share short posts.',curveball:'Add regional failover.',rationale:'Test fanout.'},'design');
   assert.equal(problem.slug,'design-twitter-system-design');
 });
+
+test('a long or missing rationale does not refuse an otherwise valid problem', () => {
+  const long = validateProposal(proposal({ rationale: 'evidence '.repeat(400) }), 'lld');
+  assert.ok(long.rationale.length <= 1200 && long.rationale.endsWith('…'));
+  const missing = validateProposal(proposal({ rationale: undefined }), 'lld');
+  assert.equal(missing.rationale, 'No rationale was given.');
+  assert.throws(() => validateProposal(proposal({ curveball: '' }), 'lld'), /invalid curveball/);
+});

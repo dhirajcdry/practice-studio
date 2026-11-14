@@ -2,118 +2,66 @@
    app chrome can be worked on without fighting over one stylesheet. */
 /* ---------------- system design interview ---------------- */
 /* The board gets the room; the interviewer gets a column. A design interview is a
-   drawing with a conversation beside it, not the other way round. */
-.dz-view{display:flex;flex-direction:column;gap:10px}
-
-/* .spacer is deliberately not global in app.css — every bar opts its own in. */
-.dz-bar .spacer,.dz-actions .spacer{flex:1 1 auto}
+   drawing with a conversation beside it, not the other way round. Pane surfaces
+   (background, border, radius, shadow) belong to .card/.ui-pane and the layout. */
+.dz-view{display:flex;flex-direction:column;gap:var(--space-2);min-height:0;font-family:var(--ui)}
+.dz-split{display:grid;grid-template-columns:var(--workspace-columns,minmax(0,1fr) minmax(360px,420px));gap:var(--space-4);flex:1 1 auto;min-height:0}
 
 /* The clock is the Add time button's label, exactly as in an LLD or coding mock. */
 .dz-clock{font-variant-numeric:tabular-nums}
 .dz-clock.over{color:var(--hard)}
-.dz-done:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
-/* The prompt is the interview's name when you are reading one back, so it gets the
-   room the generic screen title does not need. */
+.dz-clock.paused{color:var(--ink-50)}
 
-.dz-split{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,.72fr);gap:12px;flex:1 1 auto;min-height:0}
-.dz-canvas{position:relative;min-height:0;border:1px solid var(--hair-10);border-radius:var(--r-md);overflow:hidden;background:var(--card)}
+.dz-canvas{position:relative;min-width:0;min-height:0;overflow:hidden;background:var(--card)}
 .dz-canvas .excalidraw{height:100%}
-.dz-loading{display:flex;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;color:var(--ink-50);line-height:1.7;text-transform:none;letter-spacing:0}
+.dz-loading{display:flex;align-items:center;justify-content:center;height:100%;padding:var(--space-6);text-align:center;color:var(--ink-50);line-height:var(--line-lg);text-transform:none;letter-spacing:0}
 
-.dz-side{display:flex;flex-direction:column;min-height:0;border:1px solid var(--hair-10);border-radius:var(--r-md);background:var(--card);overflow:hidden}
-.dz-phases{display:flex;flex-wrap:wrap;gap:4px;padding:9px 10px;border-bottom:1px solid var(--hair-10)}
+/* The phase stepper sits on the pane's toolbar inset, ruled off from the transcript. */
+.dz-phase-actions{flex:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--space-2);border-bottom:1px solid var(--hair-10)}
+.dz-view.is-paused .dz-log{opacity:.6}
 
 /* Block flow, not a flex column: a scrolling container that is also a flex column
    lets WebKit shrink its children below their own content instead of scrolling.
    That is the overlapping-messages bug the coach panel already hit once, and
-   server/test/css-rules.test.mjs exists to stop it coming back. */
-.dz-log{padding:12px 14px}
+   server/test/css-rules.test.mjs exists to stop it coming back. The inset is ui-inset's. */
+.dz-log{min-height:calc(var(--space-8) * 2);padding-block:var(--space-5);overscroll-behavior:contain}
 
 /* The cut is stated, never hidden. See server/design/narration.mjs. */
 .dz-cut{
   font:400 var(--text-xs)/var(--line-md) var(--ui);letter-spacing:0;
   color:var(--ink-70);border-left:2px solid var(--med);padding:var(--space-1) 0 var(--space-1) var(--space-3);margin-top:var(--space-3);
 }
+/* The debrief's line in a live transcript ("Writing your report…", "Report ready."). */
+.dz-d{border-left:2px solid var(--accent);padding-left:var(--space-3)}
+/* An interviewer who may stay silent has not spoken yet: no speaker label until it does. */
+.dz-deciding .ui-turn-head{display:none}
 
-.dz-input{
-  width:100%;resize:vertical;min-height:58px;font:inherit;line-height:1.55;
-  padding:8px 10px;border:1px solid var(--hair-20);border-radius:var(--r-md);
-  background:var(--canvas);color:var(--ink);
-}
-.dz-input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
 /* Microphone and Send share one line at the right of the composer footer. */
 .dz-actions{display:flex;align-items:center;gap:var(--space-1)}
-/* The two switches in the compose row read as the same kind of control as everything
-   else on this screen; unstyled they came out as wrapped serif text mid-row. */
-
-.dz-hands.off{opacity:.55}
-
-.dz-send:disabled{opacity:.45;cursor:default}
-
-/* ---------------- the library of past interviews ---------------- */
-/* A list, not a grid of cards. These are a handful of long sittings, each identified by
-   a sentence — reading down one column is how you find the one you mean, and it leaves
-   the screen quiet, which is the opposite of the interview it opens into. */
-.dzl{max-width:820px;margin:0 auto}
-.dzl-empty{padding:26px 2px;line-height:1.7;color:var(--ink-50);text-transform:none;letter-spacing:0}
-
-@media (max-width:1100px){
-  .dz-split{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(240px,1fr) minmax(260px,1fr)}
-}
-
-
-/* ---- how you answer: two modes, not one row of four controls ---- */
+.dz-mic{display:flex;align-items:center;min-width:0}
 /* Voice mode reuses the shared voice bar, which has its own microphone toggle; the
    typed composer's dictation button would be a second one. */
-.dz-voice .dz-mic{display:none}
-
 .dz-voice{display:block}
-
-/* Your words as they are transcribed. Block flow, never a scrolling flex column. */
-
-.dz-vheard.empty::before{content:'Listening — just start talking.';color:var(--ink-35)}
-
-/* A working room: generous board, legible conversation, anchored answer controls. */
-.dz-view{min-height:0;gap:8px;font-family:var(--ui)}
-
-.dz-split{grid-template-columns:var(--workspace-columns,minmax(0,1fr) minmax(360px,420px));gap:16px}
-.dz-canvas,.dz-side{border-radius:var(--r-md);min-width:0}
-.dz-side{box-shadow:0 2px 8px rgba(var(--ink-rgb),.035)}
-
-.dz-phases{padding:0 14px 12px;gap:5px;flex-shrink:0}
-.dz-side:not(:has(.dz-panel-heading)) .dz-phases{padding-top:12px}
-.dz-phase:hover:not(:disabled){border-color:var(--hair-20)}
-.dz-log{min-height:100px;padding:18px;overscroll-behavior:contain;scrollbar-gutter:stable}
-.dz-d{border-left:3px solid var(--accent);padding-left:14px}
-.dz-input::placeholder{color:var(--ink-50)}
+.dz-voice .dz-mic{display:none}
+.dz-voice .vc-status{max-height:calc(var(--space-8) * 2.5);overflow-y:auto}
 /* One line for what went wrong (a failed save, audio still transcribing). Empty otherwise. */
 .dz-status{margin:var(--space-1) 0 0;padding-inline:var(--space-2);font:400 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70);overflow-wrap:anywhere}
 .dz-status:empty{display:none}
+/* A header action that failed (View report, Practise, Learning notes) says so right under the header. */
+.dz-review-status{flex:none;margin:0;padding-block:var(--space-1);font:500 var(--text-sm)/var(--line-md) var(--ui);color:var(--hard);text-align:right}
+.dz-review-status[hidden]{display:none}
 .dz-voice-unavailable{margin:0;font-size:var(--text-xs)}
-
-.dz-vheard.empty::before{content:'Your words appear here as they are transcribed.';color:var(--ink-50)}
-
-.dz-mic{display:flex;align-items:center;min-width:0}
 /* A microphone notice sits above the composer on the composer's own inset. */
 .dz-side>.vc-status{flex:none;margin:0 var(--space-2);padding:var(--space-2) var(--space-3)}
-.dz-view button:focus-visible,.dzl button:focus-visible,.dzl select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-.dz-view button:disabled{cursor:not-allowed}
-.dzl{max-width:none;padding:0;display:flex;flex-direction:column;gap:var(--space-6)}
-.dzl-empty{padding:28px;font:14px/1.7 var(--ui)}
 
-@media(max-width:1100px) and (min-width:901px){.dz-split{grid-template-columns:var(--workspace-columns,minmax(0,1fr) 360px);grid-template-rows:minmax(0,1fr)}}
+/* ---------------- the route's waiting and error states ---------------- */
+.dzl{display:flex;flex-direction:column;gap:var(--space-6);font-family:var(--ui)}
+.dzl-empty{padding:var(--space-7);font:var(--text-md)/var(--line-lg) var(--ui);color:var(--ink-50);text-transform:none;letter-spacing:0}
+
+@media(max-width:1100px) and (min-width:901px){.dz-split{grid-template-columns:var(--workspace-columns,minmax(0,1fr) 360px)}}
 @media(max-width:900px){
   .dz-view{height:auto;min-height:0}
   .dz-split{display:flex;flex-direction:column}
   .dz-canvas{height:55dvh;min-height:320px;flex-shrink:0}
   .dz-side{height:640px;max-height:85dvh;min-height:480px}
-  .dzr-prompt{max-width:100%;white-space:normal;order:3;flex-basis:100%}
-
 }
-@media(max-width:480px){.dz-title{display:none}.dz-bar{gap:8px}.dz-setup-fields>*{flex:1}}
-.dzl{font-family:var(--ui)}
-.dz-voice .vc-status{max-height:100px;overflow-y:auto}
-.dz-clock.paused{color:var(--ink-50)}.dz-pause:disabled{opacity:.45}
-.dz-input:disabled{opacity:.6;resize:none}
-/* An interviewer who may stay silent has not spoken yet: no speaker label until it does. */
-.dz-deciding .ui-turn-head{display:none}

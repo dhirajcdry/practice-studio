@@ -6,7 +6,7 @@ import { clock, elapsed, phaseTimes, PHASES } from './state.mjs';
 export const RATINGS = ['Strong', 'Solid', 'Mixed', 'Weak'];
 export const SIGNALS = ['Strong hire', 'Hire', 'Lean hire', 'Lean no', 'No hire'];
 export const DIMENSIONS = ['Problem solving', 'Coding', 'Communication', 'Testing'];
-export const LLD_DIMENSIONS = ['Requirements', 'Responsibilities', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'];
+export const LLD_DIMENSIONS = ['Requirements', 'Responsibilities', 'OOP fundamentals', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'];
 export const DESIGN_DIMENSIONS = ['Requirements', 'Estimation', 'Data modeling', 'Architecture', 'Trade-offs', 'Reliability', 'Communication'];
 const words = text => (String(text || '').match(/[\p{L}\p{N}']+/gu) || []).length;
 const normal = text => String(text || '').toLowerCase().replace(/[“”"'‘’.,!?;:()\-—–]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -76,7 +76,7 @@ export function parseReport(text, turns = [], { dimensions: rubric = DIMENSIONS,
     return { at: verified && Number.isFinite(source.elapsedMs) ? source.elapsedMs : checkedTime(item?.at), quote: verified ? quote : null, note: note || (verified ? null : quote), provenance: verified ? 'quote' : 'interpretation' };
   };
   const dimensions = rubric.map(name => {
-    const found = list(raw.dimensions, 12).find(d => normal(d?.name) === normal(name));
+    const found = list(raw.dimensions, 14).find(d => normal(d?.name) === normal(name));
     const items = list(found?.evidence, 3).map(evidence).filter(Boolean);
     return { name, rating: items.length ? pick(found?.rating, RATINGS) : null, summary: str(found?.summary, 400), evidence: items };
   });
@@ -154,7 +154,9 @@ export function reportMarkdown(report) {
   if (report.regraded) lines.push(regradeLine(report.regraded), '');
   if (j.summary) lines.push(j.summary, '');
   lines.push(Object.hasOwn(facts, 'finalBoard')
-    ? `Duration ${clock(facts.durationMs)} of ${clock(facts.plannedMs)} · ${facts.finalBoard ? 'Board recorded' : 'The board was empty'} · phase durations and hint counts not recorded`
+    ? `Duration ${clock(facts.durationMs)} of ${clock(facts.plannedMs)} · ${facts.finalBoard ? 'Board recorded' : 'The board was empty'} · ${facts.phases?.some(p => p.ms > 0)
+      ? `phases ${facts.phases.map(p => `${p.phase} ${p.ms > 0 ? clock(p.ms) : 'not recorded'}`).join(', ')} · hint counts not recorded`
+      : 'phase durations and hint counts not recorded'}`
     : `Duration ${clock(facts.durationMs)} of ${clock(facts.plannedMs)} · ${facts.hints.length} hints · ${facts.runs.length} runs · ${facts.verdicts.length} submissions`, '');
   for (const d of j.dimensions) {
     lines.push(`### ${d.name} — ${d.rating || 'Not rated'}`, '');

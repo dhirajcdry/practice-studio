@@ -1283,7 +1283,6 @@ body .hover-divided{border-bottom:0}
 .rr-casehead:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
 /* Rows choose one size for both primary and secondary actions. */
 
-.dz-phase:disabled{opacity:.45;cursor:not-allowed}
 /* The list mount owns the bleed space, so the scrolling log never gains overflow. */
 
 /* Receipts are readable content, not native-tooltip previews. */

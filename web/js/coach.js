@@ -374,6 +374,8 @@ export function createCoachPanel(entry) {
     interviews.show(selectedTab === 'interviews');
     tabInterviews.classList.toggle('has-live', Boolean(activeInterview(slug) && !activeInterview(slug).pausedAt));
     log.hidden = composer.hidden = !onChat;
+    // Dictation never keeps listening behind another tab; its words stay in the box.
+    if (!onChat) voice.stop();
     stripHost.hidden = !onChat || !threadInfo;
     tabChat.setAttribute('aria-pressed', String(onChat));
     tabInterviews.setAttribute('aria-pressed', String(selectedTab === 'interviews'));
@@ -941,7 +943,7 @@ export function createCoachPanel(entry) {
     focus: () => input.focus(),
     isStreaming: () => streaming,
     isChatVisible: () => selectedTab === 'chat',
-    setVisible(on) { interviews.show(on && selectedTab === 'interviews'); },
+    setVisible(on) { interviews.show(on && selectedTab === 'interviews'); if (!on) voice.stop(); },
     openInterview(id = null) { showTab('interviews'); interviews.open(id); },
     slug,
     attach: attachRun,

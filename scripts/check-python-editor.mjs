@@ -104,8 +104,8 @@ try {
   ` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: origin + '/#/lld' });
-  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'LLD launcher');
-  await evaluate("document.querySelector('.th-practice').click()");
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), 'LLD launcher');
+  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-coach') && !!document.querySelector('.editor-wrap') && !!window.monaco?.editor.getModels().length"), 'practice editor');
   const practiceHash = await evaluate('return location.hash');
   await checkEditorEdges('LLD practice');
@@ -215,7 +215,7 @@ try {
   await until(() => evaluate("return !!document.querySelector('.pr-editor .monaco-editor') && !!document.querySelector('.pr-source-link')"), 'branch from completed LLD mock');
   assert.equal(await evaluate("return monaco.editor.getModels()[0].getValue()"),'# Candidate design\n','branch begins with the mock code');
   assert.equal(await evaluate("return document.querySelector('.pr-source-link').getAttribute('href')"),'#/lld/lld-locker/1760000000000-00000010');
-  assert.match(await evaluate("return document.querySelector('.pr-feedback').textContent"),/No mock feedback/);
+  assert.match(await evaluate("return document.querySelector('.pr-feedback-pane').textContent"),/No mock feedback/);
   await evaluate("monaco.editor.getModels()[0].setValue('# Changed in independent practice');");
   await until(() => evaluate("return document.querySelector('.pr-save').textContent==='Saved'"),'branch saves independently');
   assert.equal(await evaluate("return (await(await fetch('/api/lld/lld-locker/1760000000000-00000010/code')).json()).code"),'# Candidate design\n','original mock code is unchanged');

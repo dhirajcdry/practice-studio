@@ -12,6 +12,18 @@ test('noise and short Whisper hallucinations are empty; real short answers survi
   assert.equal(filterTranscript('[typing] Two pointers. (clicking)'), 'Two pointers.');
 });
 
+test('a phrase made only of video sign-offs is dropped; real speech around them is kept', () => {
+  for (const text of ['you have a good time, and I will see you in the next', 'I\'ll see you in the next video.', 'Thanks for watching, and see you in the next one!',
+    'Please like and subscribe.', 'Subtitles by the Amara.org community', 'Bye. See you in the next video. Have a great day.']) {
+    assert.equal(filterTranscript(text), '', text);
+  }
+  for (const text of ['Thanks, have a good day.', 'See you next time.', 'Thank you for listening.', 'Like.', 'Have a good time.',
+    'We will see in the next step whether the heap is needed.', 'I will see you in the next round, thanks.',
+    'So, first of all, to make sure that you have a good time, and I will see you in the next make sure that we are aligned on the input.']) {
+    assert.equal(filterTranscript(text), text, text);
+  }
+});
+
 test('audio requires duration, sustained signal, and energy together', () => {
   const speech = { voicedMs: 300, sustainedMs: 300, energy: 300 * 0.02 ** 2 };
   assert.equal(hasVoicedAudio(speech), true);

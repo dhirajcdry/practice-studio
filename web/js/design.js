@@ -4,7 +4,9 @@ import { relativeInterviewDate } from './interview-format.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { screenHeader, paneHeader } from './ui/headers.js';
 import { practiseFromMock } from './ui/button.js';
-import { createMockTimeControls, mockTimeReading } from './ui/mock-time.js';
+import { createMockSessionControls } from './ui/mock-session.js';
+import { createPhaseStepper } from './ui/phase-stepper.js';
+import { createPinnedStatement } from './ui/pinned-statement.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { bindBoardTools, showWorkspaceAction } from './workspace-tools.js';
 import { loadExcalidraw, boardTools } from './whiteboard.js';
@@ -48,6 +50,7 @@ import { createBadge } from './ui/badge.js';
 import { createSpeechStream } from './speech-stream.js';
 import { createVoicePanel, answerModeSwitch, micToggle, paintMicToggle, replayButton, interviewerSilentNote } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
+import { presenceOf } from './voice-loop.js';
 import { createSpeaker, turnDecision, speechSupported } from './speech.js';
 import { designDraftNotice } from './design-draft.js';
 import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft, remainingDraft } from './drafts.js';
@@ -103,7 +106,9 @@ export function designIdFromHash(hash = location.hash) {
  */
 function titleOf(item) {
   const prompt = typeof item.prompt === 'string' ? item.prompt.trim() : '';
-  return prompt || 'No problem was set — this one was closed before the interviewer spoke';
+  // The server names it (the problem's or preset topic's title); the prompt is the statement.
+  const title = typeof item.title === 'string' ? item.title.trim() : '';
+  return prompt ? title || prompt : 'No problem was set — this one was closed before the interviewer spoke';
 }
 
 function countLabel(n) {
@@ -111,9 +116,9 @@ function countLabel(n) {
   return `${n} question${n === 1 ? '' : 's'}`;
 }
 
-/** Date · level · questions · whether it was graded. Every part of it is known, not guessed. */
+/** Level · track, as on every mock screen, then date and questions. Every part of it is known, not guessed. */
 function metaOf(item) {
-  return [item.level?.toUpperCase(), item.startedAt ? relativeInterviewDate(item.startedAt) : 'Date not recorded', countLabel(item.turns)].filter(Boolean);
+  return [item.level?.toUpperCase(), 'System design', item.startedAt ? relativeInterviewDate(item.startedAt) : 'Date not recorded', countLabel(item.turns)].filter(Boolean);
 }
 
 function designEntry(kind, text = '', elapsedMs, replay) {
@@ -154,8 +159,10 @@ function replayTurns(turns, entry, log, beganAt) {
 async function showDesignReport(id, transcript) {
   const data = await callJson(`/api/design/${id}`);
   if (!data.report) throw Error('No completed report was recorded.');
-  return openReport({ title: data.prompt || 'System design', record: { ...data, discipline: 'design' }, report: data.report, transcript,
+  return openReport({ title: titleOf(data), record: { ...data, discipline: 'design' }, report: data.report, transcript,
     debriefText: data.turns.find(t => t.kind === 'debrief')?.asked || '',
+    // The last saved scene, drawn as the report's Final board.
+    board: Array.isArray(data.elements) ? data.elements : [],
     followups: {
       load: async () => (await callJson(`/api/design/${id}`)).followups || [],
       send: (body, onEvent) => streamInterviewRequest('/api/design/ask', { ...body, interviewId: id }, onEvent),
@@ -181,7 +188,7 @@ function mountLibrary(host, { onNew, onOpen }) {
       presets = new Set((topics || []).map(topic => topic.slug));
       return { presetSlugs: presets, interviews: (interviews || []).map(item => ({
         id: item.id, slug: item.topicSlug, startedAt: item.startedAt, debriefed: item.debriefed,
-        title: typeof item.prompt === 'string' && item.prompt.trim() ? item.prompt.trim() : titleOf(item),
+        title: titleOf(item),
       })) };
     },
     openInterview: item => onOpen(item.id),
@@ -190,6 +197,8 @@ function mountLibrary(host, { onNew, onOpen }) {
       onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: chosen.statement, title: chosen.title,
         problemSlug: presets.has(chosen.slug) ? undefined : chosen.slug, requestId: state.startRequestId });
     },
+    // A brief the learner wrote is the prompt itself; the server names it from the text.
+    startOwnMock: (brief, state) => onNew({ level: state.targetLevel, minutes: state.minutes, answerMode: state.mode, prompt: brief, requestId: state.startRequestId }),
   });
 }
 
@@ -231,30 +240,37 @@ function mountReview(host, data, { onBack }) {
           : 'It can still be resumed.') }));
   }
 
+  // Reading back, the transcript can be narrowed to one phase. Rows without a phase
+  // (notes such as "never debriefed", silences) are never hidden by it.
   const phaseFilter = createSelect({ label: 'Transcript phase', value: '', options: [['', 'All phases'], ...PHASES], onChange: event => {
-    for (const item of log.children) item.hidden = Boolean(event.target.value && item.dataset.phase !== event.target.value);
+    const value = event.target.value;
+    for (const item of log.children) item.hidden = Boolean(value && item.dataset.phase && item.dataset.phase !== value);
   } });
   const canvasHost = el('div', { class: 'dz-canvas ui-editor-surface' },
     el('div', { class: 'dz-loading mono', text: 'Loading the board…' }));
   const boardControls = boardTools(() => boardApi);
+  // A failed header action is reported under the header it came from, never as a transcript turn.
+  const reviewStatus = el('p', { class: 'dz-review-status ui-inset', role: 'alert', hidden: true });
+  const reviewFailed = message => { reviewStatus.textContent = message || ''; reviewStatus.hidden = !message; };
 
   const view = el('div', { class: 'dz-view ui-workspace' }, [
-    screenHeader({ back: { onClick: onBack, label: 'Back to interviews', className: 'dz-back' }, crumb: 'Interviews', title: titleOf(data),
+    screenHeader({ back: { onClick: onBack, label: 'Back to System design', className: 'dz-back' }, crumb: 'System design', title: titleOf(data),
       badges: [createBadge(data.debriefed ? 'Debriefed' : 'In progress', data.debriefed ? 'good' : 'neutral')],
       meta: metaOf({ ...data, turns: data.turns?.length ?? 0 }),
       actions: {
-        primary: data.debriefed ? { label: 'View report', variant: 'primary', onClick: () => showDesignReport(data.id, log).catch(error => entry('d', error.message)) } : null,
+        primary: data.debriefed ? { label: 'View report', variant: 'primary', onClick: () => { reviewFailed(''); showDesignReport(data.id, log).catch(error => reviewFailed(`The report could not be opened: ${error.message}`)); } } : null,
         secondary: [data.topicSlug ? { label: 'Learning notes', onClick: () => openLearningNotes(data.topicSlug, titleOf(data)) } : null,
           practiseFromMock({ variant: data.debriefed ? 'secondary' : 'primary', onClick: async event => {
-            const button = event.currentTarget; button.disabled = true;
+            const button = event.currentTarget; button.disabled = true; reviewFailed('');
             try { await startPracticeFromMock({ discipline: 'design', slug: data.topicSlug, interviewId: data.id }); }
-            catch (error) { button.disabled = false; entry('d', error.message); }
+            catch (error) { button.disabled = false; reviewFailed(`Practice could not start: ${error.message}`); }
           } })],
       },
     }),
+    reviewStatus,
     el('div', { class: 'dz-split' }, [
       el('section', { class: 'ui-board-pane has-board-tools is-review' }, [paneHeader({ title: 'Whiteboard', tools: boardControls }), canvasHost]),
-      el('div', { class: 'dz-side ui-pane' }, [
+      el('div', { class: 'dz-side card ui-pane' }, [
         paneHeader({ title: 'Transcript', tools: [phaseFilter] }),
         log,
       ]),
@@ -343,31 +359,32 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
   });
   let pausedElapsed = 0;
   const clock = el('span', { class: 'mono dz-clock' });
-  const timeControls = createMockTimeControls({ clock, extend: async change => {
-    const result = await callJson('/api/design/extend', { interviewId, ...change });
-    if (!destroyed) { minutes = result.state.minutes; paintClock(); }
-  }, onChange: () => { if (!destroyed) { paintDraft(); if (!timeControls.saving) void modeControl.flush(); } } });
+  // The same clock, Pause/Resume toggle, Finish and paused band as an LLD or coding mock.
+  // Availability stays imperative here: every guard below is unchanged.
+  const session = createMockSessionControls({ clock, pauseClass: 'dz-pause', finishClass: 'dz-done',
+    extend: async change => {
+      const result = await callJson('/api/design/extend', { interviewId, ...change });
+      if (!destroyed) { minutes = result.state.minutes; paintClock(); }
+    },
+    onTimeChange: () => { if (!destroyed) { paintDraft(); if (!timeControls.saving) void modeControl.flush(); } },
+    onPause: () => togglePause(), onFinish: () => finish() });
+  const timeControls = session.timeControls;
   function paintTimeControls() {
     timeControls.update({ disabled: !interviewId || busy || timeControls.saving || draining || modeControl.saving || changingPause || finishing, hidden: debriefed });
   }
-  const pauseButton = el('button', { class: 'btn btn--quiet dz-pause', type: 'button', text: 'Pause', disabled: true, onclick: () => togglePause() });
-  tooltip(pauseButton, () => paused ? 'Restart the timer and microphone' : 'Stop the timer and microphone without ending the interview');
-  const phaseBar = el('div', { class: 'dz-phases', role: 'group', 'aria-label': 'Interview phase' }, PHASES.map(([id, label]) => {
-    const control = el('button', {
-      class: 'btn btn--quiet dz-phase', type: 'button', dataset: { phase: id },
-      'aria-pressed': String(id === phase),
-      text: label,
-      onclick: () => { phase = id; paintPhases(); },
-    });
+  session.setPauseDisabled(true);
+  // The candidate tells the interviewer which phase they are in by pressing a step.
+  const phaseStepper = createPhaseStepper({ phases: PHASES, stepClass: 'dz-phase', className: 'dz-phases', onSelect: id => { phase = id; paintPhases(); } });
+  const phaseBar = phaseStepper.root;
+  for (const control of phaseBar.querySelectorAll('.dz-phase')) {
+    const label = PHASE_LABELS.get(control.dataset.phase);
     tooltip(control, `Tell the interviewer you have moved on to ${label.toLowerCase()}`);
-    return control;
-  }));
+  }
 
   function paintPhases() {
-    for (const button of phaseBar.querySelectorAll('.dz-phase')) {
-      button.setAttribute('aria-pressed', String(button.dataset.phase === phase));
-    }
+    phaseStepper.update({ current: phase });
   }
+  paintPhases();
 
   const input = el('textarea', {
     class: 'dz-input', rows: '3', placeholder: 'Talk through your approach',
@@ -434,7 +451,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     // The microphone is held shut until a recovered answer is sent or edited, so going quiet sends nothing.
     const held = designDraftNotice({ text: input.value, pending: pendingDraft, mode }).visible;
     const speaking = Boolean(speaker?.speaking);
-    voiceView.update({state: captureState, draft: input.value, partial: partialWords, busy, sending: draining, paused, held: held || (replyFailed && Boolean(input.value.trim()))});
+    // The paused band speaks for the interview; the voice bar does not add "Voice paused".
+    voiceView.update({state: captureState, draft: input.value, partial: partialWords, busy, sending: draining, paused: false, away: Boolean(voice?.awaitingReturn?.()), held: held || (replyFailed && Boolean(input.value.trim()))});
     sendVoice.hidden = speaking || !(input.value.trim() || partialWords);
     sendVoice.disabled = busy || timeControls.saving || draining || paused || changingPause || modeControl.saving || modeControl.pending;
     typeLink.hidden = speaking;
@@ -498,10 +516,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     } catch (error) { say(error.message); return false; }
     finally { draining = false; if (!destroyed) { paintDraft(); sendButton.disabled = !input.value.trim() || busy || paused; } }
   }
-  const doneButton = el('button', {
-    class: 'btn btn--quiet dz-done', type: 'button', text: 'Finish', 'data-danger': 'true',
-    onclick: () => finish(),
-  });
+  const doneButton = session.finishButton;
 
   function say(what) { status.textContent = what; }
 
@@ -515,7 +530,6 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     }
     const { node, body } = designEntry(kind, text, elapsedMs, replayReply);
     node.dataset.phase = phase;
-    node.hidden = Boolean(livePhaseFilter.value && phase !== livePhaseFilter.value);
     log.append(node);
     if (kind === 'a') following = true;
     if (following) log.scrollTop = log.scrollHeight;
@@ -529,7 +543,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     busy = true; speechInterrupted = false; replySpeech = createSpeechStream(speaker);
     if (!idle) replyFailed = false;
     paintDraft();
-    pauseButton.disabled = true;
+    session.setPauseDisabled(true);
     practise.disabled = true;
     sendButton.disabled = true;
     doneButton.disabled = true;
@@ -638,7 +652,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       paintDraft();
       sendButton.disabled = !input.value.trim();
       doneButton.disabled = paused;
-      pauseButton.disabled = !interviewId || debriefed;
+      session.setPauseDisabled(!interviewId || debriefed);
       practise.disabled = !interviewId;
       void modeControl.flush();
       if (pauseWhenIdle) { pauseWhenIdle = false; if (!paused && !destroyed) togglePause(); }
@@ -684,44 +698,42 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     closeMic();
     speaker?.cancel();
     view.querySelector('.dz-compose').hidden = true;
-    phaseBar.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    phaseStepper.update({ disabled: true });
     api?.updateScene({ appState: { viewModeEnabled: true } });
     doneButton.disabled = true;
-    doneButton.textContent = 'View report';
-    doneButton.removeAttribute('data-danger');
-    doneButton.classList.replace('btn--quiet', 'btn--primary');
-    view.querySelector('.ui-header-actions').append(doneButton);
-    doneButton.disabled = false;
-    doneButton.onclick = () => showDesignReport(interviewId, log).catch(error => say(error.message));
-    await showDesignReport(interviewId, log).catch(error => say(error.message));
-    pauseButton.hidden = true; paintTimeControls();
+    // Now a review: the session controls go, View report leads, Learning notes returns.
+    paintClock(); paintTimeControls();
+    practise.disabled = false;
+    header.setActions({ primary: el('button', { class: 'btn btn--primary dz-report', type: 'button', text: 'View report',
+      onclick: () => { headerFailed(''); showDesignReport(interviewId, log).catch(error => headerFailed(`The report could not be opened: ${error.message}`)); } }),
+    secondary: [learningNotesAction(), practise] });
+    await showDesignReport(interviewId, log).catch(error => headerFailed(`The report could not be opened: ${error.message}`));
     if (clockTimer) clearInterval(clockTimer);
   }
 
   function paintPaused() {
     paintDraft();
-    pauseButton.textContent = paused ? 'Resume' : 'Pause';
-    pauseButton.setAttribute('aria-label', paused ? 'Resume interview' : 'Pause interview');
-    pauseButton.setAttribute('aria-pressed', String(paused));
     clock.classList.toggle('paused', paused);
+    view.classList.toggle('is-paused', paused);
+    // The toggle's icon and label and the paused band follow from the clock paint.
     paintClock();
     input.disabled = paused;
     sendButton.disabled = !input.value.trim() || paused || busy;
     doneButton.disabled = paused || busy;
     typeLink.disabled = paused;
     voiceLink.disabled = paused || !speechSupported() || !voice;
-    phaseBar.querySelectorAll('button').forEach(button => { button.disabled = paused; });
+    phaseStepper.update({ disabled: paused });
     if (voice) voice.root.hidden = paused;
     api?.updateScene({ appState: { viewModeEnabled: paused } });
-    // Voice mode's own bar already says it is paused.
-    say(paused && !isVoice() ? 'Paused' : '');
+    // The paused band says it once; the composer does not repeat it.
+    say('');
     if (isVoice()) paintVoice();
   }
 
   async function togglePause() {
     if (!interviewId || busy || timeControls.saving || changingPause || destroyed || debriefed) return;
     changingPause = true;
-    pauseButton.disabled = true;
+    session.setPauseDisabled(true);
     closeMic(); replySpeech?.cancel(); speaker?.cancel();
     try {
       if (paused) {
@@ -736,7 +748,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       }
       if (!destroyed) paintPaused();
     } catch (error) { say(`Could not ${paused ? 'resume' : 'pause'}: ${error.message}`); }
-    finally { changingPause = false; pauseButton.disabled = false; paintTimeControls(); }
+    finally { changingPause = false; session.setPauseDisabled(false); paintTimeControls(); }
     if (!paused) openMic();
   }
 
@@ -753,15 +765,16 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
   // Coding mocks get the same offer from the idle tick; it may still choose silence.
   function offerStepIn() {
     const now = Date.now();
+    // Not to an empty room (the mic's presence rule). Away counts as activity, so
+    // returning starts the quiet wait afresh rather than stepping in at once.
+    if (!presenceOf().present) { lastActivity = now; return; }
     if (busy || timeControls.saving || draining || replyFailed || debriefed || !interviewId || changingPause || modeControl.pending || modeControl.saving || speaker?.speaking || candidateLoud || phrasesPending > 0 || input.value.trim()) return;
     if (now - lastActivity < STEP_IN_AFTER_MS || now - lastStepIn < STEP_IN_COOLDOWN_MS) return;
     lastStepIn = now;
     void runTurn('/api/design/turn', { interviewId, said: '', phase, elements, mode: mode === 'type' ? 'typed' : 'voice' }, { idle: true });
   }
   function paintClock() {
-    const reading = mockTimeReading(minutes, paused ? pausedElapsed : startedAt ? Math.max(0, Date.now() - startedAt) : 0);
-    clock.textContent = reading.text;
-    timeControls.root.querySelector('button').setAttribute('aria-label', `${reading.text} ${reading.label}. Add time`);
+    const reading = session.update({ minutes, elapsedMs: paused ? pausedElapsed : startedAt ? Math.max(0, Date.now() - startedAt) : 0, paused, ended: debriefed });
     clock.classList.toggle('over', reading.remaining <= 0);
   }
   function tickClock() {
@@ -801,32 +814,46 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
   const canvasHost = el('div', { class: 'dz-canvas ui-editor-surface' },
     el('div', { class: 'dz-loading mono', text: 'Loading the whiteboard…' }));
   const boardControls = boardTools(() => api);
-  const livePhaseFilter = createSelect({ label: 'Transcript phase', value: '', options: [['', 'All phases'], ...PHASES], onChange: event => {
-    for (const item of log.children) item.hidden = Boolean(event.target.value && item.dataset.phase !== event.target.value);
-  } });
   const practise = practiseFromMock({ variant: 'secondary',  disabled: !interviewId, onClick: async event => {
     const button = event.currentTarget; button.disabled = true;
     try {
       clearTimeout(sceneTimer);
       if (interviewId && !debriefed) await persistScene();
       await startPracticeFromMock({ discipline: 'design', interviewId });
-    } catch (error) { button.disabled = false; modeStatus.hidden = false; modeStatus.textContent = error.message; }
+    } catch (error) { button.disabled = false; headerFailed(`Practice could not start: ${error.message}`); }
   } });
 
   const modelPicker = createCoachModelPicker({ compact: true });
   // The same footer as untimed practice: mode and model on the left, microphone and Send
   // on the right. Errors sit above it, where voice mode can see them too.
   const composer = createComposer({ className: 'dz-compose ui-pane-controls', content: [typePanel, voicePanel], leading: [voiceLink, modelPicker.root], trailing: [typeActions], notices: [status, modeStatus, modeRetry] });
-  // The problem is the interview's name, as it is on the track home and in the review.
-  const problemTitle = (typeof resumed?.prompt === 'string' && resumed.prompt.trim()) || title;
+  // The problem's title is the interview's name, as it is on the track home and in the
+  // review; the public statement (the prompt) is pinned above the phase stepper instead.
+  const statementText = (typeof resumed?.prompt === 'string' && resumed.prompt.trim()) || (typeof prompt === 'string' && prompt.trim()) || '';
+  const problemTitle = (typeof resumed?.title === 'string' && resumed.title.trim()) || title || statementText;
+  const pinned = createPinnedStatement(statementText);
+  // Learning notes is past performance: in a live mock it waits in More actions.
+  const learningNotesAction = () => el('button', { class: 'btn btn--quiet dz-learning-notes', type: 'button', text: 'Learning notes', onclick: async () => {
+    if (!interviewId) return;
+    headerFailed('');
+    try { const saved = await callJson(`/api/design/${interviewId}`); if (saved.topicSlug) openLearningNotes(saved.topicSlug, titleOf(saved)); else headerFailed('No problem notes are associated with this interview.'); }
+    catch (error) { headerFailed(`Learning notes could not be opened: ${error.message}`); }
+  } });
+  // Header actions report failure under the header, never as a transcript turn; the
+  // composer, where other errors go, is hidden once the interview is a review.
+  const headerStatus = el('p', { class: 'dz-review-status ui-inset', role: 'alert', hidden: true });
+  const headerFailed = message => { headerStatus.textContent = message || ''; headerStatus.hidden = !message; };
+  const header = screenHeader({ back: { onClick: onBack, label: 'Back to System design', className: 'dz-back' }, crumb: 'System design', title: problemTitle || 'System design', meta: [level, 'System design'],
+    status: session.root, actions: { overflow: [practise, learningNotesAction()] } });
   const view = el('div', { class: 'dz-view ui-workspace' }, [
-    screenHeader({ back: { onClick: onBack, label: 'Back to interviews', className: 'dz-back' }, crumb: 'Interviews', title: problemTitle || 'System design', meta: problemTitle ? [level, 'System design'] : [level],
-      status: timeControls.root, actions: { secondary: [pauseButton, doneButton, { label: 'Learning notes', onClick: async () => { if (!interviewId) return; try { const saved = await callJson(`/api/design/${interviewId}`); if (saved.topicSlug) openLearningNotes(saved.topicSlug, titleOf(saved)); else entry('d', 'No problem notes are associated with this interview.'); } catch (error) { entry('d', error.message); } } }], overflow: [practise] } }),
+    header,
+    headerStatus,
     el('div', { class: 'dz-split' }, [
       el('section', { class: 'ui-board-pane has-board-tools' }, [paneHeader({ title: 'Whiteboard', tools: boardControls }), canvasHost]),
-      el('div', { class: 'dz-side ui-pane' }, [
-        paneHeader({ title: 'Interview', tools: [livePhaseFilter] }),
-        el('div', { class: 'dz-phase-actions' }, phaseBar),
+      el('div', { class: 'dz-side card ui-pane' }, [
+        paneHeader({ title: 'Interviewer' }),
+        el('div', { class: 'dz-phase-actions ui-toolbar' }, [pinned.root, phaseBar]),
+        session.band,
         log,
         composer,
       ]),
@@ -863,6 +890,8 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
   try {
     voice = createVoiceControl({
       reportEmptyTake: false, maxTakeMs: 60 * 60000,
+      // voice.js holds the mic off while you are away; returning re-runs this screen's gate.
+      awayNote: false, onReturn: () => { if (isVoice()) openMic(); else voice.start(); },
       onSettled: () => { if (modeDrain) { modeDrain = false; pendingDraft = Boolean(input.value.trim()); if (!destroyed) { paintDraft(); openMic(); } } },
       getSlug: () => '',
       logTakes: false,
@@ -902,7 +931,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
           chars: input.value.trim().length,
           speaking: Boolean(speaker?.speaking),
           busy: busy || timeControls.saving || draining,
-          pending,
+          pending, armed: value.armed,
         });
         if (decision === 'send') answer();
       },
@@ -967,7 +996,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       }
       log.scrollTop = log.scrollHeight;
       tickClock();
-      pauseButton.disabled = false;
+      session.setPauseDisabled(false);
       input.focus();
       openMic();
       return;
@@ -984,7 +1013,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       if (destroyed) return;
       destroyed = true;
       disposeSplit(); conversationView.dispose();
-      inputSize.dispose(); modelPicker.dispose(); unwatchDraft(); timeControls.dispose();
+      inputSize.dispose(); modelPicker.dispose(); unwatchDraft(); session.dispose(); phaseStepper.dispose(); pinned.dispose(); header.dispose();
       clearTimeout(sceneTimer);
       if (clockTimer) clearInterval(clockTimer);
       if (turnTimer) clearInterval(turnTimer);
@@ -1049,7 +1078,7 @@ export function initDesign(host, { level = 'L4', minutes = 45, interviewId = nul
   function failed(message) {
     replace(host, el('div', { class: 'dzl' }, el('div', { class: 'dzl-empty' }, [
       message, ' ',
-      el('button', { class: 'btn btn--quiet linkbtn', type: 'button', text: 'Back to all interviews', onclick: showLibrary }),
+      el('button', { class: 'btn btn--quiet linkbtn', type: 'button', text: 'Back to System design', onclick: showLibrary }),
     ])));
     return { destroy() {} };
   }

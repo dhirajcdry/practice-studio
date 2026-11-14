@@ -51,6 +51,18 @@ and use row spacing with inset content rather than stretching cards beyond their
 - `createSelect({ label, options | groups, value, onChange, compact })`: the only dropdown. Anchored menu, keyboard, type-ahead. Exposes `value`, `disabled`, `setOptions`, `setGroups`, `dispose`, and emits `change`.
 - `createMenu`: the anchored popover the select is built on, for action menus.
 - `createPopover`: a small nonmodal editor in the browser top layer; outside click and Escape dismiss it without expanding its toolbar anchor.
+- `createMockSessionControls({ clock, extend, onPause, onFinish })` (`mock-session.js`): the one
+  session cluster for every timed mock (coding, LLD, system design): the clock as the Add time
+  trigger, one Pause/Resume icon toggle that stays in the header in both states, Finish, and a
+  paused band ("Paused · 2:00 left") with Resume. Presentation only; the screen keeps its guards
+  and calls `update()`. While paused, the voice bar does not also say "Voice paused".
+- `createPhaseStepper({ phases, onSelect })` (`phase-stepper.js`): equal-width steps at
+  `--text-sm`, a check node on each finished step's rule, accent on the current one; rows wrap
+  balanced (seven steps as 4 + 3). Passive for coding/LLD; with `onSelect` each step is a real
+  button with `aria-current="step"` (system design).
+- `screenHeader` is built once. `header.setActions(actions, status)` swaps only the action rail
+  when the state flips (live to review) and disposes the old More actions menu; never rebuild a
+  header on a state tick.
 - `createTabs` / `createBadge` (`primitives.js`): tab bars with roving focus; status chips.
 - `createActionRow({ content, trailing, onClick, className })`: clickable content rows. Uses shared row/inset geometry and grows with its content. Never apply `.btn` to a multiline content row: `.btn` deliberately has compact toolbar geometry.
 - `icon(name, size)` (`icon.js`): stroke icons in `currentColor`. Add a path there; never use Unicode glyphs (♫ ⌨ ▷ ◈) as icons.
@@ -229,6 +241,29 @@ action (Duplicate or Delete). Under 420px each label goes above its field.
   list of plain values was expected. The runner prints such nodes as `TreeNode(1)`
   (`readable_repr` in `server/runner/_studio_driver.py`); a node whose value cannot be read keeps
   Python's own repr. Display never changes a comparison or a verdict.
+- Frame trimming, the traceback block, the error line and millisecond formatting live in
+  `web/js/python-trace.js` (tested in `server/test/python-trace.test.mjs`), shared by both panels.
+
+### Run Python output (LLD mocks and practice)
+
+`web/js/python-run-output.js` (`createPythonRun`, `createPythonRunOutput`) is the one Run Python
+button and output panel for a whole Python document. It sits under the editor with the Result
+panel's classes (`.rr`, `.rr-summary`, `.rr-why`, `.rr-rows`, `.rr-field.trace`, `.rr-foot`);
+its own rules are the `.pyrun*` block in `web/css/lld.css`.
+
+- The verdict line says what the runner said: "Ran · 42 ms · exit 0", "Error · KeyError" (the
+  exception's own name, from the traceback), "Exited · 5 ms · exit 3" when a script exits non-zero
+  with no traceback, "Time limit exceeded", or "Output limit reached". Same tone tokens as the
+  Result panel. A request that never reached the runner says "The run did not happen" with the reason.
+- Printed (stdout) and Stderr (anything before the traceback) are labelled rows, omitted when empty;
+  "Nothing printed" is stated in the footer when a clean run printed nothing.
+- The traceback shows only the learner's frames (no `_studio_driver.py` or `runpy`), with the full
+  text behind "Show full traceback". The runner's `solution.py` is shown as the editor tab names it
+  (`design.py`). "Go to line N" calls the editor's `revealLine(n)`: cursor to that line, scrolled
+  into view, focused.
+- "Output truncated" is said above the rows whenever the runner reports `truncated`.
+- The close control hides the output and returns focus to Run Python; the next run shows it again.
+  While running, the panel shows the Result panel's progress bar and an elapsed clock.
 
 ## Content spacing contracts
 
@@ -257,8 +292,15 @@ than sticky overlays or hard-coded viewport-height subtraction. The visual lint
 requires a visible scroll region of at least 80px on desktop and rejects vertical
 document overflow when a desktop workspace is shown. Mobile may scroll the page
 between stacked panes, while each visible pane still owns its bounded content
-region. Embedded coding layouts are deliberately parent-viewport based and are
-not `.ui-pane` surfaces unless they adopt this full contract.
+region. The live coding mock in the sidebar's Interviews tab (`.ci-embedded`) follows
+the same rule without the `.ui-pane` theme surface: header and composer take their
+own space and only `.ci-log` scrolls between them. Never pin a header or composer
+over a transcript with `position:sticky` and a background or shadow "mask"; themes
+with transparent or ruled surfaces show the text through. A finished sidebar
+interview reads as one page in the sidebar's scroller. The visual states
+`interviewVoiceLong*` and `*Transcript` measure that no transcript line is painted
+under or around the header or composer, that the newest turn's actions are whole at
+the bottom, and that Jump to latest stays 8px clear of the composer and turn actions.
 
 Appearance classes must not change layout: `hover-surface` supplies hover feedback,
 never padding or negative margins. Themes own color and shape; layout owns space.
@@ -375,7 +417,8 @@ The browser warns before unloading with unfinished capture or failed audio.
 ### Untimed practice
 
 The workspace header includes a count-up stopwatch with Start/Pause/Resume. It has no
-deadline and never pauses the coach or microphone. New and legacy sessions begin paused;
+deadline and never pauses the coach or microphone. Before its first start it reads
+**Untimed** with only Start (no time, never "Paused"); "Paused" appears only after it has run. New and legacy sessions begin stopped;
 the visible page renews a short server lease while running, and hiding/leaving the page
 pauses it. An expired lease is reopened paused, with no invented historical time. The
 accumulated total survives reloads and server restarts; reopening always pauses and
@@ -448,7 +491,7 @@ verifies the shared behavior in an isolated browser with fake providers.
 
 ### Practice from an attempted mock
 
-LLD and system-design history rows (“Practise from it” in a problem's detail), the
+LLD and system-design history rows (“Practise it” on the track home), the
 Next session card (“Practise this”), open mocks and report sheets branch a practice copy. `startPracticeFromMock` passes a typed source identity;
 `POST /api/practice/start` resolves the authoritative saved work on the server.
 An active editor flushes before branching. Finished mocks stay read-only.
@@ -456,8 +499,25 @@ An active editor flushes before branching. Finished mocks stay read-only.
 The server publishes a fully initialized practice directory with a single rename.
 It saves the source problem, code/latest board, compact conversational evidence and
 feedback in `source.json`; subsequent practice edits cannot change that snapshot or
-the mock. The practice header links to the original, and Problem and mock feedback
-contains the saved debrief. The coach receives this evidence on explicit questions,
+the mock. The practice header links to the original.
+
+The practice coach pane's header is a tablist: **Coach · Problem · Mock feedback** (the last
+only for a session with a `source`). Problem renders the recorded statement as sanitised
+Markdown with the statement typography (`.rich`, `structureStatement`); an empty one says
+"No problem recorded yet". Mock feedback renders `sourceSnapshot.report.judgement` with the
+report sheet's own exported pieces (signal scale, Fix these, box score with evidence times,
+What went well), and its times jump to the saved mock conversation at the end of the tab.
+Without a structured judgement it shows the written feedback and says so. Each tab is its
+own `.ui-pane-scroll` (hidden ones do not count toward the pane's single scroller), keeps its
+own scroll, and switching never moves the conversation; the composer belongs to Coach only.
+
+Mocks pin the PUBLIC statement (`ui/pinned-statement.js`) above the phase stepper: LLD uses
+`entry.statement`, design its `prompt`. It clamps to two lines with a drawn Show more.
+Interviewer-only material (`facts`, `curveball`, a design problem's private facts) never
+reaches the client. Pane titles: mock "Interviewer", practice "Coach", review "Transcript".
+Meta lines read "L4 · Low-level design · Python" / "L4 · System design"; the crumb and back
+control name the track home they lead to. A fresh practice is "Start practising"; every
+branch from a mock is "Practise from this mock". The coach receives this evidence on explicit questions,
 with large transcript truncation labelled honestly. Missing feedback stays missing.
 
 
@@ -604,21 +664,56 @@ Menus accept `icon` on an item or group as text or as a function returning a fre
 
 `#/lld` and `#/design` share `web/js/track-home.js` and `web/css/track-home.css`, fed by
 `GET /api/track-home?discipline=` (`server/learning/track-home.mjs`) plus the track's own
-interview and practice lists. The page is deliberately small: two boxes and a list, on one
-centred 1000px column.
+interview and practice lists. The shaping (status lines, default selection, counts, the
+skill trend) is pure, in `web/js/track-home-model.js`, tested by
+`server/test/track-home-model.test.mjs`. One centred column up to 1320px, in this order:
 
-- **Practise** and **Mock** sit side by side. Each offers one open choice (bring your own
-  problem / surprise me), selected by default, and three catalog problems; Show others
-  rotates them. Mock suggests problems not sat yet, Practise the ones already mocked.
-  Mock also holds the shared setup (length, answer mode, level, model) and Start mock;
-  Practise has Start practising. Choosing a problem never moves the Start button.
-- **What you've done** lists every mock and practice session, newest first, one line each:
-  title, Mock or Practice, the score if the mock has one (Unfinished if it was left open),
-  and the date. The row opens it. A finished mock also offers Practise it.
+- **Header.** The track title in the display font, and one quiet line of counts from the
+  records ("3 problems · 2 mocks finished · 1 unfinished · last session yesterday"). A part
+  that is zero or unknown is left out.
+- **Continue.** The newest unfinished mock, else the latest practice session, as one slim
+  card: an accent dot, "Mock · <title>", a quiet "started today 12:56", and Resume (or
+  Continue) at the right. Absent when there is neither; no placeholder.
+- **Problems.** A list (36%, at least 320px) and a panel beside it. The list holds only
+  catalog problems, each with a status line built from its records ("Not tried yet",
+  "Mocked 2 times · last: Hire · 3 days ago", "Mock unfinished"). It is a group of
+  `aria-pressed` toggles with roving focus; arrows, Home and End move the selection, and
+  choosing the chosen row again, Escape, or the panel's Clear goes back to nothing chosen.
+  Nothing is chosen on arrival. The panel always offers both ways in, as two equal wells:
+  Practise (answer mode, the coach model, and the target level only where it changes
+  something: system design practice coaches to it, and a surprise problem is prepared for
+  it; never a clock) and Mock (the shared `createInterviewSetup`). Both wells are built
+  once and moved between panels, never rebuilt, so settings, a typed brief and a pending
+  start survive a change of problem. With a problem chosen the panel shows its title,
+  public statement (`publicProblem` only: never the interviewer's facts or curveball),
+  its own sessions and Clear, and both ways in act on it. With none chosen ("Start
+  something new") each well has a Problem picker: Surprise me (the default; Studio prepares
+  an unseen problem, and Practise then opens it untimed) or My own problem, which shows a
+  brief field in the shared composer surface (drafts are kept). A mock on your own brief
+  exists only where the track passes `startOwnMock` (system design); an LLD mock needs a
+  prepared scenario, so its well offers Surprise me alone. A practised surprise problem is
+  saved like any prepared one, so it joins the library and later surprises avoid it.
+  Side by side, the panel sticks under the app bar (`--th-bar`, measured) while the list
+  scrolls past, only when the whole panel fits in the window; one column never pins it.
+- **Where you stand** beside **History**. One row per rubric skill: the newest
+  evidence-backed rating (or "No evidence yet") and one small square per report for the last
+  five structured reports, oldest first, in the rating's tone. Above them, the
+  newest report's headline and "To move up". With no structured report the panel says so
+  and lists the skills a mock rates. History lists every session newest first, filtered
+  All / Mocks / Practice (`ui/segmented.js`), eight rows then Show all N; a row opens it and
+  a finished mock offers Practise it.
 
-Keep it this light. No skill scorecards, drills, grouped problem lists, rings, meters or
-counts here; reports hold that detail. A session without a score shows none. A page
-visit never starts a model turn.
+Every part is a floating card (`--surface-card-*`), named by a small uppercase label inside
+it; titles and the report headline use `--display`; the chosen row takes `--accent-soft`.
+The look follows the approved Desk mockup and reaches the other families through tokens.
+Under 900px of column (a container query, not the viewport) the list sits above the panel
+and Where you stand above History. No averages or scores the records do not hold; a mock
+without a structured report shows "No grade". Each part shows a quiet line while reading
+and the real error if the read fails, and is drawn once when the records arrive. The page
+sets `data-state="ready"` or `"error"` on `.th` for checks. A page visit never starts a
+model turn. Visual states: `lld*` (library, nothing chosen, own brief, cleared, selected,
+pinned while scrolled, too short to pin, one column, lower half, filters, 720px and 390px,
+empty, error) and `design*` (setup, own brief, selected, narrow) in `scripts/visual-audit.mjs`.
 
 ### Progress
 

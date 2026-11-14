@@ -130,7 +130,7 @@ body.ws-wide .coach-empty{padding-top:8px}
 @media(max-width:600px){
   body.ws-wide .topbar{padding:10px 14px;gap:8px}
   body.ws-wide .phero{padding:18px 14px 12px}
-  body.ws-wide .desc{font-family:var(--prose);padding:14px}
+  body.ws-wide .desc{font-family:var(--prose);padding:14px 14px var(--space-4)}
   body.ws-wide .ws-status{flex-basis:auto;order:0}
 }
 

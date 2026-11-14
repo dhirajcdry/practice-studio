@@ -47,7 +47,7 @@ function service(ctx) {
 }
 const keyOf = (slug, id) => `${slug}/${id}`;
 function publicState(state, busy = false) {
-  const { statement, scenario, lastCode, requests, claudeSessionId, ...rest } = state;
+  const { statement, scenario, lastCode, requests, claudeSessionId, notes, ...rest } = state;
   const generation = Object.values(requests || {}).filter(r => ['accepted', 'failed', 'completed'].includes(r.status));
   const latest = generation.at(-1) || null;
   const latestCompleted = [...generation].reverse().find(r => r.status === 'completed');
@@ -192,7 +192,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
     ...(state.discipline === 'lld' ? [['Private scenario facts; answer only what is asked',(state.scenario || lldScenario(state.slug))?.facts || '']] : []),
     ['Session decisions and unresolved questions',sessionRecord],
     ['Current workspace',{code:await readWork()}],
-    ['Current interview metadata',{phase:state.phase,mode:state.mode,minutes:state.minutes,gaps:state.gaps,curveballDone:state.curveballDone}],
+    ['Current interview metadata',{phase:state.phase,mode:state.mode,minutes:state.minutes,gaps:state.gaps,curveballDone:state.curveballDone,...(state.notes ? {yourPrivateNotes:state.notes} : {})}],
   ];
   const message = debriefing ? `${debriefPrompt(state, [], Date.now(), {includeEvidence:false})}${regrade ? `\n${REGRADE_NOTE}` : ''}` : turnPrompt(state, {
     kind, said:body.said || '', code:body.code ?? state.lastCode, full:true, includeWorkspace:false, includeScenario:false,
@@ -223,6 +223,13 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
       if (!failure && !stopped) {
         emit(guard.push(tags.flush()).text); emit(guard.flush());
       }
+      // The interviewer's private notes are saved whether or not it spoke.
+      let noted = {};
+      if (!failure && !stopped && kind !== 'debrief' && state.discipline === 'lld' && (tags.told.length || tags.design)) {
+        const fresh = tags.told.filter(line => !state.notes?.told?.includes(line));
+        state.notes = { told: [...(state.notes?.told || []), ...fresh].slice(-60), design: tags.design || state.notes?.design || null };
+        noted = { ...(fresh.length ? { told: fresh } : {}), ...(tags.design ? { design: tags.design } : {}) };
+      }
       if (!failure && !stopped && kind !== 'debrief') {
         const clean = filterTranscript(buffered);
         if (clean && !isFillerReply(clean)) { asked = buffered; stream.token(asked); }
@@ -231,7 +238,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
           // Only control tags: the interviewer chose to say nothing. The candidate's
           // words remain unanswered in the record, and the phase can still move.
           if (tags.phase) advance(state, tags.phase);
-          await record(svc, state, id, { kind: 'interviewer_silent', replyKind: kind, requestId: body.requestId, provider: choice.provider, model: choice.model });
+          await record(svc, state, id, { kind: 'interviewer_silent', replyKind: kind, requestId: body.requestId, provider: choice.provider, model: choice.model, ...noted });
         }
         silent = !asked && Boolean(buffered.trim() || tags.tagged);
       } else if (!failure && !stopped) { asked = buffered; }
@@ -250,7 +257,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
             if (tags.curveball) state.curveballDone = true;
           }
         }
-        await record(svc, state, id, { kind: failure || stopped ? 'partial' : kind, replyKind: kind, asked, requestId: body.requestId, provider: choice.provider, model: choice.model, stopped, ...(activity.length ? { activity: storedActivity(activity) } : {}), ...regraded });
+        await record(svc, state, id, { kind: failure || stopped ? 'partial' : kind, replyKind: kind, asked, requestId: body.requestId, provider: choice.provider, model: choice.model, stopped, ...(activity.length ? { activity: storedActivity(activity) } : {}), ...(failure || stopped ? {} : noted), ...regraded });
       }
       if (!failure && !stopped && kind === 'debrief' && !asked.trim()) {
         failure = 'The interviewer returned an empty debrief.';
@@ -261,6 +268,7 @@ async function generate(svc, state, id, body, kind, slot, stream, { regrade = fa
         state.claudeSessionId = null; conversation?.close?.();
       } else {
         if (asked) state.turns++;
+        if (kind !== 'debrief') state.lastReplyAt = Date.now();
         if (choice.provider === 'claude') state.claudeSessionId = sessionId;
         if (agentTools.actions.some(a => a.tool === 'edit_code' && a.ok)) state.lastCode = await readWork();
         else if (typeof body.code === 'string') state.lastCode = body.code;

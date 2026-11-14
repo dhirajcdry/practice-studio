@@ -13,16 +13,11 @@ import { firstDifferingValue } from './submission-presentation.js';
 import { el, clear, replace, dataText } from './dom.js';
 import { runCode, cancelRun } from './api.js';
 import { createCaseEditor } from './cases.js';
+import { formatMs, ownFrames, splitException, tracebackLine, traceBlock } from './python-trace.js';
+
+export { formatMs, ownFrames };
 
 /* ============================== shaping (pure) ============================== */
-
-/** `12` → `12 ms`; anything unusable → ''. */
-export function formatMs(ms) {
-  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return '';
-  if (ms < 1) return '<1 ms';
-  if (ms < 10000) return `${Math.round(ms)} ms`;
-  return `${(ms / 1000).toFixed(1)} s`;
-}
 
 function text(value) {
   if (value === null || value === undefined) return '';
@@ -120,17 +115,9 @@ export function describeDifference(expected, actual) {
   return parts.join(' ');
 }
 
-/** Exception type and its message, from the runner's one-line summary (`IndexError: ...`). */
-function splitException(message) {
-  const hit = /^([A-Za-z_][\w.]*):\s?([\s\S]*)$/.exec(String(message || '').trim());
-  return hit ? { type: hit[1], detail: hit[2].trim() } : { type: '', detail: String(message || '').trim() };
-}
-
 /** The line in solution.py the error happened on: the runner's own field, else the last frame in the file. */
 function errorLine(shaped) {
-  if (shaped.line) return shaped.line;
-  const frames = [...String(shaped.traceback || '').matchAll(/File "(?:[^"]*\/)?solution\.py", line (\d+)/g)];
-  return frames.length ? Number(frames.at(-1)[1]) : null;
+  return shaped.line || tracebackLine(shaped.traceback);
 }
 
 /**
@@ -377,55 +364,6 @@ function inputValue(input, params) {
   const lines = input.split('\n');
   if (!params.length || params.length !== lines.length) return dataText(input);
   return lines.map((line, i) => el('div', {}, [el('span', { class: 'rr-param', text: `${params[i]} = ` }), ...dataText(line)]));
-}
-
-/**
- * The frames from the learner's own file, plus the exception line. Null when that would
- * leave nothing, or would be the whole traceback anyway.
- */
-export function ownFrames(traceback) {
-  const lines = String(traceback || '').replace(/\s+$/, '').split('\n');
-  const kept = [];
-  let keep = false;
-  for (const line of lines) {
-    const frame = /^\s*File "([^"]*)", line \d+/.exec(line);
-    if (frame) { keep = /(^|\/)solution\.py$/.test(frame[1]); if (keep) kept.push(line); continue; }
-    if (/^\S/.test(line)) { keep = false; if (!/^Traceback \(most recent call last\)/.test(line)) kept.push(line); continue; }
-    if (keep && line.trim()) kept.push(line);
-  }
-  if (!kept.some(line => /solution\.py/.test(line))) return null;
-  const text = kept.join('\n');
-  const whole = lines.filter(line => !/^Traceback \(most recent call last\)/.test(line)).join('\n');
-  return text === whole ? null : text;
-}
-
-/** Text with its frames' shared indentation removed, so a traceback starts at the left edge. */
-function dedent(value) {
-  const lines = String(value).replace(/^Traceback \(most recent call last\):\n/, '').split('\n');
-  const indents = lines.filter(line => line.trim() && /^\s/.test(line)).map(line => /^\s*/.exec(line)[0].length);
-  const cut = Math.min(2, ...(indents.length ? indents : [0]));
-  return lines.map(line => (line.slice(0, cut).trim() === '' ? line.slice(cut) : line)).join('\n');
-}
-
-function traceBlock(traceback) {
-  const own = ownFrames(traceback);
-  const shown = el('pre', { class: 'rr-trace-text', text: dedent(own || traceback) });
-  const parts = [shown];
-  if (own) {
-    const full = el('pre', { class: 'rr-trace-text is-full', text: traceback, hidden: true });
-    const toggle = button({
-      label: 'Show full traceback', variant: 'quiet', className: 'rr-trace-toggle',
-      onClick: () => {
-        full.hidden = !full.hidden;
-        shown.hidden = !full.hidden;
-        toggle.setAttribute('aria-expanded', String(!full.hidden));
-        toggle.querySelector('span').textContent = full.hidden ? 'Show full traceback' : 'Show only your code';
-      },
-    });
-    toggle.setAttribute('aria-expanded', 'false');
-    parts.push(full, toggle);
-  }
-  return el('div', { class: 'rr-field trace' }, parts);
 }
 
 /** The selected case: why, then its values as labelled rows, then a quiet footer. */

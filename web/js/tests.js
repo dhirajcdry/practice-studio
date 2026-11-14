@@ -22,7 +22,7 @@ import {
   formatPercentile, submissionUrlOf, submissionsUrlOf,
 } from './submit.js';
 import { parseViz, drawViz, resolveFrame, buildTree, layoutFrames } from './viz.js';
-import { shapeTranscription, describeMicError, formatTake, phraseDecision, SILENCE_MS, MIN_PHRASE_MS, MAX_PHRASE_MS } from './voice.js';
+import { shapeTranscription, describeMicError, formatTake, phraseDecision, SILENCE_MS, MIN_PHRASE_MS, MAX_PHRASE_MS, WORD_GAP_MS, HARD_PHRASE_MS, LEAD_SILENCE_MS } from './voice.js';
 import { bindConversation, setConversationText } from './ui/conversation.js';
 import { createReply, questionNode } from './ui/turn.js';
 import { composerSend } from './ui/composer.js';
@@ -671,8 +671,14 @@ check('a pause too soon does NOT cut — a clipped word is worse than a slow one
   phraseDecision({ age: MIN_PHRASE_MS - 1, sinceLoud: SILENCE_MS + 500, hadSpeech: true }) === 'wait');
 check('ordinary hesitation is not a pause',
   phraseDecision({ age: 5000, sinceLoud: SILENCE_MS - 100, hadSpeech: true }) === 'wait');
-check('a monologue with no pauses still lands, in pieces',
-  phraseDecision({ age: MAX_PHRASE_MS + 1, sinceLoud: 0, hadSpeech: true }) === 'cut');
+check('a long monologue is cut at the next gap between words, not mid-word',
+  phraseDecision({ age: MAX_PHRASE_MS + 1, sinceLoud: 0, hadSpeech: true }) === 'wait'
+  && phraseDecision({ age: MAX_PHRASE_MS + 1, sinceLoud: WORD_GAP_MS, hadSpeech: true }) === 'cut');
+check('a monologue with no gaps at all still lands, in pieces',
+  phraseDecision({ age: HARD_PHRASE_MS + 1, sinceLoud: 0, hadSpeech: true }) === 'cut');
+check('long quiet before any speech restarts the phrase instead of being sent ahead of it',
+  phraseDecision({ age: LEAD_SILENCE_MS + 100, sinceLoud: LEAD_SILENCE_MS + 100, hadSpeech: false }) === 'drop'
+  && phraseDecision({ age: LEAD_SILENCE_MS + 100, sinceLoud: 500, hadSpeech: false }) === 'wait');
 check('silence is never transcribed, however long the microphone is open',
   phraseDecision({ age: 60_000, sinceLoud: 60_000, hadSpeech: false }) === 'drop');
 check('an open microphone that has heard nothing yet just waits',

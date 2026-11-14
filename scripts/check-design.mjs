@@ -182,6 +182,8 @@ try {
   await sleep(2500);
   const { send, evaluate, logs, close } = await cdp();
   await send('Page.enable');
+  // Headless Chrome has no OS window focus; voice listens only while the page is focused.
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Runtime.enable');
   await send('Network.enable');
   await send('Network.setCacheDisabled', { cacheDisabled: true });
@@ -278,16 +280,18 @@ try {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < 200; i++) {
       const rows = [...document.querySelectorAll('.th-item')];
-      if (rows.length) {
+      if (rows.length && document.querySelector('.th[data-state=ready]')) {
         return {
           rows: rows.length,
           kinds: rows.map((r) => r.querySelector('.th-item-kind')?.textContent.trim()),
           outcomes: rows.map((r) => r.querySelector('.th-pill')?.textContent.trim() ?? null),
           again: rows.filter((r) => r.querySelector('.th-again')).length,
-          boxes: [...document.querySelectorAll('.th-pair .th-box h2')].map(n => n.textContent.trim()),
-          picks: document.querySelectorAll('.th-box--mock .th-pick[data-slug]').length,
-          surprise: document.querySelector('.th-box--mock .th-pick:not([data-slug])')?.getAttribute('aria-pressed'),
-          newButton: document.querySelector('.th-box--mock .ci-start')?.textContent.trim() ?? null,
+          open: [...document.querySelectorAll('.th-problem[data-open]')].map(n => n.dataset.open),
+          picks: document.querySelectorAll('.th-problem[data-slug]').length,
+          chosen: document.querySelectorAll('.th-problem[aria-pressed=true]').length,
+          actions: [...document.querySelectorAll('.th-detail .th-act h3')].map(n => n.textContent.trim()),
+          newButton: document.querySelector('.th-mock .ci-start')?.textContent.trim() ?? null,
+          problemChoices: [...document.querySelectorAll('.th-pick .ui-select-button')].map(n => n.getAttribute('aria-label')),
         };
       }
       await sleep(100);
@@ -306,11 +310,11 @@ try {
   if (library.again === 1) ok('only the debriefed interview offers practice from it');
   else bad('the debriefed interview offers practice', JSON.stringify(library));
 
-  if (library.boxes.join() === 'Practise,Mock' && library.picks === 3 && library.surprise === 'true') ok('Practise and Mock each offer a few problems, with "surprise me" chosen');
-  else bad('the two boxes render', JSON.stringify(library));
+  if (library.open.length === 0 && library.picks >= 4 && library.chosen === 0 && library.actions.join() === 'Practise,Mock' && library.problemChoices.join() === 'Problem: Surprise me,Problem: Surprise me') ok('the list holds only the catalog, nothing is chosen on arrival, and both ways in start on Surprise me');
+  else bad('the problem list renders', JSON.stringify(library));
 
   if (library.newButton) ok(`"${library.newButton}" is one click away`);
-  else bad('a new interview can be started from the home', 'no .th-box--mock .ci-start');
+  else bad('a new interview can be started from the home', 'no .th-mock .ci-start');
 
   const libShot = await send('Page.captureScreenshot', { format: 'png' });
   if (process.env.STUDIO_SHOT) {
@@ -349,7 +353,7 @@ try {
         return {
           entries: document.querySelectorAll('.dz-log .dz-entry').length,
           said: Boolean(document.querySelector('.dz-log .dz-a')),
-          phase: document.querySelector('.dz-phase[aria-pressed="true"]')?.textContent.trim() ?? null,
+          phase: document.querySelector('.dz-phase[aria-current="step"]')?.textContent.trim() ?? null,
           input: Boolean(document.querySelector('.dz-input')),
           clock: document.querySelector('.dz-clock')?.textContent.trim() ?? null,
         };
@@ -421,15 +425,20 @@ try {
   }
   await send('Emulation.setDeviceMetricsOverride',{width:1600,height:1000,deviceScaleFactor:1,mobile:false});
   const pauseWorks=await evaluate(`(async()=>{
+    const label=()=>document.querySelector('.dz-pause').getAttribute('aria-label');
     document.querySelector('.dz-pause').click();
-    for(let i=0;i<100 && document.querySelector('.dz-pause').textContent!=='Resume';i++) await new Promise(r=>setTimeout(r,25));
+    for(let i=0;i<100 && label()!=='Resume interview';i++) await new Promise(r=>setTimeout(r,25));
+    // Paused: the toggle stays in the header, and the band reads in remaining time.
+    const band=document.querySelector('.dz-side .mock-paused');
+    const banded=label()==='Resume interview' && !document.querySelector('.dz-pause').hidden && band && !band.hidden && /^Paused · \\d+:\\d\\d (left|over)$/.test(band.textContent.replace('Resume','').trim())
+      && !document.querySelector('.dz-compose').textContent.includes('Voice paused');
     const before=document.querySelector('.dz-clock').textContent;
     await new Promise(r=>setTimeout(r,1200));
     const frozen=before===document.querySelector('.dz-clock').textContent;
     const locked=document.querySelector('.dz-input').disabled && document.querySelector('.dz-send').disabled;
-    document.querySelector('.dz-pause').click();
-    for(let i=0;i<100 && document.querySelector('.dz-pause').textContent!=='Pause';i++) await new Promise(r=>setTimeout(r,25));
-    return frozen && locked && !document.querySelector('.dz-input').disabled && document.querySelector('.dz-pause').textContent==='Pause';
+    band.querySelector('button').click();
+    for(let i=0;i<100 && label()!=='Pause interview';i++) await new Promise(r=>setTimeout(r,25));
+    return banded && frozen && locked && !document.querySelector('.dz-input').disabled && label()==='Pause interview' && band.hidden;
   })()`);
   if(pauseWorks)ok('Pause freezes the clock and input; Resume continues the same interview');
   else bad('pause/resume controls','timer or controls did not transition');
@@ -534,7 +543,7 @@ try {
     document.querySelector('.dz-done').click();
     await new Promise(r=>setTimeout(r,300));
     window.fetch=original;
-    return document.querySelector('.dz-compose').hidden && document.querySelector('.dz-done').textContent === 'View report';
+    return document.querySelector('.dz-compose').hidden && document.querySelector('.dz-report')?.textContent === 'View report' && (document.querySelector('.dz-done')?.hidden ?? true);
   })()`);
   if(complete)ok('successful debrief closes the composer, including a final SSE event without a blank line');
   else bad('successful debrief lifecycle','composer still accepts answers');

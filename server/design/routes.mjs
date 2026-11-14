@@ -520,6 +520,14 @@ async function handleStop(req, res, ctx) {
   return sendJson(res, 200, { stopped: Boolean(child) });
 }
 
+/**
+ * The interview's name: the prepared problem's public title, else the preset topic's,
+ * else the prompt itself. Only the title leaves `state.problem`; its private facts never do.
+ */
+function designTitle(state) {
+  return (typeof state.problem?.title === 'string' && state.problem.title.trim()) || topicFor(state.prompt).title;
+}
+
 /** GET /api/design */
 async function handleList(req, res, ctx) {
   const svc = serviceFor(ctx);
@@ -531,6 +539,7 @@ async function handleList(req, res, ctx) {
     interviews.push({
       id,
       topicSlug: state.topicSlug || topicFor(state.prompt).slug,
+      title: designTitle(state),
       prompt: state.prompt,
       level: state.level,
       startedAt: state.startedAt ? new Date(state.startedAt).toISOString() : null,
@@ -559,6 +568,7 @@ async function handleGet(req, res, ctx) {
   const turns = await svc.store.readTurns(id);
   return sendJson(res, 200, {
     id,
+    title: designTitle(state),
     prompt: state.prompt,
     topicSlug: state.topicSlug || topicFor(state.prompt).slug,
     level: state.level,
@@ -620,6 +630,7 @@ async function handleResume(req, res, ctx) {
     const scenes = await svc.store.readScenes(id);
     return sendJson(res, 200, {
       id,
+      title: designTitle(state),
       prompt: state.prompt,
       topicSlug: state.topicSlug || topicFor(state.prompt).slug,
       level: state.level,

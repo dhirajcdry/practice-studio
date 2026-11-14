@@ -29,6 +29,7 @@ export function reviewContextSections({ state, turns, report, agentMemory, learn
   return [
     ['Problem', state.statement || state.prompt || state.slug],
     ['Private scenario facts', scenario ?? state.scenario ?? state.problem],
+    ['Requirements the interviewer recorded telling the candidate, and its last picture of their design', state.notes],
     ['Completed interview evidence', selectRecords(evidence.map(t => ({ ...t, time:Number.isFinite(t.elapsedMs) ? clock(t.elapsedMs) : 'Timing not recorded' })), { budget:120000, head:8, tail:20 })],
     ['Final candidate code', report?.facts?.finalCode ?? state.lastCode ?? null],
     ['Final whiteboard graph', report?.facts?.finalBoard ?? state.graph ?? null],

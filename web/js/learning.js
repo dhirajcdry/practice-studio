@@ -1,6 +1,7 @@
 import { el, replace } from './dom.js';
 import { renderMarkdown } from './markdown.js';
 import { dialogHeader } from './ui/headers.js';
+import { icon } from './ui/icon.js';
 import { relativeInterviewDate, signalLabel } from './interview-format.js';
 import { readDraft, saveDraft, clearDraft } from './drafts.js';
 export async function saveLearningNote(slug, text) {
@@ -34,7 +35,7 @@ export function openLearningNotes(slug, title) {
     const response = await fetch(`/api/learning/${encodeURIComponent(slug)}`), data = await response.json();
     if (!response.ok) throw Error(data.error?.message || 'Notes could not be loaded.');
     const evidence = (data.records || []).map(record => el('details', { class: 'ln-evidence' }, [
-      el('summary', {}, [el('span', { text: relativeInterviewDate(record.date) }), el('span', { class: 'dim', text: signalLabel(record.signal, record.reportDifficulty) || (record.completed ? 'No verdict recorded' : 'Unfinished interview') })]),
+      el('summary', {}, [icon('chevron', 14), el('span', { text: relativeInterviewDate(record.date) }), el('span', { class: 'dim', text: signalLabel(record.signal, record.reportDifficulty) || (record.completed ? 'No verdict recorded' : 'Unfinished interview') })]),
       record.headline ? el('p', { text: record.headline }) : null,
       el('div', { class: 'rich' }, renderMarkdown(record.markdown)),
     ]));

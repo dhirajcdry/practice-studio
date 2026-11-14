@@ -11,6 +11,7 @@ import { newState } from '../server/interview/state.mjs';
 import { InterviewStore } from '../server/interview/store.mjs';
 import { runVisualAudit } from './visual-audit.mjs';
 import { fixtureReport } from '../server/interview/test/report-fixture.mjs';
+import { buildReport } from '../server/interview/report.mjs';
 import { conversationTurns, formattedReply, mockFeedback } from './conversation-fixture.mjs';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
@@ -79,6 +80,24 @@ async function seed() {
   await store.create('lld-locker','1760000000000-00000010',{...lld,debriefed:true,endedAt:Date.now()});
   await store.append('lld-locker','1760000000000-00000010',{kind:'turn',said:'Each reservation owns one locker.',asked:'How do you reject an expired code?',elapsedMs:5000});
   await store.append('lld-locker','1760000000000-00000010',{kind:'debrief',asked:'Review ownership and atomic reservation.',elapsedMs:60000});
+  // Five graded LLD mocks over three weeks, so the track home has a trend to draw.
+  // Made-up neutral reports; a dimension left out had no evidence and so has no rating.
+  const LLD_RUBRIC = ['Requirements', 'Responsibilities', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'];
+  const graded = [
+    ['lld-vending-machine', 20, 'No hire', 'Jumped to classes before the requirements were settled.', null, ['Weak', 'Mixed', 'Weak', 'Weak', 'Weak', 'Weak', null, null, 'Mixed']],
+    ['lld-meeting-room-booking', 12, 'Lean no', 'Clear interfaces, but overlapping bookings slipped through.', 'Write the overlap rule as one tested method before adding rooms.', ['Mixed', 'Mixed', 'Solid', 'Mixed', 'Weak', 'Weak', 'Weak', null, 'Solid']],
+    ['lld-vending-machine', 7, 'Lean no', 'The state machine held, refunds did not.', 'Trace a failed dispense through every state before coding it.', ['Solid', 'Solid', 'Solid', 'Mixed', 'Mixed', 'Weak', 'Mixed', 'Mixed', 'Solid']],
+    ['lld-locker', 3, 'Lean hire', 'Ownership and expiry were modelled well; tests came late.', 'Name two edge cases before the first run.', ['Solid', 'Strong', 'Solid', 'Solid', 'Solid', 'Mixed', 'Mixed', 'Solid', 'Solid']],
+    ['lld-meeting-room-booking', 1, 'Hire', 'A clean booking model, verified with your own small tests.', 'Raise the concurrency question yourself before the interviewer does.', ['Strong', 'Strong', 'Strong', 'Solid', 'Solid', 'Solid', 'Solid', 'Mixed', 'Strong']],
+  ];
+  for (const [i, [slug, days, signal, headline, moveUp, ratings]] of graded.entries()) {
+    const id = `1760000000000-000000${20 + i}`, startedAt = Date.now() - days * 86400000;
+    await store.create(slug, id, { ...newState({ slug, startedAt }), discipline: 'lld', targetLevel: 'L4', minutes: 45, debriefed: true, endedAt: startedAt + 2700000 });
+    await store.append(slug, id, { kind: 'turn', said: 'I will keep each state change in one method.', asked: 'Walk me through the main flow.', elapsedMs: 5000 });
+    await store.append(slug, id, { kind: 'debrief', elapsedMs: 2700000, asked: JSON.stringify({ signal, headline, moveUp, summary: headline,
+      dimensions: LLD_RUBRIC.map((name, d) => ({ name, rating: ratings[d] || 'Mixed', summary: ratings[d] ? { Strong: 'Led this without a prompt.', Solid: 'Covered, with small gaps.', Mixed: 'Partly covered after a prompt.', Weak: 'Missed until the interviewer raised it.' }[ratings[d]] : '', evidence: ratings[d] ? [{ note: `Observed during the ${name.toLowerCase()} discussion.` }] : [] })),
+      practice: [{ title: 'Trace one flow end to end', why: 'The trace exposed the gap.', fix: 'Trace before coding' }] }) });
+  }
   for (const [id, mode, done] of [['1760000000000-00000001', 'typed', false], ['1760000000000-00000002', 'voice', false], ['1760000000000-00000003', 'typed', true]]) {
     const state = newState({ slug: 'jump-game', mode, startedAt: Date.now() });
     state.phase = 'approach'; state.coachProvider = 'claude'; state.coachModel = 'default';
@@ -107,6 +126,17 @@ async function seed() {
       ]) await store.append('jump-game', id, entry);
     }
   }
+  // A long live voice mock: enough conversation to scroll the sidebar several times over,
+  // so pinned-header and composer overlap is measured against real scrolled text.
+  {
+    const id = '1760000000000-00000004', state = newState({ slug: 'jump-game', mode: 'voice', startedAt: Date.now() });
+    state.phase = 'code'; state.coachProvider = 'claude'; state.coachModel = 'default'; state.pausedAt = Date.now();
+    await store.create('jump-game', id, state);
+    await store.append('jump-game', id, { kind: 'opening', elapsedMs: 0, asked: 'Read the problem and walk me through your approach.' });
+    for (let i = 1; i <= 9; i++) await store.append('jump-game', id, { kind: 'turn', elapsedMs: i * 60000,
+      said: `With an explicit queue or stack I would visit each reachable index once, step ${i}, and stop as soon as the last index is reached, so the walk stays linear in the array length.`,
+      asked: `That works. What does the furthest-reach variable buy you over the queue in step ${i}, and which input would make the two approaches differ in memory?` });
+  }
   for (const discipline of ['lld', 'design']) {
     const slug = discipline === 'lld' ? 'lld-locker' : 'design-url-shortener';
     const id = `visual-practice-${discipline}`, base = path.join(problemDir(home,slug), 'practice', id);
@@ -122,6 +152,32 @@ async function seed() {
   await json(path.join(branchDir,'source.json'),{source,code:'class Locker:\n    pass\n',feedback:mockFeedback,turns:[]});
   await json(path.join(branchDir,'document.json'),{code:'class Locker:\n    pass\n'});
   await json(path.join(branchDir,'exchanges.json'),[]);
+  // Practice tabs: a branch whose mock has a structured report, a long statement, and an
+  // own-problem session before any brief exists. All made-up neutral content.
+  const reportTurns = [
+    { kind: 'opening', elapsedMs: 0, asked: 'Design a parcel locker system. Where would you like to start?' },
+    { kind: 'turn', elapsedMs: 30000, said: 'I will use a map.', asked: 'What does the map key on, and who owns a reservation?' },
+    { kind: 'turn', elapsedMs: 340000, said: 'The code maps to one compartment; release checks expiry first.', asked: 'What happens when two couriers pick the same compartment?' },
+    { kind: 'debrief', elapsedMs: 540000, asked: fixtureReport('I will use a map.') },
+  ];
+  const reportSource = { ...source, interviewId: '1760000000000-00000012', reportDifficulty: 'mid-level' };
+  const reportId = 'visual-branch-report-lld', reportDir = path.join(problemDir(home,'lld-locker'),'practice',reportId);
+  await json(path.join(reportDir,'session.json'),{id:reportId,slug:'lld-locker',discipline:'lld',title:'Locker system',statement:'Design a parcel locker system.',mode:'typed',source:reportSource,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+  await json(path.join(reportDir,'source.json'),{source:reportSource,code:'class Locker:\n    pass\n',feedback:'Structured report fixture.',
+    report: buildReport({ ...newState({ slug: 'lld-locker', startedAt: Date.now() - 600000 }), discipline: 'lld', debriefed: true, endedAt: Date.now() }, reportTurns),
+    turns: reportTurns.filter(t => t.kind !== 'debrief').map(({ kind, elapsedMs, said, asked }) => ({ kind, elapsedMs, said, asked }))});
+  await json(path.join(reportDir,'document.json'),{code:'class Locker:\n    pass\n'});
+  await json(path.join(reportDir,'exchanges.json'),[]);
+  const longStatement = ['Design an **in-memory reservation system** for a made-up bank of parcel lockers.', '',
+    ...Array.from({ length: 9 }, (_, i) => `- Requirement ${i + 1}: a compartment holds one parcel, a code is single-use, and an expired code never releases a parcel (case ${i + 1}).`), '',
+    '### Operations', '', '`deposit(size)` returns a code; `retrieve(code)` returns the parcel or rejects the code.', '',
+    ...Array.from({ length: 6 }, (_, i) => `Paragraph ${i + 1}. Couriers and recipients act concurrently, so reservation and release must stay consistent while compartments of each size fill and empty over a working day.\n`)].join('\n');
+  for (const [pid, statement, extra] of [['visual-practice-long', longStatement, {}], ['visual-practice-open', '', { openEnded: true }]]) {
+    const pdir = path.join(problemDir(home,'lld-locker'),'practice',pid);
+    await json(path.join(pdir,'session.json'),{id:pid,slug:'lld-locker',discipline:'lld',title:statement ? 'Locker reservations' : 'Open practice',statement,mode:'typed',...extra,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    await json(path.join(pdir,'document.json'),{code:'class Locker:\n    pass\n'});
+    await json(path.join(pdir,'exchanges.json'),[]);
+  }
   const dir = problemDir(home,'jump-game');
   const rows = [
     { at: '2026-10-17T01:00:00Z', submissionId: '1', verdict: 'Accepted', accepted: true, testsPassed: 178, testsTotal: 178 },

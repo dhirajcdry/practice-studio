@@ -4,11 +4,12 @@ import { openLearningNotes } from './learning.js';
 // LLD contributes a candidate-owned Python document; the interview panel owns all
 // conversation, voice, timing, recovery and reports, exactly as in coding interviews.
 import { el, replace } from './dom.js';
-import { tooltip } from './tooltip.js';
 import { installPaneResizer } from './ui/split-pane.js';
 import { createInterviewPanel, createInterviewSetup, interviewJson } from './interview.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
-import { workspaceHeader, screenHeader, paneHeader } from './ui/headers.js';
+import { createPythonRun } from './python-run-output.js';
+import { screenHeader, paneHeader } from './ui/headers.js';
+import { createBadge } from './ui/badge.js';
 import { initPractice, startPracticeFromMock } from './practice.js';
 import { mountTrackHome } from './track-home.js';
 
@@ -16,7 +17,7 @@ export function initLLD(host) {
   const route = location.hash.split('/');
   if (route[2] === 'practice') return initPractice(host, { slug: route[3], id: route[4] });
   let gone = false, panel = null, editor = null, saveTimer;
-  let home = null, unbindTools = () => {}, toolTarget = null, disposeSplit = () => {};
+  let home = null, unbindTools = () => {}, toolTarget = null, disposeSplit = () => {}, disposeHeader = () => {};
   let session = null, text = '', diskCode = '', saveChain = Promise.resolve(), edited = false;
   const life = new AbortController();
   const view = el('div', { class: 'lld-view' }); replace(host, view);
@@ -48,24 +49,26 @@ export function initLLD(host) {
   async function workspace(entry, initialState = null, id = null) {
     view.classList.add('is-workspace', 'ui-workspace');
     disposeSplit();
-    home?.destroy(); home = null; panel?.dispose(); unbindTools(); toolTarget = null; editor?.dispose(); editor = null;
+    home?.destroy(); home = null; panel?.dispose(); panel = null; unbindTools(); toolTarget = null; editor?.dispose(); editor = null;
     session = { ...initialState, slug: entry.slug, id }; text = ''; diskCode = ''; edited = false;
     const codeHost = el('div', { class: 'lld-code', 'aria-label': 'Python design document' });
-    const output = el('pre', { class: 'lld-output mono', hidden: true, 'aria-live': 'polite' });
-    const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', text: 'Run Python', disabled: true, onclick: async () => {
-      if (!session?.id || session.debriefed) return;
-      run.disabled = true; output.hidden = false; output.textContent = 'Running…';
-      try {
-        await save();
-        const result = await interviewJson('/api/lld/run', { slug: session.slug, interviewId: session.id, code: getCode() });
-        if (!gone) output.textContent = `${result.timedOut ? 'Time limit exceeded' : `Exit ${result.exitCode ?? '—'}`}\n${result.stdout || ''}${result.stderr || ''}`;
-      } catch (error) { if (!gone) output.textContent = error.message; }
-      finally { if (!gone) run.disabled = Boolean(session.debriefed || session.endedAt); }
-    } });
-    tooltip(run, "Run Python (⌘')");
+    const pythonRun = createPythonRun({ fileName: 'design.py', editor: () => editor, disabled: true,
+      canRun: () => Boolean(session?.id && !session.debriefed && !session.endedAt),
+      execute: async () => { await save(); return interviewJson('/api/lld/run', { slug: session.slug, interviewId: session.id, code: getCode() }); } });
+    const { button: run, root: output } = pythonRun;
     const editorControls = createPythonEditorControls();
     const interviewHost = el('div', { class: 'lld-interviewer' });
-    const subtitle = el('p', { class: 'dim', text: `Python · ${session.targetLevel || 'L4'} · Low-level design` });
+    // One meta pattern for both tracks: level · track (· language). A review adds its state.
+    const metaText = () => `${session.targetLevel || 'L4'} · Low-level design · Python`;
+    const subtitle = el('span', { text: metaText() });
+    const stateBadge = createBadge('Debriefed', 'good');
+    const paintBadge = () => {
+      const review = Boolean(session.endedAt || session.debriefed);
+      stateBadge.hidden = !review;
+      stateBadge.className = `ui-badge ui-badge--${session.debriefed ? 'success' : 'neutral'}`;
+      stateBadge.textContent = session.debriefed ? 'Debriefed' : 'Not debriefed';
+    };
+    paintBadge();
     const practiceAction = practiseFromMock({ variant: 'secondary',  onClick: async event => {
         const button = event.currentTarget; button.disabled = true;
         try { await save(); if (edited) throw Error('Save the latest document before creating a practice copy.'); await startPracticeFromMock({ discipline: 'lld', slug: entry.slug, interviewId: session.id }); }
@@ -74,16 +77,28 @@ export function initLLD(host) {
     const notesAction = el('button', { class: 'btn btn--quiet', text: 'Learning notes', onclick: () => openLearningNotes(entry.slug, entry.title) });
     const reportAction = el('button', { class: 'btn btn--primary', text: 'View report', onclick: () => panel?.showReport() });
     const headerHost = el('div');
+    // Built once. onState fires on idle ticks, so the action rail is swapped only when the
+    // screen really changes (live to review, report ready, the panel arriving); rebuilding
+    // it on every tick dropped focus from Finish and orphaned open menus.
+    let header = null, headerKey = '';
+    disposeHeader();
     const renderHeader = () => {
       const review = Boolean(session.endedAt || session.debriefed);
+      paintBadge();
       practiceAction.classList.toggle('btn--primary', review && !session.debriefed);
       practiceAction.classList.toggle('btn--secondary', !review || Boolean(session.debriefed));
-      replace(headerHost, screenHeader({ title: entry.title, crumb: 'Interviews', meta: [subtitle], back: { href: '#/lld', label: 'Low-level design' },
-        status: !review ? panel?.headerControls : null,
-        actions: { primary: review ? (session.debriefed ? reportAction : practiceAction) : null,
-          secondary: [review ? notesAction : null, review && session.debriefed ? practiceAction : null],
-          overflow: !review ? [practiceAction] : [] },
-      }));
+      const key = `${review}:${Boolean(session.debriefed)}:${Boolean(panel)}`;
+      if (key === headerKey) return;
+      headerKey = key;
+      const status = !review ? panel?.headerControls : null;
+      // A live mock keeps Learning notes in More actions (past performance competes with Finish).
+      const actions = { primary: review ? (session.debriefed ? reportAction : practiceAction) : null,
+        secondary: [review ? notesAction : null, review && session.debriefed ? practiceAction : null],
+        overflow: !review ? [practiceAction, notesAction] : [] };
+      if (header) { header.setActions(actions, status); return; }
+      header = screenHeader({ title: entry.title, crumb: 'Low-level design', badges: [stateBadge], meta: [subtitle], back: { href: '#/lld', label: 'Back to Low-level design' }, status, actions });
+      headerHost.append(header);
+      disposeHeader = () => { header?.dispose(); disposeHeader = () => {}; };
     };
     renderHeader();
     replace(view, [headerHost, el('div', { class: 'lld-workspace' }, [
@@ -96,7 +111,7 @@ export function initLLD(host) {
         const [saved, record] = await Promise.all([interviewJson(endpoint()), interviewJson(`/api/interview/${entry.slug}/${id}`)]);
         if (gone) return;
         session = { ...session, ...(record.state || record) };
-        subtitle.textContent = `Python · ${session.targetLevel || 'L4'} · Low-level design`;
+        subtitle.textContent = metaText();
         text = diskCode = saved.code || '';
         let draft = null; try { draft = JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch {}
         if (!session.debriefed && !session.endedAt && draft?.code !== undefined && draft.base === diskCode && draft.code !== diskCode) { text = draft.code; edited = true; notice.textContent = 'Recovered browser draft'; }
@@ -118,7 +133,7 @@ export function initLLD(host) {
       onBack: () => { location.hash = '#/lld'; },
       onState: state => {
         session = { ...session, ...state }; renderHeader(); run.disabled = !state.id || Boolean(state.debriefed || state.endedAt);
-        subtitle.textContent = `Python · ${session.targetLevel || 'L4'} · Low-level design`;
+        subtitle.textContent = metaText();
         editor?.setReadOnly(Boolean(state.debriefed || state.endedAt));
         if (state.id) {
           const target = `interview:${entry.slug}:${state.id}`;
@@ -154,9 +169,9 @@ export function initLLD(host) {
           if (!gone) await workspace(prepared, { ...state, slug: prepared.slug, title: prepared.title });
         },
       });
-    } catch (error) { replace(view, [notice, el('a', { href: '#/lld', text: 'Back to LLD' })]); fail(error); }
+    } catch (error) { replace(view, [notice, el('a', { href: '#/lld', text: 'Back to Low-level design' })]); fail(error); }
   }
   window.addEventListener('beforeunload', event => { if (edited) { localDraft(); event.preventDefault(); event.returnValue = ''; } }, { signal: life.signal });
   library();
-  return { destroy() { localDraft(); save(); gone = true; home?.destroy(); disposeSplit(); clearTimeout(saveTimer); life.abort(); panel?.dispose(); unbindTools(); editor?.dispose(); } };
+  return { destroy() { localDraft(); save(); gone = true; home?.destroy(); disposeSplit(); disposeHeader(); clearTimeout(saveTimer); life.abort(); panel?.dispose(); unbindTools(); editor?.dispose(); } };
 }

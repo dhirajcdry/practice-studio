@@ -4,6 +4,10 @@
 // remembers where you put it, because a layout you have to re-drag every morning is worse
 // than one that never moved.
 //
+// With the statement and the coach both closed the editor is alone, and it sits as a centred
+// column instead of stretching across the window. Its two edges are one control: dragging
+// either moves both, so the column stays in the middle.
+//
 // The panes are grid columns, so the handles are absolutely positioned over the gaps
 // rather than being grid children — that keeps the column count fixed whether or not the
 // coach is open, and means nothing here has to restructure the DOM it sits in.
@@ -22,7 +26,9 @@ const COLLAPSE_BELOW = 24;
 const DEFAULT_RESULTS_HEIGHT = 260;
 
 // The editor is the reason the screen exists, so it is the widest column by default.
-const DEFAULTS = { statement: 0.7, editor: 1.6, coach: 0.85, results: DEFAULT_RESULTS_HEIGHT };
+const DEFAULTS = { statement: 0.7, editor: 1.6, coach: 0.85, results: DEFAULT_RESULTS_HEIGHT, solo: 1060 };
+// Dragged to within this of the full width, the lone editor simply fills the window (stored as 0).
+const SOLO_SNAP = 24;
 
 function loadLayout() {
   try {
@@ -32,6 +38,7 @@ function loadLayout() {
       editor: Number(raw.editor) > 0 ? Number(raw.editor) : DEFAULTS.editor,
       coach: Number(raw.coach) > 0 ? Number(raw.coach) : DEFAULTS.coach,
       results: Number(raw.results) >= MIN_RESULTS_HEIGHT ? Number(raw.results) : DEFAULTS.results,
+      solo: raw.solo === 0 ? 0 : Number(raw.solo) >= MIN.editor ? Number(raw.solo) : DEFAULTS.solo,
     };
   } catch {
     return { ...DEFAULTS }; // private browsing: the app works, it just forgets
@@ -64,16 +71,25 @@ function resultsHidden() {
   return document.body.classList.contains('hide-results');
 }
 
+/** The editor is the only pane showing. */
+function isSolo() {
+  return !isStacked() && problemHidden() && !coachOpen();
+}
+
 function applyColumns(pbody) {
+  pbody.style.removeProperty('justify-content');
   if (isStacked()) {
     pbody.style.removeProperty('grid-template-columns');
     return;
   }
   const { statement, editor, coach } = layout;
   if (problemHidden()) {
-    pbody.style.gridTemplateColumns = coachOpen()
-      ? `minmax(${MIN.editor}px, ${editor}fr) minmax(${MIN.coach}px, ${coach}fr)`
-      : 'minmax(0,1fr)';
+    if (coachOpen()) pbody.style.gridTemplateColumns = `minmax(${MIN.editor}px, ${editor}fr) minmax(${MIN.coach}px, ${coach}fr)`;
+    else {
+      // A track that grows to the chosen width and no further, centred in what is left.
+      pbody.style.gridTemplateColumns = layout.solo ? `minmax(0, ${layout.solo}px)` : 'minmax(0,1fr)';
+      pbody.style.justifyContent = 'center';
+    }
     return;
   }
   pbody.style.gridTemplateColumns = coachOpen()
@@ -147,6 +163,14 @@ export function installResizers() {
     }
   }
 
+  // The lone editor's two edges. Either one resizes both sides.
+  const soloHandles = [-1, 1].map(side => {
+    const el = makeHandle('col', 'Editor width');
+    el.classList.add('split-solo');
+    pbody.append(el);
+    return { el, side };
+  });
+
   let rowHandle = null;
   if (hostEl && resultsEl) {
     rowHandle = makeHandle('row', 'Editor and results');
@@ -169,6 +193,16 @@ export function installResizers() {
       h.el.style.left = `${(a.right + b.left) / 2 - box.left}px`;
       h.el.style.top = `${a.top - box.top}px`;
       h.el.style.height = `${Math.max(a.height, b.height)}px`;
+    }
+
+    const solo = isSolo();
+    const wsBox = solo ? wsEl.getBoundingClientRect() : null;
+    for (const h of soloHandles) {
+      h.el.hidden = !solo;
+      if (!solo) continue;
+      h.el.style.left = `${(h.side < 0 ? wsBox.left : wsBox.right) - box.left}px`;
+      h.el.style.top = `${wsBox.top - box.top}px`;
+      h.el.style.height = `${wsBox.height}px`;
     }
 
     if (rowHandle && resultsEl) {
@@ -215,6 +249,64 @@ export function installResizers() {
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+  }
+
+  /** The width the lone editor may take: the pane area inside its padding. */
+  function soloRoom() {
+    const style = getComputedStyle(pbody);
+    return pbody.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  }
+
+  function setSolo(width) {
+    const room = soloRoom();
+    const next = Math.max(MIN.editor, Math.round(width));
+    layout.solo = next >= room - SOLO_SNAP ? 0 : next;
+    applyColumns(pbody);
+    position();
+  }
+
+  function dragSolo(handle, event) {
+    const startX = event.clientX;
+    const startWidth = wsEl.getBoundingClientRect().width;
+    document.body.classList.add('is-splitting');
+    handle.el.setPointerCapture?.(event.pointerId);
+    // The far edge mirrors this one, so the column grows by twice the pointer's travel.
+    const move = (e) => setSolo(startWidth + 2 * handle.side * (e.clientX - startX));
+    const up = () => {
+      document.body.classList.remove('is-splitting');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      saveLayout(layout);
+      window.dispatchEvent(new Event('resize'));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  for (const h of soloHandles) {
+    const settle = () => { saveLayout(layout); window.dispatchEvent(new Event('resize')); };
+    const onDown = (e) => { if (e.button === 0) { e.preventDefault(); dragSolo(h, e); } };
+    const onReset = () => { layout.solo = DEFAULTS.solo; applyColumns(pbody); position(); settle(); };
+    const onKey = (e) => {
+      const step = e.shiftKey ? 120 : 40;
+      // Each handle's outward arrow widens the column, its inward arrow narrows it.
+      const outward = h.side < 0 ? 'ArrowLeft' : 'ArrowRight', inward = h.side < 0 ? 'ArrowRight' : 'ArrowLeft';
+      if (e.key === 'Enter' || e.key === ' ') { onReset(); e.preventDefault(); return; }
+      if (e.key !== outward && e.key !== inward) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSolo(wsEl.getBoundingClientRect().width + (e.key === outward ? step : -step));
+      settle();
+    };
+    h.el.addEventListener('pointerdown', onDown);
+    h.el.addEventListener('dblclick', onReset);
+    h.el.addEventListener('keydown', onKey);
+    cleanups.push(() => {
+      h.el.removeEventListener('pointerdown', onDown);
+      h.el.removeEventListener('dblclick', onReset);
+      h.el.removeEventListener('keydown', onKey);
+      h.el.remove();
+    });
   }
 
   function dragRow(event) {

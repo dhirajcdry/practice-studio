@@ -43,6 +43,7 @@ export function observe(state, event, now = Date.now()) {
   }
   if (['verdict', 'run_result', 'phase_hint'].includes(event.type)) state.pendingEvents.push({ ...event, elapsedMs: Number.isFinite(event.elapsedMs) && event.elapsedMs >= 0 && event.elapsedMs <= elapsed(state, now) ? event.elapsedMs : elapsed(state, now) });
 }
+export const LOOK_EVERY_MS = 5 * 60000;
 export function shouldInterject(state, event = {}, now = Date.now()) {
   if (state.debriefed || state.endedAt !== null || state.pausedAt !== null || event.speaking) return false;
   const speech = Number.isFinite(event.secondsSinceSpeech) ? event.secondsSinceSpeech : (now - state.lastSpeechAt) / 1000;
@@ -54,6 +55,8 @@ export function shouldInterject(state, event = {}, now = Date.now()) {
   if (!state.warningGiven && remaining <= 120000 && remaining > 0) return true;
   if (events.some(e => e.type === 'run_result' && (e.failed > 0 || e.error)) && speech > 30) return true;
   if (event.type !== 'idle') return false;
+  // An LLD interviewer glances at the work every five minutes, typing or not, as one in the room would.
+  if (state.discipline === 'lld' && now - Math.max(state.lastInterjectAt || 0, state.lastReplyAt || state.startedAt) >= LOOK_EVERY_MS) return true;
   const threshold = state.phase === 'code' ? 90 : ['clarify', 'approach'].includes(state.phase) ? 45 : Infinity;
   return speech >= threshold && typing >= threshold;
 }

@@ -18,15 +18,6 @@
 .pr-editor,.pr-board{flex:1;min-height:0;overflow:hidden}.pr-board{position:relative}
 /* The pane is the frame; the board inside it does not draw a second one. */
 .pr-work>.dz-canvas.pr-board{border:0;border-radius:0}
-.pr-problem{border-bottom:1px solid var(--hair-10);font-size:var(--text-sm);padding-bottom:var(--space-3);margin-bottom:var(--space-4)}
-.pr-problem[hidden]{display:none}
-.pr-problem summary{display:flex;align-items:center;gap:var(--space-2);width:fit-content;list-style:none;cursor:pointer;color:var(--ink-70)}
-.pr-problem summary::-webkit-details-marker{display:none}
-.pr-problem summary:hover{color:var(--ink)}
-.pr-problem summary>svg{flex:none;transition:transform 140ms var(--ease-out,ease)}
-.pr-problem[open]>summary>svg{transform:rotate(90deg)}
-@media(prefers-reduced-motion:reduce){.pr-problem summary>svg{transition:none}}
-.pr-problem>p{margin:var(--space-3) 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .pr-empty{max-width:42ch;margin-block:var(--space-5)}.pr-empty h2{font:600 var(--text-lg)/var(--line-md) var(--ui);margin:0 0 var(--space-3)}
 .pr-empty p{font:var(--text-md)/var(--line-lg) var(--ui);margin:0}
 
@@ -37,7 +28,6 @@
 .pr-error{color:var(--hard);margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .pr-work-error{flex:none;border-bottom:1px solid var(--hair-10);color:var(--hard);font:var(--text-xs)/var(--line-md) var(--ui);overflow-wrap:anywhere}
 .pr-source-link{font:var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70);text-decoration:none;white-space:nowrap}.pr-source-link:hover{color:var(--accent)}
-.pr-feedback{margin-top:var(--space-3);font-size:var(--text-sm)}.pr-feedback-label{font:600 var(--text-sm)/var(--line-md) var(--ui);margin:0 0 var(--space-2);color:var(--ink)}
 /* On a phone the Start/Pause/Resume button already says whether the clock is running. */
 @media(max-width:900px){.pr-timer-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
 @media(max-width:900px){.pr-split{grid-template-columns:1fr}.pr-work{height:60dvh}.pr-coach{height:max(540px,75dvh)}.pr-view{display:flex;flex-direction:column}}
@@ -48,3 +38,35 @@
 .pr-thread{margin:var(--space-2) var(--content-inset);padding-block:var(--space-2);overflow-wrap:anywhere}
 /* A microphone notice sits above the composer on the composer's own inset. */
 .pr-coach>.vc-status{flex:none;margin:0 var(--space-2);padding:var(--space-2) var(--space-3)}
+
+/* Coach, Problem and Mock feedback are tabs of the coach pane. One scroller shows at a
+   time; the composer belongs to Coach alone. */
+.pr-coach>.ui-pane-scroll[hidden],.pr-coach>.pr-compose[hidden]{display:none}
+.pr-coach-head .pr-tabs{flex:none;min-width:0}
+/* The same reading edges as the conversation: clear of the tabs and the pane's sides. */
+.pr-tab-panel{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere;margin:var(--space-2) var(--content-inset);padding-block:var(--space-2)}
+.pr-tab-panel:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pr-statement{max-width:74ch;padding-inline-end:var(--space-2)}
+.pr-statement-title{margin:0 0 var(--space-4);font:600 var(--text-lg)/var(--line-md) var(--display,var(--ui));color:var(--ink)}
+.pr-tab-empty{max-width:42ch;margin-block:var(--space-3)}
+.pr-tab-empty h2{margin:0;font:600 var(--text-lg)/var(--line-md) var(--ui)}.pr-tab-empty p{margin:0}
+/* The report's own pieces at pane width: the pane is their container. */
+.pr-feedback-pane{container-type:inline-size}
+.pr-report.rp-body{max-width:none;margin:0;padding:0 0 var(--space-4)}
+.pr-report .rp-section{padding-top:var(--space-6)}
+.pr-report-source{margin:0;font:var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
+.pr-report-verdict{padding:var(--space-3) 0 0}
+.pr-report .rp-signal{margin:0 0 var(--space-3);font-size:var(--text-xl);line-height:1.2;letter-spacing:0}
+.pr-report .rp-headline{margin-top:var(--space-3);font-size:var(--text-md)}
+.pr-report .rp-practice-n{font-size:var(--text-xl)}
+.pr-report .rp-practice h4,.pr-report .rp-dim h4{font-size:var(--text-md)}
+.pr-report .rp-dim-summary,.pr-report .rp-quote,.pr-report .rp-move-up p{font-size:var(--text-md)}
+.pr-report .rp-move-up{margin-top:var(--space-5);padding:var(--space-4);gap:var(--space-3);grid-template-columns:1fr}
+.pr-report .rp-move-up .rp-h{font-size:var(--text-md)}
+.pr-report .rp-dim-row{min-height:44px!important}
+.pr-feedback{margin-top:var(--space-3);font-size:var(--text-sm)}
+.pr-mock-turns{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--space-4)}
+.pr-mock-turn{display:flex;flex-direction:column;gap:var(--space-1);border-radius:var(--r-sm)}
+.pr-mock-who{font:600 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-70)}
+.pr-mock-turn.is-candidate{align-items:flex-end}
+.pr-mock-turn.is-candidate .pr-mock-who{text-align:right}

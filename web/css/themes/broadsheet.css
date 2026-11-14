@@ -37,7 +37,7 @@ body.theme-broadsheet.is-dark{
 body.theme-broadsheet :is(.navlink,.ui-tab,.ui-badge,.ui-count,.tag,.ui-header-crumb,.ui-header-meta,.ui-pane-header>strong,.ui-menu-heading,
   .tc-label,.tc-origin,.rr-tabmark,.editor-file,.editor-cursor,.ui-turn-head,.ui-turn-stamp,.ui-conversation-separator,.ui-phase-divider,
   .ui-thread-strip>span,.tree-heading,.tree-legend,.ov-kicker,.ov-ring-label,.ov-ring-of,.plist-note,.countpill,.chat-history-heading,
-  .submission-tag,.graph-caption,.node-meta,.map-start,.th-pick-hint,.th-item-kind,.th-item-date,.dash-sec .note,.ptag){
+  .submission-tag,.graph-caption,.node-meta,.map-start,.th-problem-line,.th-item-sub,.th-item-date,.th-past-date,.th-note,.th-eyebrow,.th-detail-label,.th-moveup-label,.dash-sec .note,.ptag){
   font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
 body.theme-broadsheet .btn.btn,body.theme-broadsheet .ui-select-button{border-radius:0;font:700 10.5px/1 var(--ui);text-transform:uppercase;letter-spacing:.14em;color:var(--ink)}
 body.theme-broadsheet .btn.btn kbd{font:600 10px/1 var(--ui);letter-spacing:.04em;border:0;padding:0;background:transparent;color:inherit;opacity:.6}
@@ -195,7 +195,7 @@ body.theme-broadsheet .ui-menu-item:is(:hover,:focus-visible):not(:disabled){bac
 body.theme-broadsheet .ui-menu-heading{color:var(--ink-50)}
 body.theme-broadsheet .ui-menu [role=group]+[role=group]{border-top:1px solid var(--ink)}
 body.theme-broadsheet .ui-action-row:hover{background:transparent}
-body.theme-broadsheet .ui-action-row:hover :is(.recent-title,.ptitle,.th-pick-title,.th-item-title,.node-title,.ov-next-title,.pname){color:var(--accent)}
+body.theme-broadsheet .ui-action-row:hover :is(.recent-title,.ptitle,.th-problem-title,.th-item-title,.node-title,.ov-next-title,.pname){color:var(--accent)}
 
 /* ---- The statement's parts (examples, constraints, follow-up) between rules, never in boxes. ---- */
 body.theme-broadsheet .stmt .stmt-h{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;color:var(--ink-50)}
@@ -252,20 +252,7 @@ body.theme-broadsheet .catalog .plist-note{order:2;font:600 10.5px/1.4 var(--ui)
 body.theme-broadsheet .catalog .prow .pmain .tag{order:3;min-width:62px;text-align:right;font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;text-transform:uppercase;padding:0}
 body.theme-broadsheet .catalog .tag{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;text-transform:uppercase;padding:0;border-radius:0}
 
-/* ---- Track homes: two columns either side of a rule, then the record as a ruled list. ---- */
-body.theme-broadsheet .th-box{border:0;border-top:2px solid var(--ink);border-radius:0;background:transparent;box-shadow:none}
-body.theme-broadsheet .th-box-head h2{font:700 28px/1.15 var(--serif);letter-spacing:-.015em}
-body.theme-broadsheet .th-box-text{font:14px/1.45 var(--serif);color:var(--ink-70)}
-body.theme-broadsheet .th-picks{gap:0}
-body.theme-broadsheet .th-pick.ui-action-row:is(:hover,[aria-pressed="true"]){background:transparent}
-body.theme-broadsheet .th-pick-title{font:400 15px/1.25 var(--serif)}
-body.theme-broadsheet .th-pick[aria-pressed="true"] .th-pick-title{font-weight:700}
-body.theme-broadsheet .th-box-foot .btn.btn--secondary{border:1px solid var(--ink);text-decoration:none}
-body.theme-broadsheet .th-recent h2{font:700 22px/1.2 var(--serif);padding-top:10px;border-top:3px solid var(--ink)}
-body.theme-broadsheet .th-item+.th-item{border-top:1px solid var(--bs-hair)}
-body.theme-broadsheet .th-item-open.ui-action-row{padding-left:0}
-body.theme-broadsheet .th-item-title{font:400 16px/1.4 var(--serif)}
-body.theme-broadsheet .th-recent .th-all.btn{margin-left:0;padding-inline:0}
+/* ---- Track homes. ---- */
 
 /* ---- The sidebar's records: submissions, interviews, past chats. Ruled lists, bare data. ---- */
 body.theme-broadsheet .coach{--sidebar-inset:var(--bs-g)}
@@ -337,6 +324,8 @@ body.theme-broadsheet .monaco-editor [class*="bracket-highlighting-"]{color:var(
 
 /* ---- Interviews and practice: the live header sits between two rules; notices get a red margin rule. ---- */
 body.theme-broadsheet .ci-live-header{border:0;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);border-radius:0;background:var(--canvas);box-shadow:none}
+/* In the sidebar the answer rule spans the same measure as the header's rules. */
+body.theme-broadsheet[class] .ci-embedded>.ui-composer{margin-inline:0}
 body.theme-broadsheet :is(.ci-notice,.ci-paused,.interviews-notice,.ci-empty-session){border:0;border-left:3px solid var(--accent);border-radius:0;background:transparent;box-shadow:none}
 body.theme-broadsheet .ci-score-hero{border:0;border-top:3px double var(--ink);border-bottom:1px solid var(--ink);border-radius:0;background:transparent}
 body.theme-broadsheet .interviews-notice:empty{border:0}
@@ -346,8 +335,6 @@ body.theme-broadsheet .ci-empty-icon{background:transparent;border-radius:0}
 body.theme-broadsheet .ui-pane{--content-inset:var(--bs-g)}
 body.theme-broadsheet :is(.dz-canvas,.dz-side,.pr-work,.pr-coach,.lld-document,.ui-board-pane){border:0;border-radius:0;background:var(--canvas);box-shadow:none}
 body.theme-broadsheet :is(.dz-side,.pr-coach,.lld-interviewer){border-left:1px solid var(--bs-line)}
-body.theme-broadsheet .dz-input{border:0;border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent}
-body.theme-broadsheet .dz-input:focus{border-color:var(--ink);box-shadow:0 1px 0 var(--ink)}
 
 /* ---- Roadmap: a chart printed on the page. Each pattern hangs from a heavy rule. ---- */
 body.theme-broadsheet .roadmap-chips{gap:10px 18px}
@@ -361,7 +348,7 @@ body.theme-broadsheet .node-title{font:700 16px/1.25 var(--serif)}
 body.theme-broadsheet .roadmap-detail{border:0;border-top:3px double var(--ink);border-radius:0;background:transparent;box-shadow:none}
 body.theme-broadsheet .roadmap-detail :is(h2,h3){font-family:var(--serif)}
 body.theme-broadsheet .detail-list .detail-problem.ui-action-row{border-bottom:1px solid var(--bs-line)}
-body.theme-broadsheet .lld-interviewer>.ci-panel>.ci-paused{border-left:0;border-bottom:1px solid var(--bs-line)}
+body.theme-broadsheet :is(.lld-interviewer>.ci-panel,.dz-side)>.ci-paused{border-left:0;border-bottom:1px solid var(--bs-line)}
 @media (max-width:850px){
   body.theme-broadsheet .catalog-tree{border-right:0}
 }

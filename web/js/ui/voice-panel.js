@@ -4,12 +4,13 @@ import { el } from '../dom.js';
 import { icon } from './icon.js';
 import { END_OF_TURN_MS } from '../speech.js';
 import { autoSendEnabled } from '../speech-preferences.js';
+import { AWAY_HEAD } from '../voice-loop.js';
 
 // The one voice bar: what is happening, your words, and this turn's controls.
 // Session controls live in each screen's header and preferences live in Settings.
 // Provisional words never enter the saved answer; callers own the confirmed draft.
 export function createVoicePanel({ onEdit, role = 'Interviewer', autoSend = true, transcriptClass = '' } = {}) {
-  let state = 'idle', draft = '', partial = '', sending = false, busy = false, paused = false, held = false;
+  let state = 'idle', draft = '', partial = '', sending = false, busy = false, paused = false, held = false, away = false;
   let playback = { phase: 'idle' }, sample = {}, following = true;
   const automatic = () => autoSend && autoSendEnabled();
   const label = el('span', { class: 'voice-state', role: 'status' });
@@ -37,7 +38,7 @@ export function createVoicePanel({ onEdit, role = 'Interviewer', autoSend = true
     root.dataset.capture = state;
     text(label, playing ? playback.phase === 'preparing' ? 'Preparing voice…' : `${role} speaking${playback.engine === 'system' ? ' · system voice' : ''}`
       : sending ? 'Sending your answer…' : state === 'opening' ? 'Opening microphone…'
-      : state === 'working' ? 'Finishing transcription…' : held ? 'Answer not sent' : state === 'recording' ? 'Listening' : busy ? `${role} is thinking…` : paused ? 'Voice paused' : 'Microphone off');
+      : state === 'working' ? 'Finishing transcription…' : held ? 'Answer not sent' : state === 'recording' ? 'Listening' : away ? AWAY_HEAD : busy ? `${role} is thinking…` : paused ? 'Voice paused' : 'Microphone off');
     const seconds = Math.floor((sample.elapsedMs || 0) / 1000);
     // Interviews already show a clock. Dictation has no other sign of how long a take is.
     text(duration, !autoSend && ['recording','working'].includes(state) ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2,'0')}` : '');
@@ -45,7 +46,7 @@ export function createVoicePanel({ onEdit, role = 'Interviewer', autoSend = true
     text(liveText, partial ? `${draft && !/\s$/.test(draft) ? ' ' : ''}${partial}` : '');
     transcript.classList.toggle('is-editable', canEdit());
     transcript.hidden = !draft && !partial;
-    const counting = automatic() && !playing && !busy && !sending && !paused && !held && state === 'recording' && draft.trim() && !sample.pending && !sample.failed && sample.sinceLoud >= 700;
+    const counting = automatic() && !playing && !busy && !sending && !paused && !held && !away && state === 'recording' && draft.trim() && !sample.pending && !sample.failed && sample.armed !== false && sample.sinceLoud >= 700;
     label.title = playing && state === 'recording' ? 'Microphone is on. Speak to interrupt.' : '';
     text(hint, sample.failed ? 'Retry or discard the failed audio below' : playing ? '' : state === 'working' || sample.pending ? 'Finishing your last words…' : counting ? `Sending in ${Math.max(0,(END_OF_TURN_MS - sample.sinceLoud)/1000).toFixed(1)}s` : '');
     label.hidden = !playing && Boolean(hint.textContent);
@@ -58,7 +59,7 @@ export function createVoicePanel({ onEdit, role = 'Interviewer', autoSend = true
     root, get automatic() { return automatic(); },
     setControls({ lead: before = [], actions: after = [] }) { lead.replaceChildren(...before); actions.replaceChildren(...after); },
     update(value = {}) {
-      ({state = state, draft = draft, partial = partial, sending = sending, busy = busy, paused = paused, held = held} = value); paint();
+      ({state = state, draft = draft, partial = partial, sending = sending, busy = busy, paused = paused, held = held, away = away} = value); paint();
     },
     level(value) {
       sample = value;

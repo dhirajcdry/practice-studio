@@ -27,10 +27,14 @@ export function createPracticeTimer({ timer, serverNow, change, onError }) {
     if (gone) return;
     const running = isRunning();
     const activeMs = state.runningSince == null ? 0 : Math.max(0, Math.min(now(), state.leaseUntil ?? now()) - state.runningSince);
-    time.textContent = formatPracticeTime((state.elapsedMs || 0) + activeMs);
-    label.textContent = running ? 'Elapsed' : 'Paused';
+    const total = (state.elapsedMs || 0) + activeMs;
+    // Before its first start there is nothing paused and no time to show: only Start.
+    const started = running || total > 0;
+    time.textContent = formatPracticeTime(total);
+    time.hidden = !started;
+    label.textContent = running ? 'Elapsed' : started ? 'Paused' : 'Untimed';
     button.disabled = saving && !savingHeartbeat;
-    const action = running ? 'Pause' : state.elapsedMs || activeMs ? 'Resume' : 'Start';
+    const action = running ? 'Pause' : started ? 'Resume' : 'Start';
     button.setAttribute('aria-label', `${action} practice timer`);
     if (button.dataset.action !== action) { button.dataset.action = action; replace(button, [icon(running ? 'pause' : 'play'), el('span', { text: action })]); }
   }

@@ -25,18 +25,17 @@ body .ex-head .ex-try:hover{color:var(--accent)}
 .ex-value strong,.ex-value b{font-weight:600}
 /* A picture that is the explanation sits in the Explanation row, where the label says it is. */
 .ex-value.is-figure p{margin:0}
-.ex-value.is-figure img{display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0;border:0;border-radius:var(--r-sm)}
+/* An example's picture heads its values, never beside them: beside, a wide diagram shrank to an
+   unreadable strip and the values were squeezed into a column that broke inputs mid-token, and
+   their start no longer lined up with the other cards. The space between picture and rows is the
+   layout's gap, so a theme that restyles the rows' padding cannot close it. */
+.ex-body{display:flex;flex-direction:column;align-items:stretch;row-gap:var(--space-3)}
 .ex-figure{padding:var(--space-3) var(--space-4) 0}
-/* A diagram is a reference, not the headline: capped so the values beside or under it stay in view. */
-.ex-figure img{display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0;border:0;border-radius:var(--r-sm)}
-/* In a card with room, the diagram sits beside its values instead of above a wide empty strip. */
-.stmt-example{container:example / inline-size}
-@container example (min-width:420px){
-  /* Beside a diagram, a few short rows sit level with its middle; rows taller than the diagram simply start at the top. */
-  .stmt-example:has(.ex-figure) .ex-body{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);align-items:center}
-  .stmt-example:has(.ex-figure) .ex-figure{align-self:start}
-  .stmt-example:has(.ex-figure) .ex-figure{padding-bottom:var(--space-3);padding-right:0;max-width:44cqw}
-}
+.stmt-example .ex-figure+.ex-rows{padding-top:0}
+/* A diagram is a reference, not the headline: capped so its values stay in view. LeetCode draws
+   on white; a hairline and radius make that a deliberate plate on any surface. Never filtered:
+   explanations name the diagram's colours. */
+:is(.ex-figure,.ex-value.is-figure) img{display:block;max-width:100%;max-height:260px;width:auto;height:auto;margin:0;border:1px solid var(--hair-10);border-radius:var(--r-sm)}
 .ex-raw{padding:var(--space-3) var(--space-4)}
 .ex-raw>:last-child{margin-bottom:0}
 

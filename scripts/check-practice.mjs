@@ -52,8 +52,9 @@ try {
   async function shot(name) { const s = await send('Page.captureScreenshot', { format: 'png' }); await fs.writeFile(`/tmp/studio-practice-${name}.png`, Buffer.from(s.data, 'base64')); }
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN + '/#/lld' });
-  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'LLD launcher');
-  await evaluate("document.querySelector('.th-practice').click()");
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), 'LLD launcher');
+  // Nothing is chosen on arrival; practise the first library problem.
+  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-coach') && !!window.monaco?.editor.getModels().length"), 'practice editor');
   // The work/coach split is a real divider: keyboard and pointer resizing must
   // preserve the editor instance and keep both panes usable.
@@ -92,9 +93,10 @@ try {
   assert.ok(address.includes('/practice/'));
   assert.equal(await evaluate("return document.querySelector('.pr-typed').hidden"), true, 'voice is default');
   assert.equal(await evaluate("return document.querySelectorAll('.pr-exchange').length"), 0, 'opening practice makes no model turn');
-  assert.equal(await evaluate("return document.querySelector('.pr-timer-label').textContent"), 'Paused', 'new practice starts paused');
+  // Before its first start the timer is only a Start control: nothing is "Paused" yet.
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-label').textContent"), 'Untimed', 'new practice is untimed until started');
   await sleep(1100);
-  assert.equal(await evaluate("return document.querySelector('.pr-timer-value').textContent"), '00:00', 'opening practice never starts tracking');
+  assert.equal(await evaluate("return document.querySelector('.pr-timer-value').hidden"), true, 'opening practice never starts tracking or shows 00:00');
   await evaluate("document.querySelector('[aria-label=\"Start practice timer\"]').click()");
   await until(() => evaluate("return !!document.querySelector('[aria-label=\"Pause practice timer\"]:not(:disabled)')"), 'explicit start');
   const initialTime = await evaluate("return document.querySelector('.pr-timer-value').textContent");
@@ -161,7 +163,7 @@ try {
   assert.equal(await evaluate("return document.querySelector('.pr-work-error').hidden"),true,'later successful autosave clears its error without a question');
   await evaluate("window.fetch=window.__practiceFetch;delete window.__practiceFetch;");
   await evaluate("document.querySelector('.ui-pane-header .python-run').click()");
-  await until(() => evaluate("return document.querySelector('.lld-output').textContent.includes('42')"), 'Python run');
+  await until(() => evaluate("return document.querySelector('.pyrun .rr-printed')?.textContent.includes('42')"), 'Python run');
   await mode('Typed');
   await evaluate(`window.__practiceFetch=window.fetch;window.fetch=(url,options)=>{
     if(String(url)==='/api/practice/ask'){window.fetch=window.__practiceFetch;return Promise.reject(new TypeError('Failed to fetch'));}
@@ -211,6 +213,28 @@ try {
   await evaluate("const log=document.querySelector('.pr-thread');log.scrollTop=0;log.dispatchEvent(new Event('scroll'))");
   await until(()=>evaluate("return document.querySelector('.pr-state')?.textContent==='Ready when you are'"),'long-history reply completes');
   assert.equal(await evaluate("return document.querySelector('.pr-thread').scrollTop"),0,'reading older content during streaming is preserved');
+  // Problem is a tab with its own scroll. Switching tabs and typing in the composer moves
+  // neither the conversation nor the Problem tab (opening the old disclosure and typing
+  // used to snap the thread to the bottom).
+  const tabScroll = await evaluate(`const coach=document.querySelector('.pr-coach'),tab=k=>coach.querySelector('.pr-tabs [data-tab='+k+']'),wait=()=>new Promise(r=>setTimeout(r,60));
+    const thread=coach.querySelector('.pr-thread'),problem=coach.querySelector('.pr-problem-pane'),input=coach.querySelector('.pr-typed textarea');
+    thread.scrollTop=160;thread.dispatchEvent(new Event('scroll'));await wait();const threadTop=thread.scrollTop;
+    tab('problem').click();await wait();
+    for(let i=0;i<60;i++){const p=document.createElement('p');p.textContent='Fixture requirement line '+i;problem.append(p);}
+    problem.scrollTop=240;await wait();const problemTop=problem.scrollTop;
+    const composerHidden=coach.querySelector('.pr-compose').hidden,threadHidden=thread.hidden;
+    tab('coach').click();await wait();const restored=thread.scrollTop;
+    for(const ch of 'typing while reading'){input.value+=ch;input.dispatchEvent(new Event('input'));}
+    await wait();const afterTyping=thread.scrollTop;
+    tab('problem').click();await wait();const problemAfter=problem.scrollTop;
+    tab('coach').click();await wait();input.value='';input.dispatchEvent(new Event('input'));
+    return {threadTop,problemTop,composerHidden,threadHidden,restored,afterTyping,problemAfter};`);
+  assert.ok(tabScroll.threadTop > 100 && tabScroll.problemTop > 200, 'tab scroll fixture: ' + JSON.stringify(tabScroll));
+  assert.equal(tabScroll.composerHidden, true, 'the composer belongs to the Coach tab only');
+  assert.equal(tabScroll.threadHidden, true, 'one scroller shows at a time');
+  assert.equal(tabScroll.restored, tabScroll.threadTop, 'switching tabs never moves the conversation');
+  assert.equal(tabScroll.afterTyping, tabScroll.threadTop, 'typing in the composer does not move the conversation');
+  assert.equal(tabScroll.problemAfter, tabScroll.problemTop, 'the Problem tab keeps its own scroll');
   for (const dark of [true, false]) {
     await evaluate(`const s=await import('/js/settings.js');s.setSetting('theme','desk');s.setSetting('mode',${dark}?'dark':'light');`);
     await sleep(150); await shot(dark?'dark':'light');
@@ -220,8 +244,8 @@ try {
   assert.equal(await evaluate('return document.documentElement.scrollWidth<=innerWidth'), true); await shot('narrow');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN+'/#/design' });
-  await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'design launcher');
-  await evaluate("document.querySelector('.th-practice').click()");
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), 'design launcher');
+  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-board .excalidraw')"), 'practice whiteboard');
   const boardRoute = await evaluate('return location.hash');
   // An unfenced text field/portal used to be treated as the catalog search box.
@@ -317,7 +341,9 @@ try {
   assert.deepEqual(designBranch.elements,designSnapshot.elements,'copied whiteboard retains every element');
   assert.match(designBranch.sourceSnapshot.feedback,/reservation atomicity/);
   assert.equal(designBranch.session.source.interviewId,sourceId);
-  await evaluate("document.querySelector('.pr-problem').open=true;");
+  await evaluate("document.querySelector('.pr-tabs [data-tab=feedback]').click();");
+  await until(()=>evaluate("return !document.querySelector('.pr-feedback-pane').hidden && /reservation atomicity/.test(document.querySelector('.pr-feedback-pane').textContent)"),'mock feedback tab');
+  assert.match(await evaluate("return document.querySelector('.pr-report-source').textContent"),/no structured report/i,'fallback feedback says which it is');
   await shot('branch');
   // This request was produced by the fake provider above, through the real central
   // assembly path. The inspector must show that payload, not reconstructed UI state.
@@ -348,8 +374,11 @@ try {
   await until(()=>evaluate("return !document.querySelector('.ci-sheet')"),'inspector Escape cleanup');
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
   await evaluate("location.hash='#/lld'");
-  await until(()=>evaluate("return !!document.querySelector('.th-practice')"),'practice launcher');
+  await until(()=>evaluate("return !!document.querySelector('.th[data-state=ready] .th-practice')"),'practice launcher');
+  // With nothing chosen, Practise on My own problem with a blank brief opens a blank practice.
+  await evaluate("document.querySelector('.th-pick[data-kind=practise] .ui-select-button').click(); await new Promise(r=>setTimeout(r,80)); [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n=>n.textContent.trim()==='My own problem').click(); await new Promise(r=>setTimeout(r,80));");
   assert.equal(await evaluate("return document.querySelector('.th-practice').textContent.trim()"),'Start practising');
+  assert.ok(await evaluate("return !!document.querySelector('.th-act--practise .th-brief textarea') && !!document.querySelector('.th-mock .ci-start')"),'both ways in stay on offer, with a brief field for your own problem');
   await evaluate("document.querySelector('.th-practice').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-empty') && !!window.monaco?.editor.getModels().length"),'blank practice');
   assert.match(await evaluate("return document.querySelector('.pr-empty').textContent"),/What would you like to work on/);
@@ -359,7 +388,7 @@ try {
   await evaluate("const i=document.querySelector('.pr-typed textarea');i.value='Define my custom practice topic: inventory repair with duplicate reservation checks';i.dispatchEvent(new Event('input'));document.querySelector('.pr-compose .btn--primary').click()");
   await until(()=>evaluate("return document.querySelector('.ui-workspace-identity h1')?.textContent==='Inventory repair' && document.querySelector('.pr-state')?.textContent==='Ready when you are'"),'coach saves custom topic');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue()'),'custom_work = 42');
-  assert.match(await evaluate("return document.querySelector('.pr-problem').textContent"),/reject duplicate reservations/);
+  assert.match(await evaluate("return document.querySelector('.pr-problem-pane').textContent"),/reject duplicate reservations/);
   await shot('custom-topic');
   await reload();
   await until(()=>evaluate("return document.querySelector('.ui-workspace-identity h1')?.textContent==='Inventory repair' && !!window.monaco?.editor.getModels().length"),'custom topic reload');

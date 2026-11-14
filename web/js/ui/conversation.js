@@ -54,16 +54,20 @@ export function decorateConversationCode(root) {
 export function bindConversation(log, { composer = null, viewport = () => log, onJump = null } = {}) {
   let unread = false, initialized = false, frame = 0, regroup = true;
   const dirty = new Set();
-  const jump = el('button', { class: 'ui-jump-latest', type: 'button', hidden: true, onclick: () => {
+  const jump = el('button', { class: 'ui-jump-latest', type: 'button', hidden: true, 'aria-label': 'Jump to latest', title: 'Jump to latest', onclick: () => {
     const view = viewport(); if (!view) return;
     onJump?.(); view.scrollTop = view.scrollHeight; unread = false; jump.hidden = true;
-  } }, [icon('chevron', 14), el('span', { text: 'Jump to latest' })]);
+  } }, [icon('chevron', 14)]);
   // A zero-height anchor keeps unread controls out of the transcript's layout.
   // Hiding an in-flow pill used to grow the viewport and clamp scrollTop by 36px.
   const jumpAnchor = el('div', { class: 'ui-jump-anchor' }, jump);
   if (composer) composer.before(jumpAnchor);
   const atBottom = () => { const view = viewport(); return !view || view.scrollHeight - view.scrollTop - view.clientHeight <= 1; };
-  function scroll() { if (atBottom()) unread = false; jump.hidden = !unread; }
+  // Whether the reader was at the latest turn at the last scroll or paint. A transcript
+  // bounded by a composer shrinks from below when the composer grows (a live answer adds a
+  // line); a reader who was at the latest turn stays on it.
+  let pinned = true;
+  function scroll() { pinned = atBottom(); if (pinned) unread = false; jump.hidden = !unread; }
   function paint() {
     frame = 0;
     const bottom = atBottom();
@@ -96,7 +100,9 @@ export function bindConversation(log, { composer = null, viewport = () => log, o
   // Capture also catches an outer coding-pane scroll owner.
   const onScroll = event => { if (event.target === viewport()) scroll(); };
   log.ownerDocument.addEventListener('scroll', onScroll, true);
+  const resized = new ResizeObserver(() => { const view = viewport(); if (pinned && view === log && !atBottom()) view.scrollTop = view.scrollHeight; });
+  resized.observe(log);
   dirty.add(log); paint();
   // Screens that build their layout after binding place `anchor`, never the bare button.
-  return { jump, anchor: jumpAnchor, refresh() { regroup = true; dirty.add(log); schedule(); }, dispose() { observer.disconnect(); cancelAnimationFrame(frame); log.ownerDocument.removeEventListener('scroll', onScroll, true); jumpAnchor.remove(); } };
+  return { jump, anchor: jumpAnchor, refresh() { regroup = true; dirty.add(log); schedule(); }, dispose() { observer.disconnect(); resized.disconnect(); cancelAnimationFrame(frame); log.ownerDocument.removeEventListener('scroll', onScroll, true); jumpAnchor.remove(); } };
 }

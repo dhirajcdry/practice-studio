@@ -105,6 +105,32 @@ export async function checkControls({ call, evaluate, wait }, origin) {
     await measure('catalog', theme, mode);
   }
   assert.deepEqual(failures, [], 'Shared control heights: 38px tabs, 28px controls, 34px setup actions');
+
+  // A folder, filter or search redraws the catalog in place. It must not move the page to the
+  // problem opened last (arriving at the catalog does that, once), and focus stays on the control.
+  const toggled = await evaluate(`(async () => {
+    const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const heads = () => [...document.querySelectorAll('.phead')];
+    const results = [];
+    for (const pick of [() => heads()[0], () => heads().filter(head => head.getAttribute('aria-expanded') === 'false').at(-1)]) {
+      const head = pick();
+      if (!head) continue;
+      head.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await frame();
+      const before = head.getBoundingClientRect().top, name = head.querySelector('.pname').textContent;
+      head.focus({ preventScroll: true }); head.click();
+      await frame();
+      results.push({ name, before, after: heads().find(other => other.querySelector('.pname').textContent === name).getBoundingClientRect().top, focused: document.activeElement?.querySelector?.('.pname')?.textContent || null,
+        selected: !!document.querySelector('.prow.sel'), scrollable: document.documentElement.scrollHeight > innerHeight * 2 });
+      document.activeElement.click(); await frame();
+    }
+    return results;
+  })()`);
+  assert.ok(toggled.length >= 1, 'catalog has folders to toggle');
+  for (const row of toggled) {
+    assert.ok(Math.abs(row.after - row.before) <= 1, `toggling a folder moved the page: ${JSON.stringify(row)}`);
+    assert.equal(row.focused, row.name, `toggling a folder lost focus: ${JSON.stringify(row)}`);
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

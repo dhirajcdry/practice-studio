@@ -333,6 +333,14 @@ function textareaEditor(host, initial, { label, readOnly }) {
     getValue: () => area.value,
     setValue: value => { area.value = value; notifyCursor(); },
     getPosition: position,
+    revealLine: n => {
+      const lines = area.value.split('\n'), line = Math.min(Math.max(1, n), lines.length);
+      const at = lines.slice(0, line - 1).reduce((sum, text) => sum + text.length + 1, 0) + /^\s*/.exec(lines[line - 1])[0].length;
+      area.focus(); area.setSelectionRange(at, at);
+      const height = parseFloat(getComputedStyle(area).lineHeight) || 22;
+      area.scrollTop = Math.max(0, (line - 1) * height - area.clientHeight / 2);
+      notifyCursor();
+    },
     focus: () => area.focus(), blur: () => area.blur(),
     hasFocus: () => document.activeElement === area,
     onChange: fn => { changed = fn; }, onCursorChange: fn => { cursor = fn; },
@@ -363,6 +371,13 @@ function monacoEditor(monaco, host, initial, { label, readOnly }) {
       instance.pushUndoStop();
     },
     getPosition: () => instance.getPosition(),
+    revealLine: n => {
+      if (!model || model.isDisposed()) return;
+      const line = Math.min(Math.max(1, n), model.getLineCount());
+      instance.setPosition({ lineNumber: line, column: model.getLineFirstNonWhitespaceColumn(line) || 1 });
+      instance.revealLineInCenterIfOutsideViewport(line);
+      instance.focus();
+    },
     focus: () => instance.focus(), blur: () => host.querySelector('textarea')?.blur(),
     hasFocus: () => instance.hasTextFocus(),
     onChange: fn => { changed = fn; }, onCursorChange: fn => { cursor = fn; },
@@ -456,6 +471,8 @@ export function mountPythonEditor(host, initial = '', options = {}) {
     get kind() { return current.kind; }, get raw() { return current.raw; },
     getValue: () => current.getValue(), setValue: value => current.setValue(value),
     getPosition: () => current.getPosition(),
+    /** Put the cursor at the start of line `n` (clamped), scroll it into view and focus. */
+    revealLine: n => current.revealLine(Number(n) || 1),
     focus: () => current.focus(), blur: () => current.blur(), hasFocus: () => current.hasFocus(),
     onChange: fn => { changed = fn; },
     onCursorChange: fn => { cursors.add(fn); return { dispose: () => cursors.delete(fn) }; },

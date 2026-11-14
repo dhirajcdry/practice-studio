@@ -192,7 +192,45 @@ function markNav() {
   }
 }
 
-function render() {
+const catalogKey = node => node.dataset.slug || node.getAttribute('aria-label') || node.querySelector('.pname')?.textContent || node.textContent.trim();
+const catalogSelector = node => node.tagName.toLowerCase() + (node.classList.length ? '.' + CSS.escape(node.classList[node.classList.length - 1]) : '');
+
+/** Names a catalog node so the same one can be found again after the catalog is redrawn. */
+function mark(node) {
+  if (!node || node === document.body || !appEl.contains(node)) return null;
+  const selector = catalogSelector(node);
+  return { selector, key: catalogKey(node), index: [...appEl.querySelectorAll(selector)].indexOf(node), top: node.getBoundingClientRect().top };
+}
+function find(marked) {
+  if (!marked) return null;
+  const candidates = [...appEl.querySelectorAll(marked.selector)];
+  return candidates.find(node => catalogKey(node) === marked.key) || candidates[marked.index] || null;
+}
+
+/**
+ * Redraws the catalog where it stands: the control in use keeps focus and stays where it was
+ * on screen. The position is held by that control (or the first row in view), not by a pixel
+ * offset, because folders off screen are laid out lazily and their heights are estimates.
+ */
+function redrawCatalog() {
+  const focused = mark(document.activeElement), y = window.scrollY;
+  const anchor = focused || mark([...appEl.querySelectorAll('.phead, .prow')].find(node => node.getBoundingClientRect().bottom > 0));
+  replace(appEl, renderCatalog());
+  mountRecorder();
+  find(focused)?.focus({ preventScroll: true });
+  const again = find(anchor);
+  if (!again) { window.scrollTo({ top: y, behavior: 'instant' }); return; }
+  // Twice: the first move brings lazily laid out folders into view, which can shift the row again.
+  for (let pass = 0; pass < 2; pass++) window.scrollBy({ top: again.getBoundingClientRect().top - anchor.top, behavior: 'instant' });
+}
+
+/**
+ * @param {boolean|Event} [arrival] true (or the hashchange event) when the route was just
+ *   reached. Only then does the catalog bring the last-opened problem into view; a redraw
+ *   caused by a control on the page (a folder, a filter, the search) leaves the scroll alone.
+ */
+function render(arrival) {
+  const arrived = arrival === true || arrival instanceof Event;
   installRecorder(currentSlug, {
     getTitle: slug => bySlug.get(slug)?.title || slug,
     onRequestStart: showInterviewSetup,
@@ -269,6 +307,7 @@ function render() {
     if (['added', 'others'].includes(state.list)) { state.list = 'neetcode250'; state.pattern = null; }
   } else if (location.hash === '#/') state.catalogMode = 'explorer';
   saveState();
+  if (!arrived && appEl.querySelector('.catalog')) { redrawCatalog(); refreshCatalogProgress(); return; }
   replace(appEl, renderCatalog());
   mountRecorder();
   refreshCatalogProgress();
@@ -310,10 +349,7 @@ async function refreshCatalogProgress(force = false) {
     progressLoadedAt = Date.now();
     if (progressRefreshQueued) { progressRefreshQueued = false; void refreshCatalogProgress(true); }
     if (document.body.classList.contains('browse-page')) {
-      const y = window.scrollY;
-      replace(appEl, renderCatalog());
-      mountRecorder();
-      window.scrollTo({ top: y, behavior: 'instant' });
+      redrawCatalog();
     }
   }
 }
@@ -441,13 +477,14 @@ searchEl.addEventListener('input', () => {
   state.pattern = null;
   if (currentSlug()) { goBrowse(); return; } // hashchange re-renders
   render();
+  window.scrollTo({ top: 0, behavior: 'instant' }); // a new query is a new list, read from its start
 });
 
 window.addEventListener('hashchange', render);
 // Leaving the page tears the design interview down so its last words are saved. A page
 // restored from the back/forward cache comes back with that screen already torn down,
 // so build it again rather than showing a dead board.
-window.addEventListener('pageshow', (event) => { if (event.persisted) render(); });
+window.addEventListener('pageshow', (event) => { if (event.persisted) render(true); });
 
 
 /* ----------------------------------- boot ---------------------------------- */
@@ -514,7 +551,7 @@ async function boot() {
   setSourceLabel();
   if (api.mode === 'mock') showBanner(api.reason);
 
-  render();
+  render(true);
 }
 
 boot();

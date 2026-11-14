@@ -32,18 +32,32 @@ function actionRail(actions = {}, status) {
       menu.open();
     });
     rail.append(more, el('div', { hidden: true, class: 'ui-overflow-sources' }, overflow));
+    rail.dispose = () => menu.dispose();
   }
   return rail;
 }
 
+/**
+ * The header is built once. `setActions` swaps only the action rail when a screen's
+ * state really changes (live to review), disposing the old More actions menu; title,
+ * back and metadata nodes are kept. `dispose` closes the menu on teardown.
+ */
 export function screenHeader({ back, crumb, title, badges = [], meta = [], status, actions = {} }) {
   const backControl = back ? back.href
     ? el('a', { class: `btn btn--icon ui-workspace-back ${back.className || ''}`, href: back.href, 'aria-label': back.label }, icon('back', 15))
     : button({ variant: 'icon', icon: 'back', ariaLabel: back.label, onClick: back.onClick, className: `ui-workspace-back ${back.className || ''}` }) : null;
-  return el('header', { class: 'ui-workspace-header ui-screen-header' }, [backControl,
+  let rail = actionRail(actions, status);
+  const header = el('header', { class: 'ui-workspace-header ui-screen-header' }, [backControl,
     crumb ? el('span', { class: 'ui-header-crumb', text: `${crumb} /` }) : null,
     el('div', { class: 'ui-workspace-identity' }, [title instanceof Node ? title : el('h1', { text: title }), ...badges, metadata(meta)]),
-    actionRail(actions, status)]);
+    rail]);
+  header.setActions = (next = {}, nextStatus = null) => {
+    rail.dispose?.();
+    const fresh = actionRail(next, nextStatus);
+    rail.replaceWith(fresh); rail = fresh;
+  };
+  header.dispose = () => rail.dispose?.();
+  return header;
 }
 
 export function workspaceHeader({ title, subtitle, backHref, backLabel, actions = [] }) {

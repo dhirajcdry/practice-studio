@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { filterTranscript, hasVoicedAudio } from '../../web/js/transcript-filter.js';
+import { watchPresence, AWAY_HEAD } from '../../web/js/voice-loop.js';
 
 // Exercise the actual control without a microphone, server, or learner records.
 const source = (await fs.readFile(new URL('../../web/js/voice.js', import.meta.url), 'utf8'))
@@ -13,43 +14,51 @@ class Element extends EventTarget {
   append(...nodes) { this.children.push(...nodes); }
 }
 function harness({ signal = () => 0.08, meter = true, result = { ok: true, text: 'Hello world' }, permission = null, voiceOptions = {} } = {}) {
-  let now = 0, stopped = 0;
-  const timers = new Map(), requests = [], emitted = [];
+  let now = 0, stopped = 0, opened = 0, contexts = 0, closedContexts = 0, focused = true, hidden = false;
+  const timers = new Map(), requests = [], emitted = [], starts = [], levels = [];
   let timerId = 0;
   const interval = (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms, next: now + ms }); return id; };
   class Recorder extends EventTarget {
     static isTypeSupported() { return true; }
     constructor() { super(); this.mimeType = 'audio/webm'; }
-    start() {}
+    start() { starts.push(now); }
     requestData() { const e = new Event('dataavailable'); e.data = new Blob(['audio']); this.dispatchEvent(e); }
     stop() { queueMicrotask(() => { this.requestData(); this.dispatchEvent(new Event('stop')); }); }
   }
   const window = new EventTarget();
   Object.assign(window, { MediaRecorder: Recorder, AudioContext: class {
-    constructor() { if (!meter) throw new Error('No meter'); this.state = 'running'; }
+    constructor() { if (!meter) throw new Error('No meter'); this.state = 'running'; contexts++; }
     createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData(a) { a.fill(signal(now)); } }; }
     createMediaStreamSource() { return { connect() {} }; }
-    close() {}
+    close() { closedContexts++; }
   } });
+  // Presence is the real shared watcher (voice-loop.js) over a page whose focus and
+  // visibility the test controls, dispatching the events a browser would.
+  const document = Object.assign(new EventTarget(), { createElementNS: () => new Element(), hasFocus: () => focused,
+    get hidden() { return hidden; }, get visibilityState() { return hidden ? 'hidden' : 'visible'; } });
   const el = (_, props = {}, children = []) => {
     const e = new Element(); Object.assign(e, props); e.textContent = props.text || ''; e.children = (Array.isArray(children) ? children : [children]).filter(Boolean); return e;
   };
   const ctx = vm.createContext({
-    window, MediaRecorder: Recorder, Blob, AbortController, filterTranscript, hasVoicedAudio,
-    navigator: { mediaDevices: { getUserMedia: async () => { if (permission) await permission; return { getTracks: () => [{ stop() { stopped++; } }] }; } } },
-    document: { createElementNS: () => new Element() },
+    window, MediaRecorder: Recorder, Blob, AbortController, queueMicrotask, filterTranscript, hasVoicedAudio,
+    watchPresence: fn => watchPresence(fn, { win: window, doc: document }), AWAY_HEAD,
+    navigator: { mediaDevices: { getUserMedia: async () => { opened++; if (permission) await permission; return { getTracks: () => [{ stop() { stopped++; } }] }; } } },
+    document,
     icon: () => new Element(),
     el, clear: (e) => { e.children = []; }, replace: (e, nodes) => { e.children = nodes.filter(Boolean); },
-    transcribeAudio: async (_slug, blob, opts) => { requests.push({ blob, opts }); return typeof result === 'function' ? result(opts) : result; },
+    transcribeAudio: async (_slug, blob, opts) => { requests.push({ blob, opts, at: now }); return typeof result === 'function' ? result(opts) : result; },
     logSessionEvent: async () => {},
     setInterval: interval, clearInterval: (id) => timers.delete(id),
     setTimeout: () => ++timerId, clearTimeout() {},
     Date: { now: () => now },
   });
   vm.runInContext(source + '\nthis.make = createVoiceControl;', ctx);
-  const voice = ctx.make({ ...voiceOptions, getSlug: () => '', logTakes: false, onTranscript: (text) => emitted.push(text) });
+  const voice = ctx.make({ onLevel: (value) => levels.push({ at: now, ...value }), ...voiceOptions, getSlug: () => '', logTakes: false, onTranscript: (text) => emitted.push(text) });
   const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-  return { voice, window, requests, emitted, stopped: () => stopped, flush,
+  return { voice, window, requests, emitted, starts, levels, stopped: () => stopped, opened: () => opened, liveContexts: () => contexts - closedContexts, flush,
+    blur() { focused = false; window.dispatchEvent(new Event('blur')); },
+    hide() { hidden = true; focused = false; document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('blur')); },
+    async back() { hidden = false; focused = true; document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('focus')); await new Promise(r => setTimeout(r, 5)); await flush(); },
     async advance(ms) { const end = now + ms; while (now < end) { now += 100; for (const t of [...timers.values()]) if (t.next <= now) { t.next += t.ms; t.fn(); } await flush(); } },
   };
 }
@@ -82,10 +91,10 @@ test('flushing an answer transcribes it without closing capture or losing the ne
 test('continuous speech is not relearned as background noise across phrase boundaries', async () => {
   let loud = true;
   const h = harness({signal: () => loud ? .08 : 0});
-  await h.voice.start(); await h.advance(26000);
+  await h.voice.start(); await h.advance(40000);
   loud = false; await h.advance(1000);
   assert.equal(h.requests.filter(request => !request.opts.preview).length, 3,
-    'two full phrases and the final tail must all reach ASR');
+    'two hard-capped phrases and the final tail must all reach ASR');
   assert.equal(h.emitted.length, 3);
   assert.equal(h.stopped(), 0);
   h.voice.stop(); await h.flush(); h.voice.dispose();
@@ -210,8 +219,8 @@ test('finish disposal drains an in-flight transcription after detaching', async 
 
 test('blur stops the microphone, then finishing disposal preserves the completed phrase', async () => {
   const h = harness(); await h.voice.start(); await h.advance(1700);
-  // The control listens to blur as the browser navigation/focus boundary.
-  h.window.dispatchEvent(new Event('blur'));
+  // Another window in front is the browser's away boundary (voice-loop.js presence).
+  h.blur();
   await h.flush();
   assert.deepEqual(h.emitted, ['Hello world']);
   h.voice.dispose({ finish: true });
@@ -244,7 +253,7 @@ test('recording navigation drains its tail and guards unload only until it finis
   assert.equal(guarded(), false);
   await h.voice.start(); await h.advance(1700);
   assert.equal(guarded(), true);
-  h.window.dispatchEvent(new Event('blur'));
+  h.blur();
   h.voice.dispose({ finish: true });
   await h.flush();
   assert.equal(guarded(), true);
@@ -350,5 +359,141 @@ test('explicitly discarding failed audio releases later confirmed words', async 
   await h.voice.start(); await h.advance(3700); h.voice.stop(); await h.flush();
   h.voice.discardFailed();
   assert.deepEqual(h.emitted, ['Second']); assert.equal(h.voice.hasTranscriptionError(), false);
+  h.voice.dispose();
+});
+
+const finals = h => h.requests.filter(request => !request.opts.preview);
+
+test('a long monologue is cut at a gap between words, not mid-word, and still hard-capped', async () => {
+  const dip = harness({ signal: now => now > 13000 && now <= 13300 ? 0 : .08 });
+  await dip.voice.start(); await dip.advance(13500);
+  assert.equal(finals(dip).length, 1);
+  assert.ok(finals(dip)[0].at > 13000, 'no cut while every frame is speech');
+  dip.voice.stop(); await dip.flush(); dip.voice.dispose();
+  const solid = harness();
+  await solid.voice.start(); await solid.advance(17900);
+  assert.equal(finals(solid).length, 0, 'uninterrupted sound waits for a word gap');
+  await solid.advance(300);
+  assert.equal(finals(solid).length, 1, 'but never past the hard cap');
+  solid.voice.stop(); await solid.flush(); solid.voice.dispose();
+});
+
+test('long thinking silence before an answer is not sent ahead of it', async () => {
+  const h = harness({ signal: now => now > 8000 && now <= 9500 ? .08 : 0 });
+  await h.voice.start(); await h.advance(11000);
+  assert.equal(finals(h).length, 1);
+  const phraseStart = h.starts.filter(at => at <= 8000).at(-1);
+  assert.ok(8000 - phraseStart <= 3200, `leading silence was ${8000 - phraseStart} ms`);
+  assert.deepEqual(h.emitted, ['Hello world']);
+  h.voice.stop(); await h.flush(); h.voice.dispose();
+});
+
+test('restarting a silent phrase does not reset the end-of-turn silence clock', async () => {
+  const h = harness({ signal: now => now <= 1500 ? .08 : 0 });
+  await h.voice.start(); await h.advance(9000);
+  assert.ok(h.starts.length >= 3, 'silent phrases were restarted');
+  assert.ok(Math.max(...h.levels.map(l => l.sinceLoud)) >= 6000, 'silence keeps counting across restarts');
+  h.voice.stop(); await h.flush(); h.voice.dispose();
+});
+
+// Away (page hidden or another window in front): release now, keep the words, resume on return.
+test('leaving mid-take releases the tracks, keeps the heard words, and resumes on return', async () => {
+  const h = harness(); await h.voice.start(); await h.advance(1700);
+  h.blur();
+  assert.equal(h.stopped(), 1, 'tracks stop the moment the window loses focus');
+  assert.equal(h.voice.awaitingReturn(), true);
+  await h.flush();
+  assert.deepEqual(h.emitted, ['Hello world'], 'words heard before leaving drain into the draft');
+  assert.equal(h.voice.isBusy(), false);
+  assert.equal(h.voice.status.children[0]?.text, AWAY_HEAD, 'the status says why the mic is off, not "nothing heard"');
+  await h.advance(5000);
+  assert.equal(h.opened(), 1, 'nothing reacquires while away');
+  await h.back();
+  assert.equal(h.opened(), 2, 'returning resumes with no click');
+  assert.equal(h.voice.isRecording(), true);
+  assert.equal(h.voice.awaitingReturn(), false);
+  assert.equal(h.voice.status.hidden, true);
+  h.voice.dispose();
+});
+
+test('a start while away is held, not attempted, and the surface decides on return', async () => {
+  let returned = 0;
+  const h = harness({ voiceOptions: { onReturn: () => returned++ } });
+  h.hide();
+  await h.voice.start();
+  assert.equal(h.opened(), 0, 'no microphone is opened for a hidden page');
+  assert.equal(h.voice.isBusy(), false);
+  assert.equal(h.voice.awaitingReturn(), true);
+  await h.back();
+  assert.equal(returned, 1, 'onReturn lets the surface re-run its own gate');
+  assert.equal(h.opened(), 0);
+  h.voice.dispose();
+});
+
+test('stopping on purpose while away cancels the held take', async () => {
+  const h = harness(); await h.voice.start(); await h.advance(1700);
+  h.hide(); await h.flush();
+  h.voice.stop();
+  assert.equal(h.voice.awaitingReturn(), false);
+  await h.back();
+  assert.equal(h.opened(), 1, 'a pause, mode change or finish while away is not undone by returning');
+  h.voice.dispose();
+});
+
+test('returning while the last phrase still drains resumes once it settles', async () => {
+  let finish;
+  const h = harness({ result: opts => opts.filename.startsWith('preview') ? { ok: true, text: 'p' } : new Promise(resolve => { finish = resolve; }) });
+  await h.voice.start(); await h.advance(1700);
+  h.blur(); await h.back();
+  assert.equal(h.opened(), 1, 'still transcribing: not reopened yet');
+  finish({ ok: true, text: 'Last words' }); await h.flush();
+  assert.deepEqual(h.emitted, ['Last words']);
+  assert.equal(h.opened(), 2);
+  assert.equal(h.voice.isRecording(), true);
+  h.voice.dispose();
+});
+
+test('five away/return cycles leave exactly one live stream and one meter', async () => {
+  const h = harness({ signal: () => 0 }); await h.voice.start(); await h.advance(300);
+  for (let i = 0; i < 5; i++) {
+    if (i % 2) h.hide(); else h.blur();
+    await h.flush();
+    assert.equal(h.opened() - h.stopped(), 0, `away #${i + 1}: no live track`);
+    await h.back();
+    assert.equal(h.voice.isRecording(), true, `return #${i + 1}: listening`);
+  }
+  assert.equal(h.opened(), 6);
+  assert.equal(h.opened() - h.stopped(), 1);
+  assert.equal(h.liveContexts(), 1);
+  h.voice.dispose();
+  assert.equal(h.opened() - h.stopped(), 0);
+  assert.equal(h.liveContexts(), 0);
+});
+
+// A return (or a reload restoring a draft) must not let going quiet send old words.
+test('after a return the quiet countdown is armed only by new speech', async () => {
+  let level = 0.08;
+  const h = harness({ signal: () => level }); await h.voice.start(); await h.advance(1700);
+  assert.equal(h.levels.at(-1).armed, true, 'a fresh take counts down as before');
+  h.blur(); level = 0; await h.flush();
+  await h.back();
+  const back = h.levels.length;
+  await h.advance(5000);
+  const quiet = h.levels.slice(back);
+  assert.ok(quiet.length > 0 && quiet.every(l => l.armed === false), 'returning and staying quiet never arms the send');
+  assert.ok(quiet.at(-1).sinceLoud >= 2200, 'well past the quiet window');
+  level = 0.08; await h.advance(1500); level = 0; await h.advance(4000);
+  assert.equal(h.levels.at(-1).armed, true, 'new speech arms it again');
+  assert.ok(h.levels.at(-1).sinceLoud >= 2200);
+  h.voice.dispose();
+});
+
+test('requireFreshSpeech holds a restored draft until you speak again', async () => {
+  let level = 0;
+  const h = harness({ signal: () => level });
+  h.voice.requireFreshSpeech(); await h.voice.start(); await h.advance(3000);
+  assert.ok(h.levels.length > 0 && h.levels.every(l => l.armed === false));
+  level = 0.08; await h.advance(1500);
+  assert.equal(h.levels.at(-1).armed, true);
   h.voice.dispose();
 });

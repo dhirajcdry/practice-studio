@@ -172,7 +172,16 @@ body.theme-console:not(#_) .ui-composer{margin:0;padding:8px 10px;border:0;borde
 body.theme-console:not(#_) .ui-composer:focus-within{border-color:var(--accent);background:transparent;box-shadow:0 -1px 0 var(--accent)}
 body.theme-console:not(#_) .ui-composer .ui-composer-body{position:relative;padding-left:2ch}
 body.theme-console:not(#_) .ui-composer .ui-composer-body::before{content:">";position:absolute;left:0;top:8px;font:700 12.5px/1.6 var(--ui);color:var(--accent)}
-body.theme-console:not(#_) .ui-composer textarea.ui-composer-input{font:400 12.5px/1.6 var(--ui);padding-left:0}
+/* The shared one-to-eight-line growth, counted in this face's shorter lines: the shared cap is
+   eight 14px lines, which would let a long draft grow to nine here. */
+body.theme-console:not(#_) .ui-composer textarea.ui-composer-input{font:400 12.5px/1.6 var(--ui);padding-left:0;min-height:calc(1lh + var(--space-4));max-height:calc(8lh + var(--space-4))}
+/* Uppercase tracked labels are wider than the shared ones; in a narrow column the mode link and
+   the model would each take a row of their own. They share one line and the model name shortens
+   (it already ellipsizes), so the footer is at most two rows and the conversation keeps its room. */
+body.theme-console:not(#_) .ui-composer .ui-composer-options{flex-wrap:nowrap}
+body.theme-console:not(#_) .ui-composer .ui-composer-options>*{flex:none}
+body.theme-console:not(#_) .ui-composer .ui-composer-options>.coach-model-picker{flex:0 1 auto;flex-wrap:nowrap;min-width:0}
+body.theme-console:not(#_) .ui-composer .coach-model-picker .ui-select{min-width:0}
 body.theme-console:not(#_) .ui-composer .ui-composer-send{border-radius:0}
 body.theme-console:not(#_) .ui-composer .ui-composer-send:disabled{background:var(--bar);color:var(--ink-35)}
 body.theme-console:not(#_) .ui-thread-strip{border-bottom:var(--rule);text-transform:uppercase;letter-spacing:.04em}
@@ -290,25 +299,13 @@ body.theme-console:not(#_) .set-nav{background:transparent;border-right:1px soli
 body.theme-console:not(#_) .set-label{font:700 11px/1.5 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 body.theme-console:not(#_) .set-group+.set-group,body.theme-console:not(#_) .set-row~.set-row,body.theme-console:not(#_) .rr-case+.rr-case{border-top:var(--rule)}
 body.theme-console:not(#_) .settings .btn.set-nav-item[aria-selected=true],body.theme-console:not(#_) .set-nav-item[aria-selected=true]{background:var(--solid-bg);color:var(--solid-fg);font-weight:700}
-body.theme-console:not(#_) .th-pick[aria-pressed=true]{background:var(--solid-bg);color:var(--solid-fg)}
-body.theme-console:not(#_) .th-pick[aria-pressed=true] *{color:inherit}
-body.theme-console:not(#_) .th-pick[aria-pressed=true]>.th-radio{border:4px solid var(--solid-fg)}
-body.theme-console:not(#_) :is(.th-radio,.problem-state,.ui-live-dot,.streak-dot){border-radius:0}
+body.theme-console:not(#_) :is(.problem-state,.ui-live-dot,.streak-dot){border-radius:0}
 
 /* ---- Track homes and Progress: titled frames, dashed rows. ---- */
-body.theme-console:not(#_) .th h2,body.theme-console:not(#_) .dash-sec>header h2{font:700 11px/16px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
-body.theme-console:not(#_) .th-wrap{padding-top:24px;gap:24px}
-body.theme-console:not(#_) .th-pair{gap:10px}
-body.theme-console:not(#_) .th-box{position:relative}
-body.theme-console:not(#_) .th-box-body{padding-top:var(--space-3)}
-body.theme-console:not(#_) .th-box-head{justify-content:flex-end;min-height:0}
-body.theme-console:not(#_) .th-box-head h2{position:absolute;top:-9px;left:17px;padding:0 7px;background:var(--canvas)}
-body.theme-console:not(#_) .th-radio{border:1px solid var(--ink-50)}
-body.theme-console:not(#_) .th-recent{gap:0}
-body.theme-console:not(#_) .th-recent>h2{position:relative;z-index:1;align-self:flex-start;margin:0 0 -8px 17px;padding:0 7px;background:var(--canvas)}
-body.theme-console:not(#_) .th-list{padding-top:8px}
-body.theme-console:not(#_) .th-item+.th-item{border-top:var(--rule)}
-body.theme-console:not(#_) .th-recent .th-all.btn{margin-top:var(--space-2)}
+body.theme-console:not(#_) .th .th-label,body.theme-console:not(#_) .dash-sec>header h2{font:700 11px/16px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+body.theme-console:not(#_) .th-problem.ui-action-row[aria-pressed=true]{background:var(--solid-bg);color:var(--solid-fg)}
+body.theme-console:not(#_) .th-problem[aria-pressed=true] *{color:inherit}
+body.theme-console:not(#_) :is(.th-item+.th-item,.th-past+.th-past){border-top:var(--rule)}
 body.theme-console:not(#_) .dash-body{padding-top:16px;gap:20px}
 body.theme-console:not(#_) .dash-layout{gap:20px 24px}
 body.theme-console:not(#_) .dash-sec{box-sizing:border-box;padding:0 14px 12px;background:var(--frame),var(--canvas)}
@@ -323,6 +320,23 @@ body.theme-console:not(#_) .sub-head{height:var(--bar-h);min-height:var(--bar-h)
 body.theme-console:not(#_) .sub-head>*{padding:0 7px;background:var(--canvas)}
 body.theme-console:not(#_) .sub-head .sub-mark{font:700 11px/16px var(--ui);color:var(--accent)}
 body.theme-console:not(#_) .sub-head .sub-scope{font:500 10.5px/16px var(--ui);color:var(--ink-50)}
+/* A terminal does not tint a block to say whose it is: the tutor's run and the judge's words
+   are set off by a rule and named by a label, like the statement's examples. */
+body.theme-console:not(#_) .rr-tutor{border:0;border-left:2px solid var(--accent);background:transparent}
+body.theme-console:not(#_) .rr-tutor-mark{font:700 11px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .rr-tutor-what{font:500 10.5px/1.5 var(--ui);letter-spacing:.04em}
+body.theme-console:not(#_) :is(.rr-body,.rr-tutorbody,.sub-body)>.state{border:0;border-left:2px solid var(--line);background:transparent}
+body.theme-console:not(#_) :is(.rr-body,.rr-tutorbody,.sub-body)>.state.warn{border-left-color:var(--med)}
+body.theme-console:not(#_) :is(.rr-body,.rr-tutorbody,.sub-body)>.state.err{border-left-color:var(--hard)}
+body.theme-console:not(#_) :is(.state,.sub-stat) h3{font:700 11px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .sub-stat{border:0;border-left:var(--rule);background:transparent}
+body.theme-console:not(#_) :is(.sub-stat,.sub-detail)>.mono.dim{font:500 10.5px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
+body.theme-console:not(#_) .sub-judgehead{font:700 11px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+body.theme-console:not(#_) :is(.sub-judge,.sub-foot){border-top:var(--rule)}
+body.theme-console:not(#_) .sub-detail pre{border:0;border-left:2px solid var(--line);background:transparent;padding:2px 0 2px 12px;font:12.5px/1.6 var(--ui)}
+body.theme-console:not(#_) .sub-detail.bad pre{border-left-color:var(--hard);background:transparent}
+body.theme-console:not(#_) .sub-detail.bad>.mono.dim{color:var(--hard)}
+body.theme-console:not(#_) .sub-detail.bad>.mono.dim::after{content:" · differs"}
 /* Reports: dashed rules, uppercase labels, the next-level note as an accent-barred block. */
 body.theme-console:not(#_) .rp-body{--rp-rule:var(--rule);--rp-quote-rule:2px solid var(--accent);--rp-inverse-bg:transparent;--rp-inverse-fg:var(--ink)}
 body.theme-console:not(#_) .rp-move-up{border:1px solid var(--line);border-left:2px solid var(--accent)}
@@ -337,6 +351,7 @@ body.theme-console:not(#_) .stmt-example{border:0;border-left:2px solid var(--ac
 body.theme-console:not(#_) .ex-head{border-bottom:0;padding-left:12px}
 body.theme-console:not(#_) .ex-head strong{font:700 11px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
 body.theme-console:not(#_) .ex-rows{padding:2px 12px 6px}
+body.theme-console:not(#_) .ex-figure{padding:2px 12px 0}
 body.theme-console:not(#_) .ex-label{text-transform:uppercase;letter-spacing:.06em}
 body.theme-console:not(#_) .ex-value,body.theme-console:not(#_) .ex-value.is-prose{font-family:var(--ui)}
 body.theme-console:not(#_) .stmt-constraints li::before{border-radius:0;background:var(--accent)}

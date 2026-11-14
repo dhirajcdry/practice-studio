@@ -4,10 +4,11 @@ import { PHASES } from './state.mjs';
 export function createTagStripper(phases = PHASES) {
   let held = '', phase = null;
   const hints = [];
-  let gap = null, curveball = false, tagged = false;
+  let gap = null, curveball = false, tagged = false, design = null;
+  const told = [];
   const possible = tail => {
     const compact = tail.toLowerCase().replace(/\s/g, '');
-    return ['[[phase:', '[[hint:', '[[gap:', '[[curveball:'].some(opener => opener.startsWith(compact) || (compact.startsWith(opener) && !compact.includes(']]')));
+    return ['[[phase:', '[[hint:', '[[gap:', '[[curveball:', '[[told:', '[[design:'].some(opener => opener.startsWith(compact) || (compact.startsWith(opener) && !compact.includes(']]')));
   };
   return {
     push(chunk) {
@@ -20,6 +21,12 @@ export function createTagStripper(phases = PHASES) {
         if (kind.toLowerCase() === 'curveball' && value === 'delivered') curveball = true;
         return '';
       });
+      // Private notes carry free text. They are stripped like any other tag and kept for the record.
+      held = held.replace(/\[\[\s*(told|design)\s*:\s*([^\[\]]{1,600}?)\s*\]\]/gi, (_, kind, value) => {
+        tagged = true;
+        if (kind.toLowerCase() === 'told') told.push(value); else design = value;
+        return '';
+      });
       let at = held.indexOf('[');
       while (at !== -1 && !possible(held.slice(at))) at = held.indexOf('[', at + 1);
       const out = at === -1 ? held : held.slice(0, at);
@@ -29,6 +36,8 @@ export function createTagStripper(phases = PHASES) {
     flush() { const out = possible(held) ? '' : held; held = ''; return out; },
     get tagged() { return tagged; },
     get gap() { return gap; },
+    get told() { return [...told]; },
+    get design() { return design; },
     get curveball() { return curveball; },
     get phase() { return phase; },
     get hints() { return [...hints]; },

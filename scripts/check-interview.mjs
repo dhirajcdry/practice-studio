@@ -68,6 +68,8 @@ try {
   });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.enable'); await send('Runtime.enable'); await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+  // Headless Chrome has no OS window focus; voice listens only while the page is focused.
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   // Reject capture rather than fabricating audio. Typed mode remains fully usable.
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); }, configurable: true });" });
   await send('Page.navigate', { url: origin + '/#/p/two-sum' });
@@ -127,12 +129,55 @@ try {
   assert.equal(await evaluate("return !!document.querySelector('.ws .rec-toggle');"), false, 'interview controls leave the editor toolbar');
   const identity = await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1')); ");
   const callsBeforeNoise = await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8');
+  // A skipped turn changes nothing on screen, so the transcript's own nodes must survive it.
+  await evaluate("window.__openingEntry = document.querySelector('.ci-log .ci-entry');");
   await evaluate("const input = document.querySelector('.ci-input'); input.value = '[typing] (keyboard clacking) (clicking) [TAPPING]'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();");
   await until(() => evaluate("return document.querySelector('.ci-input')?.value === '' && !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled;"), 'noise rejected');
   assert.equal(await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8'), callsBeforeNoise, 'noise must not call provider');
   assert.equal(await evaluate("return document.querySelectorAll('.ci-candidate').length;"), 0, 'noise must not appear in transcript');
+  assert.equal(await evaluate("return Boolean(window.__openingEntry?.isConnected) && document.querySelectorAll('.ci-log .ci-entry').length === 1;"), true, 'a skipped turn keeps the live transcript instead of rebuilding it');
   const noiseRecord = await fs.readFile(path.join(problemDir(home,'two-sum'), 'interviews', identity.id, 'turns.jsonl'), 'utf8');
   assert.ok(noiseRecord.includes('skipped_noise'), 'noise retained as a separate audit event');
+  // No blinks: background idle polls, a silent interviewer and a skipped (noise) answer
+  // must leave every transcript entry already on screen as the same connected node, never
+  // flash a bubble or a thinking status in and out, and keep a reader at the bottom there.
+  await evaluate(`
+    const log = document.querySelector('.ci-log');
+    log.scrollTop = log.scrollHeight;
+    window.blink = { tagged: [...log.querySelectorAll('.ci-entry')], flashed: 0, replaced: 0, labels: new Set(), polls: 0, gaps: [] };
+    const isEntry = n => n.nodeType === 1 && (n.matches('.ci-entry,.ui-message') || n.querySelector('.ci-entry,.ui-message'));
+    window.blink.observer = new MutationObserver(records => { for (const r of records) {
+      for (const n of r.removedNodes) { if (isEntry(n) && window.blink.tagged.some(t => t === n || n.contains(t))) window.blink.replaced++; if (isEntry(n) && window.blink.polling) window.blink.flashed++; }
+      for (const n of r.addedNodes) if (isEntry(n) && window.blink.polling) window.blink.flashed++;
+    } });
+    window.blink.observer.observe(log, { childList: true, subtree: true });
+    const status = () => { window.blink.labels.add(document.querySelector('.ci-state').textContent); window.blink.labels.add(document.querySelector('.ci-voice .voice-state')?.textContent || ''); };
+    window.blink.status = new MutationObserver(status);
+    window.blink.status.observe(document.querySelector('.ci-panel'), { childList: true, subtree: true, characterData: true });
+    const prior = window.fetch;
+    window.blink.restore = () => { window.fetch = prior; };
+    window.fetch = async (...args) => {
+      const poll = args[0] === '/api/interview/event';
+      if (poll) window.blink.polling = true;
+      try { return await prior(...args); }
+      finally { if (poll) { window.blink.polls++; setTimeout(() => { window.blink.polling = false; const v = document.querySelector('.ci-log'); window.blink.gaps.push(v.scrollHeight - v.scrollTop - v.clientHeight); }, 120); } }
+    };
+  `);
+  await until(() => evaluate('return window.blink.polls >= 2 && !window.blink.polling;'), 'two idle polls');
+  const idle = await evaluate('return { flashed: window.blink.flashed, labels: [...window.blink.labels], gaps: window.blink.gaps };');
+  assert.equal(idle.flashed, 0, 'an idle poll that does not interject adds or removes no transcript bubble');
+  assert.ok(!idle.labels.some(label => /thinking/i.test(label)), 'an idle poll never flashes a thinking status: ' + JSON.stringify(idle.labels));
+  assert.ok(idle.gaps.every(gap => gap <= 1), 'an idle poll keeps a reader at the latest turn: ' + JSON.stringify(idle.gaps));
+  for (const said of ['I am still thinking aloud about the loop bound', '[typing] (keyboard clacking)']) {
+    const before = await evaluate("return { silent: document.querySelectorAll('.ci-log .interviewer-silent').length, calls: 0 };");
+    await evaluate(`const input = document.querySelector('.ci-input'); input.value = ${JSON.stringify(said)}; input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();`);
+    await until(() => evaluate(`return document.querySelector('.ci-input').value === '' && !document.querySelector('.ci-pause').disabled && (${said.startsWith('[') } || document.querySelectorAll('.ci-log .interviewer-silent').length > ${before.silent});`), 'turn settles: ' + said);
+    await sleep(200);
+    const after = await evaluate("const v = document.querySelector('.ci-log'); return { replaced: window.blink.replaced, gone: window.blink.tagged.filter(n => !n.isConnected).length, gap: v.scrollHeight - v.scrollTop - v.clientHeight };");
+    assert.equal(after.gone + after.replaced, 0, 'a ' + (said.startsWith('[') ? 'skipped' : 'silent') + ' turn keeps every shown entry as the same node (no rebuild): ' + JSON.stringify(after));
+    assert.ok(after.gap <= 1, 'a reader at the bottom stays there after a ' + (said.startsWith('[') ? 'skipped' : 'silent') + ' turn: ' + after.gap);
+  }
+  await evaluate('window.blink.observer.disconnect(); window.blink.status.disconnect(); window.blink.restore();');
   // A nested interview composer must never also send the hidden Chat draft.
   // Block unexpected chat requests here even though the scratch provider is fake.
   await evaluate(`
@@ -184,26 +229,28 @@ try {
     document.querySelector('.ci-speech').click();
     const input = document.querySelector('.ci-input'); input.value = 'Run the scroll regression'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();
   `);
-  await until(() => evaluate("const v=document.querySelector('.interviews-view'); return window.streamChunks > 20 && v.scrollHeight > v.clientHeight + 400 && v.scrollHeight-v.scrollTop-v.clientHeight <= 1;"), 'initial streaming follow');
-  const sticky = await evaluate("const h=document.querySelector('.ci-live-header').getBoundingClientRect(), v=document.querySelector('.interviews-view').getBoundingClientRect(); return {top:h.top, bottom:h.bottom, viewTop:v.top, viewBottom:v.bottom,padding:parseFloat(getComputedStyle(document.querySelector('.interviews-view')).paddingTop)};");
-  assert.ok(Math.abs(sticky.top - sticky.viewTop - sticky.padding) <= 1 && sticky.bottom < sticky.viewBottom, 'timer and phases remain pinned while transcript scrolls: ' + JSON.stringify(sticky));
-  const wheelPoint = await evaluate("const r=document.querySelector('.interviews-view').getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2};");
+  // The live interview is a bounded column: the transcript is the one scroll owner between
+  // the phase header and the composer, which never overlap it.
+  await until(() => evaluate("const v=document.querySelector('.ci-log'); return window.streamChunks > 20 && v.scrollHeight > v.clientHeight + 400 && v.scrollHeight-v.scrollTop-v.clientHeight <= 1;"), 'initial streaming follow');
+  const sticky = await evaluate("const h=document.querySelector('.ci-live-header').getBoundingClientRect(), l=document.querySelector('.ci-log').getBoundingClientRect(), c=document.querySelector('.ci-composer').getBoundingClientRect(), o=document.querySelector('.interviews-view'); return {headerBottom:h.bottom, logTop:l.top, logBottom:l.bottom, composerTop:c.top, outerRange:o.scrollHeight-o.clientHeight};");
+  assert.ok(sticky.headerBottom <= sticky.logTop + .5 && sticky.logBottom <= sticky.composerTop + .5 && sticky.outerRange <= 1, 'timer and phases stay above, and the composer below, the scrolling transcript: ' + JSON.stringify(sticky));
+  const wheelPoint = await evaluate("const r=document.querySelector('.ci-log').getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2};");
   await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...wheelPoint, deltaX: 0, deltaY: -1 });
   await sleep(150);
-  const held = await evaluate("return {top:document.querySelector('.interviews-view').scrollTop,chunks:window.streamChunks};");
+  const held = await evaluate("return {top:document.querySelector('.ci-log').scrollTop,chunks:window.streamChunks};");
   await until(() => evaluate(`return window.streamChunks > ${held.chunks + 10};`), 'tokens while reading');
-  assert.ok(Math.abs(await evaluate("return document.querySelector('.interviews-view').scrollTop;") - held.top) <= 1, 'tiny upward wheel holds exact position while tokens arrive');
+  assert.ok(Math.abs(await evaluate("return document.querySelector('.ci-log').scrollTop;") - held.top) <= 1, 'tiny upward wheel holds exact position while tokens arrive');
   await evaluate("document.querySelector('.ci-log').focus({preventScroll:true});");
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
-  await until(() => evaluate("const v=document.querySelector('.interviews-view'); return v.scrollHeight-v.scrollTop-v.clientHeight <= 1;"), 'return to bottom');
+  await until(() => evaluate("const v=document.querySelector('.ci-log'); return v.scrollHeight-v.scrollTop-v.clientHeight <= 1;"), 'return to bottom');
   const resumedAt = await evaluate('return window.streamChunks;');
   await until(() => evaluate(`return window.streamChunks > ${resumedAt + 10};`), 'continued stream');
   const followGaps = await evaluate(`
     const gaps = [];
     for (let i = 0; i < 20; i++) {
       await new Promise(resolve => setTimeout(resolve, 17));
-      const v = document.querySelector('.interviews-view');
+      const v = document.querySelector('.ci-log');
       gaps.push(v.scrollHeight - v.scrollTop - v.clientHeight);
     }
     return gaps;
@@ -247,9 +294,8 @@ try {
     text.textContent += ' ' + 'Earlier interview context. '.repeat(1000);
     const log = document.querySelector('.ci-log');
     log.focus({ preventScroll: true });
-    const listViewport = document.querySelector('.interviews-view');
-    listViewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
-    listViewport.scrollTop = 0;
+    log.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
+    log.scrollTop = 0;
     window.detachedInterviewRows = 0; window.idlePolls = 0;
     window.rowObserver = new MutationObserver(records => {
       window.detachedInterviewRows += records.reduce((n, record) => n + record.removedNodes.length, 0);
@@ -262,28 +308,28 @@ try {
       return response;
     };
   `);
-  assert.equal(await evaluate("return document.querySelector('.ci-log').scrollHeight <= document.querySelector('.ci-log').clientHeight + 1;"), true, 'transcript has no nested scroll range');
+  assert.equal(await evaluate("const o=document.querySelector('.interviews-view'); return o.scrollHeight <= o.clientHeight + 1;"), true, 'the live transcript is the only scroll range; the sidebar around it does not scroll');
   async function wheelOver(selector, deltaY) {
     const point = await evaluate(`
       const rect = document.querySelector('${selector}').getBoundingClientRect();
-      const view = document.querySelector('.interviews-view').getBoundingClientRect();
+      const view = document.querySelector('.ci-log').getBoundingClientRect();
       return { x: Math.round(rect.left + rect.width / 2), y: Math.round((Math.max(rect.top, view.top) + Math.min(rect.bottom, view.bottom)) / 2) };
     `);
-    const before = await evaluate("return document.querySelector('.interviews-view').scrollTop;");
+    const before = await evaluate("return document.querySelector('.ci-log').scrollTop;");
     await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY });
-    await until(() => evaluate(`return document.querySelector('.interviews-view').scrollTop ${deltaY > 0 ? '>' : '<'} ${before};`), 'wheel over ' + selector);
+    await until(() => evaluate(`return document.querySelector('.ci-log').scrollTop ${deltaY > 0 ? '>' : '<'} ${before};`), 'wheel over ' + selector);
   }
-  await wheelOver('.ci-header', 180);
+  await wheelOver('.ci-log', 180);
   await wheelOver('.ci-log', -120);
   await sleep(300); // Let the native wheel animation finish before pinning the reading fixture.
   await evaluate(`
-    document.querySelector('.interviews-view').scrollTop = 120;
-    window.readingPosition = document.querySelector('.interviews-view').scrollTop;
-    window.listReadingPosition = window.readingPosition;
+    document.querySelector('.ci-log').scrollTop = 120;
+    window.readingPosition = document.querySelector('.ci-log').scrollTop;
+    window.listReadingPosition = document.querySelector('.interviews-view').scrollTop;
   `);
   await until(() => evaluate('return window.idlePolls >= 2;'), 'two background updates while reading');
   assert.equal(await evaluate('return window.detachedInterviewRows;'), 0, 'background updates never detach the expanded interview');
-  assert.equal(await evaluate("return document.querySelector('.interviews-view').scrollTop;"), await evaluate('return window.readingPosition;'), 'background updates preserve transcript scroll');
+  assert.equal(await evaluate("return document.querySelector('.ci-log').scrollTop;"), await evaluate('return window.readingPosition;'), 'background updates preserve transcript scroll');
   assert.equal(await evaluate("return document.querySelector('.interviews-view').scrollTop;"), await evaluate('return window.listReadingPosition;'), 'background updates preserve outer list scroll');
   assert.equal(await evaluate("return document.activeElement === document.querySelector('.ci-log');"), true, 'background updates preserve focus');
   await evaluate(`
@@ -292,7 +338,7 @@ try {
     input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();
   `);
   await until(() => evaluate("return document.querySelectorAll('.ci-entry').length >= window.entriesBeforeReadingReply + 2 && !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled;"), 'new reply while reading older transcript');
-  assert.equal(await evaluate("return document.querySelector('.interviews-view').scrollTop;"), await evaluate('return window.readingPosition;'), 'new replies do not pull a reader to the bottom');
+  assert.equal(await evaluate("return document.querySelector('.ci-log').scrollTop;"), await evaluate('return window.readingPosition;'), 'new replies do not pull a reader to the bottom');
   await evaluate("window.rowObserver.disconnect(); document.querySelector('.ci-text').textContent = window.scrollFixtureText;");
   await evaluate("const input = document.querySelector('.ci-input'); input.value = 'Draft survives reload'; input.dispatchEvent(new Event('input')); ");
   await sleep(1100); await send('Page.reload', { ignoreCache: true });

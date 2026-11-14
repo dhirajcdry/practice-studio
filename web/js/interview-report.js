@@ -19,8 +19,11 @@ import { formatClock } from './recorder.js';
 import { ratingTone, relativeInterviewDate, reportDifficultyLabel } from './interview-format.js';
 import { renderMarkdown } from './markdown.js';
 import { appendDraft, readDraft, saveDraft, clearDraft } from './drafts.js';
+import { loadExcalidraw } from './whiteboard.js';
 
 const PHASE_LABELS = { clarify: 'Clarify', approach: 'Approach', code: 'Code', test: 'Test', followup: 'Follow-up' };
+const LLD_PHASE_LABELS = { clarify: 'Requirements', approach: 'Design', code: 'Implement', test: 'Verify', followup: 'Extend' };
+const DESIGN_PHASE_LABELS = { requirements: 'Requirements', entities: 'Entities', api: 'API', estimates: 'Estimates', design: 'Design', deepdive: 'Deep dive', bottlenecks: 'Bottlenecks' };
 const SIGNALS = ['No hire', 'Lean no', 'Lean hire', 'Hire', 'Strong hire'];
 const MOMENT_LABELS = { insight: 'Insight', stuck: 'Stuck', hint: 'Hint', bug: 'Bug', fix: 'Fix', test: 'Test', verdict: 'Verdict' };
 const NO_PHASES = 'Phase durations were not recorded for this interview.';
@@ -28,7 +31,7 @@ const minutes = ms => ms < 60000 ? `${Math.max(0, Math.round(ms / 1000))}s` : `$
 
 // A drawn chevron for a disclosure; the browser's own marker is a text glyph.
 const disclosureIcon = () => el('span', { class: 'rp-disclosure', 'aria-hidden': 'true' }, icon('chevron', 14));
-function section(title, body, extra = '') {
+export function section(title, body, extra = '') {
   return el('section', { class: 'rp-section' + (extra ? ' ' + extra : '') }, [el('h3', { class: 'rp-h', text: title }), body]);
 }
 function stat(label, value, detail = '') {
@@ -39,7 +42,7 @@ function stat(label, value, detail = '') {
   ]);
 }
 
-function signalScale(signal) {
+export function signalScale(signal) {
   const index = SIGNALS.indexOf(signal);
   // Nothing to place on the scale: five unlit steps would only look like a broken chart.
   if (index < 0) return null;
@@ -71,12 +74,18 @@ function timeLink(at, jump) {
 }
 
 function timeline(facts, moments, jump, discipline) {
-  const labels = discipline === 'lld' ? { clarify: 'Requirements', approach: 'Design', code: 'Implement', test: 'Verify', followup: 'Extend' } : PHASE_LABELS;
+  const labels = discipline === 'lld' ? LLD_PHASE_LABELS : discipline === 'design' ? DESIGN_PHASE_LABELS : PHASE_LABELS;
   const phases = facts.phases.filter(p => p.ms > 0);
+  // A design record places only the time its turns can account for; the rest is drawn
+  // as unplaced, so the bar still runs from 0:00 to the end without inventing a phase.
+  const unplaced = discipline === 'design' && phases.length ? Math.max(0, facts.durationMs - phases.reduce((n, p) => n + p.ms, 0)) : 0;
+  const parts = unplaced >= 1000 ? [...phases, { phase: 'unplaced', ms: unplaced }] : phases;
+  const missing = discipline === 'design' && phases.length ? facts.phases.filter(p => p.ms === null).map(p => labels[p.phase] || p.phase) : [];
   // No phase time on record: say so instead of drawing an empty bar from 0:00 to 0:00.
-  const track = phases.length ? el('div', { class: 'rp-track' }, phases.map(p => el('span', { class: 'rp-seg', dataset: { phase: p.phase }, style: `flex:${p.ms}` }))) : null;
+  const track = phases.length ? el('div', { class: 'rp-track' }, parts.map(p => el('span', { class: 'rp-seg', dataset: { phase: p.phase }, style: `flex:${p.ms}` }))) : null;
   const legend = phases.length ? el('div', { class: 'rp-legend' }, [
-    ...phases.map(p => el('span', { class: 'rp-legend-item' }, [el('i', { dataset: { phase: p.phase } }), `${labels[p.phase] || p.phase} ${minutes(p.ms)}`])),
+    ...parts.map(p => el('span', { class: 'rp-legend-item' }, [el('i', { dataset: { phase: p.phase } }), `${p.phase === 'unplaced' ? 'No phase recorded' : labels[p.phase] || p.phase} ${minutes(p.ms)}`])),
+    missing.length ? el('span', { class: 'rp-legend-item rp-legend-missing', text: `Not recorded: ${missing.join(', ')}` }) : null,
   ]) : null;
   const momentList = moments.length ? el('ol', { class: 'rp-moments' }, moments.map(m => el('li', { dataset: { kind: m.kind } }, [
     m.at === null ? el('span', { class: 'rp-time is-empty', text: '—' })
@@ -92,7 +101,7 @@ function timeline(facts, moments, jump, discipline) {
   ]);
 }
 
-function dimensionCard(d, jump, onAsk) {
+function dimensionCard(d, jump, onAsk, discipline = 'coding') {
   const evidence = d.evidence?.length ? el('ul', { class: 'rp-evidence' }, d.evidence.map(e => el('li', {}, [
     e.quote ? el('blockquote', {}, [timeLink(e.at, jump), el('q', { class: 'rp-quote', text: e.quote })]) : timeLink(e.at, jump),
     e.note ? el('p', { class: 'rp-note', text: (e.provenance === 'interpretation' ? 'Interviewer observation: ' : '') + e.note }) : null,
@@ -102,19 +111,19 @@ function dimensionCard(d, jump, onAsk) {
     el('header', { class: 'rp-dim-head' }, [el('h4', { text: d.name }), el('span', { class: 'rp-rating rp-dim-rating', dataset: { tone: d.rating ? ratingTone(d.rating) : 'neutral' }, text: d.rating || 'Not rated' })]),
     d.summary ? el('p', { class: 'rp-dim-summary', text: d.summary }) : null,
     evidence,
-    onAsk ? el('button', { type: 'button', class: 'btn btn--secondary rp-dim-ask', text: 'Ask about this', 'aria-label': `Ask about ${d.name.toLowerCase()}`, onclick: () => onAsk(dimensionQuestion(d)) }) : null,
+    onAsk ? el('button', { type: 'button', class: 'btn btn--secondary rp-dim-ask', text: 'Ask about this', 'aria-label': `Ask about ${d.name.toLowerCase()}`, onclick: () => onAsk(dimensionQuestion(d, discipline)) }) : null,
   ]);
 }
 
-function boxScore(dimensions, jump, onAsk) {
+export function boxScore(dimensions, jump, onAsk, discipline = 'coding') {
   let selected = defaultDimensionIndex(dimensions);
-  const detail = el('div', { class: 'rp-dim-detail', 'aria-live': 'polite' }, dimensionCard(dimensions[selected], jump, onAsk));
+  const detail = el('div', { class: 'rp-dim-detail', 'aria-live': 'polite' }, dimensionCard(dimensions[selected], jump, onAsk, discipline));
   const rows = dimensions.map((d, i) => el('button', {
     type: 'button', class: 'ui-action-row rp-dim-row', 'aria-pressed': String(i === selected),
     onclick: () => {
       selected = i;
       rows.forEach((row, n) => row.setAttribute('aria-pressed', String(n === selected)));
-      replace(detail, dimensionCard(d, jump, onAsk));
+      replace(detail, dimensionCard(d, jump, onAsk, discipline));
     },
   }, [el('span', { text: d.name }), el('strong', { class: 'rp-rating', dataset: { tone: d.rating ? ratingTone(d.rating) : 'neutral' }, text: d.rating || 'Not rated' })]));
   // Paper has no selection: a printed report carries every dimension, where the screen shows the chosen one.
@@ -122,7 +131,7 @@ function boxScore(dimensions, jump, onAsk) {
   return section('Box score', el('div', { class: 'rp-dims' }, [el('div', { class: 'rp-dim-rows', 'aria-label': 'Dimensions' }, rows), detail, printed]));
 }
 
-function practiceSection(j, jump) {
+export function practiceSection(j, jump) {
   const items = (j.practice || []).slice(0, 3);
   const legacy = !items.some(p => p.fix) && j.improvements?.length;
   if (!items.length && !legacy) return null;
@@ -159,6 +168,37 @@ function codeSection(facts, code, discipline) {
   ])]);
 }
 
+/**
+ * The final board as a static picture, drawn by the vendored Excalidraw's exportToSvg.
+ * It is exported light, without a background; dark themes invert it the way the live
+ * canvas does, so a theme switch needs no second export. An empty board says so.
+ */
+function boardSection(elements, drawn) {
+  if (!drawn) return section('Final board', el('p', { class: 'rp-note is-missing', text: 'The board was empty.' }), 'rp-board-section');
+  const figure = el('figure', { class: 'rp-board', role: 'img', 'aria-label': 'The final whiteboard' },
+    el('p', { class: 'rp-note rp-board-status', text: elements ? 'Drawing the board…' : 'The board was drawn, but it is not available here.' }));
+  if (elements) {
+    // restoreElements fills defaults the way the live board does when it loads a scene; the record is not changed.
+    loadExcalidraw().then(ex => ex.exportToSvg({ elements: ex.restoreElements(structuredClone(elements), null), files: null, exportPadding: 16,
+      appState: { exportBackground: false, exportWithDarkMode: false, viewBackgroundColor: 'transparent' } }))
+      .then(svg => {
+        // The viewBox keeps the drawing's shape; CSS fits it to the section width.
+        const w = Number(svg.getAttribute('width')), h = Number(svg.getAttribute('height'));
+        if (!svg.getAttribute('viewBox') && w && h) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+        svg.removeAttribute('width'); svg.removeAttribute('height');
+        svg.setAttribute('aria-hidden', 'true'); svg.classList.add('rp-board-svg');
+        if (w && h) figure.style.setProperty('--rp-board-ratio', `${w} / ${h}`);
+        replace(figure, svg);
+        figure.dataset.state = 'ready';
+      })
+      .catch(error => {
+        replace(figure, el('p', { class: 'rp-note is-missing rp-board-status', text: `The board was drawn, but it could not be shown here: ${error?.message || 'the whiteboard did not load'}.` }));
+        figure.dataset.state = 'error';
+      });
+  }
+  return section('Final board', figure, 'rp-board-section');
+}
+
 /** Build the report body. `jump(ms)` scrolls the transcript to that moment; `onAsk(question)` asks a follow-up. */
 /** Mirrors regradeLine on the server, so the screen and interview.md say the same thing. */
 export function regradedText(regraded) {
@@ -167,8 +207,11 @@ export function regradedText(regraded) {
   return `Re-graded ${when(regraded.at)} with the current report rules.${o ? ` The original report said ${o.signal || 'no signal'}${o.headline ? `: “${o.headline.replace(/\.$/, '')}”` : ''}. It is kept in the interview record.` : ''}`;
 }
 
-export function renderReport({ title, record, report, transcript, onAsk = null, debriefText = '' }) {
+export function renderReport({ title, record, report, transcript, onAsk = null, debriefText = '', board = undefined }) {
   const { facts } = report;
+  // The board as last saved, when the caller has it; otherwise the server's graph says whether anything was drawn.
+  const drawn = Array.isArray(board) ? board.filter(e => e && !e.isDeleted) : null;
+  const boardDrawn = drawn ? drawn.length > 0 : Boolean(facts.finalBoard);
   // An older interview's debrief is prose with no structured judgement: show it as written.
   const j = report.judgement || { signal: record.hireSignal || null, headline: null, summary: null, dimensions: [], strengths: [], improvements: [], moments: [], code: null, practice: [] };
   const written = report.judgement ? null : section('Debrief', debriefText.trim()
@@ -192,7 +235,7 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
   const mode = facts.mode === 'voice' ? 'Voice' : facts.mode === 'typed' ? 'Typed' : 'Input mode not recorded';
   const stats = el('div', { class: 'rp-stats' }, [
     stat('Time', formatClock(facts.durationMs), `of ${formatClock(facts.plannedMs)}`),
-    record.discipline === 'design' ? stat('Board', facts.finalBoard ? 'Recorded' : 'Empty', 'Semantic graph') : stat('Hints', facts.hints.length ? `${facts.hints.length} ${facts.hints.length === 1 ? (facts.hints[0].level === 'nudge' ? 'nudge' : 'hint') : 'hints'}` : 'None'),
+    record.discipline === 'design' ? stat('Board', boardDrawn ? 'Drawn' : 'Empty') : stat('Hints', facts.hints.length ? `${facts.hints.length} ${facts.hints.length === 1 ? (facts.hints[0].level === 'nudge' ? 'nudge' : 'hint') : 'hints'}` : 'None'),
     record.discipline === 'design' ? null : stat('Runs', String(facts.runs.length), facts.runs.length ? (facts.runs.at(-1).passed ? (record.discipline === 'lld' ? 'Last exited normally' : 'Last passed') : `${runsFailed} failed`) : 'No runs'),
     record.discipline === 'lld' || record.discipline === 'design' ? null : stat('Submission', verdict ? (verdict.accepted ? 'Accepted' : verdict.label) : 'Not submitted', verdict ? `at ${formatClock(verdict.at)}` : ''),
   ]);
@@ -215,33 +258,59 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
     j.moveUp ? section('What would move this up a level', el('p', { text: j.moveUp }), 'rp-move-up') : null,
     practiceSection(j, jump),
     written,
-    j.dimensions.length ? boxScore(j.dimensions, jump, onAsk) : null,
+    j.dimensions.length ? boxScore(j.dimensions, jump, onAsk, record.discipline || 'coding') : null,
     ...[['Hard technical errors', j.technicalErrors], ['Missing considerations', j.missingConsiderations], ['Self-caught vs interviewer-surfaced', j.discoveries]].filter(([, items]) => items?.length).map(([title, items]) => section(title, el('ul', { class: 'rp-list' }, items.map(text => el('li', { text }))))),
     section('Play by play', el('div', {}, [
       facts.phases.some(p => p.ms > 0) || j.moments.length ? timeline(facts, attachMomentQuotes(j.moments, j.dimensions), jump, record.discipline) : el('p', { class: 'rp-note is-missing', text: NO_PHASES }),
       transcriptBox,
     ])),
-    record.discipline === 'design' ? null : codeSection(facts, j.code, record.discipline),
+    record.discipline === 'design' ? boardSection(drawn, boardDrawn) : codeSection(facts, j.code, record.discipline),
     section('What went well', j.strengths.length ? el('ul', { class: 'rp-list is-good' }, j.strengths.map(s => el('li', { text: s }))) : el('p', { class: 'rp-note is-missing', text: 'Nothing recorded.' })),
   ]);
 }
 
-/** The question each scorecard area's Ask button asks. */
-export function dimensionQuestion(d) {
-  const rated = d.rating ? `${d.name} was rated ${d.rating}. ` : '';
-  return rated + ({
+// One follow-up per rubric area. LLD and system design share some names with each other
+// and with coding (Requirements, Communication), so each discipline has its own set.
+const DIMENSION_QUESTIONS = {
+  coding: {
     Testing: 'What test cases could I have asked about or run for this problem, and what would each one catch?',
     'Problem solving': 'How could I have reached the right approach sooner?',
     Coding: 'What should I change in my code, and why?',
     Communication: 'What should I have said out loud, and when?',
-  }[d.name] || 'What would a strong answer have looked like here?');
+  },
+  lld: {
+    Requirements: 'Which requirements and constraints should I have pinned down before designing, and how would each have changed my classes?',
+    Responsibilities: 'Which class owned too much or too little here, and how should the responsibilities have been split?',
+    Interfaces: 'Which interface or method signature would you change, and what would the better version look like?',
+    'State modeling': 'Which states and transitions did I miss or blur, and how should I have modelled them?',
+    Correctness: 'Where could my design produce a wrong result, and which change fixes it?',
+    'Edge cases': 'Which edge cases should I have raised myself, and how should the design handle each one?',
+    'Self-verification': 'How should I have checked my own design as I went, and which trace or test would have caught the gap?',
+    Extensibility: 'Which likely new requirement would my design struggle with, and what would make it easy to add?',
+    Communication: 'Where did my explanation of the design lose you, and how should I have walked through it?',
+  },
+  design: {
+    Requirements: 'Which functional and non-functional requirements should I have settled first, and how would they change the design?',
+    Estimation: 'How should I have estimated the scale here, and which numbers should have driven my design choices?',
+    'Data modeling': 'What would a stronger data model and storage choice have looked like, and why?',
+    Architecture: 'Which part of my architecture would you change first, and what would you replace it with?',
+    'Trade-offs': 'Which trade-off should I have named out loud, and what was the alternative I should have weighed?',
+    Reliability: 'Which failure would hurt this design most, and how should I have handled it?',
+    Communication: 'Where did my walkthrough of the design lose you, and how should I have used the board and my words?',
+  },
+};
+
+/** The question each scorecard area's Ask button asks. */
+export function dimensionQuestion(d, discipline = 'coding') {
+  const rated = d.rating ? `${d.name} was rated ${d.rating}. ` : '';
+  return rated + ((DIMENSION_QUESTIONS[discipline] || DIMENSION_QUESTIONS.coding)[d.name] || 'What would a strong answer have looked like here?');
 }
 
 /** Starting questions for an empty thread: the weakest scorecard areas first. */
 export function suggestedQuestions(judgement, discipline = 'coding') {
   const order = { Weak: 0, Mixed: 1, Solid: 2, Strong: 3 };
   const weakest = (judgement?.dimensions || []).filter(d => d.rating === 'Weak' || d.rating === 'Mixed')
-    .sort((a, b) => order[a.rating] - order[b.rating]).map(dimensionQuestion);
+    .sort((a, b) => order[a.rating] - order[b.rating]).map(d => dimensionQuestion(d, discipline));
   const testing = judgement || discipline !== 'coding' ? [] : ['What test cases could I have asked about or run for this problem?'];
   return [...weakest, ...testing, discipline === 'coding' ? 'Walk me through the best solution and how I could have found it.' : 'Walk me through a strong design and explain its trade-offs.', 'Where did I lose the most time, and what should I have done instead?'].slice(0, 3);
 }
@@ -412,7 +481,7 @@ function savePanel(value) { try { localStorage.setItem(ASK_PANEL_KEY, JSON.strin
  * copied, never moved. With `followups`, the sheet carries a docked, resizable panel
  * for asking about it.
  */
-export function openReport({ title, record, report, transcript, followups = null, debriefText = '', onRegrade = null }) {
+export function openReport({ title, record, report, transcript, followups = null, debriefText = '', onRegrade = null, board = undefined }) {
   openSheet?.close();
   const dialog = el('dialog', { class: 'rp-sheet' + (followups ? ' has-ask' : ''), 'aria-label': 'Interview report' });
   const asking = followups && record.id ? createFollowups({ id: record.id, discipline: record.discipline, judgement: report.judgement, learningSlug: record.topicSlug || (record.discipline === 'lld' ? record.slug : null), ...followups }) : null;
@@ -446,7 +515,7 @@ export function openReport({ title, record, report, transcript, followups = null
     if (!narrow()) savePanel({ open, width: panelWidth });
     if (open) { setWidth(panelWidth); if (focus) asking.root.querySelector('.rp-ask-input')?.focus({ preventScroll: true }); }
   }
-  const body = renderReport({ title, record, report, transcript: transcript?.cloneNode(true), onAsk: asking ? question => { if (!panelOpen) setOpen(true); asking.ask(question); } : null, debriefText });
+  const body = renderReport({ title, record, report, transcript: transcript?.cloneNode(true), onAsk: asking ? question => { if (!panelOpen) setOpen(true); asking.ask(question); } : null, debriefText, board });
   if (asking) {
     asking.root.querySelector('.rp-ask-head .ui-pane-tools').append(el('div', { class: 'rp-ask-tools' }, [
       widen,

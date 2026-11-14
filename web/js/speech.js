@@ -35,10 +35,13 @@ export const MIN_TURN_CHARS = 2;
  *   speaking   the interviewer is talking
  *   busy       a turn is already in flight
  *   pending    phrases still being transcribed
+ *   armed      false until new speech follows a return or a reload (voice.js)
  * @returns {'wait'|'send'}
  */
-export function turnDecision({ sinceLoud, chars, speaking, busy, pending }) {
+export function turnDecision({ sinceLoud, chars, speaking, busy, pending, armed = true }) {
   if (speaking || busy) return 'wait';
+  // Words left from before you were away (voice.js `armed`) wait for new speech.
+  if (armed === false) return 'wait';
   if (chars < MIN_TURN_CHARS) return 'wait';
   // Text still in flight would arrive after the turn was sent and be silently lost, or
   // worse, be prepended to the next answer.

@@ -3,13 +3,12 @@ import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/works
 import { bindPythonTools, bindBoardTools, showWorkspaceAction } from './workspace-tools.js';
 // Both design disciplines share one untimed, question-led learning workspace.
 import { el, replace } from './dom.js';
-import { icon } from './ui/icon.js';
-import { tooltip } from './tooltip.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
-import { workspaceHeader, paneHeader } from './ui/headers.js';
+import { screenHeader, paneHeader } from './ui/headers.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
 import { createSelect } from './ui/select.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
+import { createPythonRun } from './python-run-output.js';
 import { loadExcalidraw, boardTools } from './whiteboard.js';
 import { getSettings, onSettingsChange } from './settings.js';
 import { bindConversation, conversationText, setConversationText } from './ui/conversation.js';
@@ -25,6 +24,11 @@ import { readDraft, saveDraft, clearDraft, appendDraft } from './drafts.js';
 import { createCoachModelPicker } from './coach-model.js';
 import { createPracticeTimer } from './practice-timer.js';
 import { installPaneResizer } from './ui/split-pane.js';
+import { createTabs } from './ui/tabs.js';
+import { renderMarkdown } from './markdown.js';
+import { structureStatement } from './statement.js';
+import { boxScore, practiceSection, section, signalScale } from './interview-report.js';
+import { ratingTone, reportDifficultyLabel } from './interview-format.js';
 
 const voiceLaunches = new Set();
 export const practiceHref = session => `#/${session.discipline === 'lld' ? 'lld' : 'design'}/practice/${session.slug}/${session.id}`;
@@ -36,8 +40,8 @@ async function json(url, body, method = 'POST') {
   if (!r.ok) throw Error(result.error?.message || 'Practice could not be saved.');
   return result;
 }
-export async function startPractice(problem, snapshot = {}) {
-  const { session } = await json('/api/practice/start', { ...problem, ...snapshot, mode: 'voice' });
+export async function startPractice(problem, snapshot = {}, { mode = 'voice' } = {}) {
+  const { session } = await json('/api/practice/start', { ...problem, ...snapshot, mode: mode === 'typed' ? 'typed' : 'voice' });
   voiceLaunches.add(session.id);
   location.hash = practiceHref(session);
 }
@@ -52,7 +56,7 @@ export function createPracticeLauncher({ discipline, problems }) {
   let gone = false;
   const picker = createSelect({ label: 'Practice problem', value: '', options: [['', 'Choose my own problem'], ...problems.map(p => [p.slug, p.title])] });
   const status = el('p', { class: 'dim', role: 'status', hidden: true });
-  const start = el('button', { class: 'btn btn--secondary', text: 'Start practice', onclick: async () => {
+  const start = el('button', { class: 'btn btn--secondary', text: 'Start practising', onclick: async () => {
     start.disabled = true; status.hidden = true;
     try { const selected = problems.find(p => p.slug === picker.value); await startPractice(selected ? { ...selected, discipline } : { discipline, title: 'Open practice', statement: '' }); }
     catch (error) { status.hidden = false; status.textContent = error.message; }
@@ -72,13 +76,71 @@ export function createPracticeLauncher({ discipline, problems }) {
   return { root, dispose() { gone = true; picker.dispose(); } };
 }
 
+/** The Problem tab: the statement the coach recorded, as the coding problem pane sets one. */
+export function practiceProblem(session) {
+  const text = typeof session?.statement === 'string' ? session.statement.trim() : '';
+  if (!text) return el('div', { class: 'pr-tab-empty ui-stack' }, [
+    el('h2', { text: 'No problem recorded yet' }),
+    el('p', { class: 'dim', text: 'Describe one to your coach. Once it is set, the brief appears here.' }),
+  ]);
+  const rich = el('div', { class: 'rich' });
+  rich.append(renderMarkdown(text));
+  return el('article', { class: 'pr-statement' }, [el('h2', { class: 'pr-statement-title', text: session.title || 'Practice problem' }), structureStatement(rich)]);
+}
+
+const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+/**
+ * The Mock feedback tab: the source mock's structured report when one was recorded, built
+ * from the report sheet's own pieces; otherwise its written feedback, labelled as such.
+ * Times jump to the saved mock conversation shown at the end of the tab.
+ */
+export function practiceFeedback(snapshot, scroller) {
+  const j = snapshot?.report?.judgement || null;
+  const turns = (snapshot?.turns || []).filter(t => t.said || t.asked);
+  const conversation = turns.length ? el('ol', { class: 'pr-mock-turns' }, turns.flatMap(t => [
+    t.said ? el('li', { class: 'pr-mock-turn is-candidate', dataset: { elapsed: String(t.elapsedMs ?? '') } }, [el('span', { class: 'pr-mock-who', text: `You${Number.isFinite(t.elapsedMs) ? ` · ${clock(t.elapsedMs)}` : ''}` }), conversationText(t.said, { user: true })]) : null,
+    t.asked && t.kind !== 'debrief' ? el('li', { class: 'pr-mock-turn', dataset: { elapsed: String(t.elapsedMs ?? '') } }, [el('span', { class: 'pr-mock-who', text: `Interviewer${Number.isFinite(t.elapsedMs) ? ` · ${clock(t.elapsedMs)}` : ''}` }), conversationText(t.asked)]) : null,
+  ].filter(Boolean))) : null;
+  const jump = ms => {
+    const items = [...(conversation?.querySelectorAll('[data-elapsed]:not([data-elapsed=""])') || [])];
+    const target = items.sort((a, b) => Math.abs(Number(a.dataset.elapsed) - ms) - Math.abs(Number(b.dataset.elapsed) - ms))[0];
+    if (!target) return;
+    scroller.scrollTop += target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 16;
+    target.classList.remove('rp-flash'); void target.offsetWidth; target.classList.add('rp-flash');
+  };
+  const difficulty = reportDifficultyLabel(snapshot?.source?.reportDifficulty);
+  const conversationSection = conversation ? section('Mock conversation', conversation) : null;
+  if (!j) {
+    const feedback = typeof snapshot?.feedback === 'string' ? snapshot.feedback.trim() : '';
+    return el('div', { class: 'rp-body pr-report' }, [
+      el('p', { class: 'pr-report-source', text: feedback ? 'Written feedback from the mock. It has no structured report.' : 'This mock has no structured report.' }),
+      feedback ? el('div', { class: 'pr-feedback' }, conversationText(feedback)) : el('p', { class: 'rp-note is-missing', text: 'No mock feedback was recorded.' }),
+      conversationSection,
+    ]);
+  }
+  return el('div', { class: 'rp-body pr-report' }, [
+    el('p', { class: 'pr-report-source', text: `From the mock's report${difficulty ? ` · Graded at ${difficulty}` : ''}` }),
+    el('header', { class: 'pr-report-verdict', dataset: { tone: j.signal ? ratingTone(j.signal) : 'neutral' } }, [
+      el('h2', { class: 'rp-signal' + (j.signal ? '' : ' is-missing'), text: j.signal || 'No signal recorded' }),
+      signalScale(j.signal),
+      j.headline ? el('p', { class: 'rp-headline', text: j.headline }) : null,
+    ]),
+    j.moveUp ? section('What would move this up a level', el('p', { text: j.moveUp }), 'rp-move-up') : null,
+    practiceSection(j, jump),
+    j.dimensions?.length ? boxScore(j.dimensions, jump, null, snapshot?.source?.discipline) : null,
+    j.strengths?.length ? section('What went well', el('ul', { class: 'rp-list is-good' }, j.strengths.map(text => el('li', { text })))) : null,
+    conversationSection,
+  ]);
+}
+
 export function initPractice(host, { slug, id }) {
   let gone = false, session, mode = 'voice', busy = false, sending = false, voiceState = 'idle', spokenThisTurn = false;
   let code = '', elements = [], editor, boardRoot, boardApi, voice, speaker, modelPicker, timer;
   let untheme = () => {}, saveChain = Promise.resolve(), revision = 0, savedRevision = 0, following = true;
   let lastRequest = null, pendingPoll = null, unbindTools = () => {};
   let conversationView;
-  let problemText, practiceTimer, disposeSplit = () => {};
+  let practiceTimer, disposeSplit = () => {}, tabs = null, activeTab = 'coach', header = null;
+  const tabScroll = {};
   const exchangeNodes = new Map();
   const endpoint = `/api/practice/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
   const draftKey = `practice:${id}`, workKey = `studio.practice.work:${id}`, requestKey = `studio.practice.request:${id}`;
@@ -94,11 +156,15 @@ export function initPractice(host, { slug, id }) {
     finally { if (!gone) retrySave.disabled = false; }
   } });
   const workError = el('div', { class: 'pr-work-error ui-cluster ui-inset ui-inset--compact', role: 'status', hidden: true }, [workErrorText, retrySave]);
-  const thread = el('div', { class: 'pr-thread ui-pane-scroll', role: 'log', 'aria-label': 'Practice conversation', tabindex: '0' });
+  const thread = el('div', { class: 'pr-thread ui-pane-scroll', role: 'log', 'aria-label': 'Practice conversation', tabindex: '0', id: `pr-panel-coach-${id}` });
+  // Problem and Mock feedback are tabs beside the conversation, each with its own scroll.
+  const problemPane = el('div', { class: 'pr-tab-panel pr-problem-pane ui-pane-scroll', role: 'tabpanel', tabindex: '0', 'aria-label': 'Problem', hidden: true, id: `pr-panel-problem-${id}` });
+  const feedbackPane = el('div', { class: 'pr-tab-panel pr-feedback-pane ui-pane-scroll', role: 'tabpanel', tabindex: '0', 'aria-label': 'Mock feedback', hidden: true, id: `pr-panel-feedback-${id}` });
+  const panes = { coach: thread, problem: problemPane, feedback: feedbackPane };
   const input = el('textarea', { class: 'coach-input', rows: '2', 'aria-label': 'Ask your practice coach', placeholder: 'Ask the coach' });
   input.value = readDraft(draftKey)?.text || '';
   const inputSize = bindComposerInput(input);
-  let partialWords = '', playbackInterrupted = false, voiceLoop, replySpeech, windowFocused = document.hasFocus();
+  let partialWords = '', playbackInterrupted = false, voiceLoop, replySpeech;
   const voiceView = createVoicePanel({ role: 'Coach', onEdit: () => setInputMode('typed') });
   const replayReply = text => { if (busy || speaker?.speaking) return; speaker?.say(text); };
   const status = el('span', { class: 'pr-state', role: 'status' });
@@ -117,28 +183,32 @@ export function initPractice(host, { slug, id }) {
   const voicePane = el('div', { class: 'pr-voice' }, [voiceView.root]);
   voiceView.setControls({ lead: [mic], actions: [interrupt, typeLink, voiceSend] });
   const work = el('section', { class: 'pr-work card ui-editor-surface' });
-  const output = el('pre', { class: 'lld-output mono', hidden: true });
-  const run = el('button', { class: 'btn btn--secondary python-run', type: 'button', text: 'Run Python', onclick: async () => {
-    run.disabled = true; output.hidden = false; output.textContent = 'Running…';
-    try {
-      await save();
-      const result = await json('/api/practice/run', { slug, id, code: currentCode() });
-      output.textContent = `${result.timedOut ? 'Time limit exceeded' : `Exit ${result.exitCode ?? '—'}`}\n${result.stdout || ''}${result.stderr || ''}`;
-    } catch (e) { output.textContent = e.message; }
-    finally { run.disabled = false; }
-  } });
-  tooltip(run, "Run Python (⌘')");
+  const pythonRun = createPythonRun({ fileName: 'design.py', editor: () => editor,
+    execute: async () => { await save(); return json('/api/practice/run', { slug, id, code: currentCode() }); } });
+  const { button: run, root: output } = pythonRun;
   const currentCode = () => editor?.getValue() ?? code;
   function updateTopic(topic) {
     if (!session || !topic || gone) return;
+    // Recovery polls repeat the same topic; repainting it would reset the Problem tab's scroll.
+    if (topic.title === session.title && topic.statement === session.statement) return;
     session.title = topic.title; session.statement = topic.statement;
     const heading = view.querySelector('.ui-workspace-identity h1');
     if (heading) heading.textContent = session.title;
-    if (problemText) {
-      problemText.textContent = session.statement || '';
-      // The disclosure appears once the coach has recorded a problem to show in it.
-      if (session.statement) problemText.parentElement.hidden = false;
-    }
+    replace(problemPane, practiceProblem(session));
+  }
+  // Switching tabs never scrolls another one: each pane keeps its own position, and the
+  // conversation only follows the latest reply while it is the one on screen.
+  function showTab(next) {
+    if (!panes[next] || next === activeTab) return;
+    if (activeTab === 'coach') lastThreadTop = thread.scrollTop;
+    else tabScroll[activeTab] = panes[activeTab].scrollTop;
+    activeTab = next;
+    for (const [key, pane] of Object.entries(panes)) pane.hidden = key !== next;
+    view.querySelector('.pr-compose')?.toggleAttribute('hidden', next !== 'coach');
+    tabs?.setValue(next);
+    view.querySelector('.pr-coach')?.setAttribute('data-tab', next);
+    if (next === 'coach') { if (following) bottom(); else thread.scrollTop = lastThreadTop; }
+    else panes[next].scrollTop = tabScroll[next] || 0;
   }
   function paintErrors() { if (!gone) { error.hidden = errors.size === 0; error.textContent = [...errors.values()].join('\n'); } }
   function showError(e, scope = 'reply') {
@@ -191,7 +261,7 @@ export function initPractice(host, { slug, id }) {
     if (modelPicker) { modelPicker.root.hidden = mode !== 'typed'; modelPicker.setBusy(busy); }
     typed.hidden = mode !== 'typed'; voicePane.hidden = mode !== 'voice';
     inputSize.resize();
-    voiceView.update({state: voiceState, draft: input.value, partial: partialWords, busy, sending, paused: !voiceLoop?.enabled});
+    voiceView.update({state: voiceState, draft: input.value, partial: partialWords, busy, sending, paused: !voiceLoop?.enabled, away: Boolean(voiceLoop?.away)});
     send.disabled = busy || sending || !input.value.trim();
     const speaking = Boolean(speaker?.speaking);
     voiceLink.hidden = mode === 'voice';
@@ -207,7 +277,7 @@ export function initPractice(host, { slug, id }) {
     retry.hidden = !lastRequest || busy;
     bottom();
   }
-  function bottom() { if (following) { thread.scrollTop = thread.scrollHeight; lastThreadTop = thread.scrollTop; } }
+  function bottom() { if (following && activeTab === 'coach') { thread.scrollTop = thread.scrollHeight; lastThreadTop = thread.scrollTop; } }
   function exchange(question, answer = '', state = 'complete', requestId = null) {
     if (requestId && exchangeNodes.has(requestId)) return exchangeNodes.get(requestId);
     const turn = createWorkspaceReply();
@@ -281,6 +351,7 @@ export function initPractice(host, { slug, id }) {
   let lastThreadTop = 0;
   thread.addEventListener('wheel', event => { if (event.deltaY < 0) following = false; }, { passive: true });
   thread.addEventListener('scroll', () => {
+    if (thread.hidden) return;
     following = thread.scrollHeight - thread.scrollTop - thread.clientHeight <= 1;
     lastThreadTop = thread.scrollTop;
   });
@@ -319,25 +390,25 @@ export function initPractice(host, { slug, id }) {
       if (session.discipline === 'lld') fileHeader.classList.add('python-document-bar');
       work.append(fileHeader, workError, canvas);
       if (session.discipline === 'lld') work.append(output);
-      problemText = el('p', { text: session.statement || '' });
-      const statement = el('details', { class: 'pr-problem' }, [
-        el('summary', {}, [icon('forward', 14), el('span', { text: source ? 'Problem and mock feedback' : 'Problem' })]), problemText]);
-      // An open session has no problem yet; the empty state below already says so.
-      statement.hidden = !source && !session.statement;
-      if (source) {
-        const feedback = data.sourceSnapshot?.feedback;
-        const feedbackNode = conversationText(typeof feedback === 'string' && feedback.trim() ? feedback : 'No mock feedback was recorded.');
-        const feedbackDetails = el('section', { class: 'pr-feedback' }, [el('h3', { class: 'pr-feedback-label', text: 'Mock feedback' }), feedbackNode]);
-        statement.append(feedbackDetails);
-      }
-      thread.prepend(statement);
-      const coach = el('aside', { class: 'pr-coach card ui-pane', 'aria-label': 'Practice coach' }, [
-        Object.assign(paneHeader({ title: 'Practice coach', subtitle: status }), { className: 'ui-pane-header pr-coach-head' }), thread,
+      replace(problemPane, practiceProblem(session));
+      if (source) replace(feedbackPane, practiceFeedback(data.sourceSnapshot, feedbackPane));
+      tabs = createTabs([{ id: 'coach', label: 'Coach' }, { id: 'problem', label: 'Problem' }, source ? { id: 'feedback', label: 'Mock feedback' } : null].filter(Boolean), 'coach', showTab);
+      tabs.classList.add('pr-tabs');
+      tabs.setAttribute('aria-label', 'Practice coach');
+      tabs.buttons.forEach((button, index) => {
+        const key = ['coach', 'problem', 'feedback'][index];
+        button.id = `pr-tab-${key}-${id}`; button.dataset.tab = key; button.setAttribute('aria-controls', panes[key].id);
+        if (key !== 'coach') panes[key].setAttribute('aria-labelledby', button.id);
+      });
+      const coach = el('aside', { class: 'pr-coach card ui-pane', 'aria-label': 'Practice coach', dataset: { tab: 'coach' } }, [
+        Object.assign(paneHeader({ tabs, subtitle: status }), { className: 'ui-pane-header pr-coach-head' }), thread, problemPane, source ? feedbackPane : null,
         createComposer({ className: 'pr-compose ui-pane-controls', content: [typed, voicePane],
           leading: [voiceLink, modelPicker.root], trailing: [actions], notices: [error] }),
       ]);
-      view.append(workspaceHeader({ title: session.title, subtitle: `${session.discipline === 'lld' ? 'Python · ' : ''}Untimed practice`, backHref: `#/${session.discipline === 'lld' ? 'lld' : 'design'}`, backLabel: session.discipline === 'lld' ? 'Low-level design' : 'System design', actions: [source ? el('a', { class: 'pr-source-link', href: source.discipline === 'lld' ? `#/lld/${encodeURIComponent(source.slug)}/${encodeURIComponent(source.interviewId)}` : `#/design/${encodeURIComponent(source.interviewId)}`, text: `From mock · ${source.startedAt || source.capturedAt ? relativeInterviewDate(source.startedAt || source.capturedAt) : 'original'}` }) : null, practiceTimer.root, el('button', { class: 'btn btn--quiet pr-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, session.title) })] }),
-        el('div', { class: 'pr-split' }, [work, coach]));
+      const track = session.discipline === 'lld' ? 'Low-level design' : 'System design';
+      // The same meta pattern as a mock of this track, ending in what this screen is.
+      header = screenHeader({ title: session.title, meta: session.discipline === 'lld' ? [track, 'Python', 'Practice'] : [track, 'Practice'], back: { href: `#/${session.discipline === 'lld' ? 'lld' : 'design'}`, label: `Back to ${track}` }, actions: [source ? el('a', { class: 'pr-source-link', href: source.discipline === 'lld' ? `#/lld/${encodeURIComponent(source.slug)}/${encodeURIComponent(source.interviewId)}` : `#/design/${encodeURIComponent(source.interviewId)}`, text: `From mock · ${source.startedAt || source.capturedAt ? relativeInterviewDate(source.startedAt || source.capturedAt) : 'original'}` }) : null, practiceTimer.root, el('button', { class: 'btn btn--quiet pr-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, session.title) })] });
+      view.append(header, el('div', { class: 'pr-split' }, [work, coach]));
       replace(host, view);
       conversationView = bindConversation(thread, { composer: view.querySelector('.pr-compose'), onJump: () => { following = true; } });
       disposeSplit = installPaneResizer(view.querySelector('.pr-split'), { storageKey: `studio.workspace-split.${session.discipline}.v1`, minLeft: session.discipline === 'lld' ? 420 : 360 });
@@ -349,7 +420,7 @@ export function initPractice(host, { slug, id }) {
       }
       if (data.busy) { busy = true; watchPending(); }
       speaker = createSpeaker({ onPlayback: value => voiceView.playback(value), onStateChange: () => { if (!gone) { paint(); voiceLoop?.sync(); } } });
-      voice = createVoiceControl({ getSlug: () => '', logTakes: false, maxTakeMs:60*60000, reportEmptyTake:false, onSettled:()=>voiceLoop?.sync(), onPreview: text => { partialWords = text; if (!gone) paint(); }, onTranscript: text => {
+      voice = createVoiceControl({ getSlug: () => '', logTakes: false, maxTakeMs:60*60000, reportEmptyTake:false, onSettled:()=>voiceLoop?.sync(), awayNote: false, onReturn: () => { if (voiceLoop?.enabled) voiceLoop.sync(); else voice.start(); }, onPreview: text => { partialWords = text; if (!gone) paint(); }, onTranscript: text => {
         if (gone) { appendDraft(draftKey, text); return; }
         input.value += (input.value ? ' ' : '') + text; saveDraft(draftKey, input.value);
         if (mode === 'voice' && (speaker.speaking || (busy && !playbackInterrupted))) interruptReply();
@@ -357,9 +428,9 @@ export function initPractice(host, { slug, id }) {
       }, onState: state => { voiceState = state; if (!gone) paint(); }, onLevel: value => {
         voiceView.level(value); const {sinceLoud,pending} = value; if(value.loud)spokenThisTurn=true;
         if (mode === 'voice' && value.loud && (speaker.speaking || (busy && !playbackInterrupted))) interruptReply();
-        if (voiceView.automatic && !voice.hasTranscriptionError() && voiceLoop?.enabled && spokenThisTurn && mode === 'voice' && turnDecision({ sinceLoud, chars: input.value.trim().length, pending, speaking: speaker.speaking, busy: busy || sending }) === 'send') ask();
+        if (voiceView.automatic && !voice.hasTranscriptionError() && voiceLoop?.enabled && spokenThisTurn && mode === 'voice' && turnDecision({ sinceLoud, chars: input.value.trim().length, pending, speaking: speaker.speaking, busy: busy || sending, armed: value.armed }) === 'send') ask();
       } });
-      voiceLoop = createVoiceLoop({capture:voice,speaker,canListen:()=>!gone&&mode==='voice'&&!document.hidden&&windowFocused,onChange:()=>{if(!gone)paint();}});
+      voiceLoop = createVoiceLoop({capture:voice,speaker,canListen:()=>!gone&&mode==='voice',onChange:()=>{if(!gone)paint();}});
       mountComposerDictation(view.querySelector('.pr-compose'), voice);
       if (session.discipline === 'lld') {
         editor = mountPythonEditor(canvas, code, {
@@ -423,15 +494,12 @@ export function initPractice(host, { slug, id }) {
   document.addEventListener('visibilitychange',visibility);
   const pagehide = () => practiceTimer?.pause();
   window.addEventListener('pagehide', pagehide);
-  const focus=()=>{windowFocused=true;visibility();};
-  const blur=()=>{windowFocused=false;visibility();};
-  window.addEventListener('focus',focus); window.addEventListener('blur',blur);
   window.addEventListener('beforeunload', beforeUnload);
   return { destroy() {
-    practiceTimer?.dispose();
+    practiceTimer?.dispose(); header?.dispose?.();
     disposeSplit(); conversationView?.dispose();
     clearTimeout(timer); clearTimeout(pendingPoll); if (revision !== savedRevision) save().catch(() => {});
-    gone = true; voiceLoop?.dispose(); replySpeech?.cancel(); document.removeEventListener('visibilitychange',visibility); window.removeEventListener('focus',focus); window.removeEventListener('blur',blur); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('pagehide', pagehide);
+    gone = true; voiceLoop?.dispose(); replySpeech?.cancel(); document.removeEventListener('visibilitychange',visibility); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('pagehide', pagehide);
     voice?.dispose({ finish: true }); speaker?.dispose(); modelPicker?.dispose();
     inputSize.dispose(); unbindTools(); editor?.dispose(); boardRoot?.unmount(); untheme();
   } };

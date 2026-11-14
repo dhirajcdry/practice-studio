@@ -57,6 +57,13 @@ test('a phrase still being transcribed holds the turn open', () => {
   assert.equal(decide({ sinceLoud: 10_000, pending: 0 }), 'send');
 });
 
+test('words left from before you were away wait for new speech', () => {
+  // Returning and silently reading must not send the leftover draft (voice.js `armed`).
+  assert.equal(decide({ sinceLoud: 60_000, armed: false }), 'wait');
+  assert.equal(decide({ sinceLoud: END_OF_TURN_MS, armed: true }), 'send');
+  assert.equal(decide({ sinceLoud: END_OF_TURN_MS }), 'send', 'callers without the signal are unchanged');
+});
+
 /* ---- speaking as the question is written ---- */
 
 test('a completed sentence is spoken before the rest has arrived', () => {

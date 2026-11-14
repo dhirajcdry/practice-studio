@@ -1,7 +1,9 @@
 import { questionNode } from './ui/turn.js';
 import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/workspace-turn.js';
 import { openLearningNotes } from './learning.js';
-import { createMockTimeControls, mockTimeReading } from './ui/mock-time.js';
+import { createMockSessionControls } from './ui/mock-session.js';
+import { createPhaseStepper } from './ui/phase-stepper.js';
+import { createPinnedStatement } from './ui/pinned-statement.js';
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
 import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { showWorkspaceAction } from './workspace-tools.js';
@@ -12,6 +14,7 @@ import { el, replace } from './dom.js';
 import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft, remainingDraft } from './drafts.js';
 import { createVoicePanel, answerModeSwitch, micToggle, paintMicToggle, replayButton, interviewerSilentNote } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
+import { presenceOf } from './voice-loop.js';
 import { createSpeaker, turnDecision } from './speech.js';
 import { createSpeechStream } from './speech-stream.js';
 import { submissionEditor } from './editor.js';
@@ -135,7 +138,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   let loading = true, loadFailed = false, draftReady = false;
   let visible = !embedded;
   let participating = !id || activeInterview(slug)?.id === id;
-  let gone = false, busy = false, ending = false, micEnabled = false, interrupted = false;
+  let gone = false, busy = false, quietPoll = false, ending = false, micEnabled = false, interrupted = false;
   let lastSpeech = Date.now(), lastTyping = Date.now(), lastTick = 0, loud = false, pending = 0;
   let voice = null, speaker = null, voiceState = 'idle', replySpeech = null, sendingDraft = false;
   let resumeMicAfterDrain = false, modeDrain = false;
@@ -151,14 +154,23 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   function rememberRequest(value) { try { if (value) localStorage.setItem(requestKey(), JSON.stringify(value)); else localStorage.removeItem(requestKey()); } catch { /* input remains a draft */ } }
   const code = () => getCode ? getCode() : submissionEditor(slug)?.getCode() ?? undefined;
   const clock = el('span', { class: 'ci-clock mono tnum', text: '45:00' });
-  const timeControls = createMockTimeControls({ clock, extend: async change => {
-    const result = await interviewJson('/api/interview/extend', { slug, interviewId: state.id, ...change });
-    if (!gone) { mergeState(result.state); persist(); }
-  }, onChange: () => { if (!gone) { paint(); if (!timeControls.saving) void modeControl.flush(); } } });
+  // Clock, Pause/Resume, Finish and the paused band: shared with system design mocks.
+  const session = createMockSessionControls({ clock, className: 'ci-toolbar', pauseClass: 'ci-pause', finishClass: 'ci-finish',
+    extend: async change => {
+      const result = await interviewJson('/api/interview/extend', { slug, interviewId: state.id, ...change });
+      if (!gone) { mergeState(result.state); persist(); }
+    },
+    onTimeChange: () => { if (!gone) { paint(); if (!timeControls.saving) void modeControl.flush(); } },
+    onPause: () => togglePause(), onFinish: () => finish() });
+  const timeControls = session.timeControls;
   const micLabel = el('span', { text: 'Your turn' });
   const pill = el('span', { class: 'ci-state' }, [micLabel]);
-  const phasebar = el('ol', { class: 'ci-phases', 'aria-label': 'Interview phase' }, phases.map(([key, label]) =>
-    el('li', { text: label, dataset: { phase: key } })));
+  const phaseStepper = createPhaseStepper({ phases, className: 'ci-phases' });
+  const phasebar = phaseStepper.root;
+  // A contained (LLD) pane is named for who is in it; the screen header already names the
+  // problem, so the pane pins its public statement instead of repeating the title.
+  const paneTitle = el('strong', { class: 'ci-pane-title', text: contained ? 'Interviewer' : entry.title });
+  const pinned = contained ? createPinnedStatement(entry.statement || '') : null;
   let unbindTools = () => {}, toolTarget = null;
   const log = el('div', { class: 'ci-log' + (contained ? ' ui-pane-scroll ui-inset' : ''), role: 'log', 'aria-label': 'Interview transcript', tabindex: '0' });
   const notice = el('div', { class: 'ci-notice ui-inset', role: 'status', hidden: true });
@@ -178,9 +190,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   const interruptButton = el('button', { class: 'btn btn--secondary', type: 'button', text: 'Interrupt · Esc', hidden: true, onclick: interrupt });
   // Going quiet sends on its own; this sends now, finishing the last phrase's words first.
   const sendNow = composerSend(el('button', { class: 'btn btn--quiet ci-send-now', type: 'button', hidden: true, onclick: () => { recovered = false; answer(); } }));
-  const pauseButton = el('button', { class: 'btn btn--icon icon-btn ci-pause', type: 'button', 'aria-label': 'Pause interview', onclick: togglePause }, icon('pause'));
-  const endButton = el('button', { class: 'btn btn--quiet ci-finish', 'data-danger': 'true', type: 'button', text: 'Finish', onclick: finish });
-  const back = el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: entry.discipline === 'lld' ? 'Back to interviews' : 'Back to coach', hidden: true, onclick: () => {
+  const back = el('button', { class: 'btn btn--quiet ws-mini', type: 'button', text: entry.discipline === 'lld' ? 'Back to Low-level design' : 'Back to coach', hidden: true, onclick: () => {
     if (!state.id || (state.debriefed && activeInterview(slug)?.id === state.id)) remember(null);
     onBack();
   } });
@@ -217,22 +227,24 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   const typed = el('div', { class: 'ci-typed' }, input);
   const voicePanel = el('div', { class: 'ci-voice', hidden: true }, [voiceView.root]);
   voiceView.setControls({ lead: [micButton], actions: [interruptButton, typeLink, sendNow] });
-  // Session controls sit with the clock; the composer holds this turn only.
-  const toolbar = el('div', { class: 'ci-toolbar' }, [timeControls.root, pauseButton, endButton, el('button', { class: 'btn btn--quiet ci-learning-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, entry.title) }), back]);
+  // Session controls sit with the clock; the composer holds this turn only. A contained
+  // (LLD) screen puts Learning notes in its own header; the coding sidebar's copy moves to
+  // More actions while the mock is live (see syncHeaderControls).
+  const toolbar = session.root;
+  if (embedded) toolbar.append(el('button', { class: 'btn btn--quiet ci-learning-notes', text: 'Learning notes', onclick: () => openLearningNotes(slug, entry.title) }));
+  toolbar.append(back);
   const modelPicker = createCoachModelPicker({ compact: true });
   const composer = createComposer({ className: 'ci-composer ui-pane-controls', content: [typed, voicePanel],
     leading: [modelPicker.root, voiceLink], trailing: [speechButton, send], notices: [modeStatus, modeRetry] });
   const composerFooter = composer.querySelector('.ui-composer-footer');
-  const pausedText = el('span', { class: 'ui-cluster-content' });
-  const resume = el('button', { class: 'btn btn--primary', text: 'Resume', onclick: togglePause });
-  const paused = el('div', { class: 'ci-paused ui-inset ui-cluster', hidden: true }, [pausedText, resume]);
+  const paused = session.band;
   const feedback = el('section', { class: 'ci-feedback ci-debrief', hidden: true, 'aria-label': 'Interview feedback' });
   const transcriptLabel = el('span', { text: 'Conversation transcript' });
   const transcript = el('details', { class: 'ci-transcript', hidden: true }, el('summary', {}, [icon('chevron', 14), transcriptLabel]));
   const root = el('aside', { class: contained ? 'card ci-panel ci-contained ui-pane' : embedded ? 'ci-panel ci-embedded' : 'card coach ci-panel', 'aria-label': entry.discipline === 'lld' ? 'LLD interviewer' : 'Coding interviewer' }, [
     el('div', { class: 'ci-live-header ui-toolbar' }, [
-      el('div', { class: 'ci-header' }, [el('div', { class: 'ci-identity' }, [el('strong', { text: entry.title }), pill]), toolbar]),
-      el('div', { class: 'ci-session-controls' }, [phasebar]),
+      el('div', { class: 'ci-header' }, [el('div', { class: 'ci-identity' }, [paneTitle, pill]), toolbar]),
+      el('div', { class: 'ci-session-controls' }, [pinned?.root, phasebar]),
     ]),
     paused, feedback, transcript, log, notice, composer,
   ]);
@@ -323,19 +335,18 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     if (voice) voice.root.hidden = isVoice;
     typed.hidden = isVoice; send.hidden = isVoice; voicePanel.hidden = !isVoice; speechButton.hidden = isVoice || state.debriefed;
     composer.hidden = Boolean(state.debriefed); modelPicker.setBusy(busy);
-    pauseButton.hidden = endButton.hidden = Boolean(state.debriefed);
     back.hidden = embedded ? !loadFailed && Boolean(state.id || busy) : !loadFailed && !state.debriefed && (Boolean(state.id) || busy);
     back.disabled = loading;
-    back.textContent = state.id ? (entry.discipline === 'lld' ? 'Back to interviews' : 'Back to coach') : 'Cancel';
-    replace(pauseButton, icon(state.pausedAt || !participating ? 'play' : 'pause'));
-    pauseButton.setAttribute('aria-label', state.pausedAt || !participating ? 'Resume interview' : 'Pause interview');
+    back.textContent = state.id ? (entry.discipline === 'lld' ? 'Back to Low-level design' : 'Back to coach') : 'Cancel';
+    if (contained) paneTitle.textContent = state.endedAt || state.debriefed ? 'Transcript' : 'Interviewer';
     root.classList.toggle('is-paused', Boolean(state.pausedAt));
-    paused.hidden = !state.pausedAt || Boolean(state.debriefed);
-    pausedText.textContent = 'Paused at ' + formatClock(elapsed());
-    resume.disabled = loading || loadFailed || busy || timeControls.saving || modeControl.saving || ending;
-    pauseButton.hidden = Boolean(state.debriefed || state.pausedAt);
-    pauseButton.disabled = loading || loadFailed || busy || timeControls.saving || modeControl.saving || ending || Boolean(state.endedAt) || !state.id;
-    endButton.disabled = loading || loadFailed || timeControls.saving || ending || !state.id;
+    // One toggle stays in the header in both states; togglePause owns the same guards.
+    const reading = session.update({ minutes: state.minutes || 45, elapsedMs: elapsed(),
+      paused: Boolean(state.pausedAt), resumable: Boolean(state.pausedAt) || !participating, ended: Boolean(state.debriefed),
+      pauseDisabled: loading || loadFailed || busy || timeControls.saving || modeControl.saving || ending || Boolean(state.endedAt) || !state.id,
+      finishDisabled: loading || loadFailed || timeControls.saving || ending || !state.id,
+      timeDisabled: loading || loadFailed || busy || modeControl.saving || ending || !state.id || Boolean(state.endedAt) });
+    clock.dataset.urgency = reading.remaining <= 120000 ? 'hard' : reading.remaining <= 300000 ? 'med' : '';
     send.disabled = !input.value.trim() || !participating || loading || loadFailed || busy || timeControls.saving || modeControl.saving || ending || Boolean(state.endedAt) || Boolean(state.pausedAt) || !state.id;
     input.disabled = !participating || loading || loadFailed || Boolean(state.pausedAt) || Boolean(state.endedAt) || ending;
     // A recovered answer waits for a decision: send it or edit it, then the mic reopens.
@@ -347,32 +358,20 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     sendNow.hidden = !isVoice || Boolean(speaker?.speaking) || (busy && voiceState !== 'working')
       || !(input.value.trim() || partialWords);
     sendNow.disabled = !participating || loading || loadFailed || busy || timeControls.saving || modeControl.saving || ending || Boolean(state.endedAt) || Boolean(state.pausedAt) || !state.id;
-    micLabel.textContent = loading ? 'Loading interview' : !state.id ? (busy ? 'Preparing interview' : 'Interview not started') : state.debriefed ? 'Debrief' : state.pausedAt || !participating ? 'Paused' : speaker?.speaking ? 'Interviewer speaking' : busy && voiceState !== 'recording' ? 'Interviewer is thinking…' : voiceState === 'working' ? 'Transcribing…' : voiceState === 'recording' ? 'Listening' : 'Your turn';
-    pill.hidden = (isVoice && Boolean(state.id)) || micLabel.textContent === 'Your turn';
-    for (const [index, item] of [...phasebar.children].entries()) {
-      const done = index < phases.findIndex(([key]) => key === state.phase);
-      item.classList.toggle('is-done', done);
-      if (item.dataset.done !== String(done)) {
-        item.dataset.done = String(done);
-        replace(item, done ? [icon('check', 12), phases[index][1]] : [phases[index][1]]);
-      }
-      if (item.dataset.phase === (state.phase || 'clarify')) item.setAttribute('aria-current', 'step');
-      else item.removeAttribute('aria-current');
-    }
-    timeControls.update({ disabled: loading || loadFailed || busy || modeControl.saving || ending || !state.id || Boolean(state.endedAt), hidden: Boolean(state.debriefed) });
-    const reading = mockTimeReading(state.minutes || 45, elapsed());
-    const { remaining } = reading;
-    clock.textContent = reading.text;
-    timeControls.root.querySelector('button').setAttribute('aria-label', `${reading.text} ${reading.label}. Add time`);
-    clock.setAttribute('aria-label', `${reading.text} ${reading.label}`);
-    clock.dataset.urgency = remaining <= 120000 ? 'hard' : remaining <= 300000 ? 'med' : '';
-    voiceView.update({state: voiceState, draft: input.value, partial: partialWords, busy, paused: !!state.pausedAt, held: held || (state.needsAttention && Boolean(input.value.trim()))});
+    micLabel.textContent = loading ? 'Loading interview' : !state.id ? (busy ? 'Preparing interview' : 'Interview not started') : state.debriefed ? 'Debrief' : state.pausedAt || !participating ? 'Paused' : speaker?.speaking ? 'Interviewer speaking' : busy && !quietPoll && voiceState !== 'recording' ? 'Interviewer is thinking…' : voiceState === 'working' ? 'Transcribing…' : voiceState === 'recording' ? 'Listening' : 'Your turn';
+    // The paused band already says so; the pill would only repeat it.
+    pill.hidden = (isVoice && Boolean(state.id)) || micLabel.textContent === 'Your turn' || !paused.hidden;
+    phaseStepper.update({ current: state.phase || 'clarify' });
+    // The paused band speaks for the interview; the voice bar does not add "Voice paused".
+    voiceView.update({state: voiceState, draft: input.value, partial: partialWords, busy: busy && !quietPoll, paused: false, away: Boolean(voice?.awaitingReturn?.()), held: held || (state.needsAttention && Boolean(input.value.trim()))});
     // Composer/status changes can resize the panel after a token was appended.
     // Reconcile before yielding: speech status can change between animation frames,
     // and deferring the scroll leaves a visible gap after the composer grows.
     if (following && !gone) revealLatest();
   }
-  function scrollViewport() { return embedded && !contained ? root.closest('.interviews-view') : log; }
+  // A live interview scrolls its own transcript between the header and the composer; a
+  // finished sidebar interview reads as one page in the sidebar's scroller.
+  function scrollViewport() { return embedded && !contained && state.debriefed ? root.closest('.interviews-view') : log; }
   // Follow is a user-intent latch. Geometry alone cannot distinguish a reader who
   // is near the bottom from a stream that just grew the footer by a few pixels.
   let following = true;
@@ -443,9 +442,9 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     viewport.scrollTop = viewport.scrollHeight;
   }
   const shownCandidates = new Set();
-  function candidate(text, request, at = elapsed(), destination = log) {
-    if (request && shownCandidates.has(request)) return;
-    if (request) shownCandidates.add(request);
+  function candidate(text, request, at = elapsed(), destination = log, seen = shownCandidates) {
+    if (request && seen.has(request)) return;
+    if (request) seen.add(request);
     bubble('You', text, at, false, destination);
   }
   function bubble(who, text = '', atMs = elapsed(), debrief = false, destination = log) {
@@ -495,7 +494,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         el('h3', { text: 'No response recorded' }),
         el('p', { text: 'You ended this interview before answering. No report was generated.' }),
         el('div', { class: 'ci-score-meta dim', text: `${interviewDuration(state)} · ${state.mode === 'voice' ? 'Voice' : 'Typed'} · ${relativeInterviewDate(state.startedAt)}` }),
-        el('button', { class: 'btn btn--secondary', type: 'button', text: 'Back to interviews', onclick: onBack }),
+        el('button', { class: 'btn btn--secondary', type: 'button', text: 'Back', onclick: onBack }),
       ])]);
       feedback.hidden = false;
       transcript.hidden = false;
@@ -517,7 +516,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
           [1, 2, 3, 4].map(n => el('i', { class: n <= ({ Weak: 1, Mixed: 2, Solid: 3, Strong: 4 }[d.rating] || 0) ? 'is-on' : '' }))),
         el('span', { class: 'ci-mini-rating', text: d.rating || 'Not rated' }),
       ])));
-      const openButton = el('button', { type: 'button', class: 'btn btn--primary ci-open-report', onclick: showReport }, [icon('report', 14), el('span', { text: 'Open full report' })]);
+      const openButton = el('button', { type: 'button', class: 'btn btn--primary ci-open-report', onclick: showReport }, [icon('report', 14), el('span', { text: 'View report' })]);
       replace(feedback, [hero, rows, openButton]);
       feedback.hidden = false;
       transcript.hidden = false;
@@ -536,8 +535,14 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     ]);
     const dimensions = el('div', { class: 'ci-dimensions' });
     const used = new Set(hire ? [hire] : []);
-    for (const [pattern, label] of [[/^problem solving/i, 'Problem solving'], [/^coding/i, 'Coding'], [/^communication/i, 'Communication'], [/^testing/i, 'Testing']]) {
-      const part = sections.find(section => pattern.test(section.heading));
+    // A coding debrief is read against the coding rubric. An LLD prose debrief has no
+    // structured judgement, so only the sections it actually rated are shown as ratings;
+    // the rest stays prose, and no rubric row is listed as "Not rated" on its behalf.
+    const rated = part => /^(Strong|Solid|Mixed|Weak)\b/i.test(part.text.replace(/\*\*/g, '').trim());
+    const rubric = entry.discipline === 'lld'
+      ? sections.filter(part => part !== hire && part.heading && rated(part)).map(part => [part, part.heading])
+      : [[/^problem solving/i, 'Problem solving'], [/^coding/i, 'Coding'], [/^communication/i, 'Communication'], [/^testing/i, 'Testing']].map(([pattern, label]) => [sections.find(section => pattern.test(section.heading)), label]);
+    for (const [part, label] of rubric) {
       if (part) used.add(part);
       const match = part?.text.replace(/\*\*/g, '').match(/^(Strong|Solid|Mixed|Weak)\b\s*[—:–-]?\s*([\s\S]*)/i);
       const evidence = match?.[2] || part?.text || 'No evidence recorded.';
@@ -571,16 +576,15 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       if (/^hints used/i.test(part.heading) && Array.isArray(state.hints)) continue;
       extra.push(el('section', { class: 'ci-score-extra' }, [part.heading ? el('h3', { text: /practi[cs]e next|work on next|next steps/i.test(part.heading) ? 'What to work on next' : part.heading }) : null, conversationText(part.text)]));
     }
-    const openWritten = state.report ? el('button', { type: 'button', class: 'btn btn--primary ci-open-report', onclick: showReport }, [icon('report', 14), el('span', { text: 'Open report and ask about it' })]) : null;
-    replace(feedback, [hero, openWritten, dimensions, ...(times.length ? [phaseStats] : []), ...extra]);
+    const openWritten = state.report ? el('button', { type: 'button', class: 'btn btn--primary ci-open-report', onclick: showReport }, [icon('report', 14), el('span', { text: 'View report' })]) : null;
+    replace(feedback, [hero, openWritten, dimensions.childNodes.length ? dimensions : null, ...(times.length ? [phaseStats] : []), ...extra].filter(Boolean));
     feedback.hidden = false;
     transcript.hidden = false;
     transcript.append(log);
     transcriptLabel.textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
   }
-  function replay(turns = []) {
-    const readingTop = scrollViewport()?.scrollTop || 0;
-    shownCandidates.clear();
+  // The saved turns as transcript nodes, off screen. `seen` dedupes answers by request.
+  function renderHistory(turns, seen) {
     const history = document.createDocumentFragment();
     let lastPhase = null, pendingActions = [];
     for (const turn of turns) {
@@ -589,7 +593,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       }
       if (turn.kind === 'tool_action') { pendingActions.push(turn.action); continue; }
       const at = turn.elapsedMs ?? Math.max(0, Date.parse(turn.at) - Number(state.startedAt));
-      if (turn.said) candidate(turn.said, turn.requestId, at, history);
+      if (turn.said) candidate(turn.said, turn.requestId, at, history, seen);
       if (['interviewer_silent', 'suppressed_filler'].includes(turn.kind) && turn.replyKind === 'turn') history.append(interviewerSilentNote());
       const asked = turn.asked ?? turn.reply;
       if (asked || pendingActions.length || turn.activity?.length) {
@@ -600,11 +604,47 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         if (turn.kind === 'partial') reply.setNotice({ head: 'Reply interrupted before it finished.' });
       }
     }
+    return history;
+  }
+  function replay(turns = []) {
+    const readingTop = scrollViewport()?.scrollTop || 0;
+    shownCandidates.clear();
+    const history = renderHistory(turns, shownCandidates);
     if ((embedded || entry.discipline === 'lld') && state.debriefed && !feedback.childNodes.length) showFeedback('No feedback was recorded for this interview.');
     replace(log, history);
     transcriptLabel.textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
     if (following) revealLatest();
     else if (scrollViewport()) scrollViewport().scrollTop = readingTop;
+  }
+  // Who spoke and what was said: stamps and activity differ between a live bubble and a
+  // replayed one, so they are not part of the comparison.
+  const entryKey = node => `${node.classList.contains('ci-candidate') ? 'you' : node.classList.contains('ci-debrief') ? 'debrief' : 'interviewer'}:${node.querySelector('.ci-text')?.textContent.replace(/\s+/g, ' ').trim() || ''}`;
+  // A live reply that said nothing and changed nothing (only its activity, which a silent
+  // turn does not save) is not a disagreement with the record; it is not compared.
+  const comparable = node => node.classList.contains('ci-entry') && (node.classList.contains('ci-candidate') || Boolean(node.querySelector('.ci-text')?.textContent.trim()) || Boolean(node.querySelector('[data-action-id]')));
+  /**
+   * After a skipped or duplicate turn the saved record usually matches the screen. Add
+   * only the turns that are missing, so focus, open activity rows and a selection in the
+   * live transcript survive; rebuild only when the screen and the record disagree.
+   * `pending` is this request's own reply bubble, which the caller removes if it stays empty.
+   */
+  function reconcile(turns = [], pending = null) {
+    if (state.debriefed || turns.some(turn => turn.kind === 'debrief')) { replay(turns); return; }
+    const seen = new Set();
+    const fresh = renderHistory(turns, seen);
+    const freshEntries = [...fresh.children].filter(comparable);
+    const shown = [...log.children].filter(node => comparable(node) && node !== pending).map(entryKey);
+    const next = freshEntries.map(entryKey);
+    if (shown.length > next.length || shown.some((key, i) => key !== next[i])) { replay(turns); return; }
+    for (const request of seen) shownCandidates.add(request);
+    if (shown.length === next.length) return;
+    const last = shown.length ? freshEntries[shown.length - 1] : null;
+    const missing = [];
+    for (let node = last ? last.nextSibling : fresh.firstChild; node; node = node.nextSibling) missing.push(node);
+    const follow = followingLatest();
+    if (pending?.parentNode === log) pending.before(...missing); else log.append(...missing);
+    transcriptLabel.textContent = `Show conversation · ${log.querySelectorAll('.ci-entry').length} turns`;
+    if (follow) revealLatest();
   }
   async function openMic() {
     if (micOpening || !state.id || !participating || !visible || !micEnabled || modeControl.pending || loading || loadFailed || state.endedAt || gone || modeControl.saving || ending || state.pausedAt || state.debriefed || state.mode !== 'voice' || recovered || document.hidden) return;
@@ -615,7 +655,8 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       void speaker?.prepare();
       await voice?.start();
       // Permission/device failures leave an explicit retry, never an automatic loop.
-      if (!voice?.isBusy()) micEnabled = false;
+      // Being away (hidden tab, another window in front) is not a failure: it resumes on return.
+      if (!voice?.isBusy() && !voice?.awaitingReturn()) micEnabled = false;
       if (!gone) paint();
     } finally { micOpening = false; }
   }
@@ -634,6 +675,8 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     paint();
   } });
   voice = createVoiceControl({
+    // voice.js holds the mic off while you are away and calls openMic when you return.
+    awayNote: false, onReturn: () => openMic(),
     reportEmptyTake: false, onSettled: () => { if (modeDrain) { modeDrain = false; recovered = Boolean(input.value.trim()); if (!gone) { paint(); openMic(); } } else if (resumeMicAfterDrain) openMic(); },
     getSlug: () => slug, logTakes: false, recordingMode: 'think_aloud', getAttemptId: () => state.id, maxTakeMs: 60 * 60000,
     // One microphone pipeline in Voice mode. Each live phrase is archived by ASR,
@@ -653,7 +696,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       if (loud) lastSpeech = Date.now();
       if (state.mode !== 'voice' || gone || recovered || ending || state.pausedAt) return;
       if (loud && (speaker.speaking || (busy && !interrupted))) interrupt();
-      if (voiceView.automatic && !state.needsAttention && !voice.hasTranscriptionError() && turnDecision({ sinceLoud: value.sinceLoud, chars: input.value.trim().length, speaking: speaker.speaking, busy, pending }) === 'send') answer();
+      if (voiceView.automatic && !state.needsAttention && !voice.hasTranscriptionError() && turnDecision({ sinceLoud: value.sinceLoud, chars: input.value.trim().length, speaking: speaker.speaking, busy, pending, armed: value.armed }) === 'send') answer();
     },
   });
   // Keep microphone errors visible without showing dictation's second mode button.
@@ -682,14 +725,22 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       requestId = null; rememberRequest(null);
     };
     const isDebrief = action === 'done' || (action === 'retry' && Boolean(state.endedAt));
-    target = bubble(isDebrief ? 'Debrief' : 'Interviewer', '', elapsed(), isDebrief);
-    const turnReply = workspaceReply(target); turnReply.start();
+    // A background poll (idle time, run results) usually ends without a word. Its bubble and
+    // its "thinking" status appear only once the interviewer actually speaks or acts, so a
+    // quiet poll every few seconds never flashes a bubble in and out of the transcript.
+    let turnReply = null;
+    const reply = () => {
+      if (!turnReply) { quietPoll = false; target ??= bubble(isDebrief ? 'Debrief' : 'Interviewer', '', elapsed(), isDebrief); turnReply = workspaceReply(target); turnReply.start(); }
+      return turnReply;
+    };
+    quietPoll = action === 'event';
+    if (!quietPoll) reply();
     try {
       const result = await streamRequest(`/api/interview/${action}`, {
         slug, interviewId: state.id, code: code(), ...extra,
       }, (name, payload) => {
-        if (name === 'action') { if (!gone) showWorkspaceAction(turnReply, payload); }
-        else if (name === 'tool') { if (!gone) turnReply.tool(payload); }
+        if (name === 'action') { if (!gone) showWorkspaceAction(reply(), payload); }
+        else if (name === 'tool') { if (!gone) reply().tool(payload); }
         else if (name === 'interview') {
           const oldDraft = input.value;
           mergeState({ ...payload, pending: false });
@@ -700,14 +751,14 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         } else if (name === 'accepted') {
           accepted = true;
           if (payload.state) { mergeState(payload.state); persist(); }
-          if (payload.said && !gone) { candidate(payload.said, payload.requestId); log.append(turnReply.node); }
+          if (payload.said && !gone) { candidate(payload.said, payload.requestId); if (turnReply) log.append(turnReply.node); }
           const delivered = new Set((extra.events || []).map(event => event.requestId));
           eventQueue = eventQueue.filter(event => !delivered.has(event.requestId)); saveEvents();
           consumeDraft();
           if (action === 'turn') void openMic();
         } else if (name === 'token') {
-          turnReply.writing();
           if (gone) return;
+          reply().writing();
           target ??= bubble(isDebrief ? 'Debrief' : 'Interviewer', '', elapsed(), isDebrief);
           target.classList.add('ci-streaming');
           const follow = followingLatest();
@@ -761,7 +812,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       if (result.duplicate || result.skipped) {
         const saved = await interviewJson(detailUrl(slug, state.id));
         mergeState(saved); persist();
-        if (!gone) replay(saved.turns);
+        if (!gone) reconcile(saved.turns, turnReply?.node);
         consumeDraft();
       }
       if (stopped) return false;
@@ -776,9 +827,10 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       }
       return false;
     } finally {
-      turnReply.finish();
+      quietPoll = false;
+      turnReply?.finish();
       if (target) target.classList.remove('ci-streaming');
-      if (!turnReply.body.textContent.trim() && !turnReply.node.querySelector('[data-action-id]') && turnReply.node.querySelector('.ui-turn-activity').hidden) turnReply.node.remove();
+      if (turnReply && !turnReply.body.textContent.trim() && !turnReply.node.querySelector('[data-action-id]') && turnReply.node.querySelector('.ui-turn-activity').hidden) turnReply.node.remove();
       busy = false;
       if (!gone) { paint(); void modeControl.flush(); openMic(); }
     }
@@ -845,6 +897,10 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     if (loading || loadFailed || gone || !state.id || state.debriefed) return;
     paint();
     if (!participating || state.endedAt || state.pausedAt || state.needsAttention || busy || timeControls.saving || modeControl.saving || ending) return;
+    // No idle prompt for an empty room: the mic's presence rule (page visible, window
+    // focused). A hidden sidebar tab is not away; you may be coding with it closed.
+    // Away keeps restarting the wait, so returning never fires the polls that were skipped.
+    if (!presenceOf().present) { lastTick = Date.now(); return; }
     if (Date.now() - lastTick < 5000) return;
     lastTick = Date.now();
     const buffer = code();
@@ -859,8 +915,6 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     return result;
   };
   const timer = setInterval(tick, 1000);
-  const visibility = () => { if (document.hidden) voice.stop(); };
-  document.addEventListener('visibilitychange', visibility);
   function recoverFailure(turns = []) {
     const failed = [...turns].reverse().find(turn => ['error', 'partial', 'opening', 'turn', 'debrief', 'suppressed_filler', 'interviewer_silent'].includes(turn.kind));
     if (state.debriefed || !['error', 'partial'].includes(failed?.kind)) return;
@@ -880,6 +934,14 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         spokenReplies = state.mode === 'voice';
         replay(result.turns); restoreDraft();
         recoverFailure(result.turns);
+        // A live voice mock comes back listening after a reload, as it does on returning to
+        // the window; a refused microphone leaves the usual "turn on" button (openMic).
+        // The restored draft stays pending and is sent on going quiet only after new speech
+        // (voice.js). One already being sent (`requestId`) still waits for a decision.
+        if (state.mode === 'voice' && participating && !state.pausedAt && !state.endedAt && !state.debriefed) {
+          micEnabled = true;
+          if (recovered && !requestId) { recovered = false; voice.requireFreshSpeech(); }
+        }
         if (participating && !state.debriefed && !activeInterview()) remember({ ...state, turns: undefined });
         persist(); paint();
         // GET waits for an existing turn before replaying it; restoring never asks the
@@ -917,7 +979,10 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       syncHeaderControls();
       if (on) requestAnimationFrame(restoreScroll);
       if (!on) rememberScroll();
-      if (!on) { micEnabled = false; resumeMicAfterDrain = false; voice.stop(); speaker.cancel(); }
+      // Off screen releases the mic (words heard drain into the draft); back on screen
+      // resumes it with no click, as returning to the window does.
+      if (!on) { resumeMicAfterDrain = false; voice.stop(); speaker.cancel(); }
+      else openMic();
     },
     get interviewId() { return state.id; }, focus: () => { if (state.mode !== 'voice') input.focus(); }, attach() {}, end: finish,
     resume() { const resumeWhenReady = () => { if (gone) return; if (loading) { setTimeout(resumeWhenReady, 50); return; } if (state.pausedAt || !participating) togglePause(); }; resumeWhenReady(); },
@@ -930,14 +995,13 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       for (const nav of rail?.querySelectorAll('.pnav-btn') || []) nav.classList.remove('ui-overflow-only');
       rail?.querySelector('.ci-learning-notes')?.remove();
       toolbar.remove();
-      inputSize.dispose(); modelPicker.dispose(); conversationView.dispose(); modeControl.dispose(); timeControls.dispose();
+      inputSize.dispose(); modelPicker.dispose(); conversationView.dispose(); modeControl.dispose(); session.dispose(); phaseStepper.dispose(); pinned?.dispose();
       if (gone) return;
       rememberScroll(); gone = true; viewportAbort?.abort(); unwatch(); clearInterval(timer);
       if (draftReady) saveDraft(draftKey(), input.value);
       replySpeech?.cancel(); speaker.dispose(); voice.dispose({ finish: true });
       window.removeEventListener('keydown', keydown, true);
       window.removeEventListener('studio-interview-work', work);
-      document.removeEventListener('visibilitychange', visibility);
       if (mounted === api) mounted = null;
     },
   };

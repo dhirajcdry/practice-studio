@@ -250,12 +250,21 @@ export function visualLint() {
     if (r.height < 40 && n.matches('.segmented, .segmented *, ' + CONTROL)) continue;
     const s = getComputedStyle(n);
     if (/absolute|fixed/.test(s.position)) continue;
-    // Content scrolled behind the pinned app bar is covered by it, not beside it.
-    if (topbarRect && !n.closest('.topbar') && r.top < topbarRect.bottom - 1 && r.bottom > topbarRect.top) continue;
+    // Content scrolled behind the pinned app bar is covered by it, not beside it. On a scrolled
+    // page, how near a row stops to the bar is the scroll position, not the layout.
+    if (topbarRect && !n.closest('.topbar') && r.top < topbarRect.bottom + (scrollY > 0 ? MIN_BOX_GAP : -1) && r.bottom > topbarRect.top) continue;
     const filled = painted(s.backgroundColor) && s.backgroundColor !== backdrop(n);
     const edges = {};
     for (const side of ['Top', 'Right', 'Bottom', 'Left'])
       edges[side] = filled || (parseFloat(s[`border${side}Width`]) > 0 && s[`border${side}Style`] !== 'none' && painted(s[`border${side}Color`]));
+    // An edge scrolled out of its pane's scroller is clipped, not drawn beside anything.
+    for (let x = n.parentElement; x && x !== document.body; x = x.parentElement) {
+      if (!/auto|scroll/.test(getComputedStyle(x).overflowY) || x.scrollHeight <= x.clientHeight + 1) continue;
+      const sr = x.getBoundingClientRect();
+      if (r.top < sr.top - .5) edges.Top = false;
+      if (r.bottom > sr.bottom + .5) edges.Bottom = false;
+      break;
+    }
     if (!Object.values(edges).some(Boolean)) continue;
     // A menu, dialog or drawer floats over the page; it is not the page's neighbour.
     const layer = n.closest('dialog, [popover], .settings, .drawer, .ui-menu, .ui-popover');
@@ -406,7 +415,8 @@ export function visualLint() {
     if (!visible(pane) || pane.closest('.is-complete')) continue;
     const pr = pane.getBoundingClientRect();
     if (innerWidth < 901 && !onScreen(pr)) continue;
-    const scrolls = [...pane.children].filter(n => n.matches('.ui-pane-scroll'));
+    // A tabbed pane (practice: Coach, Problem, Mock feedback) hides its other tabs' scrollers.
+    const scrolls = [...pane.children].filter(n => n.matches('.ui-pane-scroll') && !n.hidden);
     const controls = [...pane.children].filter(n => !n.matches('.ui-pane-scroll') && visible(n));
     if (scrolls.length !== 1) out.push({ kind: 'pane-structure', where: name(pane), detail: 'Expected exactly one direct .ui-pane-scroll owner' });
     const sr = scrolls[0]?.getBoundingClientRect();

@@ -1,5 +1,5 @@
 // Browser regressions: run by web/tests.html and the scratch interview check.
-import { renderReport, attachMomentQuotes, defaultDimensionIndex } from './interview-report.js';
+import { renderReport, attachMomentQuotes, defaultDimensionIndex, dimensionQuestion } from './interview-report.js';
 
 export function checkReportLayout(check) {
   const facts = { durationMs: 100000, plannedMs: 1800000, mode: 'typed', hints: [], runs: [], verdicts: [], phases: [], candidateTurns: 0, finalCode: '' };
@@ -19,4 +19,22 @@ export function checkReportLayout(check) {
     check(`${count} dimensions select the weakest and update detail without rebuilding the rows`, rows.length === count && rows.at(-1).getAttribute('aria-pressed') === 'true' && (() => { rows[0].click(); return rows[0].getAttribute('aria-pressed') === 'true' && rows.at(-1).getAttribute('aria-pressed') === 'false' && body.querySelector('.rp-dim h4').textContent === 'Dimension 0'; })());
   }
   check('old prose debrief remains readable', renderReport({ title: 'Old', record: {}, report: { facts, judgement: null }, debriefText: 'Original written feedback.' }).textContent.includes('Original written feedback.'));
+
+  // System design: the board and the phase bar come from the record, and say plainly what is missing.
+  const designFacts = { ...facts, durationMs: 600000, finalBoard: null, phases: [
+    { phase: 'requirements', ms: 240000 }, { phase: 'entities', ms: 120000 }, { phase: 'api', ms: null },
+    { phase: 'estimates', ms: null }, { phase: 'design', ms: null }, { phase: 'deepdive', ms: null }, { phase: 'bottlenecks', ms: null }] };
+  const design = board => renderReport({ title: 'Design', record: { discipline: 'design' }, report: { facts: designFacts, judgement: { ...judgement, practice: [] } }, board });
+  const empty = design([{ id: 'gone', type: 'rectangle', isDeleted: true }]);
+  const stats = [...empty.querySelectorAll('.rp-stat')].map(s => s.textContent);
+  check('an empty design board says so in the stat and in its own section', stats.some(s => s === 'BoardEmpty') && empty.querySelector('.rp-board-section')?.textContent.includes('The board was empty.') && !empty.querySelector('.rp-board') && !empty.textContent.includes('Semantic graph'));
+  const drawn = design([{ id: 'box', type: 'rectangle', x: 0, y: 0, width: 80, height: 40 }]);
+  check('a drawn design board is named Drawn and gets a Final board figure', [...drawn.querySelectorAll('.rp-stat')].some(s => s.textContent === 'BoardDrawn') && Boolean(drawn.querySelector('.rp-board-section .rp-board')) && !drawn.querySelector('.rp-solution'));
+  const legend = empty.querySelector('.rp-legend')?.textContent || '';
+  check('design phases use their own labels, show unplaced time and list unrecorded phases', legend.includes('Requirements 4 min') && legend.includes('Entities 2 min') && legend.includes('No phase recorded 4 min') && legend.includes('Not recorded: API, Estimates, Design, Deep dive, Bottlenecks') && empty.querySelectorAll('.rp-seg').length === 3);
+  check('LLD and design dimensions ask their own questions', dimensionQuestion({ name: 'State modeling' }, 'lld').includes('states and transitions') && dimensionQuestion({ name: 'Estimation' }, 'design').includes('estimated the scale')
+    && dimensionQuestion({ name: 'Requirements' }, 'lld') !== dimensionQuestion({ name: 'Requirements' }, 'design') && dimensionQuestion({ name: 'Coding' }).startsWith('What should I change')
+    && [...LLD, ...DESIGN].every(([name, discipline]) => !dimensionQuestion({ name }, discipline).includes('What would a strong answer have looked like here?')));
 }
+const LLD = ['Requirements', 'Responsibilities', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'].map(name => [name, 'lld']);
+const DESIGN = ['Requirements', 'Estimation', 'Data modeling', 'Architecture', 'Trade-offs', 'Reliability', 'Communication'].map(name => [name, 'design']);
