@@ -22,7 +22,7 @@ import { createBadge } from './ui/badge.js';
 import { createSelect } from './ui/select.js';
 import { createComposer, bindComposerInput } from './ui/composer.js';
 import { createCoachModelPicker } from './coach-model.js';
-import { createInterviewSetup, interviewJson } from './interview.js';
+import { createInterviewSetup, interviewJson, setupField } from './interview.js';
 import { relativeInterviewDate, ratingTone } from './interview-format.js';
 import { startPractice, startPracticeFromMock, practiceHref } from './practice.js';
 import { readDraft, saveDraft, clearDraft } from './drafts.js';
@@ -51,8 +51,8 @@ const label = (id, title, tools) => el('header', { class: 'th-card-head' }, [el(
  *   loadInterviews(): Promise<{ interviews: [{ id, slug, title, startedAt, debriefed }] }>,
  *   openInterview(item),
  *   startMock(problem | null, setupState)   null means "choose one for me"
- *   startOwnMock?(brief, setupState)        a mock on a brief the learner wrote; only a
- *                                           track that can run one passes it
+ *   startOwnMock?(brief, setupState)        a mock on a brief the learner wrote (both
+ *                                           tracks pass it; without it, Surprise me alone)
  * }
  */
 export function mountTrackHome(host, track) {
@@ -84,8 +84,9 @@ export function mountTrackHome(host, track) {
     let choice = SURPRISE;
     const select = choices.length > 1 ? createSelect({ label: 'Problem', compact: true, value: choice, options: choices.map(c => [c.id, c.label]),
       onChange: () => { choice = select.value; paint(); onChange?.(); if (choice === OWN) input.focus(); } }) : null;
+    // "Problem" is a labelled field like the settings under it.
     const root = el('div', { class: 'th-pick', dataset: { kind } }, [
-      select ? el('div', { class: 'th-pick-row' }, [el('span', { class: 'th-pick-label', 'aria-hidden': 'true', text: 'Problem' }), select]) : null,
+      select ? setupField('Problem', select, 'problem') : null,
       line, brief,
     ]);
     function paint() {
@@ -117,15 +118,17 @@ export function mountTrackHome(host, track) {
     onChange: () => saveSidebar(`${discipline}-new-practice`, { setup: { mode: practiseMode.value } }) });
   const practiseLevel = createSelect({ label: 'Target level', compact: true, value: 'L4', options: LEVELS.map(x => [x, x]),
     onChange: () => { levelTouched = true; practiseRequestId = crypto.randomUUID(); } });
+  const practiseLevelField = setupField('Level', practiseLevel, 'level');
   const practise = button({ label: 'Start practising', variant: 'secondary', size: 'lg', className: 'th-practice', onClick: () => startPractising() });
   const practiseModel = createCoachModelPicker({ compact: true, onPending: value => { modelPending = value; paintPractise(); } });
-  const practiseOptions = el('div', { class: 'th-options ci-setup-options' }, [practiseMode, practiseLevel, practiseModel.root]);
+  const practiseOptions = el('div', { class: 'th-options ci-setup-options ci-setup-fields' }, [
+    setupField('Answer', practiseMode, 'answer'), practiseLevelField, setupField('Coach', practiseModel.root, 'model')]);
   interviewJson('/api/learner/preferences').then(({ preferences }) => {
     if (!gone && !practising && !levelTouched) practiseLevel.value = preferences?.targetLevel?.[discipline] || preferences?.targetLevel?.default || 'L4';
   }).catch(() => {}); // Starting reports an unavailable preferences store; L4 remains usable.
   function paintPractise() {
     const problem = entryFor(selected);
-    practiseLevel.hidden = !practiceSettings(discipline, { chosen: Boolean(problem), choice: practisePick.choice }).includes('level');
+    practiseLevelField.hidden = !practiceSettings(discipline, { chosen: Boolean(problem), choice: practisePick.choice }).includes('level');
     practise.disabled = modelPending || practising;
     practise.querySelector('span').textContent = practising && !problem && practisePick.choice === SURPRISE ? 'Preparing…' : 'Start practising';
     practiseMode.disabled = practiseLevel.disabled = practising;
@@ -138,7 +141,7 @@ export function mountTrackHome(host, track) {
     practising = true; practiseNotice.textContent = ''; paintPractise();
     try {
       // The level is the learner's saved target, as a mock's setup records it.
-      if (!practiseLevel.hidden) await interviewJson('/api/learner/preferences', { targetLevel: { [discipline]: practiseLevel.value } });
+      if (!practiseLevelField.hidden) await interviewJson('/api/learner/preferences', { targetLevel: { [discipline]: practiseLevel.value } });
       if (gone) return;
       if (problem) await startPractice({ ...problem, discipline }, {}, options);
       else if (choice === OWN) {
@@ -160,17 +163,20 @@ export function mountTrackHome(host, track) {
 
   // Mock: the shared interview setup. A retry keeps its start request, as everywhere.
   const mockPick = problemPicker('mock', {
-    hint: { [SURPRISE]: 'Studio prepares a problem you haven’t sat, chosen from what your reports say to work on.' },
-    placeholder: 'Describe the system to design, in a sentence or two.',
+    hint: { [SURPRISE]: 'Studio prepares a problem you haven’t sat, chosen from what your reports say to work on.',
+      // An LLD mock needs the interviewer's private notes, prepared from your brief first.
+      ...(discipline === 'lld' ? { [OWN]: 'Studio prepares the interviewer’s notes for your problem, then the clock starts.' } : {}) },
+    placeholder: discipline === 'lld' ? 'Describe the problem to design, in a sentence or two.' : 'Describe the system to design, in a sentence or two.',
   });
-  const setup = createInterviewSetup({ slug: `${discipline}-new-mock`, discipline, label: 'Mock settings', startLabel: 'Start mock',
-    onStart: state => {
+  const setup = createInterviewSetup({ slug: `${discipline}-new-mock`, discipline, label: 'Mock settings', startLabel: 'Start mock', fields: true,
+    onStart: async state => {
       const problem = entryFor(selected);
       if (problem) return track.startMock(problem, { ...state, slug: problem.slug, title: problem.title });
       if (mockPick.choice === OWN && track.startOwnMock) {
         const brief = mockPick.brief();
         if (!brief) throw Error('Write your problem first. A sentence or two is enough.');
-        const started = track.startOwnMock(brief, state);
+        // The brief is kept until the mock has started, so a failed preparation loses nothing.
+        const started = await track.startOwnMock(brief, state);
         mockPick.forget();
         return started;
       }
@@ -181,7 +187,7 @@ export function mountTrackHome(host, track) {
     el('div', { class: 'th-act-head' }, [el('h3', { text: 'Practise' }), el('p', { class: 'th-act-text', text: 'No clock, no grade. The coach works beside you.' })]),
     practisePick.root, el('div', { class: 'th-start' }, [practiseOptions, practiseNotice, practise])]);
   const mockAct = el('div', { class: 'th-act th-mock' }, [
-    el('div', { class: 'th-act-head' }, [el('h3', { text: 'Mock' })]), mockPick.root, el('div', { class: 'th-start' }, setup.root)]);
+    el('div', { class: 'th-act-head' }, [el('h3', { text: 'Mock' }), el('p', { class: 'th-act-text', text: 'Timed and graded, with a report at the end.' })]), mockPick.root, el('div', { class: 'th-start' }, setup.root)]);
   const actions = el('div', { class: 'th-actions' }, [practiseAct, mockAct]);
 
   const summary = el('p', { class: 'th-summary', text: 'Reading saved practice…' });

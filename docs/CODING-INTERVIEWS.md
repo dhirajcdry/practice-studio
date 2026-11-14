@@ -99,14 +99,22 @@ the interviewer; it is instructed to answer only what was asked. Probe counts an
 curveball delivery tags are persisted, but substantive interview behavior still needs
 real-session evaluation. Click Finish to request the debrief. Saying “done” stays an ordinary answer.
 
-Each turn tells the interviewer where a plan by share of time says it should be:
-requirements to 12%, classes and methods to 32%, code to 72%, a trace to 85%, then the
-change requirement. The interviewer moves the candidate on and asks for the trace itself.
-The change requirement stays private until 72% of the time, or until the trace phase, and
-is dropped in the last three minutes. A debrief treats a step the interview never asked
-for as not reached, not as a failure.
+The interviewer does not pace the candidate through stages; the candidate manages
+their own time, as in a real interview. It does not volunteer requirements, but answers
+what it is asked in full, explains the real-world domain freely when asked (generated
+scenarios open their private facts with a domain primer), and engages with a presented
+design before giving a go-ahead. It asks for the trace when the candidate says the code
+is done. Every five minutes it is given a look at the work even mid-typing, and usually
+says nothing. The change requirement stays private until 72% of the time, or until the
+trace phase, and is dropped in the last three minutes. A debrief treats a step the
+interview never asked for as not reached, not as a failure.
 
-LLD reports cover requirements, responsibilities, interfaces, state, correctness,
+The interviewer keeps private notes in `[[told: …]]` and `[[design: …]]` tags: each
+requirement it has told the candidate, and its latest picture of their design. They are
+stripped from speech, saved on the turn record and in `interview.json` (`notes`), never
+sent to the page, and given to the debrief, which judges against what was actually told.
+
+LLD reports cover requirements, responsibilities, OOP fundamentals, interfaces, state, correctness,
 edge cases, self-verification, extensibility and communication. Technical errors,
 missing considerations, and self-caught versus interviewer-surfaced bugs are separate
 sections. Unassessed areas have no rating. Model observations remain judgments.

@@ -19,9 +19,18 @@ export function createInterviews(entry) {
   const overview = el('div', { class: 'interviews-overview' }, [setup.root,
     el('div', { class: 'interviews-toolbar' }, [el('strong', { text: 'Past interviews' }), count]), notice, retry, list]);
   const detailContent = el('div', { class: 'interview-detail-content' });
-  const detail = el('section', { class: 'interview-detail', hidden: true }, [
-    el('button', { class: 'btn btn--quiet interview-back', 'aria-label': 'Back to interviews', onclick: collapse }, [icon('back'), 'Interviews']), detailContent,
-  ]);
+  const back = el('button', { class: 'btn btn--quiet interview-back', 'aria-label': 'Back to interviews', title: 'Back to interviews', onclick: collapse }, [icon('back'), el('span', { text: 'Interviews' })]);
+  const detail = el('section', { class: 'interview-detail', hidden: true }, [back, detailContent]);
+  // A live interview needs every line of the sidebar for the conversation, so Back rides in
+  // the interview's own header as an arrow instead of taking a row of its own above it.
+  function placeBack() {
+    const header = detailContent.querySelector('.ci-embedded:not(.is-complete) .ci-live-header .ci-header');
+    if (header) { if (back.parentNode !== header) header.prepend(back); }
+    else if (back.parentNode !== detail) detail.prepend(back);
+    back.classList.toggle('is-inline', Boolean(header));
+  }
+  const backWatch = new MutationObserver(placeBack);
+  backWatch.observe(detailContent, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   const root = el('section', { class: 'interviews-view', 'aria-label': 'Interviews', hidden: true }, [
     el('div', { dataset: { interviewRecorder: '' } }), overview, detail,
   ]);
@@ -151,6 +160,6 @@ export function createInterviews(entry) {
       visible = on; root.hidden = !on; panel?.setVisible(on);
       if (entering) refresh();
     },
-    dispose() { disposed = true; generation++; clearInterval(clock); setup.dispose(); panel?.dispose(); },
+    dispose() { disposed = true; generation++; backWatch.disconnect(); clearInterval(clock); setup.dispose(); panel?.dispose(); },
   };
 }

@@ -74,10 +74,11 @@ export function statusLine(slug, items, now = Date.now()) {
 
 /**
  * What a way in can start on when no library problem is chosen, Surprise me first (the
- * default). A mock on your own brief exists only where the track can run one: system
- * design takes any prompt, while an LLD mock needs a prepared scenario with private facts.
+ * default), then your own brief. Both tracks run a mock on a brief: system design takes it
+ * as the prompt, and LLD has Studio prepare a scenario (private facts, curveball) for it.
+ * A track that cannot run one passes ownMock: false.
  */
-export function problemChoices(kind, { ownMock = false } = {}) {
+export function problemChoices(kind, { ownMock = true } = {}) {
   return [{ id: SURPRISE, label: 'Surprise me' }, ...(kind === 'practise' || ownMock ? [{ id: OWN, label: 'My own problem' }] : [])];
 }
 

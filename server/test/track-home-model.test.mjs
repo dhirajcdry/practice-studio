@@ -56,9 +56,10 @@ test('status lines come only from records', () => {
 test('with no problem chosen, each way in starts on Surprise me, and on your own brief where the track can run it', () => {
   assert.deepEqual(problemChoices('practise').map(c => c.id), [SURPRISE, OWN]);
   assert.deepEqual(problemChoices('practise').map(c => c.label), ['Surprise me', 'My own problem']);
-  // System design mocks take any prompt; an LLD mock needs a prepared scenario, so it offers Surprise me alone.
-  assert.deepEqual(problemChoices('mock', { ownMock: true }).map(c => c.id), [SURPRISE, OWN]);
-  assert.deepEqual(problemChoices('mock').map(c => c.id), [SURPRISE]);
+  // Both tracks run a mock on a brief (LLD prepares a scenario for it); a track that cannot opts out.
+  assert.deepEqual(problemChoices('mock').map(c => c.id), [SURPRISE, OWN]);
+  assert.deepEqual(problemChoices('mock', { ownMock: false }).map(c => c.id), [SURPRISE]);
+  assert.deepEqual(problemChoices('practise', { ownMock: false }).map(c => c.id), [SURPRISE, OWN]);
 });
 
 test('practice offers only the settings it honours, and never a clock', () => {

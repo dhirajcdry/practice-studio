@@ -179,18 +179,53 @@ export async function runVisualAudit({ origin, target, output }) {
   // waits for that paint before it clicks, so a late render cannot move a target.
   const homeLoaded = `for (let i=0; i<100 && !document.querySelector('.th[data-state]'); i++) await sleep(50);
     await document.fonts.ready; await new Promise(requestAnimationFrame);`;
+  // The settings in each well are labelled fields that fill it: equal columns for the short
+  // settings, the coach model across the whole row, nothing clipped (the longest model name
+  // included), Problem as wide as the settings. Side by side, the two wells share their rows:
+  // Start buttons and coach-model fields on one baseline.
+  const optionsSpan = `{
+    const wells = [...document.querySelectorAll('.th-detail .th-act')], box = n => n.getBoundingClientRect();
+    for (const well of wells) {
+      const grid = well.querySelector('.ci-setup-fields'), g = box(grid), w = box(well), cs = getComputedStyle(well);
+      const contentRight = w.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight), contentLeft = w.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+      if (Math.abs(g.right - contentRight) > 2 || Math.abs(g.left - contentLeft) > 2) throw Error('The settings do not span the well: ' + [g.left, g.right, contentLeft, contentRight].map(Math.round));
+      const fields = [...grid.querySelectorAll(':scope > .ci-field')].filter(visible), short = fields.filter(f => f.dataset.field !== 'model');
+      if (!fields.length || fields.some(f => !f.querySelector('.ci-field-label')?.textContent)) throw Error('A setting has no label');
+      const model = box(grid.querySelector('[data-field="model"]'));
+      if (Math.abs(model.left - g.left) > 1 || Math.abs(model.right - g.right) > 1) throw Error('The coach model does not take the whole row');
+      const rows = new Map(); for (const f of short) { const r = box(f), key = Math.round(r.top); rows.set(key, [...(rows.get(key) || []), r]); }
+      const first = [...rows.values()][0];
+      if (first.length > 1 && Math.max(...first.map(r => r.width)) - Math.min(...first.map(r => r.width)) > 1) throw Error('The settings columns are not equal: ' + first.map(r => Math.round(r.width)));
+      if (Math.abs(Math.max(...first.map(r => r.right)) - g.right) > 2) throw Error('The last setting stops short of the well edge: ' + Math.round(Math.max(...first.map(r => r.right))) + ' vs ' + Math.round(g.right));
+      for (const b of well.querySelectorAll('.ci-field .ui-select-button, .ci-field .coach-model-name')) if (visible(b) && b.scrollWidth > b.clientWidth + 1) throw Error('A setting is clipped: ' + b.textContent);
+      const pick = [...well.querySelectorAll('.th-pick > .ci-field')].find(visible);
+      if (pick && (Math.abs(box(pick).left - g.left) > 1 || Math.abs(box(pick).right - g.right) > 1)) throw Error('Problem is not as wide as the settings');
+    }
+    if (wells.length === 2 && Math.abs(box(wells[0]).top - box(wells[1]).top) < 2) {
+      const start = w => box(w.querySelector('.th-practice, .ci-start')), coach = w => box(w.querySelector('[data-field="model"]'));
+      if (Math.abs(start(wells[0]).bottom - start(wells[1]).bottom) > 1 || Math.abs(start(wells[0]).top - start(wells[1]).top) > 1) throw Error('The Start buttons are not on one baseline: ' + start(wells[0]).bottom + ' vs ' + start(wells[1]).bottom);
+      if (Math.abs(coach(wells[0]).top - coach(wells[1]).top) > 1) throw Error('The settings rows do not line up');
+      const picks = wells.map(w => [...w.querySelectorAll('.th-pick > .ci-field')].find(visible));
+      if (picks.every(Boolean) && Math.abs(box(picks[0]).top - box(picks[1]).top) > 1) throw Error('The Problem fields do not line up');
+    }
+  }`;
+  // A dropdown in the start card opens wholly on screen.
+  const menuOnScreen = selector => `need(${JSON.stringify(selector)}).click(); await sleep(160);
+    const m = [...document.querySelectorAll('.ui-menu')].find(visible); if (!m) throw Error('The menu did not open');
+    const r = m.getBoundingClientRect(); if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) throw Error('The menu is cut off: ' + [r.left, r.top, r.right, r.bottom].map(Math.round));`;
   const homeFits = `if (document.documentElement.scrollWidth > innerWidth) throw Error('The track home scrolls sideways');
     const wrap = need('.th-wrap').getBoundingClientRect(); if (wrap.width > 1321) throw Error('The track home is wider than its column');
     if (document.querySelectorAll('.th-problem[aria-pressed="true"]').length > 1) throw Error('At most one problem may be chosen');
     if (document.querySelectorAll('.th-detail .th-act').length !== 2) throw Error('The panel must always offer both Practise and Mock');
-    if (document.querySelector('.th-problem[data-open]')) throw Error('The list holds only real problems');`;
+    if (document.querySelector('.th-problem[data-open]')) throw Error('The list holds only real problems');
+    ${optionsSpan}`;
   // Nothing chosen: both ways in, each with its Problem choice (LLD mocks offer Surprise me alone).
   const nothingChosen = track => `if (document.querySelector('.th-problem[aria-pressed="true"]')) throw Error('A problem is chosen on arrival');
     if (need('.th-detail-title').textContent !== 'Start something new') throw Error('The panel does not offer something new');
     need('.th-practice'); need('.th-mock .ci-start');
     if (need('.th-pick[data-kind="practise"] .ui-select-button').getAttribute('aria-label') !== 'Problem: Surprise me') throw Error('Practice does not default to Surprise me');
-    ${track === 'design' ? `if (need('.th-pick[data-kind="mock"] .ui-select-button').getAttribute('aria-label') !== 'Problem: Surprise me') throw Error('The mock does not default to Surprise me');`
-      : `if (document.querySelector('.th-pick[data-kind="mock"] .ui-select')) throw Error('An LLD mock offers a choice it cannot run'); need('.th-pick[data-kind="mock"] .th-pick-hint');`}
+    if (need('.th-pick[data-kind="mock"] .ui-select-button').getAttribute('aria-label') !== 'Problem: Surprise me') throw Error('The ${track} mock does not default to Surprise me');
+    need('.th-pick[data-kind="mock"] .th-pick-hint');
     for (const a of document.querySelectorAll('.th-act')) if (a.querySelector('.th-brief:not([hidden])')) throw Error('A brief field shows before My own problem is chosen');
     need('.th-act--practise [aria-label="Answer mode: Voice"]'); need('.th-act--practise .coach-model-picker');
     if (document.querySelector('.th-act--practise [aria-label^="Interview length"]')) throw Error('Practice offers a clock');`;
@@ -754,7 +789,7 @@ export async function runVisualAudit({ origin, target, output }) {
       ${nothingChosen('lld')}
       if (document.querySelectorAll('.th-history .th-item').length !== 8 || !need('.th-history .th-all').textContent.startsWith('Show all')) throw Error('History shows 8 rows then Show all');` },
     lldLower: { url: '/#/lld', setup: `${homeLoaded} ${reveal('.th-lower')}`, ready: '.th-dim .th-marks', assert: homeFits + `
-      if (document.querySelectorAll('.th-dim').length !== 9) throw Error('One row per LLD rubric skill');
+      if (document.querySelectorAll('.th-dim').length !== 10) throw Error('One row per LLD rubric skill');
       if (need('.th-dim .th-marks').children.length !== 5) throw Error('Five marks for the last five reports');
       need('.th-moveup');` },
     lldHistoryMocks: { url: '/#/lld', setup: `${homeLoaded} clickText('.th-filter .btn', 'Mocks'); await sleep(50); document.scrollingElement.scrollTo({ top: document.scrollingElement.scrollHeight - innerHeight - 12, behavior: 'instant' }); await sleep(80);`, ready: '.th-filter [aria-pressed="true"]', assert: `
@@ -764,12 +799,20 @@ export async function runVisualAudit({ origin, target, output }) {
     lldPhone: { url: '/#/lld', width: 390, setup: homeLoaded, ready: '.th-continue .th-resume', assert: homeFits + stacked },
     lldPhoneDetail: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-detail')}`, ready: '.th-mock .ci-start', assert: homeFits },
     lldPhoneLower: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-history')}`, ready: '.th-history .th-item', assert: homeFits },
-    lldNewMock: { url: '/#/lld', setup: homeLoaded, ready: '.th-mock .ci-start' },
-    lldMockNarrow: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')}`, ready: '.th-mock .ci-start', assert: `need('.th-mock [aria-label="Answer mode: Voice"]'); need('.th-mock [aria-label^="Target level:"]');` },
+    lldNewMock: { url: '/#/lld', setup: homeLoaded, ready: '.th-mock .ci-start', assert: homeFits },
+    lldMockNarrow: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')}`, ready: '.th-mock .ci-start', assert: homeFits + `need('.th-mock [aria-label="Answer mode: Voice"]'); need('.th-mock [aria-label^="Target level:"]');` },
     lldSelected: lldSelection,
     lldSelectedNarrow: { ...lldSelection, width: 720 },
     lldNothing: { url: '/#/lld', setup: homeLoaded, ready: '.th[data-state="ready"] .th-detail .th-practice', assert: homeFits + nothingChosen('lld') + `
       if (!visible(need('.th-act--practise [aria-label^="Target level:"]'))) throw Error('A surprise practice problem is prepared for a level, so the level shows');` },
+    // Mock on your own brief: LLD prepares a scenario for it, so the choice is offered.
+    lldOwnMock: { url: '/#/lld', setup: `${homeLoaded} ${chooseProblem('mock', 'My own problem')}`, ready: '.th-mock .th-brief textarea', assert: homeFits + `
+      if (document.activeElement !== need('.th-mock .th-brief textarea')) throw Error('Choosing My own problem does not put the cursor in the brief');
+      if (!need('.th-mock .th-pick-hint').textContent.includes('notes for your problem')) throw Error('The LLD mock does not say it prepares your problem');
+      need('.th-mock [aria-label="Problem: My own problem"]');` },
+    lldOwnMockNarrow: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')} ${chooseProblem('mock', 'My own problem')} ${reveal('.th-mock')}`, ready: '.th-mock .th-brief textarea', assert: homeFits },
+    lldOptionsMenuNarrow: { url: '/#/lld', width: 390, height: 844, setup: `${homeLoaded} ${reveal('.th-mock [data-field="model"]')}`, ready: '.th-mock [data-field="model"] button:not(:disabled)', assert: homeFits + menuOnScreen('.th-mock [data-field="model"] button') },
+    lldProblemMenu: { url: '/#/lld', setup: homeLoaded, ready: '.th-mock .ci-start', assert: homeFits + menuOnScreen('.th-mock .th-pick [data-field="problem"] button') },
     lldOwnPractice: { url: '/#/lld', setup: `${homeLoaded} ${chooseProblem('practise', 'My own problem')}`, ready: '.th-act--practise .th-brief textarea', assert: homeFits + `
       if (document.activeElement !== need('.th-act--practise .th-brief textarea')) throw Error('Choosing My own problem does not put the cursor in the brief');
       if (visible(document.querySelector('.th-act--practise [aria-label^="Target level:"]'))) throw Error('LLD practice offers a level it ignores');` },
@@ -909,7 +952,7 @@ export async function runVisualAudit({ origin, target, output }) {
       if (document.querySelector('.th-pick-hint:not([hidden])')) throw Error('My own problem still describes Surprise me');` },
     designOwnNarrow: { url: '/#/design', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')} ${chooseProblem('mock', 'My own problem')}`, ready: '.th-mock .th-brief textarea', assert: homeFits },
     designSelected: { url: '/#/design', setup: `${homeLoaded} need('.th-problem[data-slug]').click(); await sleep(60);`, ready: '.th-problem[aria-pressed="true"]', assert: homeFits + `need('.th-clear'); need('.th-act--practise [aria-label^="Target level:"]'); if (document.querySelector('.th-pick:not([hidden])')) throw Error('A chosen problem still offers Surprise me');` },
-    designSetupNarrow: { url: '/#/design', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')}`, ready: '.th-mock .ci-start' },
+    designSetupNarrow: { url: '/#/design', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')}`, ready: '.th-mock .ci-start', assert: homeFits },
     designNarrow: { url: '/#/design', width: 720, setup: homeLoaded, ready: '.th-history .th-item', assert: homeFits },
     problem: { url: problem, ready: '.ui-screen-header .ws-run', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
     // Between the docked layout and the phone layout the coach is a floating button; it must

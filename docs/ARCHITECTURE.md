@@ -88,7 +88,7 @@ Important records include:
 | `tracks/lld/problems/<lld-slug>/interviews/<id>/code.py`, `interview.json`, `turns.jsonl` | Python LLD document, resumable state, and append-only evidence |
 | `tracks/design/problems/<design-slug>/interviews/<id>/` | New system-design state, turns, scene snapshots, follow-ups and derived transcript |
 | `tracks/<discipline>/problems/<slug>/NOTES.md`, `LEARNING.md` | Additive learner-saved notes and regenerated assessment summary |
-| `tracks/<discipline>/problems/<slug>/problem.json` | Server-owned prepared problem, private facts, curveball and selection provenance |
+| `tracks/<discipline>/problems/<slug>/problem.json` | Server-owned prepared problem, private facts, curveball and selection provenance (and the candidate's brief, when the mock was prepared for one) |
 | `mock-preparations/<discipline>-<request-id>.json` | Idempotent preparation receipt; no running interview or timer |
 | `learner-profile.json` | Explicit target-level preferences; performance evidence is derived from records |
 | `design/<id>.json` | Locator for a system-design interview stored under its problem folder |

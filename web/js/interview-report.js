@@ -285,6 +285,7 @@ const DIMENSION_QUESTIONS = {
     'State modeling': 'Which states and transitions did I miss or blur, and how should I have modelled them?',
     Correctness: 'Where could my design produce a wrong result, and which change fixes it?',
     'Edge cases': 'Which edge cases should I have raised myself, and how should the design handle each one?',
+    'OOP fundamentals': 'Which OOP fundamentals did my classes break, and what would an expert have written in their place?',
     'Self-verification': 'How should I have checked my own design as I went, and which trace or test would have caught the gap?',
     Extensibility: 'Which likely new requirement would my design struggle with, and what would make it easy to add?',
     Communication: 'Where did my explanation of the design lose you, and how should I have walked through it?',

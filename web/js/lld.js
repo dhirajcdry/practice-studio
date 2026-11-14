@@ -168,6 +168,17 @@ export function initLLD(host) {
           const prepared = (await interviewJson('/api/mock/prepare', { discipline: 'lld', targetLevel: state.targetLevel, minutes: state.minutes, requestId: state.startRequestId })).problem;
           if (!gone) await workspace(prepared, { ...state, slug: prepared.slug, title: prepared.title });
         },
+        // A brief you wrote: Studio prepares the interviewer's private notes for that problem
+        // (or finds it, when it is one you already have), then the mock starts on it exactly
+        // as a surprise does. Only the public title and statement come back. The request is
+        // keyed by the start and the brief, so a retry is idempotent and an edited brief
+        // prepares afresh instead of being refused as a changed request.
+        startOwnMock: async (brief, state) => {
+          const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(brief)));
+          const requestId = `${state.startRequestId}-${[...digest.slice(0, 6)].map(b => b.toString(16).padStart(2, '0')).join('')}`;
+          const prepared = (await interviewJson('/api/mock/prepare', { discipline: 'lld', targetLevel: state.targetLevel, minutes: state.minutes, requestId, brief })).problem;
+          if (!gone) await workspace(entries.find(entry => entry.slug === prepared.slug) || prepared, { ...state, slug: prepared.slug, title: prepared.title });
+        },
       });
     } catch (error) { replace(view, [notice, el('a', { href: '#/lld', text: 'Back to Low-level design' })]); fail(error); }
   }

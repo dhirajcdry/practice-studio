@@ -25,18 +25,35 @@ test('an LLD change requirement waits for a design, and is dropped when it is to
   assert.match(at(30, 'test'), /SECRET_CHANGE/);
   assert.doesNotMatch(at(58), /SECRET_CHANGE/); assert.match(at(58), /too late/);
 });
-test('the LLD plan moves a candidate on by share of time, without a clock on every turn', () => {
+test('the LLD interviewer leaves the clock to the candidate and answers what it is asked in full', () => {
   const startedAt = 1_000_000, minute = 60000;
-  const at = (minutes, phase, length = 60) => turnPrompt({ ...newState({ slug: 'lld-x', minutes: length, startedAt }), discipline: 'lld', phase, scenario: {} }, { said: 'x', now: startedAt + minutes * minute });
-  assert.match(at(3, 'clarify'), /5% of the time is used, so the plan says requirements\.(?! They are behind)/);
-  assert.match(at(15, 'clarify'), /They are behind it, still in clarify/);
-  assert.match(at(45, 'code'), /plan says a trace through their code\. They are behind it/);
-  assert.match(at(3, 'clarify', 30), /10% of the time/);
-  assert.match(at(60, 'followup'), /100% of the time is used, so the plan says the changed requirement\.(?! They are behind)/);
+  const at = (minutes, phase, length = 30) => turnPrompt({ ...newState({ slug: 'lld-x', minutes: length, startedAt }), discipline: 'lld', phase, scenario: {} }, { said: 'x', now: startedAt + minutes * minute });
+  // A 12% requirements share once cut a 30-minute mock off at 04:26, after two questions.
+  for (const prompt of [at(5, 'clarify'), at(20, 'clarify'), at(29, 'approach')]) assert.doesNotMatch(prompt, /behind|plan says|Move them on/);
   const system = lldSystemPrompt();
-  assert.match(system, /Say the time only when it changes what they should do/);
+  assert.match(system, /never move them on to a next step/);
+  assert.match(system, /Do not run them through stages/);
+  assert.match(system, /completely, the first time/);
+  assert.match(system, /Knowing the real-world domain is not what is being tested/);
+  assert.match(system, /Never answer a design walkthrough with only an instruction to start coding/);
+  assert.match(system, /Probe the design THEY proposed/);
   assert.match(system, /\[\[hint: nudge\]\]/);
   assert.match(system, /if you do not ask, it does not happen/);
+  assert.doesNotMatch(system, /12%|has overrun|past time for requirements/);
+});
+test('the interviewer keeps private notes that never reach the candidate', () => {
+  const tags = createTagStripper(); let shown = '';
+  for (const c of 'Each fill gives 30 units. [[told: Each fill gives exactly the quantity per fill.]] [[told: A refill is allowed after 80% of the days supply.]] [[design: PharManager orchestrates, Prescription owns eligibility.]] [[design: A separate Hold tracks unpicked orders.]] [[phase: clarify]]') shown += tags.push(c);
+  shown += tags.flush();
+  assert.equal(shown.trim(), 'Each fill gives 30 units.');
+  assert.deepEqual(tags.told, ['Each fill gives exactly the quantity per fill.', 'A refill is allowed after 80% of the days supply.']);
+  assert.equal(tags.design, 'A separate Hold tracks unpicked orders.');
+  const unfinished = createTagStripper();
+  assert.equal((unfinished.push('Go ahead. [[told: never closed') + unfinished.flush()).trim(), 'Go ahead.');
+  const state = { ...newState({ slug: 'lld-x' }), discipline: 'lld', scenario: {}, notes: { told: ['TOLD_RULE'], design: 'THEIR_DESIGN' } };
+  assert.match(debriefPrompt(state, [], Date.now()), /TOLD_RULE[\s\S]*requirements they were actually told/);
+  assert.match(debriefPrompt(state, [], Date.now(), { includeEvidence: false }), /requirements they were actually told/);
+  assert.match(debriefPrompt(state, [], Date.now()), /OOP fundamentals is its own dimension/);
 });
 test('every report judges against a passing candidate, not an ideal one', () => {
   for (const discipline of ['coding', 'lld', 'design']) {

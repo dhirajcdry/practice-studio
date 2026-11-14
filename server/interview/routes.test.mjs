@@ -604,3 +604,23 @@ test('re-grading a finished interview appends a fresh report, keeps the original
   assert.equal((await interview.store.readTurns('two-sum', id)).filter(t => t.kind === 'debrief').length, 2);
   assert.equal(interview.live.size, 0);
 });
+
+test('an LLD interviewer\'s private notes are saved to the record and never sent to the page', async t => {
+  const { interview, call } = await fixture(t);
+  const opening = await call('POST /api/interview/start', { slug: 'meeting-room-booking', discipline: 'lld', minutes: 30, mode: 'typed' });
+  const id = opening.events.find(e => e.name === 'interview').data.id, slug = 'lld-meeting-room-booking';
+  const run = interview.run;
+  const reply = text => { interview.run = options => { queueMicrotask(() => { for (const part of text.match(/.{1,7}/g)) options.onToken(part); options.onDone({ sessionId: 'notes-session' }); }); return { kill() {} }; }; };
+  reply('Adjacent bookings are fine. [[told: Adjacent bookings are allowed, overlapping ones are not.]] [[design: A Room owns its bookings.]] [[phase: clarify]]');
+  const spoken = await call('POST /api/interview/turn', { slug, interviewId: id, said: 'Can bookings touch?', requestId: 'notes-turn-1' });
+  assert.doesNotMatch(spoken.output, /told:|design:|A Room owns/);
+  reply('[[design: A Calendar owns every booking.]] [[phase: approach]]');
+  const silent = await call('POST /api/interview/turn', { slug, interviewId: id, said: 'I will use one calendar.', requestId: 'notes-turn-2' });
+  assert.doesNotMatch(silent.output, /Calendar owns/);
+  interview.run = run;
+  const state = await interview.store.readState(slug, id);
+  assert.deepEqual(state.notes, { told: ['Adjacent bookings are allowed, overlapping ones are not.'], design: 'A Calendar owns every booking.' });
+  const turns = await interview.store.readTurns(slug, id);
+  assert.deepEqual(turns.find(row => row.requestId === 'notes-turn-1' && row.kind === 'turn').told, ['Adjacent bookings are allowed, overlapping ones are not.']);
+  assert.equal(turns.find(row => row.kind === 'interviewer_silent').design, 'A Calendar owns every booking.');
+});

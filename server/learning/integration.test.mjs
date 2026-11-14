@@ -8,6 +8,7 @@ import { InterviewService, interviewRoutes } from '../interview/routes.mjs';
 import { routes as lldRoutes } from '../lld/routes.mjs';
 import { newState, elapsed } from '../interview/state.mjs';
 import { prepareProblem } from './selection.mjs';
+import { learnerRoutes } from './routes.mjs';
 import { problemDir } from '../storage-layout.mjs';
 
 const proposed = { title: 'Museum reservations', statement: 'Design a museum reservation system.', family: 'museum-reservations', facts: 'PRIVATE_FACT_CAPACITY: slots have fixed capacity and can be cancelled.', curveball: 'PRIVATE_CURVEBALL: concurrent visitors book the last ticket.', rationale: 'PRIVATE_RATIONALE: exercise state transitions.' };
@@ -134,4 +135,27 @@ test('post-interview review has cross-topic evidence but keeps the current repor
   assert.ok(prompt.includes('CURRENT_SESSION_ASSESSMENT'), 'current report is separately available for review');
   assert.ok(prompt.includes('OTHER_TOPIC_ASSESSMENT'));
   assert.doesNotMatch(prompt, /OTHER_TOPIC_NOTE|NOTES\.md/);
+});
+
+test('Mock on your own brief: the route prepares that problem, answers in its public shape only, and the mock opens on it', async t => {
+  const previous = process.env.STUDIO_COACH_BINARY;
+  process.env.STUDIO_COACH_BINARY = new URL('../interview/test/fake-interviewer.mjs', import.meta.url).pathname;
+  t.after(() => { if (previous === undefined) delete process.env.STUDIO_COACH_BINARY; else process.env.STUDIO_COACH_BINARY = previous; });
+  const f = await fixture(t);
+  const ask = body => f.call(learnerRoutes, 'POST', '/api/mock/prepare', { discipline: 'lld', targetLevel: 'L5', minutes: 60, requestId: 'integration-brief-01', ...body });
+  const brief = 'Design a library book hold queue.\nHolds expire after three days.';
+  const first = await ask({ brief });
+  assert.ok(!/PRIVATE_BRIEF/.test(first.output), 'interviewer-only facts and curveball stay on the server');
+  const { problem } = JSON.parse(first.output);
+  assert.deepEqual(problem, { slug: 'lld-library-book-hold-queue', title: 'Design a library book hold queue', statement: 'Design a library book hold queue.', discipline: 'lld' });
+  const saved = JSON.parse(await fs.readFile(path.join(problemDir(f.root, problem.slug), 'problem.json'), 'utf8'));
+  assert.match(saved.facts, /PRIVATE_BRIEF_FACTS/); assert.equal(saved.brief, brief);
+  assert.deepEqual(JSON.parse((await ask({ brief })).output).problem, problem, 'a retry of the same request returns the same problem');
+  await assert.rejects(ask({ brief: 'Design a bakery queue.' }), { code: 'REQUEST_REUSED' });
+  await assert.rejects(ask({ requestId: 'integration-brief-02', brief: 'x'.repeat(4001) }), { code: 'BAD_REQUEST' });
+  await assert.rejects(ask({ requestId: 'integration-brief-03', brief: 7 }), { code: 'BAD_REQUEST' });
+  const start = await f.call(interviewRoutes, 'POST', '/api/interview/start', { slug: problem.slug, discipline: 'lld', targetLevel: 'L5', minutes: 60, mode: 'typed', requestId: 'integration-brief-opening' });
+  assert.ok(start.output.includes(problem.statement)); assert.ok(!/PRIVATE_BRIEF/.test(start.output));
+  const locker = JSON.parse((await ask({ requestId: 'integration-brief-04', brief: 'The parcel locker problem, please.' })).output).problem;
+  assert.equal(locker.slug, 'lld-locker', 'a brief naming a library problem runs on that problem');
 });

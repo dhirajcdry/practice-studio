@@ -33,7 +33,7 @@ test('track home lists graded mocks newest first, with evidence-backed ratings o
   await write(`${newer}/turns.jsonl`, turns('Prose feedback from an older report format.'));
 
   const home = await readTrackHome(root, 'lld');
-  assert.equal(home.rubric.length, 9);
+  assert.equal(home.rubric.length, 10);
   assert.deepEqual(home.assessments.map(a => a.slug), ['lld-vending-machine', 'lld-locker']);
   const [prose, graded] = home.assessments;
   assert.equal(prose.structured, false);

@@ -70,3 +70,14 @@ test('phase and hint tags are stripped at EVERY character boundary before narrat
   assert.equal(guard.push('Why?\nCand').text, 'Why?\n');
   assert.equal(guard.push('idate: use a map').tripped, true);
 });
+test('an LLD interviewer looks at the work every five minutes, even mid-typing', () => {
+  const s = { ...newState({ slug: 'lld-x', startedAt: 0 }), discipline: 'lld', phase: 'code' };
+  const typing = { type: 'idle', secondsSinceSpeech: 400, secondsSinceTyping: 1 };
+  assert.equal(shouldInterject(s, typing, 4 * 60000), false);
+  assert.equal(shouldInterject(s, typing, 5 * 60000), true);
+  s.lastReplyAt = 5 * 60000;
+  assert.equal(shouldInterject(s, typing, 9 * 60000), false);
+  assert.equal(shouldInterject(s, { ...typing, secondsSinceSpeech: 5 }, 11 * 60000), false, 'never while they are talking');
+  assert.equal(shouldInterject(s, typing, 11 * 60000), true);
+  assert.equal(shouldInterject({ ...s, discipline: 'coding' }, typing, 11 * 60000), false);
+});

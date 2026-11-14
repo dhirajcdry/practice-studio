@@ -72,40 +72,62 @@ body .th-past-open.ui-action-row:hover .th-past-kind{color:var(--ink)}
 .th-past .th-again{justify-self:end}
 
 /* The two ways in: two equal tinted wells side by side, always both. */
-.th-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-5)}
-/* The page ground plus a hairline: a quiet step from the card in every family and mode. */
-.th-act{display:flex;flex-direction:column;gap:10px;min-width:0;padding:14px var(--space-4);border:1px solid var(--hair-10);border-radius:calc(var(--surface-card-radius) - 4px);background:var(--canvas)}
+.th-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:var(--space-5)}
+/* The page ground plus a hairline: a quiet step from the card in every family and mode.
+   Each well shares the panel's rows (head, Problem, settings and Start), so the two line
+   up even when one description wraps to a second line. */
+.th-act{display:grid;grid-row:span 3;grid-template-rows:subgrid;row-gap:10px;align-content:start;min-width:0;padding:14px var(--space-4);border:1px solid var(--hair-10);border-radius:calc(var(--surface-card-radius) - 4px);background:var(--canvas)}
+.th-act-head{grid-row:1}
+.th-pick{grid-row:2}
 .th-act h3{font:600 13.5px/1.4 var(--ui);color:var(--ink)}
 .th-act-text{font:400 12.5px/1.5 var(--ui);color:var(--ink-50)}
 /* Settings and Start sit at the foot of each well, so the two calls to action line up. */
-.th-start{display:flex;flex-direction:column;gap:10px;min-width:0;margin-top:auto}
+.th-start{container:th-act/inline-size;grid-row:3;align-self:end;display:flex;flex-direction:column;gap:10px;min-width:0}
 body .th-act .th-practice.btn{align-self:stretch;justify-content:center}
 
 /* What a way in starts on when no problem is chosen: a Problem picker, what that does,
    and the learner's own brief in the shared composer surface. */
-.th-pick{display:flex;flex-direction:column;gap:6px;min-width:0}
-.th-pick-row{display:flex;align-items:center;gap:var(--space-1);min-width:0;margin-left:calc(-1 * var(--space-1))}
-.th-pick-label{padding-left:var(--space-1);font:400 12.5px/1.5 var(--ui);color:var(--ink-50)}
-body .th-pick .ui-select-button{padding-inline:var(--space-1);gap:var(--space-1);background:transparent;font-weight:600}
-/* The arrow follows the label, as in the options row below it, instead of sitting on its last letters. */
-.th-pick .ui-select-button::after{position:static;flex:none;width:4px;height:4px;margin:0 0 3px}
+.th-pick{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
 body[class] .th-act .ui-composer.th-brief{margin:0;max-height:none}
 .th-brief .ui-composer-footer{display:none}
 
+/* Every setting, Problem included, is a labelled field: a small quiet name above a
+   full-width picker in a hairline tile. The settings fill the well in equal columns
+   (Answer · Level · Length), the coach model takes its own full row, and both wells use
+   the same grid, so their rows and Start buttons line up. */
+.th-act .ci-field{display:flex;flex-direction:column;min-width:0;box-sizing:border-box;border:1px solid var(--hair-10);border-radius:var(--button-radius);background:var(--surface-card-bg)}
+.th-act .ci-field[hidden]{display:none}
+.th-act .ci-field-label{padding:7px 10px 0;font:500 11px/13px var(--ui);color:var(--ink-50);cursor:pointer;user-select:none}
+.th-act .ci-field>.ui-select,.th-act .ci-field>.coach-model-picker{display:block;width:100%;max-width:none;flex:none}
+.th-act .ci-field .coach-model-select{display:block;width:100%}
+body .th-act .ci-field .ui-select-button,body .th-act .ci-setup-options .ci-field .ui-select-button{width:100%;padding:0 var(--space-6) 0 10px;gap:6px;border:0;box-shadow:none;background:transparent;color:var(--ink);font-weight:600;border-radius:var(--button-radius)}
+body .th-act .ci-field .ui-select-button::after{position:absolute;right:12px;width:4px;height:4px;margin:-3px 0 0}
+.th-act .ci-field .coach-model-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.th-act .ci-field .coach-model-notice{padding:0 10px 6px}
+.th-act .ci-setup-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2);margin:0;padding-top:var(--space-3);border-top:1px solid var(--hair-10)}
+.th-act .ci-setup-fields>[data-field="answer"]{grid-column:1;grid-row:1}
+.th-act .ci-setup-fields>[data-field="level"]{grid-column:2;grid-row:1}
+.th-act .ci-setup-fields>[data-field="length"]{grid-column:3;grid-row:1}
+.th-act .ci-setup-fields>[data-field="model"]{grid-column:1/-1;grid-row:2}
+/* Practice has no clock, so its short settings share the row between them. */
+.th-act--practise .ci-setup-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.th-act--practise .ci-setup-fields:has(>[data-field="level"][hidden]){grid-template-columns:minmax(0,1fr)}
+/* A very narrow well wraps the three short settings onto two columns. (The container is
+   the settings block, not the well: containment on the well would switch off its subgrid.) */
+@container th-act (max-width:248px){
+  .th-mock .ci-setup-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .th-mock .ci-setup-fields>[data-field="length"]{grid-column:1;grid-row:2}
+  .th-mock .ci-setup-fields>[data-field="model"]{grid-row:3}
+}
+
 /* The shared mock settings keep their own inset; the negative margin puts the content on
-   the well's rail, and the quiet pickers sit flat on the well. Practice's own settings
-   row takes the same look. */
+   the well's rail. */
 body .th-mock .ci-setup{--content-inset:var(--space-2);margin:calc(-1 * var(--space-2));border:0;background:transparent;box-shadow:none}
 .th-mock .ci-setup form{display:flex;flex-direction:column;gap:10px}
 .th-mock .ci-setup-head{display:contents}
 .th-mock .ci-setup-title{display:none}
-.th-act .ci-setup-options{flex-wrap:wrap;margin:0 0 0 calc(-1 * var(--space-1));gap:var(--space-1) 0}
 .th-mock .ci-setup-options{order:1}
-.th-act--practise .ci-setup-options{margin-left:0}
-/* Its first picker's text starts on the well's rail, like the mock row's. */
-body .th-act--practise .ci-setup-options>.ui-select:first-child .ui-select-button{padding-left:0}
 .th-mock .ci-setup-dot{display:none}
-body .th-act .ci-setup-options .ui-select-button{padding-inline:var(--space-1);gap:var(--space-1);background:transparent}
 .th-mock .ci-setup-actions{order:2;margin:0;justify-content:flex-start}
 body .th-mock .ci-setup-actions .ci-start{flex:1;justify-content:center}
 

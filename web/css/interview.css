@@ -18,6 +18,8 @@ body[class] .ci-setup-options .ui-select-button:hover:not(:disabled){background:
 .interview-row-meta{font-size:var(--text-xs);line-height:var(--line-md)}
 /* A link back, not a full-width bar. */
 .interview-back{align-self:flex-start;margin-bottom:var(--space-3)}
+.interview-back.is-inline{align-self:flex-start;flex:none;margin:0 calc(-1 * var(--space-1)) 0 calc(-1 * var(--space-2));padding-inline:var(--space-1)}
+.interview-back.is-inline>span{display:none}
 .ci-panel{display:flex;flex-direction:column;min-height:0;color:var(--ink);background:transparent}
 .ci-live-header{border:var(--float-border);border-radius:var(--float-radius);background:var(--card);box-shadow:var(--float-shadow)}
 .ci-live-header .ci-header{padding:0 0 var(--space-2)}

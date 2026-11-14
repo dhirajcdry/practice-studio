@@ -10,9 +10,19 @@ if (process.env.FAKE_INTERVIEW_PROMPT) fs.appendFileSync(process.env.FAKE_INTERV
 const debrief = prompt.includes("Write the candidate's report");
 const review = (prompt + args.join('\n')).includes('going over it with the candidate afterwards');
 const selection = prompt.includes('INTERVIEW_PROBLEM_SELECTION');
+// A mock on the candidate's own brief prepares that problem: the brief's first line names
+// it, and a brief that mentions lockers names the library's locker scenario.
+const brief = prompt.match(/<(CANDIDATE_BRIEF_[0-9a-f-]+)>\n([\s\S]*?)\n<\/\1>/)?.[2];
+const briefTitle = brief?.split('\n')[0].replace(/[.\s]+$/, '').slice(0, 100);
 // A second preparation in the same home must not repeat the first problem, so once the
 // museum is a known family the fake proposes a different one.
-const selected = prompt.includes('"family":"museum-ticket-reservations"') ? {
+const selected = brief ? {
+  title: briefTitle, statement: `${briefTitle}.`,
+  family: /locker/i.test(brief) ? 'locker' : briefTitle.toLowerCase().replace(/^design (an? )?/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').split('-').slice(0, 5).join('-'),
+  facts: 'PRIVATE_BRIEF_FACTS: one in-memory store of requests, processed oldest first. Python in-memory implementation.',
+  curveball: 'PRIVATE_BRIEF_CURVEBALL: two requests arrive for the last item at once.',
+  rationale: 'The candidate asked for this problem.',
+} : prompt.includes('"family":"museum-ticket-reservations"') ? {
   title: 'Bike dock rentals', family: 'bike-dock-rentals',
   statement: 'Design a bike dock rental system.',
   facts: 'Each dock holds one bike. A rental ends at any dock with space. Python in-memory implementation.',

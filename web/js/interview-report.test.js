@@ -36,5 +36,5 @@ export function checkReportLayout(check) {
     && dimensionQuestion({ name: 'Requirements' }, 'lld') !== dimensionQuestion({ name: 'Requirements' }, 'design') && dimensionQuestion({ name: 'Coding' }).startsWith('What should I change')
     && [...LLD, ...DESIGN].every(([name, discipline]) => !dimensionQuestion({ name }, discipline).includes('What would a strong answer have looked like here?')));
 }
-const LLD = ['Requirements', 'Responsibilities', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'].map(name => [name, 'lld']);
+const LLD = ['Requirements', 'Responsibilities', 'OOP fundamentals', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'].map(name => [name, 'lld']);
 const DESIGN = ['Requirements', 'Estimation', 'Data modeling', 'Architecture', 'Trade-offs', 'Reliability', 'Communication'].map(name => [name, 'design']);

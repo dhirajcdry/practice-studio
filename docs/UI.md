@@ -689,10 +689,25 @@ skill trend) is pure, in `web/js/track-home-model.js`, tested by
   its own sessions and Clear, and both ways in act on it. With none chosen ("Start
   something new") each well has a Problem picker: Surprise me (the default; Studio prepares
   an unseen problem, and Practise then opens it untimed) or My own problem, which shows a
-  brief field in the shared composer surface (drafts are kept). A mock on your own brief
-  exists only where the track passes `startOwnMock` (system design); an LLD mock needs a
-  prepared scenario, so its well offers Surprise me alone. A practised surprise problem is
-  saved like any prepared one, so it joins the library and later surprises avoid it.
+  brief field in the shared composer surface (drafts are kept until the session has
+  started). Both tracks run a mock on your own brief through `startOwnMock`: system design
+  takes the brief as its prompt; LLD sends it to `POST /api/mock/prepare` as `brief`, where
+  Studio prepares the scenario for that problem (title, one-sentence statement, private
+  facts and curveball, the brief fenced as untrusted data) and the mock starts on it as a
+  surprise does. A brief is never refused as a repeat: one that names a problem you already
+  have (a library scenario or an earlier prepared one) runs on that saved problem, never
+  overwriting it, and one whose identity is taken by records without a definition gets a
+  numbered identity beside them. A practised surprise problem is saved like any prepared
+  one, so it joins the library and later surprises avoid it.
+- **Settings in the wells.** Every setting, Problem included, is a labelled field
+  (`setupField` in `interview.js`; `createInterviewSetup({ fields: true })` for the mock): a
+  small quiet name (Problem, Answer, Level, Length, Coach) above a full-width picker in a
+  hairline tile. Under a hairline, the short settings fill the well in equal columns
+  (Practise: Answer · Level; Mock: Answer · Level · Length; two columns in a very narrow
+  well) and Coach takes its own row, so the longest model name is never clipped. The wells
+  share the panel's rows through a subgrid (head, Problem, settings and Start), so their
+  Problem fields, settings rows and Start buttons line up side by side. Other setups keep
+  the compact inline row.
   Side by side, the panel sticks under the app bar (`--th-bar`, measured) while the list
   scrolls past, only when the whole panel fits in the window; one column never pins it.
 - **Where you stand** beside **History**. One row per rubric skill: the newest
@@ -713,7 +728,10 @@ and the real error if the read fails, and is drawn once when the records arrive.
 sets `data-state="ready"` or `"error"` on `.th` for checks. A page visit never starts a
 model turn. Visual states: `lld*` (library, nothing chosen, own brief, cleared, selected,
 pinned while scrolled, too short to pin, one column, lower half, filters, 720px and 390px,
-empty, error) and `design*` (setup, own brief, selected, narrow) in `scripts/visual-audit.mjs`.
+empty, error, own-brief mock, an open settings menu at 390px, the Problem menu) and
+`design*` (setup, own brief, selected, narrow) in `scripts/visual-audit.mjs`. Each asserts
+that the settings span the well in equal columns with nothing clipped and, side by side,
+that both wells' Start buttons and settings rows share a baseline.
 
 ### Progress
 

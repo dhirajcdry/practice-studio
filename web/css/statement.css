@@ -19,6 +19,14 @@ body .ex-head .ex-try:hover{color:var(--accent)}
 /* One label column for every card, so values start on the same line down the whole list. */
 .ex-rows{display:grid;grid-template-columns:11ch minmax(0,1fr);gap:var(--space-2) var(--space-4);padding:var(--space-3) var(--space-4)}
 .ex-row{display:contents}
+/* In a narrow pane a label column leaves the value a ribbon that breaks every row of a grid.
+   The label goes above its value there, and the value takes the whole width. */
+.stmt-examples{container:examples / inline-size}
+@container examples (max-width:26rem){
+  .ex-rows{grid-template-columns:minmax(0,1fr);row-gap:0}
+  .ex-rows .ex-value{margin-bottom:var(--space-2)}
+  .ex-rows .ex-row:last-child .ex-value{margin-bottom:0}
+}
 .ex-label{font:500 var(--text-xs)/var(--line-md) var(--ui);color:var(--ink-50)}
 .ex-value{min-width:0;font:var(--text-sm)/var(--line-md) var(--mono);color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .ex-value.is-prose{font-family:var(--prose);color:var(--ink-70)}

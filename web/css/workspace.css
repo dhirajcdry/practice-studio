@@ -209,7 +209,7 @@ body.motion-off .monaco-editor .tutor-flash{animation:none;background:rgba(var(-
 .editor-path{margin-left:auto;flex:0 1 auto}
 .editor-meta>.python-editor-tools,.editor-meta>.btn{flex:none}
 /* Reset sits beside the file it resets; the cursor and view tools stay at the far end. */
-.editor-meta>.ws-reset{margin-right:auto}
+.editor-meta>.ws-reset{margin-left:var(--space-3);margin-right:auto}
 /* One left edge down the problem pane: its tabs, the tags and the statement. */
 body.ws-wide .pcol .ui-pane-header{padding-inline:var(--space-5)}
 body.ws-wide .pcol>.card>.ptags{margin:0;padding:var(--space-3) var(--space-5) 0}

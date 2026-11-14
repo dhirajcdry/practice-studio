@@ -74,8 +74,11 @@ async function mutate(req, res, ctx, restore) {
   const root = ctx?.homeRoot ?? ctx?.paths?.HOME_ROOT ?? HOME_ROOT;
   writeQueue = writeQueue.catch(() => {}).then(async () => {
     const state = await readState(root);
+    const before = state.resetAt;
     state.resetAt = restore ? null : new Date().toISOString();
     await saveState(root, state);
+    // The reset date decides what the tracker shows, so every change to it is traceable.
+    console.log(`[tracker] ${new Date().toISOString()} reset date ${restore ? 'cleared' : 'set'}: ${before ?? 'none'} -> ${state.resetAt ?? 'none'} (${req.headers?.referer || 'no referer'})`);
     return state.resetAt;
   });
   const resetAt = await writeQueue;

@@ -82,7 +82,7 @@ async function seed() {
   await store.append('lld-locker','1760000000000-00000010',{kind:'debrief',asked:'Review ownership and atomic reservation.',elapsedMs:60000});
   // Five graded LLD mocks over three weeks, so the track home has a trend to draw.
   // Made-up neutral reports; a dimension left out had no evidence and so has no rating.
-  const LLD_RUBRIC = ['Requirements', 'Responsibilities', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'];
+  const LLD_RUBRIC = ['Requirements', 'Responsibilities', 'OOP fundamentals', 'Interfaces', 'State modeling', 'Correctness', 'Edge cases', 'Self-verification', 'Extensibility', 'Communication'];
   const graded = [
     ['lld-vending-machine', 20, 'No hire', 'Jumped to classes before the requirements were settled.', null, ['Weak', 'Mixed', 'Weak', 'Weak', 'Weak', 'Weak', null, null, 'Mixed']],
     ['lld-meeting-room-booking', 12, 'Lean no', 'Clear interfaces, but overlapping bookings slipped through.', 'Write the overlap rule as one tested method before adding rooms.', ['Mixed', 'Mixed', 'Solid', 'Mixed', 'Weak', 'Weak', 'Weak', null, 'Solid']],

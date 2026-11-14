@@ -68,8 +68,19 @@ export async function interviewJson(url, body = null) {
 // here means a suppressed idle tick never flashes an empty transcript bubble.
 const streamRequest = streamInterviewRequest;
 
-/** Setup is a persistent inline card; starting is the only mutation. */
-export function createInterviewSetup({ slug, title, discipline = 'coding', onStart = null, onCancel = null, targetLevel = 'L4', label = 'Mock interview', startLabel = 'Start', description = null }) {
+/**
+ * One setting as a labelled field: a short visible name above its control. The control
+ * keeps its own full accessible name, so the visible label is hidden from assistive
+ * technology, and clicking it opens the control.
+ */
+export function setupField(name, control, key) {
+  const open = () => control.querySelector('button:not(:disabled)')?.click();
+  return el('div', { class: 'ci-field', dataset: { field: key } }, [el('span', { class: 'ci-field-label', 'aria-hidden': 'true', text: name, onclick: open }), control]);
+}
+
+/** Setup is a persistent inline card; starting is the only mutation. `fields` names each
+ *  setting above its control (setupField) instead of the compact inline row. */
+export function createInterviewSetup({ slug, title, discipline = 'coding', onStart = null, onCancel = null, targetLevel = 'L4', label = 'Mock interview', startLabel = 'Start', description = null, fields = false }) {
   const saved = readSidebar(slug).setup || {};
   let minutes = saved.minutes || 45, mode = saved.mode || 'voice', modelPending = false, starting = false, disposed = false, levelTouched = false;
   let startRequestId = crypto.randomUUID();
@@ -113,7 +124,9 @@ export function createInterviewSetup({ slug, title, discipline = 'coding', onSta
     } }, [
       el('div', { class: 'ci-setup-head' }, [el(description ? 'h2' : 'span', { class: 'ci-setup-title', text: label }), description ? null : setupActions]),
       description ? el('p', { class: 'dim ci-setup-description', text: description }) : null,
-      el('div', { class: 'ci-setup-options' }, [length, answer, level, picker.root]), description ? setupActions : null, status,
+      el('div', { class: 'ci-setup-options' + (fields ? ' ci-setup-fields' : '') }, fields
+        ? [setupField('Length', length, 'length'), setupField('Answer', answer, 'answer'), setupField('Level', level, 'level'), setupField('Coach', picker.root, 'model')]
+        : [length, answer, level, picker.root]), description ? setupActions : null, status,
     ]));
   interviewJson('/api/learner/preferences').then(({ preferences }) => {
     if (!disposed && !starting && !levelTouched && !saved.targetLevel) level.value = preferences?.targetLevel?.[discipline] || preferences?.targetLevel?.default || targetLevel;
