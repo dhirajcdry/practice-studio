@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildStats } from '../aggregate.mjs';
 import { handleGetTracker, handleResetTracker, handleRestoreTracker } from '../tracker.mjs';
+import { shelfDir } from '../sprint-code.mjs';
 
 const catalog = { problems: [{ slug: 'two-sum' }] };
 const line = (at, type, data) => JSON.stringify({ at, type, ...(data ? { data } : {}) }) + '\n';
@@ -38,8 +39,15 @@ test('reset and restore preserve raw evidence and lifetime stats', async (t) => 
   assert.equal(fresh.json().problems[0].status, 'empty');
   assert.ok(fresh.json().resetAt);
   assert.deepEqual(await buildStats({ root, catalog, now: new Date('2026-11-01T00:00:00Z') }), statsBefore);
-  for (const name of files) assert.equal(await fsp.readFile(path.join(problem, name), 'utf8'), name === 'meta.json' ? '{"submissions":[]}' : 'preserved fixture');
+  for (const name of files.filter(n => n !== 'solution.py')) assert.equal(await fsp.readFile(path.join(problem, name), 'utf8'), name === 'meta.json' ? '{"submissions":[]}' : 'preserved fixture');
+  // The fresh round opens on the starter: the code is shelved, not deleted.
+  const resetAt = fresh.json().resetAt;
+  assert.equal(reset.json().code.shelved, 1);
+  await assert.rejects(fsp.stat(path.join(problem, 'solution.py')), { code: 'ENOENT' });
+  assert.equal(await fsp.readFile(path.join(shelfDir(root, resetAt), 'two-sum', 'solution.py'), 'utf8'), 'preserved fixture');
   const restore = res(); await handleRestoreTracker(req({}), restore, ctx);
+  assert.equal(restore.json().code.restored, 1);
+  assert.equal(await fsp.readFile(path.join(problem, 'solution.py'), 'utf8'), 'preserved fixture');
   assert.equal((await fsp.readFile(file)).equals(before), true);
   const after = res(); await handleGetTracker({}, after, ctx);
   assert.equal(after.json().problems[0].status, lifetime.json().problems[0].status);
@@ -72,3 +80,23 @@ test('invalid slug and corrupt marker state are rejected', async (t) => {
   await fsp.writeFile(path.join(path.dirname(path.dirname(file)),'meta.json'),JSON.stringify({submissions:[{at:'2999-01-01T00:02:00Z',verdict:'Accepted'}]}));
   assert.equal(await status(),'accepted');
  });
+
+test('undo keeps code written during the round and leaves the shelved copy', async (t) => {
+  const { root, file } = await fixture(t); const ctx = { homeRoot: root, catalog };
+  const problem = path.dirname(path.dirname(file)), code = path.join(problem, 'solution.py');
+  await fsp.writeFile(code, 'old round');
+  const reset = res(); await handleResetTracker(req({}), reset, ctx);
+  const resetAt = reset.json().resetAt;
+  await fsp.writeFile(code, 'new round');
+  const restore = res(); await handleRestoreTracker(req({}), restore, ctx);
+  assert.deepEqual(restore.json().code, { shelved: 0, restored: 0, kept: 1 });
+  assert.equal(await fsp.readFile(code, 'utf8'), 'new round');
+  assert.equal(await fsp.readFile(path.join(shelfDir(root, resetAt), 'two-sum', 'solution.py'), 'utf8'), 'old round');
+});
+
+test('a reset with no saved code shelves nothing and writes no manifest', async (t) => {
+  const { root } = await fixture(t); const ctx = { homeRoot: root, catalog };
+  const reset = res(); await handleResetTracker(req({}), reset, ctx);
+  assert.equal(reset.json().code.shelved, 0);
+  await assert.rejects(fsp.stat(shelfDir(root, reset.json().resetAt)), { code: 'ENOENT' });
+});

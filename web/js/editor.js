@@ -339,8 +339,9 @@ export function mountWorkspace(entry, options = {}) {
     return false;
   }
 
+  let following = false;        // true while the editor follows the server, not your typing
   function onEdit() {
-    if (!editor) return;
+    if (!editor || following) return;
     touched = true;
     // Typing over the starter, or ⌘Z, makes the offer to undo the reset stale.
     if (resetUndo !== null && editor.getValue() !== stubCode) clearResetNotice();
@@ -558,6 +559,21 @@ export function mountWorkspace(entry, options = {}) {
 
   const onToggleResults = () => setResultsHidden(!isResultsHidden());
   window.addEventListener('studio:toggle-results', onToggleResults);
+  // A tracker reset shelves every problem's code, and Undo puts it back. An open editor
+  // with nothing unsaved follows the server; one holding unsaved typing keeps it.
+  async function onTrackerChanged() {
+    if (!editor || disposed || editor.getValue() !== loaded) return;
+    const result = await loadCode(slug, entry);
+    if (disposed || !editor || !result.ok || editor.getValue() !== loaded || result.code === loaded) return;
+    loaded = result.code;           // set first, so the change below is not saved back
+    stubCode = result.stub ?? (result.isStub ? result.code : stubCode);
+    savedAt = result.updatedAt;
+    clearResetNotice();
+    following = true;
+    try { editor.setValue(result.code); } finally { following = false; }
+    setSave(result.isStub ? 'stub' : 'clean');
+  }
+  window.addEventListener('studio-tracker-changed', onTrackerChanged);
 
   function onHide() { if (document.visibilityState === 'hidden') flushNow(); }
   document.addEventListener('visibilitychange', onHide);
@@ -756,6 +772,7 @@ export function mountWorkspace(entry, options = {}) {
       }
       for (const release of releaseChords) release();
       window.removeEventListener('studio:toggle-results', onToggleResults);
+      window.removeEventListener('studio-tracker-changed', onTrackerChanged);
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flushNow);
       unregisterActions();

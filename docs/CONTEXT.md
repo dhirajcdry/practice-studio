@@ -344,3 +344,10 @@ catalog problems from evidence on disk and the current top-level `resetAt`; `POS
 and `POST /api/tracker/restore` with `{}` clears it. Resetting never edits session logs,
 attempts, or submission metadata: only evidence with a valid timestamp after the marker
 contributes to the reset view. A lone `problem_opened` after reset is not an attempt.
+
+A reset also starts every coding problem on its starter code: each saved `solution.py`
+is moved (copied, verified, then removed) to `archive/sprint-code/<resetAt>/<slug>/` with a
+`manifest.json` (`server/stats/sprint-code.mjs`). Restore moves each file back unless the
+problem has new code from the round, in which case the new code stays and the archived
+copy remains. An open editor with nothing unsaved follows the change on
+`studio-tracker-changed`; one with unsaved typing keeps it.

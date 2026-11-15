@@ -259,7 +259,11 @@ function createTrackerControl() {
       const response = await fetch(`/api/tracker/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
       if (!response.ok) throw Error('Tracker could not be updated. Please try again.');
       const result = await response.json(); resetAt = result.resetAt || null;
-      say(action === 'reset' ? 'Tracker reset. Your code, attempts, conversations, notes, and results are preserved.' : 'Reset undone. The tracker shows your full history again.');
+      const code = result.code || {};
+      const plural = n => `${n} problem${n === 1 ? '' : 's'}`;
+      say(action === 'reset'
+        ? `Tracker reset.${code.shelved ? ` ${plural(code.shelved)} now ${code.shelved === 1 ? 'opens' : 'open'} on starter code; Undo reset brings your code back.` : ''} Submissions, conversations, notes and reports are kept.`
+        : `Reset undone. The tracker shows your full history again.${code.restored ? ` Code is back on ${plural(code.restored)}.` : ''}${code.kept ? ` ${plural(code.kept)} kept what you wrote since; the older code is in the archive folder.` : ''}`);
       window.dispatchEvent(new Event('studio-tracker-changed'));
     } catch (error) { say(error.message); }
     finally { trackerSaving = false; paint(); }
@@ -269,7 +273,7 @@ function createTrackerControl() {
     const result = await response.json(); resetAt = result.resetAt || null; loaded = true; paint();
   }).catch(error => say(error.message));
   return el('section', { class: 'set-group', 'aria-label': 'Problem tracker' }, [
-    settingRow('Problem tracker', 'Start a fresh round across all problems. Only tracker progress resets; saved work, history, reports and your streak stay.', reset),
+    settingRow('Problem tracker', 'Start a fresh round across all problems. Progress counts from now and every problem opens on its starter code. Your code is kept in the archive folder, and Undo reset brings it back. Submissions, history, reports and your streak stay.', reset),
     restoreRow, notice,
   ]);
 }

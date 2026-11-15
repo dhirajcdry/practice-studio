@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { readProblemDir, statusOf, msOf } from './aggregate.mjs';
+import { shelveCode, unshelveCode } from './sprint-code.mjs';
 
 const FILE = 'tracker.json';
 let writeQueue = Promise.resolve();
@@ -76,13 +77,18 @@ async function mutate(req, res, ctx, restore) {
     const state = await readState(root);
     const before = state.resetAt;
     state.resetAt = restore ? null : new Date().toISOString();
+    // A fresh round opens every problem on its starter; undo puts the shelved code back.
+    let code;
+    if (restore) code = before ? await unshelveCode(root, before) : { restored: [], kept: [] };
+    else code = { shelved: await shelveCode(root, state.resetAt) };
     await saveState(root, state);
     // The reset date decides what the tracker shows, so every change to it is traceable.
-    console.log(`[tracker] ${new Date().toISOString()} reset date ${restore ? 'cleared' : 'set'}: ${before ?? 'none'} -> ${state.resetAt ?? 'none'} (${req.headers?.referer || 'no referer'})`);
-    return state.resetAt;
+    console.log(`[tracker] ${new Date().toISOString()} reset date ${restore ? 'cleared' : 'set'}: ${before ?? 'none'} -> ${state.resetAt ?? 'none'}; code ${restore ? `restored ${code.restored.length}, kept ${code.kept.length}` : `shelved ${code.shelved.length}`} (${req.headers?.referer || 'no referer'})`);
+    return { resetAt: state.resetAt, code };
   });
-  const resetAt = await writeQueue;
-  return sendJson(res, 200, { resetAt, restored: restore });
+  const { resetAt, code } = await writeQueue;
+  return sendJson(res, 200, { resetAt, restored: restore, code: {
+    shelved: code.shelved?.length ?? 0, restored: code.restored?.length ?? 0, kept: code.kept?.length ?? 0 } });
 }
 
 export const handleResetTracker = (req, res, ctx) => mutate(req, res, ctx, false);
