@@ -19,6 +19,7 @@ contact LeetCode. The local server is bound to `127.0.0.1`.
 | LeetCode submission | Verdict and submitted code recorded locally | Your browser, through the Studio Connector extension, sends your solution to LeetCode with its own sign-in and polls that submission's result |
 | NeetCode submission (premium problems) | Verdict and submitted code recorded locally | Your browser, through the Studio Connector extension, puts your solution into a neetcode.io tab's editor storage, presses NeetCode's Submit with its own sign-in and reads the verdict off that page. No NeetCode cookie is read |
 | Reference solutions/articles | Read from optional local checkout | Initial clone/update from GitHub |
+| Video walkthrough (Video tab) | Playback position per problem and playback speed in browser localStorage | Opening the tab loads YouTube's player from youtube-nocookie.com in your browser. Nothing is requested before the tab is opened |
 
 ## AI coaching
 
@@ -83,6 +84,21 @@ domain, defaulting to `small.en`; `STUDIO_ASR_MODEL` overrides that selection. E
 Wispr model and tokenizer files are reused read-only from `~/Library/Application Support/Wispr/Models/`
 and `~/Library/Application Support/Wispr/Models/Tokenizers/`. Missing models are downloaded into
 `~/Library/Application Support/PracticeStudio/ASRModels/`.
+
+## Video walkthroughs
+
+The problem pane's Video tab plays the problem's walkthrough inside Studio. Opening it loads
+YouTube's embedded player from `youtube-nocookie.com` in your browser, as following the old
+Video link to YouTube did; YouTube's own terms and privacy settings apply to that player and
+what it loads. Nothing is requested from YouTube (no player, script or thumbnail) until the
+tab is first opened on a problem. Studio's page runs no YouTube script: it talks to the
+player frame with `postMessage`, accepting messages only from that frame and origin.
+
+Studio stores only where you were and how fast: `studio.video.v1:<slug>` (position and
+duration) and `studio.video.rate.v1` (speed) in browser localStorage. Neither is sent to the
+Studio server or the coach. Opening the tab, once the player has loaded, adds a
+`revealed_video` line to the problem's session log, like opening the solution or article;
+how much of the video you watched is not recorded.
 
 ## Storage and credentials
 

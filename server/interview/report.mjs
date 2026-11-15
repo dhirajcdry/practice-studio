@@ -1,7 +1,8 @@
 // The interview report: facts the server measures from the raw record, plus the
 // interviewer's structured judgement. Derived on read, never stored, so a parsing or
 // rendering fix costs nothing but a reload.
-import { clock, elapsed, phaseTimes, PHASES } from './state.mjs';
+import { clock, elapsed, PHASES, clockGaps, attendedPhaseTimes } from './state.mjs';
+import { attendedRecords, gapsTotal, isTracked, withoutGaps, LEGACY_GAP_MS } from '../mock-clock.mjs';
 
 export const RATINGS = ['Strong', 'Solid', 'Mixed', 'Weak'];
 export const SIGNALS = ['Strong hire', 'Hire', 'Lean hire', 'Lean no', 'No hire'];
@@ -11,8 +12,20 @@ export const DESIGN_DIMENSIONS = ['Requirements', 'Estimation', 'Data modeling',
 const words = text => (String(text || '').match(/[\p{L}\p{N}']+/gu) || []).length;
 const normal = text => String(text || '').toLowerCase().replace(/[“”"'‘’.,!?;:()\-—–]/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** Everything here is counted from turns.jsonl and interview.json; nothing is model-written. */
-export function reportFacts(state, turns, now = Date.now()) {
+/** Derived copies of the turns whose `elapsedMs` is attended time; the record is untouched. */
+export function timedTurns(state, rawTurns, now = Date.now()) {
+  const { gaps, beforeIndex } = clockGaps(state, rawTurns, now);
+  return gaps.length ? attendedRecords(rawTurns, gaps, beforeIndex).map(t => Number.isFinite(t.attendedMs) ? { ...t, elapsedMs: t.attendedMs } : t) : rawTurns;
+}
+/**
+ * Everything here is counted from turns.jsonl and interview.json; nothing is model-written.
+ * Times are attended time: a record from before heartbeats has its silent stretches (over
+ * LEGACY_GAP_MS with nothing recorded) taken out, and `away` says how much and why.
+ */
+export function reportFacts(state, rawTurns, now = Date.now()) {
+  const { gaps } = clockGaps(state, rawTurns, now);
+  const turns = timedTurns(state, rawTurns, now);
+  const legacy = !isTracked(state), awayMs = gapsTotal(gaps);
   const said = turns.filter(t => t.said), asked = turns.filter(t => t.asked && ['opening', 'turn', 'event'].includes(t.kind || t.replyKind));
   const candidateWords = said.reduce((n, t) => n + words(t.said), 0);
   const interviewerWords = asked.reduce((n, t) => n + words(t.asked), 0);
@@ -26,14 +39,16 @@ export function reportFacts(state, turns, now = Date.now()) {
     } else if (t.event.type === 'verdict') verdicts.push({ at, status: t.event.status || null, label: t.event.verdict || t.event.status || 'Submitted', accepted: Boolean(t.event.accepted) });
   }
   const buffers = turns.filter(t => t.kind === 'buffer' && typeof t.code === 'string');
-  const times = phaseTimes(state, now);
+  const times = legacy ? attendedPhaseTimes(state, rawTurns, gaps, now) : attendedPhaseTimes(state, rawTurns, [], now);
+  const hint = ms => legacy ? withoutGaps(ms, gaps) : ms;
   return {
-    durationMs: elapsed(state, now),
+    durationMs: Math.max(0, elapsed(state, now) - (legacy ? awayMs : 0)),
+    ...(awayMs > 0 ? { away: { ms: awayMs, basis: 'recorded activity', thresholdMs: LEGACY_GAP_MS } } : {}),
     plannedMs: (state.minutes || 45) * 60000,
     mode: state.mode,
     startedAt: state.startedAt,
     phases: PHASES.map(phase => ({ phase, ms: Math.max(0, times[phase] || 0) })),
-    hints: (state.hints || []).map(h => ({ level: h.level, at: h.elapsedMs, phase: h.phase })),
+    hints: (state.hints || []).map(h => ({ level: h.level, at: hint(h.elapsedMs), phase: h.phase })),
     runs, verdicts,
     candidateTurns: said.length,
     candidateWords, interviewerWords,
@@ -111,7 +126,7 @@ export function buildReport(state, turns, now = Date.now()) {
   if (!state.debriefed || !debrief) return null;
   const facts = reportFacts(state, turns, now);
   const dimensions = state.discipline === 'lld' ? LLD_DIMENSIONS : DIMENSIONS;
-  return { facts, judgement: parseReport(debrief.asked, turns, { durationMs: facts.durationMs, dimensions }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}),
+  return { facts, judgement: parseReport(debrief.asked, timedTurns(state, turns, now), { durationMs: facts.durationMs, dimensions }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}),
     ...(debrief.regrade ? { regraded: regradeFacts(state, turns, debrief, { durationMs: facts.durationMs, dimensions }) } : {}) };
 }
 

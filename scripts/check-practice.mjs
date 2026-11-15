@@ -52,9 +52,9 @@ try {
   async function shot(name) { const s = await send('Page.captureScreenshot', { format: 'png' }); await fs.writeFile(`/tmp/studio-practice-${name}.png`, Buffer.from(s.data, 'base64')); }
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN + '/#/lld' });
-  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), 'LLD launcher');
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-chip.th-problem[data-slug]')"), 'LLD launcher');
   // Nothing is chosen on arrival; practise the first library problem.
-  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
+  await evaluate("document.querySelector('.th-sw[data-mode=practise]').click(); document.querySelector('.th-qchange').click(); document.querySelector('.th-chip.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-coach') && !!window.monaco?.editor.getModels().length"), 'practice editor');
   // The work/coach split is a real divider: keyboard and pointer resizing must
   // preserve the editor instance and keep both panes usable.
@@ -244,8 +244,8 @@ try {
   assert.equal(await evaluate('return document.documentElement.scrollWidth<=innerWidth'), true); await shot('narrow');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: ORIGIN+'/#/design' });
-  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), 'design launcher');
-  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-chip.th-problem[data-slug]')"), 'design launcher');
+  await evaluate("document.querySelector('.th-sw[data-mode=practise]').click(); document.querySelector('.th-qchange').click(); document.querySelector('.th-chip.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-board .excalidraw')"), 'practice whiteboard');
   const boardRoute = await evaluate('return location.hash');
   // An unfenced text field/portal used to be treated as the catalog search box.
@@ -376,9 +376,9 @@ try {
   await evaluate("location.hash='#/lld'");
   await until(()=>evaluate("return !!document.querySelector('.th[data-state=ready] .th-practice')"),'practice launcher');
   // With nothing chosen, Practise on My own problem with a blank brief opens a blank practice.
-  await evaluate("document.querySelector('.th-pick[data-kind=practise] .ui-select-button').click(); await new Promise(r=>setTimeout(r,80)); [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n=>n.textContent.trim()==='My own problem').click(); await new Promise(r=>setTimeout(r,80));");
+  await evaluate("document.querySelector('.th-sw[data-mode=practise]').click(); document.querySelector('.th-qchange').click(); document.querySelector('.th-chip[data-choice=own]').click();");
   assert.equal(await evaluate("return document.querySelector('.th-practice').textContent.trim()"),'Start practising');
-  assert.ok(await evaluate("return !!document.querySelector('.th-act--practise .th-brief textarea') && !!document.querySelector('.th-mock .ci-start')"),'both ways in stay on offer, with a brief field for your own problem');
+  assert.ok(await evaluate("const t=document.querySelector('.th-brief textarea'); return !!t?.getClientRects().length && document.activeElement===t && t.value==='' && !!document.querySelector('.th-mock .ci-start')"),'My own problem opens an empty brief in the Problem row, with Mock one click away');
   await evaluate("document.querySelector('.th-practice').click()");
   await until(()=>evaluate("return !!document.querySelector('.pr-empty') && !!window.monaco?.editor.getModels().length"),'blank practice');
   assert.match(await evaluate("return document.querySelector('.pr-empty').textContent"),/What would you like to work on/);

@@ -4,11 +4,12 @@
 //   Header     the track, and one line of true counts from the records.
 //   Continue   the newest unfinished mock, else the latest practice session. Absent when
 //              there is neither.
-//   Problems   the catalog on the left, with what you have done on each, and on the right
-//              the two ways in, Practise and Mock. With a problem chosen they act on it,
-//              under its statement and your history with it; with none chosen (the page
-//              opens that way) each starts on Surprise me or on a brief you write.
-//              The right-hand card stays in view while a long list scrolls past.
+//   Stage      one wide card with a Practise | Mock switch at its top. The chosen mode owns
+//              the card: its promise and what it gives on the left, its settings, the
+//              Problem row and the page's one Start button on the right. The problem is
+//              shared by both modes (pick once, then choose how to do it): Surprise me by
+//              default, your own brief, or a library problem chosen from chips that carry
+//              each problem's status.
 //   Where you stand and History, side by side.
 //
 // Everything comes from saved records (GET /api/track-home plus the track's own interview
@@ -17,6 +18,7 @@
 // web/js/track-home-model.js.
 import { el, replace } from './dom.js';
 import { button } from './ui/button.js';
+import { icon } from './ui/icon.js';
 import { segmented } from './ui/segmented.js';
 import { createBadge } from './ui/badge.js';
 import { createSelect } from './ui/select.js';
@@ -27,11 +29,20 @@ import { relativeInterviewDate, ratingTone } from './interview-format.js';
 import { startPractice, startPracticeFromMock, practiceHref } from './practice.js';
 import { readDraft, saveDraft, clearDraft } from './drafts.js';
 import { readSidebar, saveSidebar } from './sidebar-state.js';
-import { OWN, SURPRISE, agoWithTime, briefTitle, buildSessions, continueItem, dimensionTrend,
-  filterSessions, headerSummary, practiceSettings, problemChoices, signalText, statusLine } from './track-home-model.js';
+import { MODES, OWN, SURPRISE, TONE_LABELS, agoWithTime, briefTitle, buildSessions, continueItem, dimensionTrend, filterProblems,
+  filterSessions, headerSummary, lastLine, modeOrDefault, practiceSettings, problemTone, signalText, statusLine } from './track-home-model.js';
 
-const RECENT = 8;  // history rows before "Show all"
+const RECENT = 8;        // history rows before "Show all"
 const LEVELS = ['L3', 'L4', 'L5', 'L6'];
+const FILTER_AT = 12;    // library problems before the picker offers a filter
+
+// What each mode promises, as true statements about how it behaves (see docs/UI.md).
+const COPY = {
+  practise: { name: 'Practise', tag: 'Untimed · coached', icon: 'chat', promise: 'No clock, no grade. The coach works beside you.',
+    gets: ['Ask for a hint, a check or a worked example whenever you like', 'Stop when you want; nothing is scored', 'Save any reply to your learning notes'] },
+  mock: { name: 'Mock', tag: 'Timed · graded', icon: 'clock', promise: 'Timed and graded, with a report at the end.',
+    gets: ['An interviewer who stays quiet unless it needs to step in', 'The clock runs for the length you set', 'A report that rates each skill from evidence and gives a hire signal at your level'] },
+};
 
 async function getJson(url) {
   const response = await fetch(url);
@@ -43,6 +54,7 @@ async function getJson(url) {
 const quiet = text => el('p', { class: 'th-quiet', text });
 const pill = (text, tone = 'neutral') => { const node = createBadge(text, tone); node.classList.add('th-pill'); return node; };
 const label = (id, title, tools) => el('header', { class: 'th-card-head' }, [el('h2', { id, class: 'th-label', text: title }), tools || null]);
+const dot = tone => el('i', { class: 'th-sd', dataset: { tone }, 'aria-hidden': 'true' });
 
 /**
  * @param host element to render into
@@ -52,7 +64,7 @@ const label = (id, title, tools) => el('header', { class: 'th-card-head' }, [el(
  *   openInterview(item),
  *   startMock(problem | null, setupState)   null means "choose one for me"
  *   startOwnMock?(brief, setupState)        a mock on a brief the learner wrote (both
- *                                           tracks pass it; without it, Surprise me alone)
+ *                                           tracks pass it)
  * }
  */
 export function mountTrackHome(host, track) {
@@ -61,65 +73,143 @@ export function mountTrackHome(host, track) {
   const notice = el('p', { class: 'th-notice', role: 'status' });
   const fail = error => { if (!gone) notice.textContent = error.message; };
 
-  // State, set once the records arrive. Nothing is chosen on arrival: both ways in then
-  // start on Surprise me unless the learner picks a problem or writes their own.
-  let problems = [], items = [], selected = null, filter = 'all', showAll = false;
+  // State, set once the records arrive. The problem starts on Surprise me; the mode is the
+  // one this viewer last used on this track (Practise on a first visit).
+  let problems = [], items = [], choice = SURPRISE, filter = 'all', showAll = false, open = false;
+  let mode = modeOrDefault(readSidebar(`${discipline}-home`).mode);
   const entryFor = slug => problems.find(p => p.slug === slug) || null;
 
-  /* ---------------- the two ways in, built once ----------------
-     Each is moved into whichever panel is showing, so its settings, a typed brief and a
-     pending start survive a change of problem. */
+  /* ---------------- the problem, shared by both modes ----------------
+     One brief for both modes, kept as a draft until a start succeeds. Older per-mode drafts
+     are read once so nothing typed before this layout is lost. */
+  const draftKey = `${discipline}-brief`, oldDrafts = [`${discipline}-mock-brief`, `${discipline}-practise-brief`];
+  const input = el('textarea', { maxlength: '4000', 'aria-label': 'Your problem' });
+  input.value = readDraft(draftKey)?.text || oldDrafts.map(key => readDraft(key)?.text).find(Boolean) || '';
+  input.addEventListener('input', () => { if (input.value) saveDraft(draftKey, input.value); else clearDraft(draftKey); });
+  const grow = bindComposerInput(input);
+  const briefHint = el('p', { class: 'th-brief-hint' });
+  const brief = el('div', { class: 'th-brief-wrap' }, [createComposer({ className: 'th-brief', content: [input] }), briefHint]);
+  const forgetBrief = () => { input.value = ''; clearDraft(draftKey); for (const key of oldDrafts) clearDraft(key); grow.resize(); };
 
-  // "What to start on" when no problem is chosen: a Problem picker, a line saying what
-  // that choice does, and a brief field when it is the learner's own.
-  function problemPicker(kind, { hint, placeholder, onChange }) {
-    const choices = problemChoices(kind, { ownMock: Boolean(track.startOwnMock) });
-    const draftKey = `${discipline}-${kind}-brief`;
-    const input = el('textarea', { maxlength: '4000', 'aria-label': kind === 'mock' ? 'Your problem for the mock' : 'Your problem for practice', placeholder });
-    input.value = readDraft(draftKey)?.text || '';
-    input.addEventListener('input', () => { if (input.value) saveDraft(draftKey, input.value); else clearDraft(draftKey); });
-    const grow = bindComposerInput(input);
-    const brief = createComposer({ className: 'th-brief', content: [input] });
-    const line = el('p', { class: 'th-act-text th-pick-hint' });
-    let choice = SURPRISE;
-    const select = choices.length > 1 ? createSelect({ label: 'Problem', compact: true, value: choice, options: choices.map(c => [c.id, c.label]),
-      onChange: () => { choice = select.value; paint(); onChange?.(); if (choice === OWN) input.focus(); } }) : null;
-    // "Problem" is a labelled field like the settings under it.
-    const root = el('div', { class: 'th-pick', dataset: { kind } }, [
-      select ? setupField('Problem', select, 'problem') : null,
-      line, brief,
-    ]);
-    function paint() {
-      root.dataset.choice = choice;
-      line.textContent = hint[choice] || '';
-      line.hidden = !line.textContent;
-      brief.hidden = choice !== OWN;
-      if (!brief.hidden) grow.resize();
-    }
-    paint();
-    return {
-      root, get choice() { return choice; }, brief: () => input.value.trim(),
-      set disabled(value) { if (select) select.disabled = value; input.disabled = value; },
-      forget() { input.value = ''; clearDraft(draftKey); grow.resize(); },
-      dispose() { select?.dispose(); grow.dispose(); },
-    };
+  const qMark = el('span', { class: 'th-qmark', 'aria-hidden': 'true' });
+  const qTitle = el('strong', { class: 'th-qtitle' });
+  const qSub = el('span', { class: 'th-qsub' });
+  const clear = button({ label: 'Clear', icon: 'close', variant: 'quiet', className: 'th-qclear', ariaLabel: 'Clear the problem: back to Surprise me',
+    onClick: () => { choose(SURPRISE); change.focus(); } });
+  const changeText = el('span', { text: 'Change' });
+  const change = el('button', { type: 'button', class: 'btn btn--quiet th-qchange', 'aria-expanded': 'false', 'aria-controls': `th-qpanel-${discipline}`,
+    onclick: () => { setOpen(!open); if (open && !filterBox.hidden) filterInput.focus(); } }, [changeText, icon('chevron', 15)]);
+  const filterInput = el('input', { type: 'text', class: 'th-qfilter-input', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Filter problems' });
+  const filterBox = el('label', { class: 'th-qfilter', hidden: true }, [icon('search', 15), filterInput]);
+  const chips = el('div', { class: 'th-chips', role: 'group', 'aria-label': 'Problems' });
+  const noMatch = quiet('No problem matches.');
+  const legend = el('p', { class: 'th-legend' });
+  const panel = el('div', { class: 'th-qpanel', id: `th-qpanel-${discipline}`, hidden: true }, [filterBox, chips, noMatch, legend]);
+  const qrow = el('div', { class: 'th-qrow' }, [
+    el('div', { class: 'th-qhead' }, [el('span', { class: 'th-qlabel', text: 'Problem' }), qMark,
+      el('span', { class: 'th-qvalue' }, [qTitle, qSub]), clear, change]),
+    panel, brief,
+  ]);
+  const chip = (id, content, title) => el('button', { type: 'button', class: 'btn btn--quiet th-chip', 'aria-pressed': 'false', dataset: { choice: id }, title,
+    onclick: () => { choose(id); setOpen(false); (id === OWN ? input : change).focus(); } }, content);
+  const surpriseChip = chip(SURPRISE, [icon('dice', 14), el('span', { text: 'Surprise me' })]);
+  const ownChip = chip(OWN, [icon('edit', 14), el('span', { text: 'My own problem' })]);
+  let problemChips = [];
+
+  function paintChips() {
+    // Built once when the records arrive; the filter only hides chips.
+    problemChips = problems.map(p => {
+      const status = statusLine(p.slug, items), node = chip(p.slug, [dot(problemTone(p.slug, items)), el('span', { text: p.title })], `${p.title} · ${status}`);
+      node.classList.add('th-problem'); node.dataset.slug = p.slug;
+      return node;
+    });
+    replace(chips, [surpriseChip, ownChip, ...problemChips]);
+    const tones = new Set(problems.map(p => problemTone(p.slug, items)));
+    replace(legend, Object.entries(TONE_LABELS).filter(([tone]) => tones.has(tone)).map(([tone, text]) => el('span', {}, [dot(tone), text])));
+    legend.hidden = !tones.size;
+    filterBox.hidden = problems.length <= FILTER_AT;
+    filterInput.placeholder = `Filter ${problems.length} problems`;
+    applyFilter();
+  }
+  function applyFilter() {
+    const shown = new Set(filterProblems(problems, filterInput.value).map(p => p.slug));
+    for (const node of problemChips) node.hidden = !shown.has(node.dataset.slug);
+    noMatch.hidden = !problems.length || shown.size > 0;
+    if (!problems.length) { noMatch.hidden = false; noMatch.textContent = 'No problems in the library yet.'; } else noMatch.textContent = 'No problem matches.';
+  }
+  filterInput.addEventListener('input', applyFilter);
+  filterInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const visible = problemChips.filter(node => !node.hidden);
+    if (visible.length === 1) visible[0].click();
+  });
+  // Arrow keys move between the chips that are showing.
+  chips.addEventListener('keydown', event => {
+    const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1, Home: -Infinity, End: Infinity };
+    if (!(event.key in keys) || !event.target.closest('.th-chip')) return;
+    event.preventDefault();
+    const all = [...chips.querySelectorAll('.th-chip:not([hidden])')], at = all.indexOf(event.target.closest('.th-chip')), step = keys[event.key];
+    all[Number.isFinite(step) ? Math.max(0, Math.min(all.length - 1, at + step)) : step < 0 ? 0 : all.length - 1]?.focus();
+  });
+  // Escape or a click elsewhere folds the chips.
+  qrow.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !open) return;
+    event.preventDefault(); event.stopPropagation();
+    setOpen(false); change.focus();
+  });
+  const outside = event => { if (open && !qrow.contains(event.target)) setOpen(false); };
+  document.addEventListener('pointerdown', outside, true);
+
+  function setOpen(value) {
+    open = value;
+    panel.hidden = !open;
+    qrow.dataset.open = String(open);
+    change.setAttribute('aria-expanded', String(open));
+    changeText.textContent = open ? 'Done' : 'Change';
+    if (open) {
+      const at = chips.querySelector('.th-chip[aria-pressed="true"]:not([hidden])');
+      if (at) chips.scrollTop = at.offsetTop - chips.offsetTop - chips.clientHeight / 2 + at.offsetHeight / 2;
+    } else if (filterInput.value) { filterInput.value = ''; applyFilter(); }
+  }
+  function choose(id) {
+    choice = id;
+    practiseNotice.textContent = '';
+    paintProblem(); paintPractise();
+    if (choice === OWN) grow.resize();
+  }
+  function paintProblem() {
+    const problem = entryFor(choice);
+    qrow.dataset.choice = problem ? 'problem' : choice;
+    for (const node of chips.querySelectorAll('.th-chip')) node.setAttribute('aria-pressed', String(node.dataset.choice === choice));
+    replace(qMark, problem ? dot(problemTone(problem.slug, items)) : icon(choice === OWN ? 'edit' : 'dice', 15));
+    qTitle.textContent = problem ? problem.title : choice === OWN ? 'My own problem' : 'Surprise me';
+    qSub.textContent = problem ? statusLine(problem.slug, items)
+      : choice === OWN ? 'brief below' : mode === 'mock' ? 'one you haven’t seen, picked from your reports' : 'one you haven’t seen';
+    clear.hidden = choice === SURPRISE;
+    brief.hidden = choice !== OWN;
+    input.placeholder = mode === 'mock'
+      ? discipline === 'lld' ? 'Describe the problem to design, in a sentence or two.' : 'Describe the system to design, in a sentence or two.'
+      : 'Describe the problem, or leave this blank and tell the coach.';
+    // An LLD mock needs the interviewer's private notes, prepared from your brief first.
+    briefHint.textContent = mode === 'mock'
+      ? discipline === 'lld' ? 'Studio prepares the interviewer’s notes for your problem, then the clock starts.' : 'A sentence or two is enough. The interviewer works from what you write here.'
+      : 'The coach works from what you write here.';
   }
 
-  // Practise: the settings a practice session honours (see practiceSettings), then Start.
+  /* ---------------- Practise: its settings and Start ----------------
+     Both modes' controls are built once; the switch only shows one, so settings, the
+     problem, a typed brief and a pending start all survive a flip. */
   const practiseSaved = readSidebar(`${discipline}-new-practice`).setup || {};
   let practiseRequestId = crypto.randomUUID(), modelPending = false, practising = false, levelTouched = false;
-  const practiseNotice = el('p', { class: 'th-notice', role: 'status' });
-  const practisePick = problemPicker('practise', {
-    hint: { [SURPRISE]: 'Studio prepares a problem you haven’t seen and opens it untimed.' },
-    placeholder: 'Describe the problem, or leave this blank and tell the coach.',
-    onChange: () => paintPractise(),
-  });
+  const practiseNotice = el('p', { class: 'th-notice th-start-notice', role: 'status' });
   const practiseMode = createSelect({ label: 'Answer mode', compact: true, value: practiseSaved.mode || 'voice', options: [['voice', 'Voice'], ['typed', 'Typed']],
     onChange: () => saveSidebar(`${discipline}-new-practice`, { setup: { mode: practiseMode.value } }) });
   const practiseLevel = createSelect({ label: 'Target level', compact: true, value: 'L4', options: LEVELS.map(x => [x, x]),
     onChange: () => { levelTouched = true; practiseRequestId = crypto.randomUUID(); } });
   const practiseLevelField = setupField('Level', practiseLevel, 'level');
-  const practise = button({ label: 'Start practising', variant: 'secondary', size: 'lg', className: 'th-practice', onClick: () => startPractising() });
+  const practise = button({ label: 'Start practising', variant: 'primary', size: 'lg', className: 'th-practice th-go', onClick: () => startPractising() });
+  const practiseLabel = practise.querySelector('span');
   const practiseModel = createCoachModelPicker({ compact: true, onPending: value => { modelPending = value; paintPractise(); } });
   const practiseOptions = el('div', { class: 'th-options ci-setup-options ci-setup-fields' }, [
     setupField('Answer', practiseMode, 'answer'), practiseLevelField, setupField('Coach', practiseModel.root, 'model')]);
@@ -127,16 +217,19 @@ export function mountTrackHome(host, track) {
     if (!gone && !practising && !levelTouched) practiseLevel.value = preferences?.targetLevel?.[discipline] || preferences?.targetLevel?.default || 'L4';
   }).catch(() => {}); // Starting reports an unavailable preferences store; L4 remains usable.
   function paintPractise() {
-    const problem = entryFor(selected);
-    practiseLevelField.hidden = !practiceSettings(discipline, { chosen: Boolean(problem), choice: practisePick.choice }).includes('level');
+    const problem = entryFor(choice);
+    practiseLevelField.hidden = !practiceSettings(discipline, { chosen: Boolean(problem), choice: problem ? null : choice }).includes('level');
+    // The coach picker can report pending while it is built, before the row exists.
+    if (practiseLevelField.parentElement) practiseLevelField.parentElement.dataset.count = practiseLevelField.hidden ? '2' : '3';
     practise.disabled = modelPending || practising;
-    practise.querySelector('span').textContent = practising && !problem && practisePick.choice === SURPRISE ? 'Preparing…' : 'Start practising';
-    practiseMode.disabled = practiseLevel.disabled = practising;
-    practisePick.disabled = practising;
+    practiseLabel.textContent = practising && !problem && choice === SURPRISE ? 'Preparing…' : 'Start practising';
+    // A start in flight keeps the problem it started on.
+    practiseMode.disabled = practiseLevel.disabled = change.disabled = clear.disabled = input.disabled = practising;
+    if (practising && open) setOpen(false);
   }
   async function startPractising() {
     if (modelPending || practising) return;
-    const problem = entryFor(selected), choice = practisePick.choice;
+    const problem = entryFor(choice), own = !problem && choice === OWN;
     const options = { mode: practiseMode.value };
     practising = true; practiseNotice.textContent = ''; paintPractise();
     try {
@@ -144,10 +237,10 @@ export function mountTrackHome(host, track) {
       if (!practiseLevelField.hidden) await interviewJson('/api/learner/preferences', { targetLevel: { [discipline]: practiseLevel.value } });
       if (gone) return;
       if (problem) await startPractice({ ...problem, discipline }, {}, options);
-      else if (choice === OWN) {
-        const brief = practisePick.brief();
-        await startPractice(brief ? { discipline, title: briefTitle(brief), statement: brief } : { discipline, title: 'Open practice', statement: '' }, {}, options);
-        practisePick.forget();
+      else if (own) {
+        const text = input.value.trim();
+        await startPractice(text ? { discipline, title: briefTitle(text), statement: text } : { discipline, title: 'Open practice', statement: '' }, {}, options);
+        forgetBrief();
       } else {
         // The prepared problem arrives in its public shape only (title and statement);
         // its interviewer-only facts and curveball never reach this page.
@@ -161,39 +254,75 @@ export function mountTrackHome(host, track) {
     } finally { practising = false; if (!gone) paintPractise(); }
   }
 
-  // Mock: the shared interview setup. A retry keeps its start request, as everywhere.
-  const mockPick = problemPicker('mock', {
-    hint: { [SURPRISE]: 'Studio prepares a problem you haven’t sat, chosen from what your reports say to work on.',
-      // An LLD mock needs the interviewer's private notes, prepared from your brief first.
-      ...(discipline === 'lld' ? { [OWN]: 'Studio prepares the interviewer’s notes for your problem, then the clock starts.' } : {}) },
-    placeholder: discipline === 'lld' ? 'Describe the problem to design, in a sentence or two.' : 'Describe the system to design, in a sentence or two.',
-  });
+  /* ---------------- Mock: the shared interview setup ----------------
+     A retry keeps its start request, as everywhere. */
   const setup = createInterviewSetup({ slug: `${discipline}-new-mock`, discipline, label: 'Mock settings', startLabel: 'Start mock', fields: true,
     onStart: async state => {
-      const problem = entryFor(selected);
+      const problem = entryFor(choice);
       if (problem) return track.startMock(problem, { ...state, slug: problem.slug, title: problem.title });
-      if (mockPick.choice === OWN && track.startOwnMock) {
-        const brief = mockPick.brief();
-        if (!brief) throw Error('Write your problem first. A sentence or two is enough.');
+      if (choice === OWN) {
+        if (!track.startOwnMock) throw Error('This track cannot run a mock on your own problem yet. Practise it instead.');
+        const text = input.value.trim();
+        if (!text) throw Error('Write your problem first. A sentence or two is enough.');
         // The brief is kept until the mock has started, so a failed preparation loses nothing.
-        const started = await track.startOwnMock(brief, state);
-        mockPick.forget();
+        const started = await track.startOwnMock(text, state);
+        forgetBrief();
         return started;
       }
       return track.startMock(null, state);
     } });
+  setup.root.querySelector('.ci-start')?.classList.add('th-go');
 
-  const practiseAct = el('div', { class: 'th-act th-act--practise' }, [
-    el('div', { class: 'th-act-head' }, [el('h3', { text: 'Practise' }), el('p', { class: 'th-act-text', text: 'No clock, no grade. The coach works beside you.' })]),
-    practisePick.root, el('div', { class: 'th-start' }, [practiseOptions, practiseNotice, practise])]);
-  const mockAct = el('div', { class: 'th-act th-mock' }, [
-    el('div', { class: 'th-act-head' }, [el('h3', { text: 'Mock' }), el('p', { class: 'th-act-text', text: 'Timed and graded, with a report at the end.' })]), mockPick.root, el('div', { class: 'th-start' }, setup.root)]);
-  const actions = el('div', { class: 'th-actions' }, [practiseAct, mockAct]);
+  /* ---------------- the stage ---------------- */
+  const tabs = MODES.map(id => el('button', { type: 'button', role: 'tab', class: 'btn btn--quiet th-sw', id: `th-sw-${discipline}-${id}`, dataset: { mode: id },
+    'aria-controls': `th-stage-${discipline}`, onclick: () => setMode(id, true) }, [
+    el('span', { class: 'th-sw-icon', 'aria-hidden': 'true' }, icon(COPY[id].icon, 20)),
+    el('span', { class: 'th-sw-text' }, [el('span', { class: 'th-sw-name', text: COPY[id].name }), el('span', { class: 'th-sw-tag', text: COPY[id].tag })]),
+  ]));
+  const switcher = el('div', { class: 'th-switch', role: 'tablist', 'aria-label': 'How to work' }, tabs);
+  switcher.addEventListener('keydown', event => {
+    const keys = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity };
+    if (!(event.key in keys)) return;
+    event.preventDefault();
+    const at = MODES.indexOf(mode), step = keys[event.key];
+    const next = Number.isFinite(step) ? (at + step + MODES.length) % MODES.length : step < 0 ? 0 : MODES.length - 1;
+    setMode(MODES[next], true); tabs[next].focus();
+  });
+  const lastLines = {};
+  const blurb = id => {
+    lastLines[id] = el('p', { class: 'th-last', text: 'Reading saved practice…' });
+    return el('div', { class: 'th-mode', dataset: { mode: id } }, [
+      el('div', {}, [el('h2', { class: 'th-mode-name', text: COPY[id].name }), el('p', { class: 'th-mode-promise', text: COPY[id].promise })]),
+      el('ul', { class: 'th-gets' }, COPY[id].gets.map(text => el('li', {}, [icon('check', 14), el('span', { text })]))),
+      lastLines[id],
+    ]);
+  };
+  const blurbs = MODES.map(blurb);
+  // The right column is one flex column: each mode's settings, the shared Problem row, then
+  // that mode's notice and Start, ordered by CSS so nothing moves in the DOM on a flip.
+  const stageBody = el('div', { class: 'th-stage-body', id: `th-stage-${discipline}`, role: 'tabpanel' }, [
+    el('div', { class: 'th-stage-left' }, blurbs),
+    el('div', { class: 'th-stage-right' }, [
+      el('div', { class: 'th-set th-set--practise' }, [practiseOptions, practiseNotice, practise]),
+      el('div', { class: 'th-set th-mock' }, setup.root),
+      qrow,
+    ]),
+  ]);
+  const stage = el('section', { class: 'th-stage', 'aria-label': 'Start' }, [switcher, stageBody]);
+  function setMode(id, remember = false) {
+    mode = id;
+    stage.dataset.mode = id;
+    tabs.forEach(tab => { const on = tab.dataset.mode === id; tab.setAttribute('aria-selected', String(on)); tab.tabIndex = on ? 0 : -1; });
+    blurbs.forEach(node => { node.hidden = node.dataset.mode !== id; });
+    stageBody.setAttribute('aria-labelledby', `th-sw-${discipline}-${id}`);
+    paintProblem();
+    if (remember) saveSidebar(`${discipline}-home`, { mode: id });
+  }
+  setMode(mode); paintPractise();
 
   const summary = el('p', { class: 'th-summary', text: 'Reading saved practice…' });
   const continueSlot = el('div', { class: 'th-continue-slot' });
-  const picker = el('div', { class: 'th-picker', role: 'group', 'aria-label': 'Problems' }, quiet('Reading problems…'));
-  const detail = el('section', { class: 'th-detail', 'aria-live': 'polite' });
+  const stageSlot = el('div', { class: 'th-stage-slot' }, quiet('Reading problems…'));
   const stand = el('section', { class: 'th-stand th-card', 'aria-labelledby': 'th-stand-title' }, [label('th-stand-title', 'Where you stand'), quiet('Reading reports…')]);
   const history = el('section', { class: 'th-history th-card', 'aria-labelledby': 'th-history-title' }, [label('th-history-title', 'History'), quiet('Reading saved practice…')]);
 
@@ -201,33 +330,11 @@ export function mountTrackHome(host, track) {
   const page = el('div', { class: 'th' }, el('div', { class: 'th-wrap' }, [
     el('header', { class: 'th-head' }, [el('h1', { class: 'th-title', text: track.title }), summary]),
     continueSlot,
-    el('section', { class: 'th-problems', 'aria-labelledby': 'th-problems-title' }, [
-      el('h2', { id: 'th-problems-title', class: 'th-sr', text: 'Problems' }),
-      el('div', { class: 'th-md' }, [picker, detail]),
-    ]),
+    stageSlot,
     el('div', { class: 'th-lower' }, [stand, history]),
     notice,
   ]));
   replace(host, page);
-
-  /* ---------------- the card stays in view ----------------
-     The detail card sticks under the app bar while the list beside it scrolls past, but
-     only when all of it fits on screen; a taller card scrolls with the page so its Start
-     buttons are never out of reach. The bar's real height is measured, since themes size
-     it differently. The CSS applies it only when list and card sit side by side. */
-  function measurePin() {
-    if (gone) return;
-    const bar = document.querySelector('.topbar');
-    const barHeight = bar && /sticky|fixed/.test(getComputedStyle(bar).position) ? bar.getBoundingClientRect().height : 0;
-    page.style.setProperty('--th-bar', `${Math.round(barHeight)}px`);
-    const gap = parseFloat(getComputedStyle(page).getPropertyValue('--space-5')) || 20;
-    detail.classList.toggle('is-pinned', detail.offsetHeight > 0 && barHeight + 2 * gap + detail.offsetHeight <= innerHeight);
-  }
-  const pinObserver = new ResizeObserver(() => measurePin());
-  pinObserver.observe(detail);
-  const topbar = document.querySelector('.topbar');
-  if (topbar) pinObserver.observe(topbar);
-  window.addEventListener('resize', measurePin);
 
   (async () => {
     let home, list, practice;
@@ -240,7 +347,7 @@ export function mountTrackHome(host, track) {
     } catch (error) {
       if (gone) return;
       summary.textContent = error.message;
-      replace(picker, quiet(error.message));
+      replace(stageSlot, quiet(error.message));
       replace(stand, [label('th-stand-title', 'Where you stand'), quiet(error.message)]);
       replace(history, [label('th-history-title', 'History'), quiet(error.message)]);
       page.dataset.state = 'error';
@@ -252,7 +359,10 @@ export function mountTrackHome(host, track) {
     const current = continueItem(items);
     summary.textContent = headerSummary(problems, items);
     replace(continueSlot, current ? continueBand(current) : []);
-    paintPicker(); paintDetail();
+    for (const id of MODES) lastLines[id].textContent = lastLine(id, items);
+    paintChips(); paintProblem(); paintPractise();
+    replace(stageSlot, stage);
+    if (choice === OWN) grow.resize();
     paintStand(home.rubric || [], home.assessments || []);
     paintHistory();
     page.dataset.state = 'ready';
@@ -265,82 +375,16 @@ export function mountTrackHome(host, track) {
     return el('section', { class: 'th-continue', 'aria-label': 'Continue' }, [
       el('span', { class: 'th-dot', 'aria-hidden': 'true' }),
       el('p', { class: 'th-continue-what' }, [el('strong', { text: `${mock ? 'Mock' : 'Practice'} · ${item.title}` }), el('span', { class: 'th-continue-when', text: ` · ${when}` })]),
-      button({ label: mock ? 'Resume' : 'Continue', variant: 'primary', className: 'th-resume', onClick: () => open(item) }),
+      button({ label: mock ? 'Resume' : 'Continue', variant: 'secondary', className: 'th-resume', onClick: () => openItem(item) }),
     ]);
   }
-  const open = item => item.mock ? track.openInterview(item.mock) : (location.hash = practiceHref(item.session));
+  const openItem = item => item.mock ? track.openInterview(item.mock) : (location.hash = practiceHref(item.session));
 
-  /* ---------------- the problem list ----------------
-     A group of toggles: choosing a problem points both ways in at it; choosing it again,
-     Escape, or Clear in the panel goes back to starting on something new. */
-  const rows = () => [...picker.querySelectorAll('.th-problem')];
-  function choose(slug, focus = false) {
-    selected = slug;
-    const all = rows();
-    for (const row of all) {
-      const on = row.dataset.slug === slug;
-      row.setAttribute('aria-pressed', String(on));
-      row.tabIndex = on || (!slug && row === all[0]) ? 0 : -1;
-      if (on && focus) row.focus();
-    }
-    paintDetail();
-  }
-  function paintPicker() {
-    if (!problems.length) { replace(picker, quiet('No problems in the library yet.')); return; }
-    replace(picker, problems.map((p, i) => el('button', { class: 'ui-action-row th-problem', type: 'button', 'aria-pressed': String(p.slug === selected),
-      tabindex: p.slug === selected || (!selected && i === 0) ? '0' : '-1', dataset: { slug: p.slug }, onclick: () => choose(selected === p.slug ? null : p.slug) }, [
-      el('span', { class: 'th-problem-title', text: p.title }),
-      el('span', { class: 'th-problem-line', text: statusLine(p.slug, items) }),
-    ])));
-  }
-  picker.addEventListener('keydown', event => {
-    const row = event.target.closest('.th-problem');
-    if (!row) return;
-    if (event.key === 'Escape' && selected) { event.preventDefault(); choose(null); row.focus(); return; }
-    const keys = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity };
-    if (!(event.key in keys)) return;
-    event.preventDefault();
-    const all = rows(), at = all.indexOf(row), step = keys[event.key];
-    const next = Number.isFinite(step) ? Math.max(0, Math.min(all.length - 1, at + step)) : step < 0 ? 0 : all.length - 1;
-    choose(all[next].dataset.slug, true);
-  });
-
-  /* ---------------- the panel ---------------- */
-  function paintDetail() {
-    const problem = entryFor(selected);
-    practiseNotice.textContent = '';
-    practisePick.root.hidden = mockPick.root.hidden = Boolean(problem);
-    paintPractise();
-    if (!problem) {
-      replace(detail, el('div', { class: 'th-detail-body', dataset: { chosen: 'none' } }, [
-        el('div', {}, [el('h2', { class: 'th-detail-title', text: 'Start something new' }),
-          el('p', { class: 'th-statement', text: problems.length
-            ? 'Pick a problem from the list, or start on a surprise or on your own problem.'
-            : 'Start on a surprise or on your own problem.' })]),
-        actions,
-      ]));
-      return;
-    }
-    const mine = items.filter(item => item.slug === problem.slug);
-    replace(detail, el('div', { class: 'th-detail-body', dataset: { chosen: problem.slug } }, [
-      el('div', { class: 'th-detail-head' }, [
-        el('div', { class: 'th-detail-name' }, [el('h2', { class: 'th-detail-title', text: problem.title }),
-          problem.statement ? el('p', { class: 'th-statement', text: problem.statement }) : null]),
-        button({ label: 'Clear', icon: 'close', variant: 'quiet', className: 'th-clear', title: 'Start on something new instead', onClick: () => {
-          const row = picker.querySelector(`.th-problem[data-slug="${CSS.escape(problem.slug)}"]`);
-          choose(null); row?.focus();
-        } }),
-      ]),
-      // With nothing done, the list row already says "Not tried yet".
-      mine.length ? el('div', {}, [el('h3', { class: 'th-label', text: 'Your history with this problem' }), el('ul', { class: 'th-past-list' }, mine.map(pastRow))]) : null,
-      actions,
-    ]));
-  }
-  function outcome(item, withLevel = false) {
+  function outcome(item) {
     if (item.kind !== 'mock') return null;
     if (!item.finished) return pill('Unfinished');
-    const signal = signalText(item), level = withLevel ? item.assessment?.targetLevel : null;
-    return signal ? pill(level ? `${signal} · ${level}` : signal, ratingTone(item.assessment.signal)) : el('span', { class: 'th-unscored', text: 'No grade' });
+    const signal = signalText(item);
+    return signal ? pill(signal, ratingTone(item.assessment.signal)) : el('span', { class: 'th-unscored', text: 'No grade' });
   }
   function again(item) {
     if (item.kind !== 'mock' || !item.finished) return null;
@@ -351,18 +395,8 @@ export function mountTrackHome(host, track) {
     } });
   }
   const opener = (item, className, cells) => item.mock
-    ? el('button', { class: `ui-action-row ${className}`, type: 'button', onclick: () => open(item) }, cells)
+    ? el('button', { class: `ui-action-row ${className}`, type: 'button', onclick: () => openItem(item) }, cells)
     : el('a', { class: `ui-action-row ${className}`, href: practiceHref(item.session) }, cells);
-  function pastRow(item) {
-    return el('li', { class: 'th-past', dataset: { kind: item.kind } }, [
-      opener(item, 'th-past-open', [
-        el('span', { class: 'th-past-kind', text: item.kind === 'mock' ? 'Mock' : 'Practice' }),
-        el('span', { class: 'th-past-score' }, item.kind === 'mock' ? outcome(item, true) : el('span', { class: 'th-unscored', text: item.session?.source ? 'Untimed · from a mock' : 'Untimed' })),
-      ]),
-      again(item) || el('span', { class: 'th-again-slot', 'aria-hidden': 'true' }),
-      el('span', { class: 'th-past-date', text: relativeInterviewDate(item.at) }),
-    ]);
-  }
 
   /* ---------------- where you stand ---------------- */
   function paintStand(rubric, assessments) {
@@ -424,8 +458,7 @@ export function mountTrackHome(host, track) {
 
   return { destroy() {
     gone = true; host.classList.remove('th-host');
-    pinObserver.disconnect(); window.removeEventListener('resize', measurePin);
-    setup.dispose(); practiseModel.dispose(); practiseMode.dispose(); practiseLevel.dispose();
-    practisePick.dispose(); mockPick.dispose();
+    document.removeEventListener('pointerdown', outside, true);
+    setup.dispose(); practiseModel.dispose(); practiseMode.dispose(); practiseLevel.dispose(); grow.dispose();
   } };
 }

@@ -2,6 +2,7 @@ import { questionNode } from './ui/turn.js';
 import { createWorkspaceReply, workspaceReply, interviewStamp } from './ui/workspace-turn.js';
 import { openLearningNotes } from './learning.js';
 import { createMockSessionControls } from './ui/mock-session.js';
+import { createMockClock, createAttendance } from './mock-attendance.js';
 import { createPhaseStepper } from './ui/phase-stepper.js';
 import { createPinnedStatement } from './ui/pinned-statement.js';
 import { createComposer, composerSend, bindComposerInput } from './ui/composer.js';
@@ -9,7 +10,8 @@ import { claimActionKey, hasOpenOverlay } from './keyboard.js';
 import { showWorkspaceAction } from './workspace-tools.js';
 import { registerActionAlias } from './coach-actions.js';
 // Coding interviews own their identity and drafts, not a particular mounted panel.
-// Navigation closes the microphone; only an explicit Pause stops the wall clock.
+// Navigation closes the microphone. The clock counts attended time only: a short absence
+// keeps counting, a longer one stops it at the last heartbeat (mock-attendance.js).
 import { el, replace } from './dom.js';
 import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft, remainingDraft } from './drafts.js';
 import { createVoicePanel, answerModeSwitch, micToggle, paintMicToggle, replayButton, interviewerSilentNote } from './ui/voice-panel.js';
@@ -159,6 +161,11 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   let recovered = false, requestId = null, firstCode = null, phaseHintSent = false;
   let eventQueue = [];
   let lastOperation = null;
+  // Elapsed time is the server's attended time (server/mock-clock.mjs). The clock ticks
+  // locally from its last reading and stays hidden until the first one, so a reload never
+  // flashes a remembered or guessed number.
+  const mockClock = createMockClock();
+  let clockKnown = !state.id;
   const draftKey = () => 'interview:' + (state.id || slug);
   const queueKey = () => 'studio.interview.events:' + (state.id || slug);
   function saveEvents() { try { localStorage.setItem(queueKey(), JSON.stringify(eventQueue)); } catch { /* retain in memory */ } }
@@ -236,7 +243,10 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       paint(); if (!status.pending) openMic();
     },
   });
-  function mergeState(next) { state = { ...state, ...next, mode: modeControl.sync(next.mode) }; }
+  function mergeState(next) {
+    state = { ...state, ...next, mode: modeControl.sync(next.mode) };
+    if (next?.clock) { mockClock.set(next.clock); clockKnown = true; }
+  }
   const typed = el('div', { class: 'ci-typed' }, input);
   const voicePanel = el('div', { class: 'ci-voice', hidden: true }, [voiceView.root]);
   voiceView.setControls({ lead: [micButton], actions: [interruptButton, typeLink, sendNow] });
@@ -276,7 +286,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     retry.hidden = !message || (!lastOperation && !loadFailed);
     retry.textContent = loadFailed ? 'Retry loading' : !state.id ? 'Retry start' : 'Retry reply';
   };
-  const elapsed = () => state.id ? Math.max(0, Math.min(state.endedAt || Date.now(), state.pausedAt || Infinity) - Number(state.startedAt || Date.now()) - (state.pausedMs || 0)) : 0;
+  const elapsed = () => state.id ? mockClock.elapsed() : 0;
   function reconcileCompletion() {
     if (!state.debriefed || activeInterview(slug)?.id !== state.id) return;
     remember(null);
@@ -354,8 +364,9 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     if (contained) paneTitle.textContent = state.endedAt || state.debriefed ? 'Transcript' : 'Interviewer';
     root.classList.toggle('is-paused', Boolean(state.pausedAt));
     // One toggle stays in the header in both states; togglePause owns the same guards.
+    clock.style.visibility = clockKnown ? '' : 'hidden';
     const reading = session.update({ minutes: state.minutes || 45, elapsedMs: elapsed(),
-      paused: Boolean(state.pausedAt), resumable: Boolean(state.pausedAt) || !participating, ended: Boolean(state.debriefed),
+      paused: Boolean(state.pausedAt), away: Boolean(state.pausedAt) && state.pauseReason === 'away', resumable: Boolean(state.pausedAt) || !participating, ended: Boolean(state.debriefed),
       pauseDisabled: loading || loadFailed || busy || timeControls.saving || modeControl.saving || ending || Boolean(state.endedAt) || !state.id,
       finishDisabled: loading || loadFailed || timeControls.saving || ending || !state.id,
       timeDisabled: loading || loadFailed || busy || modeControl.saving || ending || !state.id || Boolean(state.endedAt) });
@@ -605,7 +616,8 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         lastPhase = turn.phase; history.append(conversationSeparator(phases.find(([key]) => key === turn.phase)?.[1] || turn.phase, { phase: true, value: turn.phase }));
       }
       if (turn.kind === 'tool_action') { pendingActions.push(turn.action); continue; }
-      const at = turn.elapsedMs ?? Math.max(0, Date.parse(turn.at) - Number(state.startedAt));
+      // attendedMs: the server's attended-time reading of an older record's stamp.
+      const at = turn.attendedMs ?? turn.elapsedMs ?? Math.max(0, Date.parse(turn.at) - Number(state.startedAt));
       if (turn.said) candidate(turn.said, turn.requestId, at, history, seen);
       if (['interviewer_silent', 'suppressed_filler'].includes(turn.kind) && turn.replyKind === 'turn') history.append(interviewerSilentNote());
       const asked = turn.asked ?? turn.reply;
@@ -706,7 +718,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     onLevel: value => {
       voiceView.level(value);
       loud = value.loud; pending = value.pending;
-      if (loud) lastSpeech = Date.now();
+      if (loud) { lastSpeech = Date.now(); attendance.noteActivity(); }
       if (state.mode !== 'voice' || gone || recovered || ending || state.pausedAt) return;
       if (loud && (speaker.speaking || (busy && !interrupted))) interrupt();
       if (voiceView.automatic && !state.needsAttention && !voice.hasTranscriptionError() && turnDecision({ sinceLoud: value.sinceLoud, chars: input.value.trim().length, speaking: speaker.speaking, busy, pending, armed: value.armed }) === 'send') answer();
@@ -907,7 +919,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
   restoreEvents();
   window.addEventListener('studio-interview-work', work);
   const tick = async () => {
-    if (loading || loadFailed || gone || !state.id || state.debriefed) return;
+    if (loading || loadFailed || gone || !state.id || state.debriefed || document.hidden) return;
     paint();
     if (!participating || state.endedAt || state.pausedAt || state.needsAttention || busy || timeControls.saving || modeControl.saving || ending) return;
     // No idle prompt for an empty room: the mic's presence rule (page visible, window
@@ -928,6 +940,30 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
     return result;
   };
   const timer = setInterval(tick, 1000);
+  // The idle polls above already renew the server's lease while you are here; a heartbeat
+  // goes only when nothing else has for 30 s (a blurred window, a long reply). Leaving for
+  // longer than the grace period stops the clock from the last one (mock-attendance.js).
+  const attendance = createAttendance({ clock: mockClock,
+    running: () => Boolean(state.id) && participating && !loading && !gone && !state.pausedAt && !state.endedAt && !state.debriefed && mockClock.reading.running,
+    beat: async () => {
+      const result = await interviewJson('/api/interview/heartbeat', { slug, interviewId: state.id });
+      if (gone || !result?.state?.clock) return;
+      // Only the clock and a stop come from a heartbeat; replies, mode saves and drafts in
+      // flight own the rest of the state, so a heartbeat can never write over them.
+      mockClock.set(result.state.clock);
+      const stopped = result.state.pausedAt != null && !state.pausedAt && !busy;
+      if (stopped) {
+        state = { ...state, pausedAt: result.state.pausedAt, pauseReason: result.state.pauseReason, status: result.state.status, clock: result.state.clock };
+        persist(); voice?.stop(); speaker?.cancel(); replySpeech?.cancel();
+      }
+      paint();
+    },
+    beacon: () => {
+      const body = JSON.stringify({ slug, interviewId: state.id });
+      if (!navigator.sendBeacon?.('/api/interview/heartbeat', new Blob([body], { type: 'application/json' }))) {
+        fetch('/api/interview/heartbeat', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      }
+    } });
   function recoverFailure(turns = []) {
     const failed = [...turns].reverse().find(turn => ['error', 'partial', 'opening', 'turn', 'debrief', 'suppressed_filler', 'interviewer_silent'].includes(turn.kind));
     if (state.debriefed || !['error', 'partial'].includes(failed?.kind)) return;
@@ -966,7 +1002,8 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
         // Typed input does not implicitly open a microphone. Voice mode owns its ASR pipeline.
       }
     } catch (failure) { if (!gone) { loadFailed = true; error(failure.message); } }
-    finally { loading = false; if (!gone) { restoreScroll(); paint(); void modeControl.flush(); openMic(); } }
+    // Opening is not proof of presence by itself; the first heartbeat confirms it at once.
+    finally { loading = false; if (!gone) { restoreScroll(); paint(); void modeControl.flush(); openMic(); void attendance.now(); } }
   }
   let restoredScroll = false;
   function restoreScroll() {
@@ -1010,6 +1047,7 @@ export function createInterviewPanel(entry, { id = null, embedded = false, conta
       toolbar.remove();
       inputSize.dispose(); modelPicker.dispose(); conversationView.dispose(); modeControl.dispose(); session.dispose(); phaseStepper.dispose(); pinned?.dispose();
       if (gone) return;
+      attendance.dispose();
       rememberScroll(); gone = true; viewportAbort?.abort(); unwatch(); clearInterval(timer);
       if (draftReady) saveDraft(draftKey(), input.value);
       replySpeech?.cancel(); speaker.dispose(); voice.dispose({ finish: true });

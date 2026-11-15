@@ -30,7 +30,7 @@ export const STUDIO_TOOLS = Object.freeze([
   'start_notes_session', 'notes_session_status',
   'read_coaching_instructions', 'update_coaching_instructions',
   'read_memory', 'update_memory', 'edit_board', 'get_submissions', 'get_state', 'add_case', 'update_case', 'remove_case', 'run_code',
-  'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note', 'get_recall_evidence', 'save_recall_note',
+  'mark_lines', 'clear_marks', 'edit_code', 'open_panel', 'save_note', 'get_recall_evidence', 'save_recall_note', 'name_chat',
 ]);
 
 /** `mcp__studio__add_case` or `add_case` → `add_case`; anything else → null. */

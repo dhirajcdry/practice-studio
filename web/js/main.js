@@ -1,7 +1,7 @@
 // Boot, routing, persisted UI state, and the global keyboard map.
 
 import { el, replace } from './dom.js';
-import { hasOpenOverlay } from './keyboard.js';
+import { registerShortcut } from './keyboard.js';
 import { icon } from './ui/icon.js';
 import { loadCatalog, api } from './api.js';
 import { loadCatalogProgress } from './catalog-progress.js';
@@ -380,96 +380,88 @@ document.addEventListener('keydown', event => {
   }
 }, { capture: true });
 
-function inTextField() {
-  const node = document.activeElement;
-  return node && (/^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName)
-    || node.isContentEditable || node.closest?.('.monaco-editor'));
-}
+// Catalog navigation belongs to coding routes, not every screen without a coding slug.
+// Whiteboards deliberately bubble keys to their own listeners. Whether a key applies at
+// all (a dialog open, a field typing it, a control using it) is keyboard.js's decision.
+const onCatalog = () => ['', '#/'].includes(location.hash) && state.catalogMode !== 'roadmap';
+const onCodingRoute = () => Boolean(currentSlug()) || ['', '#/', '#/roadmap'].includes(location.hash);
+const openEntry = () => { const slug = currentSlug(); return slug ? bySlug.get(slug) : null; };
 
-document.addEventListener('keydown', (event) => {
-  if (event.defaultPrevented || event.isComposing) return;
-  // Native dialogs and menus own their keys; nothing behind them is navigated.
-  if (hasOpenOverlay()) return;
-  // Catalog navigation belongs to coding routes, not every screen without a
-  // coding slug. Whiteboards deliberately bubble keys to their own listeners.
-  const codingRoute = currentSlug() || ['', '#/', '#/roadmap'].includes(location.hash);
-  const searching = document.activeElement === searchEl;
-  if (!codingRoute && !searching) return;
-  // A focused control keeps only the keys it uses itself: Enter/Space activate a
-  // button or link, arrows move a tab, splitter or menu item. Letters, Escape and
-  // ⌘←/→ still belong to the app; otherwise Esc out of the editor (which focuses
-  // Run) or any click on a toolbar button would silently disable every shortcut.
-  if (!searching && !event.metaKey) {
-    const target = event.target;
-    if (target.closest?.('dialog')) return;
-    if ((event.key === 'Enter' || event.key === ' ')
-      && target.closest?.('button,a,[role="button"],[role="tab"],[role="menuitemradio"]')) return;
-    if (/^Arrow/.test(event.key) && target.closest?.('[role="separator"],[role="tab"],[role="menuitemradio"]')) return;
-  }
-  if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
-    && (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
-    if (inTextField()) return;
-    const slug = currentSlug();
-    const entry = slug && bySlug.get(slug);
-    if (!entry) return;
-    const { previous, next } = neighboursOf(slug);
-    event.preventDefault();
-    const neighbour = event.code === 'ArrowLeft' ? previous : next;
+// ⌘←/→ are text editing in any field, so they yield to typing; elsewhere they page problems.
+registerShortcut({
+  id: 'neighbour-problem', label: '⌘← / ⌘→', owns: 'typing',
+  keys: [{ code: 'ArrowLeft', mod: 'meta' }, { code: 'ArrowRight', mod: 'meta' }],
+  when: () => Boolean(openEntry()),
+  run: (event, key) => {
+    const { previous, next } = neighboursOf(currentSlug());
+    const neighbour = key.code === 'ArrowLeft' ? previous : next;
     if (neighbour) handlers.onOpen(neighbour.slug);
-    return;
-  }
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
-
-  if (event.key === 'Escape') {
-    const open = currentSlug() && bySlug.get(currentSlug());
-    // Solution or Article showing: Escape is the way back to the statement.
-    if (open && !inTextField() && currentTab(open.slug) !== 'problem') { event.preventDefault(); showTab(open, 'problem'); return; }
-    if (inTextField()) { searchEl.blur(); return; }
+  },
+});
+// Autorepeat steps on, as it always has: holding J walks the list.
+registerShortcut({
+  id: 'step-problem', label: 'J / K', repeat: true,
+  keys: [{ key: 'j' }, { key: 'k' }, { key: 'ArrowDown' }, { key: 'ArrowUp' }],
+  when: () => Boolean(openEntry()),
+  run: (event, key) => {
+    const { previous, next } = neighboursOf(currentSlug());
+    const neighbour = key.key === 'j' || key.key === 'ArrowDown' ? next : previous;
+    if (neighbour) handlers.onOpen(neighbour.slug);
+  },
+});
+registerShortcut({
+  id: 'catalog-step', label: 'J / K', repeat: true,
+  keys: [{ key: 'j' }, { key: 'k' }, { key: 'ArrowDown' }, { key: 'ArrowUp' }],
+  when: onCatalog,
+  run: (event, key) => moveSelection(key.key === 'j' || key.key === 'ArrowDown' ? 1 : -1),
+});
+registerShortcut({
+  id: 'catalog-open', label: '↵', keys: [{ key: 'Enter' }],
+  when: () => onCatalog() && Boolean(state.selectedSlug),
+  run: () => handlers.onOpen(state.selectedSlug),
+});
+// s / a switch the problem pane to that tab; the same key again returns to Problem.
+registerShortcut({
+  id: 'reference-tab', label: 'S / A', keys: [{ key: 's' }, { key: 'a' }],
+  when: () => Boolean(openEntry()),
+  run: (event, key) => showTab(openEntry(), key.key === 's' ? 'solution' : 'article', { toggle: true }),
+});
+registerShortcut({
+  id: 'shuffle', label: 'R', keys: [{ key: 'r' }],
+  when: () => Boolean(openEntry()) || onCatalog(),
+  run: () => handlers.onShuffle(),
+});
+registerShortcut({
+  id: 'search', label: '/', keys: [{ key: '/' }],
+  when: onCodingRoute,
+  run: () => { if (currentSlug()) goBrowse(); searchEl.focus(); searchEl.select(); },
+});
+// Escape steps back one level: Solution/Article to the statement, a query to the full
+// list, a problem to the list. Anything open above the page (a dialog, a menu, Find, a
+// field) takes Escape first, so this only runs once there is nothing left to close.
+registerShortcut({
+  id: 'back', label: 'Esc', keys: [{ key: 'Escape' }],
+  when: onCodingRoute,
+  run: () => {
+    const open = openEntry();
+    if (open && currentTab(open.slug) !== 'problem') { showTab(open, 'problem'); return; }
     if (state.query) { state.query = ''; searchEl.value = ''; render(); return; }
     if (currentSlug()) goBrowse();
-    return;
+  },
+});
+
+// The search box's own keys: Enter opens the first match, ↓ moves into the list, Escape
+// hands the keyboard back. Every other key types.
+searchEl.addEventListener('keydown', event => {
+  if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === 'Enter') {
+    const list = visibleProblems(data, state);
+    if (list.length) { event.preventDefault(); searchEl.blur(); handlers.onOpen(list[0].slug); }
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault(); searchEl.blur(); moveSelection(1);
+  } else if (event.key === 'Escape') {
+    event.preventDefault(); searchEl.blur();
   }
-
-  if (event.key === '/' && !inTextField()) {
-    event.preventDefault();
-    if (currentSlug()) goBrowse();
-    searchEl.focus(); searchEl.select();
-    return;
-  }
-
-  if (inTextField()) {
-    if (!searching) return;
-    if (event.key === 'Enter') {
-      const list = visibleProblems(data, state);
-      if (list.length) { searchEl.blur(); handlers.onOpen(list[0].slug); }
-    }
-    if (event.key === 'ArrowDown') { event.preventDefault(); searchEl.blur(); moveSelection(1); }
-    return;
-  }
-
-  const slug = currentSlug();
-
-  if (slug) {
-    const entry = bySlug.get(slug);
-    if (!entry) return;
-    // s / a switch the problem pane to that tab; the same key again returns to Problem.
-    if (event.key === 's' || event.key === 'a') {
-      event.preventDefault();
-      showTab(entry, event.key === 's' ? 'solution' : 'article', { toggle: true });
-      return;
-    }
-    if (event.key === 'r') { event.preventDefault(); if (!event.repeat) handlers.onShuffle(); return; }
-    const { previous, next } = neighboursOf(slug);
-    if ((event.key === 'j' || event.key === 'ArrowDown') && next) { event.preventDefault(); handlers.onOpen(next.slug); }
-    if ((event.key === 'k' || event.key === 'ArrowUp') && previous) { event.preventDefault(); handlers.onOpen(previous.slug); }
-    return;
-  }
-
-  if (state.catalogMode === 'roadmap') return;
-  if (event.key === 'r') { event.preventDefault(); if (!event.repeat) handlers.onShuffle(); return; }
-  if (event.key === 'j' || event.key === 'ArrowDown') { event.preventDefault(); moveSelection(1); }
-  else if (event.key === 'k' || event.key === 'ArrowUp') { event.preventDefault(); moveSelection(-1); }
-  else if (event.key === 'Enter' && state.selectedSlug) { event.preventDefault(); handlers.onOpen(state.selectedSlug); }
 });
 
 searchEl.addEventListener('input', () => {

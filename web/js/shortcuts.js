@@ -16,12 +16,14 @@
 // ⌘⇧J, DevTools is ⌘⌥J). Firefox binds ⌘B to its bookmarks sidebar, which is the one
 // known collision and the price of matching the editor everyone already knows.
 //
-// The action keys — ⌘↵ submit, ⌘' run, ⌘S save — live in editor.js, next to what they do.
+// The action keys — ⌘↵ submit, ⌘' run, ⌘S save — are registered by the shared Python
+// editor (python-editor.js) for whichever screen mounted it. keyboard.js decides when any
+// of them applies.
 //
 // Matching is on `event.code`, the physical key, not `event.key`: a chord read through
 // `key` breaks under a non-US layout and under any modifier that rewrites the character.
 
-import { claimActionKey, hasOpenOverlay } from './keyboard.js';
+import { registerShortcut } from './keyboard.js';
 
 export const CHORDS = [
   { id: 'problem', code: 'KeyB', label: '⌘B', what: 'the problem statement' },
@@ -29,34 +31,23 @@ export const CHORDS = [
   { id: 'coach', code: 'Backslash', label: '⌘\\', what: 'the coach' },
 ];
 
-const handlers = new Map();
-
 /**
  * Own one chord for as long as the screen using it is mounted.
  * @returns {() => void} hand it back
  */
 export function onChord(id, fn) {
-  handlers.set(id, fn);
-  return () => { if (handlers.get(id) === fn) handlers.delete(id); };
+  const chord = CHORDS.find((c) => c.id === id);
+  // These pane chords belong only to the coding workspace. A module-level registration
+  // (coach) can outlive its screen; it must not consume board keys. keyboard.js claims
+  // them in the capture phase, so they work in the editor, its Find box and the composer.
+  // ⌘⇧B and ⌘⌥J belong to the browser: the chord takes neither Shift nor Option.
+  return registerShortcut({
+    id: `toggle-${id}`, label: chord.label, keys: [{ code: chord.code, mod: 'cmd' }],
+    when: () => /^#\/p\//.test(location.hash), run: fn,
+  });
 }
 
 /** The label to print on a button, or '' when nothing owns that id. */
 export function chordLabel(id) {
   return CHORDS.find((c) => c.id === id)?.label ?? '';
 }
-
-// Capture, not bubble. The editor and the composer both stop keydown from reaching the
-// document — correctly, so that the list shortcuts on the browse screen cannot fire while
-// you type. Capture runs before either of them, which is what makes these work everywhere.
-document.addEventListener('keydown', (event) => {
-  // These pane chords belong only to the coding workspace. A module-level
-  // registration (coach) can outlive its screen; it must not consume board keys.
-  if (!/^#\/p\//.test(location.hash) || hasOpenOverlay()) return;
-  if (!(event.metaKey || event.ctrlKey)) return;
-  if (event.altKey || event.shiftKey) return;      // ⌘⇧B and ⌘⌥J belong to the browser
-  const chord = CHORDS.find((c) => c.code === event.code);
-  if (!chord) return;
-  const fn = handlers.get(chord.id);
-  if (!fn) return;
-  if (claimActionKey(event)) fn();
-}, { capture: true });

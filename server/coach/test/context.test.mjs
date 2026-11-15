@@ -113,6 +113,19 @@ test('the prompt carries the CURRENT CONTEXT shape the coach is already trained 
   assert.ok(prompt.trimEnd().endsWith('where am I going wrong?'));
 });
 
+test('an opened video walkthrough is accepted by the log and told to the coach, honestly', async () => {
+  const { root, log } = await workspace();
+  await log.appendEvent('two-sum', 'problem_opened');
+  const before = buildPrompt({ context: await gatherContext({ root, slug: 'two-sum', sessionLog: log }), message: 'hi' }).prompt;
+  assert.ok(!before.includes('video walkthrough'));
+  await log.appendEvent('two-sum', 'revealed_video', { title: 'Two Sum', videoId: 'demo-video' });
+  const context = await gatherContext({ root, slug: 'two-sum', sessionLog: log });
+  assert.equal(context.revealedVideo, true);
+  assert.equal(context.revealedSolution, false);
+  const { prompt } = buildPrompt({ context, message: 'hi' });
+  assert.ok(prompt.includes('opened the video walkthrough for this problem (how much of it they watched is not recorded)'));
+});
+
 test('a problem with no notes says NONE, and names the file to create', async () => {
   const { root, log } = await workspace();
   const context = await gatherContext({ root, slug: 'new-problem', sessionLog: log });

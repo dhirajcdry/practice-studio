@@ -44,6 +44,8 @@ import {
 } from './interview.mjs';
 import { DesignStore, newInterviewId, isSafeInterviewId } from './store.mjs';
 import { writeInterviewDoc } from './render.mjs';
+import { designClock, designClockGaps, settleDesignClock, pauseDesign, resumeDesign, touchDesign } from './clock.mjs';
+import { attendedRecords, isTracked, lapseAt } from '../mock-clock.mjs';
 
 class DesignService {
   constructor({ root = HOME_ROOT, binary = process.env.STUDIO_COACH_BINARY || null, log = console } = {}) {
@@ -304,6 +306,7 @@ async function startDesign(svc, body, res) {
     startedAt: now,
   });
   if (!prior) {
+    state.lastSeenAt = now;
     if (state.prompt) state.topicSlug = topicFor(state.prompt).slug;
     if (problem) { state.topicSlug = problem.slug; state.problem = problem; }
     state.mode = body.mode === 'typed' ? 'typed' : 'voice';
@@ -312,7 +315,7 @@ async function startDesign(svc, body, res) {
   }
 
   const stream = new SseStream(res);
-  stream.send('interview', { id, startedAt: new Date(state.startedAt).toISOString(), level: state.level, minutes: state.minutes, mode: state.mode, topicSlug: state.topicSlug });
+  stream.send('interview', { id, startedAt: new Date(state.startedAt).toISOString(), clock: designClock(state), level: state.level, minutes: state.minutes, mode: state.mode, topicSlug: state.topicSlug });
 
   if (prior) {
     const opening = (await svc.store.readTurns(id)).find(t => t.kind === 'opening' && t.asked);
@@ -344,7 +347,7 @@ async function startDesign(svc, body, res) {
       recordTurn(state, { asked, at: new Date().toISOString() });
       await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'opening', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, asked, ...(activity?.length ? { activity } : {}) });
       const current = await svc.store.readState(id);
-      for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
+      for (const key of ['pausedAt', 'spentMs', 'startedAt', 'lastSeenAt', 'pauseReason']) {
         if (current && key in current) state[key] = current[key];
       }
       await svc.store.writeState(id, state);
@@ -367,9 +370,12 @@ async function handleTurn(req, res, ctx) {
   const svc = serviceFor(ctx), body = await readJsonBody(req), id = idFrom(body, ctx);
   const release = reserveTurn(svc, id);
   try {
-    const state = await svc.store.readState(id);
+    const state = await settleDesign(svc, id, await svc.store.readState(id));
     if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
     if (state.debriefed) throw new HttpError(409, 'CONFLICT', 'That interview is already finished.');
+    // Pacing reads `now - startedAt`, so a stopped clock takes no turn until Resume.
+    if (state.pausedAt) throw new HttpError(409, 'PAUSED', 'Resume the interview first.');
+    touchDesign(state);
     const choice = await readCoachChoice(svc.root, svc);
     const requestId = typeof body.requestId === 'string' && body.requestId.length > 0 && body.requestId.length <= 100 ? body.requestId : null;
     const said = typeof body.said === 'string' ? body.said.trim() : '';
@@ -412,7 +418,7 @@ async function handleTurn(req, res, ctx) {
         const replyKind = filler ? 'suppressed_filler' : !asked && !broke && tagged ? 'interviewer_silent' : 'turn';
         await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: replyKind, elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, ...(requestId ? { requestId, interrupted: Boolean(broke) } : { said }), ...(filler ? { raw: filler } : { asked }), phase: state.phase, ...(activity?.length ? { activity } : {}) });
         const current = await svc.store.readState(id);
-        for (const key of ['pausedAt', 'spentMs', 'startedAt', 'graph']) { if (current && key in current) state[key] = current[key]; }
+        for (const key of ['pausedAt', 'spentMs', 'startedAt', 'lastSeenAt', 'pauseReason', 'graph']) { if (current && key in current) state[key] = current[key]; }
         const durable = await svc.store.readTurns(id);
         const count = text => String(text || '').match(/\S+/g)?.length || 0;
         state.words = { candidate: durable.reduce((n, t) => n + count(t.said), 0), interviewer: durable.filter(t => t.kind !== 'debrief').reduce((n, t) => n + count(t.asked), 0) };
@@ -447,7 +453,7 @@ async function handleDone(req, res, ctx) {
   const release = reserveTurn(svc, id);
   try {
   const choice = await readCoachChoice(svc.root, svc);
-  const state = await svc.store.readState(id);
+  const state = await settleDesign(svc, id, await svc.store.readState(id));
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
 
   if (state.debriefed) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
@@ -494,7 +500,7 @@ async function handleDone(req, res, ctx) {
       state.endedAt = Date.now();
       await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'debrief', elapsedMs: Math.max(0, Date.now() - state.startedAt), provider: choice.provider, model: choice.model, asked, ...(activity?.length ? { activity } : {}) });
       const current = await svc.store.readState(id);
-      for (const key of ['pausedAt', 'spentMs', 'startedAt']) {
+      for (const key of ['pausedAt', 'spentMs', 'startedAt', 'lastSeenAt', 'pauseReason']) {
         if (current && key in current) state[key] = current[key];
       }
       await svc.store.writeState(id, state);
@@ -562,10 +568,13 @@ async function handleList(req, res, ctx) {
 async function handleGet(req, res, ctx) {
   const svc = serviceFor(ctx);
   const id = idFrom({}, ctx);
-  const state = await svc.store.readState(id);
+  // Opening an unfinished interview settles its clock first (see settleDesign).
+  const state = await withClockWrite(svc, id, async () => settleDesign(svc, id, await svc.store.readState(id)));
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
   const scenes = await svc.store.readScenes(id);
-  const turns = await svc.store.readTurns(id);
+  const raw = await svc.store.readTurns(id);
+  const { gaps, beforeIndex } = designClockGaps(state, raw, scenes);
+  const turns = attendedRecords(raw, gaps, beforeIndex);
   return sendJson(res, 200, {
     id,
     title: designTitle(state),
@@ -586,23 +595,26 @@ async function handleGet(req, res, ctx) {
     // True when continuing will start a new thread from the written record, which is
     // worth saying out loud rather than pretending nothing happened.
     rebuilt: !state.debriefed && !state.claudeSessionId,
-    elapsedMs: state.startedAt ? (state.endedAt ?? Date.now()) - state.startedAt : null,
+    // Attended time from the server; the page ticks locally from this, never from startedAt.
+    clock: designClock(state, raw, scenes),
+    elapsedMs: state.startedAt ? designClock(state, raw, scenes).elapsedMs : null,
     turns,
     elements: scenes.length ? scenes[scenes.length - 1].elements : [],
     scenes: scenes.length,
-    report: buildDesignReport(state, turns),
+    report: buildDesignReport(state, raw, scenes),
     followups: pairFollowups(await svc.store.readFollowups(id)).map(f => ({ ...f, pending: svc.reviewLive.get(`review/design/${id}`)?.requestId === f.requestId })),
   });
 }
 
 /**
- * POST /api/design/resume — carry on where you left off.
+ * POST /api/design/resume — carry on where you left off, on an explicit Resume.
  *
  * The clock is the interesting part. An interview resumed the next day has an elapsed
  * time of eighteen hours, which would put the phase machine past the end and fire the
  * debrief nudge immediately. So the start time is shifted forward to keep the *time
  * spent* intact: pick it up tomorrow and you have as many minutes left as you did when
- * you closed the tab.
+ * you closed the tab. Time spent is attended time: settleDesign first stops a clock that
+ * nobody attended at its last heartbeat (or, for an older record, its last activity).
  */
 async function handleResume(req, res, ctx) {
   const svc = serviceFor(ctx);
@@ -611,15 +623,14 @@ async function handleResume(req, res, ctx) {
   // Returning during generation waits for the recorded question, without a new turn.
   await svc.live.get(id)?.completion;
   return withClockWrite(svc, id, async () => {
-    const state = await svc.store.readState(id);
+    const state = await settleDesign(svc, id, await svc.store.readState(id));
     if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
     if (state.debriefed) {
       throw new HttpError(409, 'CONFLICT', 'That interview has already been debriefed. Start a new one.');
     }
-    const spent = state.pausedAt && Number.isFinite(state.spentMs) ? state.spentMs
-      : (state.startedAt ? (state.pausedAt ?? Date.now()) - state.startedAt : 0);
-    state.startedAt = Date.now() - spent;
-    state.pausedAt = null;
+    const wasPaused = Boolean(state.pausedAt);
+    const spent = resumeDesign(state);
+    if (wasPaused) await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'resume', elapsedMs: spent });
     // No thread to resume: the next turn rebuilds one from the transcript instead of
     // refusing. Flagged rather than done here, because it only costs anything on the
     // turn that actually needs it.
@@ -628,6 +639,8 @@ async function handleResume(req, res, ctx) {
     svc.lastGraph.delete(id);   // re-show the board on the first turn back
 
     const scenes = await svc.store.readScenes(id);
+    const turns = await svc.store.readTurns(id);
+    const { gaps, beforeIndex } = designClockGaps(state, turns, scenes);
     return sendJson(res, 200, {
       id,
       title: designTitle(state),
@@ -637,11 +650,12 @@ async function handleResume(req, res, ctx) {
       minutes: state.minutes,
       phase: state.phase,
       startedAt: new Date(state.startedAt).toISOString(),
+      clock: designClock(state),
       resumed: true,
       mode: state.mode || 'typed',
       thread: Boolean(await threadFor(svc, id)),
       rebuilt: Boolean(state.rehydrate),
-      turns: await svc.store.readTurns(id),
+      turns: attendedRecords(turns, gaps, beforeIndex),
       elements: scenes.length ? scenes[scenes.length - 1].elements : [],
     });
   });
@@ -653,15 +667,48 @@ async function handlePause(req, res, ctx) {
   const body = await readJsonBody(req);
   const id = idFrom(body, ctx);
   return withClockWrite(svc, id, async () => {
-    const state = await svc.store.readState(id);
+    const state = await settleDesign(svc, id, await svc.store.readState(id));
     if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
     if (state.debriefed) throw new HttpError(409, 'CONFLICT', 'This interview is already complete.');
-    if (!state.pausedAt) {
-      state.pausedAt = Date.now();
-      state.spentMs = state.startedAt ? Math.max(0, state.pausedAt - state.startedAt) : 0;
-    }
+    if (pauseDesign(state)) await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'pause', elapsedMs: state.spentMs });
     await svc.store.writeState(id, state);
-    return sendJson(res, 200, { ok: true, spentMs: state.spentMs });
+    return sendJson(res, 200, { ok: true, spentMs: state.spentMs, clock: designClock(state) });
+  });
+}
+
+/**
+ * Settles an unfinished interview's clock on the attended-time rule, atomically against
+ * other state writes, and returns the state as it now stands. Cheap when there is
+ * nothing to do: a tracked, attended interview reads nothing else.
+ */
+async function settleDesign(svc, id, state) {
+  if (!state || state.debriefed || state.endedAt) return state;
+  const tracked = isTracked(state);
+  if (tracked && (state.pausedAt || lapseAt(state, true) === null)) return state;
+  const turns = tracked ? [] : await svc.store.readTurns(id), scenes = tracked ? [] : await svc.store.readScenes(id);
+  let entry = null;
+  const fresh = await svc.store.patchState(id, current => {
+    if (current.debriefed || current.endedAt) return false;
+    const wasTracked = isTracked(current);
+    entry = settleDesignClock(current, turns, scenes, Date.now());
+    return Boolean(entry) || !wasTracked;
+  });
+  if (entry) await svc.store.appendTurn(id, { at: new Date().toISOString(), ...entry });
+  return fresh;
+}
+
+/**
+ * POST /api/design/heartbeat — the open, visible page saying someone is there. It only
+ * renews a running clock's lease and never restarts a stopped one. Cheap on purpose:
+ * one small state patch, no record line, no model, at most every 30 seconds.
+ */
+async function handleHeartbeat(req, res, ctx) {
+  const svc = serviceFor(ctx), body = await readJsonBody(req), id = idFrom(body, ctx);
+  return withClockWrite(svc, id, async () => {
+    let state = await settleDesign(svc, id, await svc.store.readState(id));
+    if (!state) throw new HttpError(404, 'NOT_FOUND', 'No such interview.');
+    if (!state.debriefed && !state.pausedAt) state = await svc.store.patchState(id, current => touchDesign(current));
+    return sendJson(res, 200, { clock: designClock(state), minutes: state.minutes, debriefed: Boolean(state.debriefed) });
   });
 }
 
@@ -691,10 +738,11 @@ async function handleExtend(req, res, ctx) {
     if (state.debriefed || state.endedAt != null) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
     state.originalMinutes ??= state.minutes;
     state.minutes += body.minutes;
+    touchDesign(state);
     state.extensions[body.requestId] = { minutes: body.minutes };
     await svc.store.appendTurn(id, { at: new Date().toISOString(), kind: 'time_extended', minutes: body.minutes, requestId: body.requestId });
     await svc.store.writeState(id, state);
-    return sendJson(res, 200, { state: { ...state } });
+    return sendJson(res, 200, { state: { ...state, clock: designClock(state) } });
   }); } finally { release(); }
 }
 
@@ -742,6 +790,7 @@ export const routes = {
   'POST /api/design/stop': handleStop,
   'POST /api/design/resume': handleResume,
   'POST /api/design/pause': handlePause,
+  'POST /api/design/heartbeat': handleHeartbeat,
   'POST /api/design/extend': handleExtend,
   'GET /api/design': handleList,
   'GET /api/design/:id': handleGet,

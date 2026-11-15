@@ -1,5 +1,5 @@
 import { cleanupChrome } from './chrome-cleanup.mjs';
-import { checkMockTime } from './mock-time-fixture.mjs';
+import { checkMockTime, checkMockAway } from './mock-time-fixture.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
 // Real browser wiring, fake interviewer, synthetic cached statement, scratch home.
 // No mic and no actual judge submission; verdicts enter through the same event API.
@@ -48,7 +48,7 @@ try {
     exampleTestcases: '[2,7,11,15]\n9', codeSnippets: [{ langSlug: 'python3', code: 'class Solution:\n    def twoSum(self, nums, target):\n        pass\n' }],
   } }));
   server = spawn(process.execPath, ['--input-type=module', '--eval', "globalThis.fetch = async () => { throw Error('Network disabled in interview check'); }; (await import('./server/index.mjs')).start();"], {
-    cwd: root, env: { ...process.env, STUDIO_TTS_PYTHON: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_SCRIPT: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_MODEL: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_VOICES: path.join(root, 'server/tts/test/fake-helper.mjs'), FAKE_INTERVIEW_TOKEN_MS: '8', FAKE_INTERVIEW_PROMPT: path.join(home, 'provider-calls.jsonl'), STUDIO_HOME: home, STUDIO_PORT: String(serverPort), STUDIO_MIRROR_DIR: '', STUDIO_COACH_BINARY: path.join(root, 'server/interview/test/fake-interviewer.mjs'), STUDIO_CODEX_BINARY: path.join(root, 'server/coach/test/bin/fake-codex.mjs') }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: root, env: { ...process.env, STUDIO_TTS_PYTHON: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_SCRIPT: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_MODEL: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_VOICES: path.join(root, 'server/tts/test/fake-helper.mjs'), FAKE_INTERVIEW_TOKEN_MS: '8', FAKE_INTERVIEW_PROMPT: path.join(home, 'provider-calls.jsonl'), STUDIO_HOME: home, STUDIO_PORT: String(serverPort), STUDIO_MIRROR_DIR: '', STUDIO_TEST_CLOCK: '1', STUDIO_COACH_BINARY: path.join(root, 'server/interview/test/fake-interviewer.mjs'), STUDIO_CODEX_BINARY: path.join(root, 'server/coach/test/bin/fake-codex.mjs') }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   for (const stream of [server.stdout, server.stderr]) stream.on('data', data => { logs = (logs + data).slice(-4000); });
   await until(async () => (await fetch(origin + '/api/health')).ok, 'server');
@@ -589,6 +589,13 @@ try {
   // The list itself, not just an open interview: four cards, one of them paused.
   await evaluate("document.querySelector('.interview-back').click();");
   await until(() => evaluate("return !document.querySelector('.interviews-overview').hidden;"), 'interview list shown');
+  // A finished interview left open does not come back after a reload: the tab opens on its list.
+  await evaluate(`document.querySelector('.interview-row[data-interview-id="${thirdId}"] .interview-row-summary').click();`);
+  await until(() => evaluate("return document.querySelector('.interviews-overview').hidden;"), 'finished interview opened');
+  await send('Page.reload', { ignoreCache: true });
+  await until(() => evaluate("return document.querySelector('.coach')?.dataset.sidebarTab === 'interviews' && document.querySelectorAll('.interview-row').length === 4;"), 'interviews tab after reload');
+  await sleep(400);
+  assert.equal(await evaluate("return !document.querySelector('.interviews-overview').hidden && document.querySelector('.interview-detail').hidden;"), true, 'reload shows the interview list');
   // The longest label must fit its row beside the date, even in a narrow sidebar.
   const rowFit = await evaluate(`
     const view = document.querySelector('.interviews-view'), badge = ${rowBadge(identity.id)}, top = badge.closest('.interview-row-top'), title = top.querySelector('strong');
@@ -651,7 +658,11 @@ try {
   await until(() => evaluate("return document.querySelector('.ci-feedback')?.textContent.includes('No report was generated');"), 'empty session completes without report');
   assert.equal(await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8'), beforeEmptyFinish, 'empty finish does not call provider');
   assert.equal(await evaluate("return document.querySelectorAll('.ci-mini-dim, .ci-dimension, .ci-open-report').length;"), 0, 'empty interview has no ratings or report button');
+  const emptyId = await evaluate("return document.querySelector('.ci-panel').dataset.interviewId;");
   await send('Page.reload', { ignoreCache: true });
+  // A reload opens the list; the finished record is one click away and still says so.
+  await until(() => evaluate(`return !document.querySelector('.interviews-overview').hidden && document.querySelector('.interview-row[data-interview-id="${emptyId}"]');`), 'list after reload');
+  await evaluate(`document.querySelector('.interview-row[data-interview-id="${emptyId}"] .interview-row-summary').click();`);
   await until(() => evaluate("return document.querySelector('.ci-feedback')?.textContent.includes('No report was generated');"), 'empty completion survives reload');
   // Deliberate silence: the microphone stays open while the reply is decided, and no
   // bubble, spoken line or failure notice follows. Capture and ASR are browser fakes.
@@ -702,6 +713,8 @@ try {
   console.log('Mock continuous voice', await evaluate(`return (${checkMockVoice.toString()})('coding');`));
   const extended = await evaluate(`const id=document.querySelector('.ci-panel').dataset.interviewId; return (${checkMockTime.toString()})('coding', '/api/interview/two-sum/'+id);`);
   console.log('Mock time controls', extended);
+  // Left running without a pause: paused at the moment of leaving, sleep included (mock-time-fixture.mjs).
+  console.log('Mock attended time', await evaluate(`return (${checkMockAway.toString()})('coding', { sleep: true });`));
   await send('Page.reload', { ignoreCache: true });
   await until(() => evaluate(`return JSON.parse(localStorage.getItem('studio.interview.active.v1'))?.minutes === ${extended.extended} && !!document.querySelector('.ci-panel');`), 'extended budget survives reload');
   console.log('Interview browser check passed: opening, turn, verdict, draft/reload, loading isolation, stale completion recovery, restart, debrief, controls, coach restoration.');

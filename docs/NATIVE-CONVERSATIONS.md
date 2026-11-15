@@ -117,6 +117,7 @@ dropping evidence, disabling tools, or replacing the conversation with a short s
 | Native identity; code diffs; provider switches; leases; compaction; failed commits; expiry; interrupted progress | [`native-sessions.test.mjs`](../server/coach/test/native-sessions.test.mjs) |
 | Evidence selection and coverage; code-change records; omitted evidence retrieval | [`context-policy.test.mjs`](../server/coach/test/context-policy.test.mjs) |
 | Codex resume, permissions, stale callbacks and current-turn usage | [`codex-cli.test.mjs`](../server/coach/test/codex-cli.test.mjs) |
+| Coding chat titles: tool only in the coding chat, titles never in context, naming does not change the signature, resume after reload keeps the segment | [`chat-titles.test.mjs`](../server/coach/test/chat-titles.test.mjs), `scripts/check-coach-reload.mjs` |
 | Real route report-to-follow-up continuity, raw-record immutability and practice bootstrap | [`interview/routes.test.mjs`](../server/interview/routes.test.mjs), [`design/routes.test.mjs`](../server/design/routes.test.mjs), [`practice/routes.test.mjs`](../server/practice/routes.test.mjs) |
 
 Run `npm test` and the affected browser checks below against scratch homes/fake providers.

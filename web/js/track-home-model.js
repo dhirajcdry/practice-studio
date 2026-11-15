@@ -4,9 +4,9 @@
 // practice sessions and GET /api/track-home. Nothing is averaged, scored or guessed. A
 // count that is zero or unknown is left out, a mock without a structured report has no
 // signal, and a skill without an evidence-backed rating says so.
-import { signalLabel } from './interview-format.js';
+import { ratingTone, signalLabel } from './interview-format.js';
 
-// With no library problem chosen, each way in starts on one of these.
+// Without a library problem, the stage starts on one of these.
 export const SURPRISE = 'surprise';   // a problem Studio prepares, one you have not seen
 export const OWN = 'own';             // a brief you write yourself
 export const TREND = 5;               // finished mocks drawn in each skill's marks
@@ -72,14 +72,57 @@ export function statusLine(slug, items, now = Date.now()) {
   return 'Not tried yet';
 }
 
+/** The two ways in, as the stage's switch names them. Practise is the first-visit default. */
+export const MODES = ['practise', 'mock'];
+export const modeOrDefault = value => MODES.includes(value) ? value : 'practise';
+
 /**
- * What a way in can start on when no library problem is chosen, Surprise me first (the
- * default), then your own brief. Both tracks run a mock on a brief: system design takes it
- * as the prompt, and LLD has Studio prepare a scenario (private facts, curveball) for it.
- * A track that cannot run one passes ownMock: false.
+ * Each library problem's mark in the problem picker, from the same records as its status
+ * line: not tried, practised, an unfinished mock, or the newest finished mock's outcome
+ * (the signal's tone, or 'mocked' when that report has no signal).
  */
-export function problemChoices(kind, { ownMock = true } = {}) {
-  return [{ id: SURPRISE, label: 'Surprise me' }, ...(kind === 'practise' || ownMock ? [{ id: OWN, label: 'My own problem' }] : [])];
+export function problemTone(slug, items) {
+  const mine = items.filter(item => item.slug === slug);
+  const mocks = mine.filter(item => item.kind === 'mock');
+  if (mocks.some(item => !item.finished)) return 'unfinished';
+  if (mocks.length) {
+    const signal = mocks[0].assessment?.signal;
+    return signal ? ratingTone(signal) === 'neutral' ? 'mocked' : ratingTone(signal) : 'mocked';
+  }
+  return mine.length ? 'practised' : 'new';
+}
+/** The picker's legend, in display order. Only the tones on screen are listed. */
+export const TONE_LABELS = { new: 'Not tried', practised: 'Practised', unfinished: 'Mock unfinished',
+  success: 'Last mock: hire', warn: 'Last mock: lean no', danger: 'Last mock: no hire', mocked: 'Last mock: no grade' };
+
+/** Library problems whose title holds every word typed into the filter. */
+export function filterProblems(problems, query) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  return words.length ? problems.filter(p => words.every(word => p.title.toLowerCase().includes(word))) : problems;
+}
+
+/** A practice session's recorded stopwatch time, when it has a whole minute stopped on it. */
+export function practiceMinutes(timer) {
+  const ms = Number(timer?.elapsedMs);
+  if (!Number.isFinite(ms) || ms < 60000 || timer?.runningSince != null) return '';
+  const minutes = Math.round(ms / 60000), hours = Math.floor(minutes / 60);
+  return hours ? `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ''}` : `${minutes} min`;
+}
+
+/**
+ * The quiet line under each mode's promise: the newest session of that kind, from the
+ * records. "Last practice: News feed · 41 min · 5 days ago", "Last mock: URL shortener ·
+ * Lean no · 3 days ago", or plainly "No practice yet" / "No mock yet".
+ */
+export function lastLine(mode, items, now = Date.now()) {
+  if (mode === 'mock') {
+    const last = items.find(item => item.kind === 'mock');
+    if (!last) return 'No mock yet';
+    return `Last mock: ${[last.title, last.finished ? signalText(last) || 'No grade' : 'Unfinished', ago(last.at, now)].filter(Boolean).join(' · ')}`;
+  }
+  const last = items.find(item => item.kind === 'practice');
+  if (!last) return 'No practice yet';
+  return `Last practice: ${[last.title, practiceMinutes(last.session?.timer), ago(last.at, now)].filter(Boolean).join(' · ')}`;
 }
 
 /**

@@ -98,6 +98,30 @@ changed results are sent again. Read explicitly from the resource to repeat a pa
 Exact result pages persist under `context/tool-results/<target-hash>` across native turns.
 Raw run output, current code and evidence are preserved, never silently discarded.
 
+## Chat titles and the coach landing screen
+
+A coding chat's name is Studio metadata, kept in `tracks/coding/problems/<slug>/chat-titles.json`
+(`{version, titles: {<chat id>: {title, by, at}}}`) beside `chats.jsonl`, which is never
+rewritten for it. The coach names a chat with `name_chat` (3-60 characters, one plain line)
+during an ordinary turn, usually its first reply; no extra or upkeep turn exists for it.
+Studio validates and writes the file (Claude's file tools are denied it). The action is
+`effect: 'meta'`: it reaches the page so the thread strip updates, but draws no receipt
+card and adds nothing to the activity summary. A learner rename (click the strip title,
+`PUT /api/problems/:slug/chats/:id/title`) is marked `by: learner` and the coach cannot
+replace it. An unnamed chat is listed by its first question, cleaned at read time
+(`web/js/chat-title.js`: code fences dropped, whitespace and `..` runs collapsed, cut at a
+word). Titles are never sent to the model. `name_chat` exists only in the coding chat's
+tool list; mocks, practice and reviews do not get it. Adding it changed the coding chat's
+tool signature once, so each existing coding conversation starts one
+`instructions-or-tools-changed` segment (with the usual saved-history handoff) on its next
+turn; later turns resume normally and naming never changes the signature again.
+
+Opening a problem or reloading shows the landing screen (starters, Recent chats, the
+composer with any saved draft). A message sent from it starts a new chat. The previous
+chat is first in Recent chats; choosing it resumes the same `coding:<slug>:<chat-id>`
+conversation and native segment. A reply still arriving, or finished while no page was
+watching, reopens inside its own chat instead (the run carries its `chatId`).
+
 ## Inspection and public research
 
 Settings → What was sent? opens the request inspector: exact application prompt,
@@ -263,6 +287,36 @@ start a new native segment with the saved conversation handoff; unrelated scope/
 changes do not. No automatic upkeep or follow-up inference is started. Utility jobs,
 including picture generation, do not receive coaching guidance. Settings → What was
 sent? exposes the exact instruction snapshot used by a request.
+
+## Mock clock: attended time
+
+Every timed mock (coding, LLD, system design) counts time only while it is demonstrably
+attended, and the server owns that count (`server/mock-clock.mjs`). The open page renews
+`lastSeenAt` with `POST /api/interview/heartbeat` or `/api/design/heartbeat` at most every
+30 seconds, only while the mock runs, the page is visible and someone has used it (key,
+pointer, wheel, speech) in the last 10 minutes; any other attended request (a coding idle
+poll, a turn, an extension) renews it too, so a present coding candidate rarely needs one.
+Hiding or closing the page sends one keepalive heartbeat. After 90 seconds without one, the
+session is paused from `lastSeenAt`; the next server touch appends an explicit
+`{kind:'pause', reason:'away', basis:'heartbeat'}` record. A heartbeat only renews a running
+clock and never restarts a stopped one; Resume is always explicit. Opening a mock never
+resumes it. A shorter absence (a blur, a tab switch, a reload) keeps counting. Laptop sleep
+and a server restart read the same way, from the saved `lastSeenAt`.
+
+Records from before heartbeats have no `lastSeenAt`. On the active-time axis (records'
+pause-adjusted `elapsedMs`, design scenes placed from the record before them, and a coding
+candidate's last speech or typing in the current run), any stretch over 30 minutes with
+nothing recorded is time away, from the last recorded activity. Finished records are derived
+at read time. An unfinished one gets one appended `clock_correction` record (basis, threshold,
+gaps, raw and attended times) when first opened or touched, and is tracked from then on.
+Existing lines are never rewritten. Screens, reports, phase times, transcript stamps
+(`attendedMs` in responses), `interview.md` and interviewer pacing all use attended time;
+where a legacy derivation left time out, the report says so.
+
+The page ticks its clock from the last server reading on the monotonic clock; it never
+derives elapsed time from `startedAt`. Responses carry `clock: { elapsedMs, running,
+pauseReason, awayMs }`. Browser checks move a scratch server's clock with
+`STUDIO_TEST_CLOCK=1` (`server/test-clock.mjs`); Studio itself never enables it.
 
 ## Mock budget extensions
 

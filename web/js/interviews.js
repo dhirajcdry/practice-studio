@@ -8,7 +8,9 @@ import { icon } from './ui/icon.js';
 const labels = { in_progress: 'In progress', paused: 'Paused', completed: 'Completed', needs_attention: 'Needs attention' };
 export function createInterviews(entry) {
   const { slug } = entry;
-  let records = [], panel = null, selected = readSidebar(slug).interviewId || null;
+  // Opening a problem, or reloading, shows the list, like Chat lands on its new-chat screen.
+  // A live interview is the exception: coach.js opens it straight away.
+  let records = [], panel = null, selected = null;
   let visible = false, disposed = false, generation = 0, panelEpoch = 0;
   const rows = new Map();
   const list = el('div', { class: 'interview-list' });

@@ -1,6 +1,8 @@
 // Presentation only: these helpers never change the interview's raw record.
 export function elapsedInterview(record, now = Date.now()) {
   if (!Number.isFinite(record.startedAt)) return 0;
+  // The server's attended-time reading, when the record carries one (server/mock-clock.mjs).
+  if (Number.isFinite(record.clock?.elapsedMs)) return record.clock.elapsedMs;
   return Math.max(0, Math.min(record.endedAt ?? now, record.pausedAt ?? Infinity) - record.startedAt - (record.pausedMs || 0));
 }
 export function interviewDuration(record, now = Date.now()) {

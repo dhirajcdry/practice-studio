@@ -40,10 +40,13 @@ test('detached turn completes, appends the question, and retains a navigation pa
     assert.ok(state.pausedAt);
     const turns = await svc.store.readTurns(id);
     assert.deepEqual(turns.slice(0, before.length), before);
-    assert.equal(turns.at(-1).asked, reply);
-    assert.equal(turns.at(-1).said, 'Hash the key.');
+    // Pause and resume are records too now; the reply is the last thing said.
+    const reply_ = turns.findLast(t => t.kind === 'turn');
+    assert.equal(reply_.asked, reply);
+    assert.equal(reply_.said, 'Hash the key.');
+    assert.ok(turns.some(t => t.kind === 'pause'));
     const resumed = await call('resume', { interviewId: id });
-    assert.equal(JSON.parse(resumed.raw).turns.at(-1).asked, reply);
+    assert.equal(JSON.parse(resumed.raw).turns.findLast(t => t.kind === 'turn').asked, reply);
   } finally {
     delete process.env.STUDIO_FAKE_REPLY;
     delete process.env.STUDIO_FAKE_CHUNK_DELAY;

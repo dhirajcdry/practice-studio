@@ -18,9 +18,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { startScratch } from './check-scratch.mjs';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const scratch = process.env.STUDIO_ORIGIN ? null : await startScratch(4182);
+const scratch = process.env.STUDIO_ORIGIN ? null : await startScratch(Number(process.env.STUDIO_CHECK_PORT) || 4182);
 const ORIGIN = process.env.STUDIO_ORIGIN || scratch?.origin;
-const PORT = 9334;
+const PORT = process.env.STUDIO_CHECK_PORT ? Number(process.env.STUDIO_CHECK_PORT) + 5255 : 9334;
 const PROFILE = await fsp.mkdtemp(`${os.tmpdir()}/studio-shortcut-profile-`);
 
 // key, and the modifiers the browser reserves it with.

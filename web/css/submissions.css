@@ -94,12 +94,20 @@
 .submission-status:empty{display:none}
 /* ---- chat history and attachment ---- */
 .recent-chats{margin-top:var(--space-5)}
+/* A saved chat is a sidebar record, like an interview or a submission: its name on one
+   line (cut with an ellipsis, the whole name in a tooltip), a quiet date and turn count. */
+.recent-chat{color:var(--ink);border:0;--content-stack-gap:var(--space-1)}
+.recent-chat-top{display:flex;align-items:center;gap:var(--space-2);min-width:0;width:100%;min-height:20px}
+.recent-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 var(--text-sm)/var(--line-md) var(--ui);overflow-wrap:normal}
+.recent-chat-top .ui-badge{flex:none}
+.recent-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--space-2);font-size:var(--text-xs);line-height:var(--line-md);min-width:0}
+.recent-meta>*+*::before{content:'·';margin-right:var(--space-2);color:var(--ink-50)}
+.recent-chat:disabled{cursor:default;opacity:.55}
+.recent-chat:disabled:hover{background:transparent}
+/* Full width, its words on the rows' text edge. */
+body .recent-chats .recent-all.btn.btn,body .chat-history-popover .recent-all.btn.btn{display:flex;width:100%;justify-content:flex-start;margin-top:var(--space-1);padding-inline:var(--content-inset);box-sizing:border-box;color:var(--ink-70)}
 .chat-history-heading{font:600 var(--text-xs)/var(--line-sm) var(--ui);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-50);padding:var(--space-1) 0 var(--space-2)}
-.recent-chat{width:100%;min-width:0;text-align:left;background:transparent;border:0;color:var(--ink);cursor:pointer;box-sizing:border-box;margin:2px 0;border-radius:var(--row-radius);box-shadow:none}
-.recent-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden;font:var(--text-sm)/var(--line-md) var(--ui)}
 
-.recent-chat .current{color:var(--accent)}
-.recent-chat .current:before{content:'';display:inline-block;width:6px;height:6px;margin-right:var(--space-1);border-radius:50%;background:currentColor;vertical-align:middle}
 .coach{position:relative}
 .chat-history-popover{position:absolute;left:10px;right:10px;max-height:60%;overflow:auto;padding:14px;background:var(--card);border:var(--float-border);border-radius:var(--float-radius);box-shadow:var(--float-shadow);z-index:5;transform-origin:top right}
 .chat-history-popover[hidden],.chat-icon[hidden],.submission-attachment[hidden]{display:none}
@@ -126,4 +134,3 @@ body:not(.motion-off) .chat-history-popover:not([hidden]){animation:chat-popover
 
 body .recent-chat:focus-visible{background:var(--row-hover-bg);box-shadow:none}
 
-.recent-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}

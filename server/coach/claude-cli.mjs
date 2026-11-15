@@ -86,7 +86,7 @@ export function permissionArgs(root) {
   const deny = [
     'WebFetch',
     'WebSearch',
-    ...['Write','Edit'].flatMap(t=>['meta.json','problem.json','solution.py','coach-session.json','chats.jsonl','LEARNING.md','attempts/**','sessions/**','submissions/**','interviews/**','practice/**'].map(file=>p(t,`/tracks/*/problems/*/${file}`))),
+    ...['Write','Edit'].flatMap(t=>['meta.json','problem.json','solution.py','coach-session.json','chats.jsonl','chat-titles.json','LEARNING.md','attempts/**','sessions/**','submissions/**','interviews/**','practice/**'].map(file=>p(t,`/tracks/*/problems/*/${file}`))),
     ...['Write','Edit'].flatMap(t=>['/storage-migration.jsonl','/usage/**','/shared/**','/tracks/*/MEMORY.md'].map(file=>p(t,file))),
     p('Write', '/learner-profile.json'),
     p('Edit', '/learner-profile.json'),

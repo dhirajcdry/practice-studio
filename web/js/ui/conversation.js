@@ -83,7 +83,9 @@ export function bindConversation(log, { composer = null, viewport = () => log, o
     regroup = false;
     }
     for (const node of dirty) if (node.isConnected) decorateConversationCode(node);
-    if (initialized && dirty.size && !bottom) unread = true;
+    // Only a conversation has a latest message to jump to; a landing screen that grows
+    // (its Recent chats arriving) is not unread news.
+    if (initialized && dirty.size && !bottom && log.querySelector('.ui-message')) unread = true;
     dirty.clear(); initialized = true; scroll();
   }
   const schedule = () => { if (!frame) frame = requestAnimationFrame(paint); };
@@ -100,7 +102,8 @@ export function bindConversation(log, { composer = null, viewport = () => log, o
   // Capture also catches an outer coding-pane scroll owner.
   const onScroll = event => { if (event.target === viewport()) scroll(); };
   log.ownerDocument.addEventListener('scroll', onScroll, true);
-  const resized = new ResizeObserver(() => { const view = viewport(); if (pinned && view === log && !atBottom()) view.scrollTop = view.scrollHeight; });
+  // A landing page (data-landing) is read from its top; only a conversation stays pinned to its end.
+  const resized = new ResizeObserver(() => { const view = viewport(); if (pinned && view === log && !log.querySelector(':scope > [data-landing]') && !atBottom()) view.scrollTop = view.scrollHeight; });
   resized.observe(log);
   dirty.add(log); paint();
   // Screens that build their layout after binding place `anchor`, never the bare button.

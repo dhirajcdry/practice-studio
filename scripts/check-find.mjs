@@ -28,8 +28,8 @@ import { startScratch, requireFreePort } from './check-scratch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9341;
-const SERVER_PORT = 4185;
+const SERVER_PORT = Number(process.env.STUDIO_CHECK_PORT) || 4185;
+const PORT = process.env.STUDIO_CHECK_PORT ? SERVER_PORT + 5255 : 9341;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
 await requireFreePort(PORT);

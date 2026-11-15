@@ -15,7 +15,7 @@
 // timestamps to line speech up against what was happening in the editor.
 
 import { el } from './dom.js';
-import { claimActionKey, hasOpenOverlay, isTextEntry } from './keyboard.js';
+import { registerShortcut } from './keyboard.js';
 import { transcribeAudio, logSessionEvent } from './api.js';
 import { readAttempt, saveAttempt, resumeDecision } from './attempt-state.js';
 
@@ -440,18 +440,14 @@ export function installRecorder(getSlug, { getTitle, onAttemptStart, onAttemptEn
   // Alt-R, NOT Cmd/Ctrl-Shift-R. That one is hard reload in every browser, and taking
   // it meant the page could not be force-refreshed while a problem was open. A shortcut
   // this app invents must never sit on one the browser already owns.
-  const onKey = (event) => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || !event.altKey || hasOpenOverlay()) return;
-    if (event.code !== 'KeyR') return;              // code, not key: Alt-R types "®" on macOS
-    const node = document.activeElement;
-    if (isTextEntry(node)) return;
-    if (!active.isLive() && !getSlug()) return;
-    if (claimActionKey(event)) active.requestAction();
-  };
-  document.addEventListener('keydown', onKey);
+  // code, not key: Alt-R types "®" on macOS. Typing keeps it (it is a character there).
+  const releaseKey = registerShortcut({
+    id: 'attempt', label: '⌥R', keys: [{ code: 'KeyR', mod: 'alt' }], owns: 'typing',
+    when: () => active.isLive() || Boolean(getSlug()), run: () => active.requestAction(),
+  });
 
   const previousDispose = active.dispose;
-  active.dispose = () => { document.removeEventListener('keydown', onKey); previousDispose(); };
+  active.dispose = () => { releaseKey(); previousDispose(); };
   return active;
 }
 

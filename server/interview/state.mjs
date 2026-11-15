@@ -1,4 +1,7 @@
 // Pure interview accounting. Times are active milliseconds since the wall-clock start.
+// Elapsed time is attended time: see server/mock-clock.mjs for the heartbeat rule and
+// how records from before it are read.
+import { lapseAt, isTracked, silentGaps, activityPoints, gapsTotal, withoutGaps, recordedCorrection, clockReading, LEGACY_GAP_MS, AWAY_AFTER_MS } from '../mock-clock.mjs';
 export const PHASES = Object.freeze(['clarify', 'approach', 'code', 'test', 'followup']);
 export function newState({ slug, minutes = 45, mode = 'voice', startedAt = Date.now() }) {
   if (![30, 45, 60].includes(minutes)) throw Error('Choose 30, 45, or 60 minutes.');
@@ -9,9 +12,17 @@ export function newState({ slug, minutes = 45, mode = 'voice', startedAt = Date.
     lastInterjectAt: null, pendingEvents: [], warningGiven: false, debriefed: false,
     lastCode: null, requests: {}, coachProvider: null, coachModel: null, claudeSessionId: null };
 }
+const clockRunning = state => state.pausedAt == null && state.endedAt == null && !state.debriefed;
 export function elapsed(state, now = Date.now()) {
-  const end = Math.min(state.endedAt ?? now, state.pausedAt ?? Infinity);
-  return Math.max(0, end - state.startedAt - state.pausedMs);
+  // A tracked session nobody has attended for AWAY_AFTER_MS stopped at its last heartbeat.
+  const end = Math.min(state.endedAt ?? now, state.pausedAt ?? lapseAt(state, clockRunning(state), now) ?? Infinity);
+  return Math.max(0, end - state.startedAt - (state.pausedMs || 0));
+}
+/** An attended contact while the clock runs renews the lease; it never restarts a lapsed clock. */
+export function touch(state, now = Date.now()) {
+  if (!isTracked(state) || !clockRunning(state) || lapseAt(state, true, now) !== null) return false;
+  state.lastSeenAt = Math.max(state.lastSeenAt, now);
+  return true;
 }
 export function phaseTimes(state, now = Date.now()) {
   return { ...state.phaseMs, [state.phase]: state.phaseMs[state.phase] + elapsed(state, now) - state.phaseSinceMs };
@@ -22,9 +33,86 @@ export function advance(state, phase, now = Date.now()) {
   state.phaseSinceMs = elapsed(state, now);
   state.phase = phase;
 }
-export function pause(state, now = Date.now()) { state.pausedAt ??= now; }
+export function pause(state, now = Date.now(), reason = 'pause') {
+  if (state.pausedAt != null) return;
+  const lapse = lapseAt(state, clockRunning(state), now);
+  state.pausedAt = lapse ?? now;
+  state.pauseReason = lapse === null ? reason : 'away';
+}
 export function resume(state, now = Date.now()) {
-  if (state.pausedAt !== null) { state.pausedMs += now - state.pausedAt; state.pausedAt = null; }
+  if (state.pausedAt != null) { state.pausedMs += now - state.pausedAt; state.pausedAt = null; }
+  state.pauseReason = null;
+  state.lastSeenAt = now;
+}
+
+/**
+ * Stretches of a record from before heartbeats with nothing recorded for longer than
+ * LEGACY_GAP_MS. Points are the records' own active-time stamps, plus the candidate's
+ * last speech and typing when they fall in the current run. Tracked sessions have none:
+ * their correction, if any, is already in the clock.
+ */
+export function legacyGaps(state, turns = [], now = Date.now()) {
+  if (isTracked(state)) return [];
+  const end = elapsed(state, now);
+  const points = activityPoints(turns);
+  const last = points.length ? Math.max(...points) : 0;
+  for (const at of [state.lastSpeechAt, state.lastTypingAt]) {
+    if (!Number.isFinite(at)) continue;
+    const ms = Math.min(at, state.pausedAt ?? Infinity, state.endedAt ?? Infinity) - state.startedAt - (state.pausedMs || 0);
+    if (ms >= last && ms <= end) points.push(ms);
+  }
+  return silentGaps(points, end);
+}
+/** The gaps to take out of this record's stamps, and the records they apply to. */
+export function clockGaps(state, turns = [], now = Date.now()) {
+  if (!isTracked(state)) return { gaps: legacyGaps(state, turns, now), beforeIndex: turns.length };
+  const correction = recordedCorrection(turns);
+  return correction ? { gaps: correction.gaps, beforeIndex: correction.index } : { gaps: [], beforeIndex: 0 };
+}
+/** Phase times with each away stretch taken from the phase that was in force during it. */
+export function attendedPhaseTimes(state, turns, gaps, now = Date.now()) {
+  const times = phaseTimes(state, now);
+  for (const gap of gaps) {
+    const before = turns.findLast(t => Number.isFinite(t.elapsedMs) && t.elapsedMs <= gap.fromMs && PHASES.includes(t.phase));
+    const phase = before?.phase || state.phase;
+    times[phase] = Math.max(0, (times[phase] || 0) - (gap.toMs - gap.fromMs));
+  }
+  return times;
+}
+/** The clock as screens and reports read it: attended time, with what was left out. */
+export function interviewClock(state, turns = null, now = Date.now()) {
+  const running = clockRunning(state), lapse = lapseAt(state, running, now);
+  const raw = elapsed(state, now);
+  const { gaps } = turns ? clockGaps(state, turns, now) : { gaps: [] };
+  const legacy = !isTracked(state);
+  const away = legacy ? gapsTotal(gaps) : 0;
+  const tailAway = legacy && gaps.length > 0 && gaps.at(-1).toMs >= raw;
+  return clockReading({ elapsedMs: raw - away, rawElapsedMs: legacy ? raw : raw + gapsTotal(gaps), running: running && lapse === null && !tailAway,
+    pauseReason: lapse !== null || tailAway ? 'away' : state.pauseReason || 'pause', gaps, basis: gaps.length ? 'recorded activity' : null });
+}
+/**
+ * Brings an unfinished session's clock onto the rule, once. A tracked session that has
+ * lapsed is paused at its last heartbeat; a session from before heartbeats has its silent
+ * stretches taken out and starts being tracked. Returns the record to append, if any.
+ */
+export function settleClock(state, turns = [], now = Date.now()) {
+  if (state.debriefed || state.endedAt != null) return null;
+  if (isTracked(state)) {
+    const lapse = lapseAt(state, clockRunning(state), now);
+    if (lapse === null) return null;
+    state.pausedAt = lapse; state.pauseReason = 'away';
+    return { kind: 'pause', reason: 'away', basis: 'heartbeat', lastSeenAt: new Date(lapse).toISOString(), awayAfterMs: AWAY_AFTER_MS };
+  }
+  const gaps = legacyGaps(state, turns, now), raw = elapsed(state, now);
+  state.lastSeenAt = now;
+  if (!gaps.length) return null;
+  const away = gapsTotal(gaps), tail = gaps.at(-1).toMs >= raw;
+  const times = attendedPhaseTimes(state, turns, gaps, now);
+  state.hints = (state.hints || []).map(h => ({ ...h, elapsedMs: withoutGaps(h.elapsedMs, gaps) }));
+  if (state.pausedAt == null && tail) { state.pausedAt = now; state.pauseReason = 'away'; }
+  state.pausedMs = (state.pausedMs || 0) + away;
+  state.phaseMs = times; state.phaseSinceMs = elapsed(state, now);
+  return { kind: 'clock_correction', basis: 'recorded activity', thresholdMs: LEGACY_GAP_MS, gaps, rawElapsedMs: raw, attendedMs: raw - away, inferredPause: tail };
 }
 export function recordHints(state, levels, now = Date.now()) {
   for (const level of levels) if (['nudge', 'narrow', 'explicit'].includes(level)) {

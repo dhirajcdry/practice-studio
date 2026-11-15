@@ -40,7 +40,7 @@ export function normalizeTurnActivity(turn) {
   return source.filter(item => item && typeof item === 'object').map(item => {
     const tool = String(item.tool || item.name || '').replace(/^mcp__studio__/, '');
     const display = toolDisplay(tool);
-    return { tool, effect: ['read', 'change', 'note', 'handoff'].includes(item.effect) ? item.effect : display.effect,
+    return { tool, effect: ['read', 'change', 'note', 'handoff', 'meta'].includes(item.effect) ? item.effect : display.effect,
       ...(Number.isFinite(item.ms) ? { ms: Math.max(0, item.ms) } : {}), display };
   });
 }

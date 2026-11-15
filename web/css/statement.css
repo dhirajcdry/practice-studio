@@ -70,3 +70,36 @@ body .pcol .ui-pane-header .ui-pane-tools{margin-left:auto}
 .pane-links{display:flex;align-items:center;gap:var(--space-1);min-height:38px}
 body .pane-links .pane-link{gap:var(--space-1);padding:0 var(--space-2);min-height:var(--control-sm);font-size:var(--text-xs);color:var(--ink-50);text-decoration:none}
 body .pane-links .pane-link:hover{color:var(--ink)}
+
+/* The Video tab: the walkthrough fills the pane at 16:9, as large as the pane's visible
+   height allows (--video-fit-h is measured by video-player.js), centred, at most 1200px. */
+.video-body{--video-w:min(100%,1200px,calc(var(--video-fit-h,60vh) * 16 / 9));display:flex;flex-direction:column;align-items:center;gap:var(--space-2)}
+.video-stage{display:flex;justify-content:center;width:100%;min-width:0}
+.video-stage>.state{flex:1;min-width:0}
+.video-frame{position:relative;width:var(--video-w);aspect-ratio:16 / 9;overflow:hidden;border-radius:var(--r-sm);background:var(--well)}
+.video-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-50);font:500 var(--text-xs)/var(--line-sm) var(--ui)}
+.video-player{position:absolute;inset:0;width:100%;height:100%;border:0;opacity:0}
+.video-player.is-ready{opacity:1}
+.video-bar{display:flex;align-items:center;flex-wrap:wrap;gap:0 var(--space-3);width:var(--video-w);min-width:0}
+.video-bar[hidden]{display:none}
+.video-status{display:flex;flex-direction:column;flex:1 1 10rem;min-width:0;color:var(--ink-50);font:var(--text-xs)/var(--line-md) var(--ui)}
+.video-focus-note{color:var(--accent)}
+.video-focus-note:empty{display:none}
+.video-bar .pane-links{flex:none;margin-left:auto}
+
+/* The pane's tabs (up to five) keep one row at every pane width. The header is a size
+   container, so a family can tighten its tab spacing where the pane is narrow. Narrower
+   still (a pane dragged to its 280px minimum), the strip scrolls sideways without a
+   scrollbar, fades at the edge it continues past (data-overflow, set by problem.js), and
+   keeps the selected tab in view. */
+body .pcol .ui-pane-header{container:pane-head / inline-size}
+@container pane-head (max-width:380px){
+  body:not(#_) .pcol .problem-tabs.ui-tabs{gap:var(--space-2)}
+  body.theme-dunes .pcol .problem-tabs .ui-tab.ui-tab{letter-spacing:.06em}
+  body.theme-broadsheet:not(#_) .pcol .problem-tabs.ui-tabs{gap:6px}
+}
+body .pcol .problem-tabs{scrollbar-width:none;overscroll-behavior-x:contain}
+body .pcol .problem-tabs::-webkit-scrollbar{display:none}
+body .pcol .problem-tabs[data-overflow=end]{mask-image:linear-gradient(to left,transparent,black var(--space-6))}
+body .pcol .problem-tabs[data-overflow=start]{mask-image:linear-gradient(to right,transparent,black var(--space-6))}
+body .pcol .problem-tabs[data-overflow=both]{mask-image:linear-gradient(to right,transparent,black var(--space-6),black calc(100% - var(--space-6)),transparent)}

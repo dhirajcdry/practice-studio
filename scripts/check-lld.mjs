@@ -1,5 +1,6 @@
 import { cleanupChrome } from './chrome-cleanup.mjs';
 import { problemDir } from '../server/storage-layout.mjs';
+import { checkMockAway } from './mock-time-fixture.mjs';
 // Real browser wiring, fake interviewer, synthetic cached statement, scratch home.
 // No mic and no actual judge submission; verdicts enter through the same event API.
 import { spawn } from 'node:child_process';
@@ -44,7 +45,7 @@ try {
     exampleTestcases: '[2,7,11,15]\n9', codeSnippets: [{ langSlug: 'python3', code: 'class Solution:\n    def twoSum(self, nums, target):\n        pass\n' }],
   } }));
   server = spawn(process.execPath, ['--input-type=module', '--eval', "globalThis.fetch = async () => { throw Error('Network disabled in interview check'); }; (await import('./server/index.mjs')).start();"], {
-    cwd: root, env: { ...process.env, STUDIO_TTS_PYTHON: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_SCRIPT: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_MODEL: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_VOICES: path.join(root, 'server/tts/test/fake-helper.mjs'), FAKE_INTERVIEW_TOKEN_MS: '8', FAKE_INTERVIEW_PROMPT: path.join(home, 'provider-calls.jsonl'), STUDIO_HOME: home, STUDIO_PORT: String(serverPort), STUDIO_MIRROR_DIR: '', STUDIO_COACH_BINARY: path.join(root, 'server/interview/test/fake-interviewer.mjs'), STUDIO_CODEX_BINARY: path.join(root, 'server/coach/test/bin/fake-codex.mjs') }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: root, env: { ...process.env, STUDIO_TTS_PYTHON: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_SCRIPT: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_MODEL: path.join(root, 'server/tts/test/fake-helper.mjs'), STUDIO_TTS_VOICES: path.join(root, 'server/tts/test/fake-helper.mjs'), FAKE_INTERVIEW_TOKEN_MS: '8', FAKE_INTERVIEW_PROMPT: path.join(home, 'provider-calls.jsonl'), STUDIO_HOME: home, STUDIO_PORT: String(serverPort), STUDIO_MIRROR_DIR: '', STUDIO_TEST_CLOCK: '1', STUDIO_COACH_BINARY: path.join(root, 'server/interview/test/fake-interviewer.mjs'), STUDIO_CODEX_BINARY: path.join(root, 'server/coach/test/bin/fake-codex.mjs') }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   for (const stream of [server.stdout, server.stderr]) stream.on('data', data => { logs = (logs + data).slice(-4000); });
   await until(async () => (await fetch(origin + '/api/health')).ok, 'server');
@@ -70,48 +71,62 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.micAttempts = (window.micAttempts || 0) + 1; throw new DOMException('No mic in check', 'NotAllowedError'); }, configurable: true });" });
   await send('Page.navigate', { url: origin + '/#/lld' });
   await until(() => evaluate("return document.querySelectorAll('.th-problem[data-slug]').length === 3 && !!document.querySelector('.th[data-state=ready]');"), 'LLD home');
-  assert.ok(await evaluate("const r = document.querySelector('.th-mock .ci-start').getBoundingClientRect(); return r.width > 0 && r.bottom <= innerHeight;"), 'the new-mock setup is on the page without a click');
-
+  // One stage: Practise by default on a first visit, the problem on Surprise me, one Start.
+  assert.deepEqual(await evaluate("return { mode: document.querySelector('.th-stage').dataset.mode, problem: document.querySelector('.th-qtitle').textContent, open: !document.querySelector('.th-qpanel').hidden, starts: [...document.querySelectorAll('.th .btn--primary')].filter(n => n.getClientRects().length).map(n => n.textContent.trim()) };"),
+    { mode: 'practise', problem: 'Surprise me', open: false, starts: ['Start practising'] }, 'the stage opens on Practise, on Surprise me, with one Start');
+  const click = async selector => {
+    const point = await evaluate(`const n = document.querySelector(${JSON.stringify(selector)}); n.scrollIntoView({block:'center'}); const r = n.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2};`);
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+  };
+  const key = async (k, code = k, vk = 0) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(k === 'Enter' ? { text: '\r' } : {}) }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }); };
+  await click('.th-sw[data-mode="mock"]');
+  assert.ok(await evaluate("const r = document.querySelector('.th-mock .ci-start').getBoundingClientRect(); return r.width > 0 && r.bottom <= innerHeight;"), 'the new-mock setup is on the page after one click on Mock');
   assert.ok(await evaluate("return !!document.querySelector('.th-mock [aria-label=\"Answer mode: Voice\"]');"), 'new mocks default to voice');
-  assert.deepEqual(await evaluate("return { chosen: document.querySelectorAll('.th-problem[aria-pressed=true]').length, special: document.querySelectorAll('.th-problem[data-open]').length, acts: [...document.querySelectorAll('.th-detail .th-act h3')].map(n => n.textContent), practise: document.querySelector('.th-pick[data-kind=practise] .ui-select-button').getAttribute('aria-label'), mock: document.querySelector('.th-pick[data-kind=mock] .ui-select-button')?.getAttribute('aria-label') };"),
-    { chosen: 0, special: 0, acts: ['Practise', 'Mock'], practise: 'Problem: Surprise me', mock: 'Problem: Surprise me' }, 'nothing is chosen on arrival; both ways in start on Surprise me, and both offer My own problem');
 
   for (const width of [1440, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     const slugs = await evaluate("return [...document.querySelectorAll('.th-problem[data-slug]')].map(n => n.dataset.slug);");
     for (const slug of slugs) {
-      const point = await evaluate(`const button = document.querySelector('.th-problem[data-slug="${slug}"]'); button.scrollIntoView({block:'center'}); const r = button.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2};`);
-      await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
-      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+      await click('.th-qchange');
+      await click(`.th-chip[data-slug="${slug}"]`);
       const selection = await evaluate(`
-        const pick = document.querySelector('.th-problem[data-slug="${slug}"]'), start = document.querySelector('.th-mock .ci-start');
+        const pick = document.querySelector('.th-chip[data-slug="${slug}"]'), start = document.querySelector('.th-mock .ci-start');
         start.scrollIntoView({block:'nearest'}); const c = start.getBoundingClientRect();
-        return { pressed:pick.getAttribute('aria-pressed'), chosen:document.querySelectorAll('.th-problem[aria-pressed=true]').length,
-          shown:document.querySelector('.th-detail-title').textContent === pick.querySelector('.th-problem-title').textContent,
+        return { pressed:pick.getAttribute('aria-pressed'), chosen:document.querySelectorAll('.th-chip[aria-pressed=true]').length,
+          shown:document.querySelector('.th-qtitle').textContent === pick.textContent, folded: document.querySelector('.th-qpanel').hidden,
           visible:c.width > 0 && c.left >= 0 && c.right <= innerWidth && c.top >= -1 && c.bottom <= innerHeight + 1,  // sub-pixel rounding of scrollIntoView
           fits:document.documentElement.scrollWidth <= innerWidth };
       `);
-      assert.deepEqual(selection, { pressed:'true', chosen:1, shown:true, visible:true, fits:true }, `${slug} is chosen and shown with Start mock at ${width}px`);
+      assert.deepEqual(selection, { pressed:'true', chosen:1, shown:true, folded:true, visible:true, fits:true }, `${slug} is chosen and shown with Start mock at ${width}px`);
     }
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     await fs.writeFile(`/tmp/studio-lld-library-${width}.png`, Buffer.from(shot.data, 'base64'));
   }
   assert.equal(await evaluate("return (await (await fetch('/api/lld')).json()).interviews.length;"), 0, 'selection never starts an interview');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
-  await evaluate("document.querySelector('.th-clear').click();");
-  assert.equal(await evaluate("return document.querySelectorAll('.th-problem[aria-pressed=true]').length + ':' + document.querySelector('.th-detail-title').textContent;"), '0:Start something new', 'Clear returns to starting on something new');
-  await evaluate("document.querySelector('.th-problem[data-slug=\"lld-locker\"]').focus();");
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  assert.equal(await evaluate("return document.querySelector('.th-problem[data-slug=\"lld-locker\"]').getAttribute('aria-pressed');"), 'true', 'keyboard chooses the problem');
-  // Arrow keys move the one selection through the list.
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
-  assert.equal(await evaluate("return document.activeElement.dataset.slug + ':' + document.querySelectorAll('.th-problem[aria-pressed=true]').length;"), 'lld-vending-machine:1', 'ArrowDown moves the selection');
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 });
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 });
-  assert.equal(await evaluate("return document.querySelector('.th-problem[aria-pressed=true]').dataset.slug;"), 'lld-locker', 'ArrowUp moves it back');
-  await evaluate("document.querySelector('.th-mock .ci-start').click();");
+  await click('.th-qclear');
+  assert.equal(await evaluate("return document.querySelectorAll('.th-chip.th-problem[aria-pressed=true]').length + ':' + document.querySelector('.th-qtitle').textContent;"), '0:Surprise me', 'Clear returns to Surprise me');
+  // Keyboard: Change opens the chips, arrows move along them, Enter chooses, Escape folds.
+  await evaluate("document.querySelector('.th-qchange').focus();");
+  await key('Enter', 'Enter', 13);
+  assert.equal(await evaluate("return document.querySelector('.th-qchange').getAttribute('aria-expanded');"), 'true', 'Enter on Change opens the chips');
+  await evaluate("document.querySelector('.th-chip[data-slug=\"lld-locker\"]').focus();");
+  await key('ArrowRight', 'ArrowRight', 39);
+  assert.equal(await evaluate("return document.activeElement.dataset.slug;"), 'lld-vending-machine', 'ArrowRight moves along the chips');
+  await key('Escape', 'Escape', 27);
+  assert.equal(await evaluate("return document.querySelector('.th-qpanel').hidden + ':' + document.activeElement.classList.contains('th-qchange');"), 'true:true', 'Escape folds the chips back to Change');
+  await key('Enter', 'Enter', 13);
+  await evaluate("document.querySelector('.th-chip[data-slug=\"lld-locker\"]').focus();");
+  await key('Enter', 'Enter', 13);
+  assert.equal(await evaluate("return document.querySelector('.th-chip[data-slug=\"lld-locker\"]').getAttribute('aria-pressed') + ':' + document.querySelector('.th-qpanel').hidden;"), 'true:true', 'keyboard chooses the problem and folds the row');
+  // The switch is a tablist: arrows flip the mode and keep the chosen problem.
+  await evaluate("document.querySelector('.th-sw[data-mode=\"mock\"]').focus();");
+  await key('ArrowLeft', 'ArrowLeft', 37);
+  assert.equal(await evaluate("return document.querySelector('.th-stage').dataset.mode + ':' + document.querySelector('.th-qtitle').textContent;"), 'practise:Locker system', 'ArrowLeft flips to Practise and the problem stays');
+  await key('ArrowRight', 'ArrowRight', 39);
+  assert.equal(await evaluate("return document.querySelector('.th-stage').dataset.mode + ':' + JSON.parse(localStorage.getItem('studio.sidebar.v1:lld-home')).mode;"), 'mock:mock', 'ArrowRight flips back to Mock, remembered for the next visit');
+  await click('.th-mock .ci-start');
   await until(() => evaluate("return !!document.querySelector('.ci-log .ui-turn') && !!window.monaco?.editor.getModels().length;"), 'LLD opening');
   assert.equal(await evaluate("return document.querySelector('.ui-workspace-header h1').textContent;"), 'Locker system', 'Start opens the chosen problem');
   assert.equal(await evaluate('return monaco.editor.getModels()[0].getValue();'), '', 'candidate starts with blank Python');
@@ -147,6 +162,8 @@ try {
   await until(() => evaluate("return !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled;"), 'ready after resume');
   await evaluate("const input = document.querySelector('.ci-input'); input.value = 'I will check overlapping reservations before mutating room state.'; input.dispatchEvent(new Event('input')); document.querySelector('.ci-send').click();");
   await until(() => evaluate("return document.querySelectorAll('.ci-candidate').length === 1 && !document.querySelector('.ci-input').disabled && !document.querySelector('.ci-pause').disabled;"), 'candidate answer');
+  // Left running without a pause: paused at the moment of leaving, never in overtime (mock-time-fixture.mjs).
+  console.log('LLD attended time', await evaluate(`return (${checkMockAway.toString()})('lld');`));
   // Idle ticks persist state every few seconds. The header is built once, so Finish stays
   // the same node and keeps keyboard focus through them.
   await evaluate("window.idleFinish = document.querySelector('.ui-screen-header .ci-finish'); window.idleFinish.focus(); window.idleEvents = 0; const real = window.fetch; window.fetch = (...args) => { if (String(args[0]).endsWith('/api/interview/event')) window.idleEvents++; return real(...args); };");
@@ -169,8 +186,8 @@ try {
   assert.ok(await evaluate("return !!document.querySelector('.ci-open-report') && document.querySelector('.ci-open-report').getBoundingClientRect().width > 0;"), 'completed LLD report remains reopenable');
   await evaluate("location.hash='#/lld';");
   await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-mock .ci-start');"), 'adaptive setup');
-  assert.equal(await evaluate("return document.querySelectorAll('.th-problem[aria-pressed=true]').length;"), 0, 'mock + Surprise me is the default');
-  await evaluate("document.querySelector('.th-mock .ci-start').click();");
+  assert.equal(await evaluate("return document.querySelectorAll('.th-problem[aria-pressed=true]').length + ':' + document.querySelector('.th-stage').dataset.mode;"), '0:mock', 'Surprise me is the default, and the stage reopens on the last mode used (Mock)');
+  await click('.th-mock .ci-start');
   await until(() => evaluate("return document.querySelector('.ui-workspace-header h1')?.textContent==='Museum ticket reservations' && !!document.querySelector('.ci-log .ui-turn');"), 'adaptive problem opening');
   assert.equal(await evaluate("return document.querySelector('.ci-panel').dataset.mode;"), 'voice');
   assert.equal(await evaluate("return monaco.editor.getModels().find(m=>!m.isDisposed())?.getValue();"), '', 'generated mock starts blank');
@@ -181,9 +198,10 @@ try {
   await answerMode('typed');
   await evaluate("location.hash='#/design';");
   await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-mock .ci-start');"), 'design home');
-  assert.equal(await evaluate("return document.querySelector('.th-pick[data-kind=mock] .ui-select-button').getAttribute('aria-label');"), 'Problem: Surprise me');
+  assert.equal(await evaluate("return document.querySelector('.th-stage').dataset.mode + ':' + document.querySelector('.th-qtitle').textContent;"), 'practise:Surprise me', 'each track remembers its own mode; System design has none yet');
+  await click('.th-sw[data-mode="mock"]');
   assert.ok(await evaluate("return !!document.querySelector('.th-mock [aria-label=\"Answer mode: Voice\"]');"));
-  await evaluate("document.querySelector('.th-mock .ci-start').click();");
+  await click('.th-mock .ci-start');
   await until(() => evaluate("return document.querySelector('.dz-log')?.textContent.includes('Design a museum ticket reservation system.');"), 'adaptive system design opening');
   assert.ok(await evaluate("return document.querySelector('.dz-view').dataset.mode==='voice';"));
   await evaluate("document.querySelector('.dz-compose .ui-mode-switch[data-mode=type]').click();");
@@ -230,8 +248,8 @@ try {
   assert.equal(await evaluate("return document.querySelectorAll('.dz-log .interviewer-silent').length;"), 1, 'a step-in offer never claims to have heard anything');
   // Each way in with no problem chosen: Practise on a surprise (LLD, typed) and on your own
   // brief, then System design's Mock on your own brief and Practise on a surprise.
-  const choose = (kind, text) => evaluate(`document.querySelector('.th-pick[data-kind=${kind}] .ui-select-button').click(); await new Promise(r => setTimeout(r, 80));
-    [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n => n.textContent.trim() === ${JSON.stringify(text)}).click(); await new Promise(r => setTimeout(r, 80));`);
+  // The problem is shared by both modes: choose the mode on the switch, then the problem.
+  const choose = async (mode, choice) => { await click(`.th-sw[data-mode="${mode}"]`); await click('.th-qchange'); await click(`.th-chip[data-choice="${choice}"]`); };
   const pickMenu = (selector, text) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click(); await new Promise(r => setTimeout(r, 80));
     [...document.querySelectorAll('.ui-menu:not([hidden]) .ui-menu-item')].find(n => n.textContent.trim() === ${JSON.stringify(text)}).click(); await new Promise(r => setTimeout(r, 80));`);
   async function openHome(hash) {
@@ -245,41 +263,43 @@ try {
     return { discipline, ...(await (await fetch(`${origin}/api/practice/${slug}/${id}`)).json()).session, text: await evaluate('return document.body.innerText;') };
   };
   await openHome('#/lld');
-  await pickMenu('.th-act--practise [aria-label^="Answer mode"]', 'Typed');
+  await click('.th-sw[data-mode="practise"]');
+  await pickMenu('.th-set--practise [aria-label^="Answer mode"]', 'Typed');
   await evaluate("document.querySelector('.th-practice').click();");
   const surprisePractice = await practiceSession();
   assert.deepEqual({ slug: surprisePractice.slug, statement: surprisePractice.statement, mode: surprisePractice.mode, openEnded: surprisePractice.openEnded },
     { slug: 'lld-bike-dock-rentals', statement: 'Design a bike dock rental system.', mode: 'typed', openEnded: false }, 'Practise + Surprise me prepares an unseen problem and opens it untimed, typed');
   assert.ok(!/Each dock holds one bike|dock goes offline/.test(surprisePractice.text), 'interviewer-only facts and curveball never reach the screen');
   await openHome('#/lld');
-  assert.ok(await evaluate("return /Practised/.test(document.querySelector('.th-problem[data-slug=\"lld-bike-dock-rentals\"] .th-problem-line')?.textContent || '');"), 'the practised surprise problem joins the library');
-  await choose('practise', 'My own problem');
-  await evaluate("const t = document.querySelector('.th-act--practise .th-brief textarea'); t.value = 'Design a library book hold queue.\\nHolds expire after three days.'; t.dispatchEvent(new Event('input')); document.querySelector('.th-practice').click();");
+  assert.ok(await evaluate("const chip = document.querySelector('.th-chip[data-slug=\"lld-bike-dock-rentals\"]'); return /Practised/.test(chip?.title || '') && chip.querySelector('.th-sd').dataset.tone === 'practised';"), 'the practised surprise problem joins the library, marked practised');
+  await choose('practise', 'own');
+  await evaluate("const t = document.querySelector('.th-brief textarea'); t.value = 'Design a library book hold queue.\\nHolds expire after three days.'; t.dispatchEvent(new Event('input')); document.querySelector('.th-practice').click();");
   const ownPractice = await practiceSession();
   assert.deepEqual({ title: ownPractice.title, statement: ownPractice.statement, openEnded: ownPractice.openEnded, slug: ownPractice.slug.startsWith('lld-open-') },
     { title: 'Design a library book hold queue.', statement: 'Design a library book hold queue.\nHolds expire after three days.', openEnded: true, slug: true }, 'Practise + My own problem opens on the brief');
   await openHome('#/design');
-  await evaluate("document.querySelector('.th-practice').click();");
+  await click('.th-sw[data-mode="practise"]');
+  await click('.th-practice');
   const designSurprise = await practiceSession();
   assert.deepEqual({ slug: designSurprise.slug, statement: designSurprise.statement }, { slug: 'design-bike-dock-rentals', statement: 'Design a bike dock rental system.' }, 'System design Practise + Surprise me');
   await openHome('#/design');
-  await choose('mock', 'My own problem');
+  await choose('mock', 'own');
   await evaluate("document.querySelector('.th-mock .ci-start').click();");
   await until(() => evaluate("return !!document.querySelector('.th-mock .ci-setup [role=status]:not([hidden])');"), 'empty brief refused');
   assert.match(await evaluate("return document.querySelector('.th-mock .ci-setup [role=status]:not([hidden])').textContent;"), /Write your problem first/);
-  await evaluate("const t = document.querySelector('.th-mock .th-brief textarea'); t.value = 'Design a pastry shop order board.'; t.dispatchEvent(new Event('input')); document.querySelector('.th-mock .ci-start').click();");
+  await evaluate("const t = document.querySelector('.th-brief textarea'); t.value = 'Design a pastry shop order board.'; t.dispatchEvent(new Event('input')); document.querySelector('.th-mock .ci-start').click();");
   await until(() => evaluate("return document.querySelector('.dz-log')?.textContent.includes('Design a pastry shop order board.');"), 'own-brief system design mock opening');
   const ownMock = (await (await fetch(origin + '/api/design')).json()).interviews.find(i => i.prompt === 'Design a pastry shop order board.');
   assert.ok(ownMock && !ownMock.problemSlug, 'Mock + My own problem starts a design mock on the brief');
   // LLD Mock + My own problem: Studio prepares a scenario for the brief (private facts and
   // curveball on the server), then the mock starts on it exactly as a surprise does.
   await openHome('#/lld');
-  await choose('mock', 'My own problem');
+  await choose('mock', 'own');
   await evaluate("document.querySelector('.th-mock .ci-start').click();");
   await until(() => evaluate("return !!document.querySelector('.th-mock .ci-setup [role=status]:not([hidden])');"), 'empty LLD brief refused');
   assert.match(await evaluate("return document.querySelector('.th-mock .ci-setup [role=status]:not([hidden])').textContent;"), /Write your problem first/);
   const lldBrief = 'Design a bakery order queue.\nOrders are collected in turn; a cancelled order frees its slot.';
-  await evaluate(`const t = document.querySelector('.th-mock .th-brief textarea'); t.value = ${JSON.stringify(lldBrief)}; t.dispatchEvent(new Event('input')); document.querySelector('.th-mock .ci-start').click();`);
+  await evaluate(`const t = document.querySelector('.th-brief textarea'); t.value = ${JSON.stringify(lldBrief)}; t.dispatchEvent(new Event('input')); document.querySelector('.th-mock .ci-start').click();`);
   await until(() => evaluate("return document.querySelector('.ui-workspace-header h1')?.textContent==='Design a bakery order queue' && !!document.querySelector('.ci-log .ui-turn');"), 'own-brief LLD mock opening');
   const ownLld = await evaluate("return JSON.parse(localStorage.getItem('studio.interview.active.v1'));");
   assert.equal(ownLld.slug, 'lld-bakery-order-queue', 'the mock runs on the problem prepared for the brief');
@@ -291,8 +311,8 @@ try {
   const selectionPrompt = (await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line).prompt).filter(p => p.includes('INTERVIEW_PROBLEM_SELECTION') && p.includes('bakery')).at(-1);
   assert.match(selectionPrompt, /<(CANDIDATE_BRIEF_[0-9a-f-]+)>\nDesign a bakery order queue\.[\s\S]*<\/\1>/, 'the brief reaches the preparation fenced as data');
   await openHome('#/lld');
-  assert.equal(await evaluate("return document.querySelector('.th-pick[data-kind=mock] .th-brief textarea').value;"), '', 'a started brief is cleared');
-  console.log('Interview browser check passed: Practise and Mock with no problem chosen (surprise and own brief, both tracks, LLD mock prepared for the brief), adaptive LLD/system-design starts, voice defaults, live mode switching/draft preservation/resume, card selection at 1440/390px, Python execution/persistence, reports.');
+  assert.equal(await evaluate("return document.querySelector('.th-brief textarea').value;"), '', 'a started brief is cleared');
+  console.log('Interview browser check passed: Practise and Mock with no problem chosen (surprise and own brief, both tracks, LLD mock prepared for the brief), adaptive LLD/system-design starts, voice defaults, live mode switching/draft preservation/resume, stage switch and problem chips at 1440/390px, Python execution/persistence, reports.');
 } catch (error) {
   try { console.error('Browser state:', await evaluate("return {hash:location.hash, text:document.body.innerText.slice(-1800)};")); } catch {}
   const calls = await fs.readFile(path.join(home, 'provider-calls.jsonl'), 'utf8').catch(()=>'');

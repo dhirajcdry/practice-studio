@@ -3,6 +3,10 @@
 import { el, replace } from './dom.js';
 import { loadHistory } from './api.js';
 import { icon } from './ui/icon.js';
+import { createBadge } from './ui/badge.js';
+import { button } from './ui/button.js';
+import { tooltip } from './tooltip.js';
+import { relativeInterviewDate } from './interview-format.js';
 
 /** "3 minutes ago", "yesterday 14:20", "Jul 24 09:15" — precision that matches distance. */
 export function when(iso, now = new Date()) {
@@ -41,6 +45,39 @@ export function verdictLine(s) {
   return '';
 }
 
+/** The name a saved chat goes by: the server's title, or its first question for an old payload. */
+export function chatTitle(thread) {
+  return thread?.title || thread?.turns?.find(turn => String(turn.ask ?? '').trim())?.ask || 'Attempt review';
+}
+
+/** One saved chat, the same row in Recent chats and in the history popover. */
+export function chatRow(thread, { onResume, current = null, disabled = false, now = Date.now() } = {}) {
+  const turns = thread.turns?.length || 0;
+  const title = chatTitle(thread);
+  const isCurrent = Boolean(current) && thread.sessionId === current;
+  const titleNode = el('strong', { class: 'recent-title', text: title });
+  const row = el('button', {
+    type: 'button', class: 'ui-action-row sidebar-record sidebar-record-summary recent-chat ui-inset ui-row',
+    disabled: disabled || thread.unavailable, 'aria-label': `${title}, ${relativeInterviewDate(thread.startedAt, now)}, ${turns} ${turns === 1 ? 'turn' : 'turns'}${isCurrent ? ', current chat' : ''}`,
+    ...(isCurrent ? { 'aria-current': 'true' } : {}),
+    dataset: { sessionId: thread.sessionId || '', titleSource: thread.titleSource || 'message' },
+    onclick: () => onResume(thread),
+  }, [
+    el('span', { class: 'ui-row-content ui-stack' }, [
+      el('span', { class: 'recent-chat-top' }, [titleNode, isCurrent ? createBadge('Current', 'accent') : null]),
+      el('span', { class: 'recent-meta dim' }, [
+        el('time', { datetime: thread.startedAt || '', text: relativeInterviewDate(thread.startedAt, now) }),
+        el('span', { text: `${turns} ${turns === 1 ? 'turn' : 'turns'}` }),
+        thread.turns?.some(turn => turn.kind === 'attempt-review') ? el('span', { text: 'Review' }) : null,
+      ]),
+    ]),
+    el('span', { class: 'recent-chevron ui-row-trailing ui-row-chevron', 'aria-hidden': 'true' }, [icon('chevron', 16)]),
+  ]);
+  // The full title only when the row had to cut it short.
+  tooltip(row, () => titleNode.scrollWidth > titleNode.clientWidth + 1 ? title : '');
+  return row;
+}
+
 export async function renderHistory(mount, { slug, onResume, current = null, disabled = false, limit = 5, now = new Date(), heading = 'Recent chats' }) {
   const data = await loadHistory(slug);
   if (!mount.isConnected) return;
@@ -50,22 +87,9 @@ export async function renderHistory(mount, { slug, onResume, current = null, dis
   }
   const threads = data.threads;
   function paint(all = false) {
-    const rows = (all ? threads : threads.slice(0, limit)).map(thread => el('button', {
-      type: 'button', class: 'ui-action-row recent-chat ui-inset ui-row', disabled: disabled || thread.unavailable,
-      onclick: () => onResume(thread),
-    }, [
-      el('span', { class: 'ui-row-content ui-stack' }, [
-      el('span', { class: 'recent-title', text: thread.title || thread.turns[0]?.ask || 'Attempt review' }),
-      el('span', { class: 'recent-meta' }, [
-      el('span', { class: 'mono dim', text: `${when(thread.startedAt, now)} · ${thread.turns.length} turn${thread.turns.length === 1 ? '' : 's'}` }),
-      thread.turns.some(t => t.kind === 'attempt-review') ? el('span', { class: 'submission-tag', text: 'Review' }) : null,
-      thread.sessionId === current ? el('span', { class: 'submission-tag current', text: 'Current' }) : null,
-      ]),
-      ]),
-      el('span', { class: 'recent-chevron ui-row-trailing ui-row-chevron', 'aria-hidden': 'true' }, [icon('chevron', 16)]),
-    ]));
+    const rows = (all ? threads : threads.slice(0, limit)).map(thread => chatRow(thread, { onResume, current, disabled, now: now.getTime() }));
     replace(mount, threads.length ? [el('div', { class: 'chat-history-heading', text: heading === 'Past chats' ? `${heading} · ${threads.length}` : heading }), ...rows,
-      !all && threads.length > limit ? el('button', { class: 'btn btn--quiet ws-mini', text: `Show all (${threads.length})`, onclick: () => paint(true) }) : null] : []);
+      !all && threads.length > limit ? button({ label: `Show all ${threads.length}`, variant: 'quiet', className: 'recent-all', onClick: () => paint(true) }) : null] : []);
   }
   paint();
 }

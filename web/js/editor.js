@@ -9,9 +9,9 @@
 //      that is down, old, or mid-restart cannot cost a line of code. The save
 //      state is always shown honestly — "saved to disk" and "kept in this
 //      browser" are never allowed to look the same.
-//   2. The editor is a keyboard trap by design: main.js owns a global key map
-//      (j/k/s/a/Enter) that would fire while typing, so keydown is stopped at the
-//      workspace boundary and re-implemented here for the few keys that matter.
+//   2. Typing is never a shortcut: plain keys stop at the editor (python-editor.js),
+//      while the command chords (⌘' run, ⌘↵ submit, ⌘S save, the pane chords) work
+//      from everywhere on the screen. keyboard.js is the one place that decides.
 //
 // Monaco is vendored under web/vendor/monaco — no CDN, no build step. If it
 // fails to load for any reason the workspace falls back to a plain textarea and
@@ -24,11 +24,10 @@ import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, logSessionEven
 import { registerActionHandlers, createMonacoTutor, createTextareaTutor } from './coach-actions.js';
 import { createRunPanel, summaryLine } from './run.js';
 import { createSubmitPanel, submitLine } from './submit.js';
-import { neetcodeMismatch } from './neetcode-shape.js';
 import { celebrate } from './celebrate.js';
 import { onChord, chordLabel } from './shortcuts.js';
 import { icon } from './ui/icon.js';
-import { claimActionKey, hasOpenOverlay, isTextEntry } from './keyboard.js';
+import { showToast } from './ui/toast.js';
 
 const SAVE_DEBOUNCE_MS = 900;
 const DRAFT_DEBOUNCE_MS = 300;
@@ -70,7 +69,6 @@ export function mountWorkspace(entry, options = {}) {
 
   const slug = entry.slug;
   let premium = false;
-  let neetcodeShape = null;
   let contentReady = !options.contentPromise;
   let editor = null;
   let loaded = null;            // last value known to match the server; null = none does
@@ -99,15 +97,17 @@ export function mountWorkspace(entry, options = {}) {
   }, [runLabel, el('kbd', { text: "⌘'" })]);
 
   // Reset puts the starter back in one click and keeps what it replaced: the swap goes
-  // through the editor's undo stack (⌘Z), and the notice above the code offers Undo by
-  // name. Nothing is asked first, because nothing is lost. It sits beside the file it
-  // resets, away from Run and Submit, and only while there is something to reset.
+  // through the editor's undo stack (⌘Z), and a brief toast in the corner of the editor
+  // offers Undo by name. Nothing is asked first, because nothing is lost. The toast says
+  // what happened and leaves; it never covers the first lines, Run or Submit, and never
+  // takes focus. Reset sits beside the file it resets, only while there is something to reset.
   let resetUndo = null;         // the code Reset replaced, while its Undo is still on offer
+  let resetToast = null;
 
   function clearResetNotice() {
     if (resetUndo === null) return;
     resetUndo = null;
-    noticeEl.hidden = true;
+    resetToast?.dismiss();
   }
 
   function resetCode() {
@@ -116,19 +116,23 @@ export function mountWorkspace(entry, options = {}) {
     if (before === stubCode) return;
     editor.setValue(stubCode);
     onEdit();
-    showNotice({
+    resetToast?.dismiss();
+    const toast = showToast({
+      host,
       head: 'Starter code restored',
-      body: editor.kind === 'monaco' ? 'Your code is one undo away (⌘Z).' : 'Your code is one undo away.',
-      actions: [{ label: 'Undo', onClick: () => {
+      body: editor.kind === 'monaco' ? 'Undo with ⌘Z' : '',
+      action: { label: 'Undo', onClick: () => {
         const mine = resetUndo;
-        clearResetNotice();
+        resetUndo = null;
         if (mine === null || !editor || editor.getValue() !== stubCode) return;
         editor.setValue(mine);
         onEdit();
         editor.focus();
-      } }],
-      onDismiss: () => { resetUndo = null; },
+      } },
+      // Leaving withdraws only the button: ⌘Z still holds what Reset replaced.
+      onDismiss: () => { if (resetToast === toast) { resetToast = null; resetUndo = null; } },
     });
+    resetToast = toast;
     resetUndo = before;
     editor.focus();
   }
@@ -173,10 +177,8 @@ export function mountWorkspace(entry, options = {}) {
     if (disposed) return;
     contentReady = result.ok === true;
     premium = result.content?.isPaidOnly === true;
-    neetcodeShape = premium ? result.content?.neetcodeShape : null;
     const starter = result.content?.codeSnippets?.find(s => s.langSlug === 'python3')?.code;
     if (starter) stubCode = starter;
-    paintNeetCodeNotice();
     submitButton.disabled = !contentReady;
     if (premium) {
       submitLabel.textContent = 'Submit on NeetCode';
@@ -185,7 +187,6 @@ export function mountWorkspace(entry, options = {}) {
   }).catch(() => {});
 
   const noticeEl = el('div', { class: 'ws-notice ui-inset ui-cluster', hidden: true });
-  const shapeNotice = el('div', { class: 'ws-notice ui-inset ui-cluster warn', hidden: true, role: 'status' });
   const host = el('div', { class: 'ws-host' });
 
   const panel = createRunPanel({ slug, getCode: () => (editor ? editor.getValue() : ''), onCollapse: () => setResultsHidden(true), onEvent: onRunEvent });
@@ -194,7 +195,6 @@ export function mountWorkspace(entry, options = {}) {
     getCode: () => (editor ? editor.getValue() : ''),
     // Premium problems are judged on neetcode.io (docs/SUBMITTING.md).
     getTarget: () => (premium ? 'neetcode' : 'leetcode'),
-    getMismatch: currentMismatch,
     neetcodeSlug: entry.neetcodeSlug || entry.slug,
     onEvent: (event) => {
       onSubmitEvent(event);
@@ -261,7 +261,6 @@ export function mountWorkspace(entry, options = {}) {
   const root = el('section', { class: 'card ws' }, [
     editorTabs,
     noticeEl,
-    shapeNotice,
     host,
     el('div', { class: 'ws-bar' }, [
       el('span', { class: 'mono dim ws-title', text: 'Python' }),
@@ -346,7 +345,6 @@ export function mountWorkspace(entry, options = {}) {
     // Typing over the starter, or ⌘Z, makes the offer to undo the reset stale.
     if (resetUndo !== null && editor.getValue() !== stubCode) clearResetNotice();
     window.dispatchEvent(new CustomEvent('studio-interview-work', { detail: { slug, type: 'typing' } }));
-    paintNeetCodeNotice();
     if (saveState !== 'failed' && saveState !== 'local') setSave('dirty');
     else paintStatus();
 
@@ -364,45 +362,9 @@ export function mountWorkspace(entry, options = {}) {
     return flush();
   }
 
-  function currentMismatch() {
-    if (!premium || !editor) return null;
-    const mismatch = neetcodeMismatch(editor.getValue(), neetcodeShape);
-    if (!mismatch) return null;
-    return { ...mismatch, fix: mismatch.rename && editor.kind === 'monaco' ? renameNeetCodeMethod : null };
-  }
-
-  function renameNeetCodeMethod() {
-    const mismatch = currentMismatch();
-    if (!mismatch?.rename || editor.kind !== 'monaco') return;
-    const { instance } = editor.raw;
-    const model = instance.getModel();
-    const start = model.getPositionAt(mismatch.rename.start);
-    const end = model.getPositionAt(mismatch.rename.end);
-    instance.pushUndoStop();
-    instance.executeEdits('neetcode-method-name', [{
-      range: { startLineNumber: start.lineNumber, startColumn: start.column,
-        endLineNumber: end.lineNumber, endColumn: end.column },
-      text: mismatch.rename.to,
-    }]);
-    instance.pushUndoStop();
-    editor.focus();
-  }
-
-  function paintNeetCodeNotice() {
-    const mismatch = currentMismatch();
-    shapeNotice.hidden = !mismatch;
-    replace(shapeNotice, mismatch ? [
-      el('span', { class: 'ws-noticebody ui-cluster-content', text: mismatch.message }),
-      ...(mismatch.fix ? [el('button', { class: 'btn btn--quiet ws-mini', type: 'button',
-        text: "Use NeetCode's name", onclick: mismatch.fix })] : []),
-    ] : []);
-  }
-
   /* ---- notices ---- */
 
   function showNotice({ tone = '', head, body, actions = [], onDismiss = null }) {
-    // Any other notice replaces the reset one; its Undo goes with it (⌘Z still works).
-    resetUndo = null;
     noticeEl.hidden = false;
     noticeEl.className = 'ws-notice ui-inset ui-cluster ' + tone;
     replace(noticeEl, [
@@ -436,12 +398,14 @@ export function mountWorkspace(entry, options = {}) {
         error: result?.message || result?.traceback || null,
       } }));
     }
+    // Busy is aria-disabled, not disabled: disabling the focused button would throw focus
+    // to the page mid-run. doRun already ignores a press while a run is going.
     if (event.type === 'start') {
-      runButton.disabled = true;
+      runButton.setAttribute('aria-disabled', 'true');
       runLabel.textContent = 'Running';
       runButton.classList.add('busy');
     } else {
-      runButton.disabled = false;
+      runButton.removeAttribute('aria-disabled');
       runLabel.textContent = 'Run';
       runButton.classList.remove('busy');
       results.scrollTop = 0;
@@ -464,11 +428,6 @@ export function mountWorkspace(entry, options = {}) {
     // would send it to LeetCode instead) does it fall back to copy-and-open, and the
     // panel says why. That check happens here, inside the gesture, because a popup
     // opened after an await gets blocked.
-    if (currentMismatch()) {
-      showResults('judge');
-      judge.submit(); // The panel guard also covers its own resubmit button.
-      return;
-    }
     const blocker = premium ? judge.blocker() : '';
     if (blocker) {
       const code = editor.getValue();
@@ -476,7 +435,7 @@ export function mountWorkspace(entry, options = {}) {
       showResults('judge');
       judge.explain(blocker, 'Studio opened the problem on NeetCode and copied your code instead: paste it into NeetCode’s editor and submit there. Studio has not submitted it.');
       Promise.resolve().then(() => navigator.clipboard.writeText(code)).then(() => {
-        if (!disposed) showNotice({ head: 'Code copied — paste it into NeetCode and submit there', body: '' });
+        if (!disposed) showToast({ host, head: 'Code copied', body: 'Paste it into NeetCode and submit there' });
       }).catch(() => {
         if (!disposed) showNotice({ head: 'NeetCode opened', body: 'Copy your code and paste it into NeetCode to submit.' });
       });
@@ -495,7 +454,9 @@ export function mountWorkspace(entry, options = {}) {
       status: event.shaped?.status, accepted: event.shaped?.status === 'accepted',
     } }));
     const busy = event.type === 'start';
-    submitButton.disabled = busy;
+    // aria-disabled for the same reason as Run; doSubmit ignores a press while judging.
+    if (busy) submitButton.setAttribute('aria-disabled', 'true');
+    else submitButton.removeAttribute('aria-disabled');
     submitButton.classList.toggle('busy', busy);
     submitLabel.textContent = busy ? 'Judging' : 'Submit';
     if (!busy) results.scrollTop = 0;
@@ -591,44 +552,9 @@ export function mountWorkspace(entry, options = {}) {
 
   /* ---- keyboard ---- */
 
-  // main.js listens on document and would act on j/k/s/a/Enter while typing.
-  // The code area is where that map stops — and only the code area, so that
-  // Escape can hand the keyboard back by moving focus to the toolbar.
-  root.addEventListener('keydown', (event) => {
-    if (host.contains(event.target)) event.stopPropagation();
-    if (hasOpenOverlay() || isTextEntry(event.target)) return;
-    const meta = (event.metaKey || event.ctrlKey) && !event.altKey;
-    // ⌘↵ submits, ⌘' runs. ⌘⇧↵ stays a submit alias so the old binding still works.
-    if (meta && event.key === 'Enter') { if (claimActionKey(event)) doSubmit(); return; }
-    if (meta && event.key === "'") { if (claimActionKey(event)) doRun(); return; }
-    if (meta && (event.key === 's' || event.key === 'S')) { if (claimActionKey(event)) flushNow(); return; }
-    if (event.key === 'Escape' && editor && editor.hasFocus()) {
-      event.preventDefault();
-      editor.blur();
-      runButton.focus();
-    }
-  });
-
-  function onDocumentKey(event) {
-    if (disposed || !document.body.contains(root)) return;
-    // Inside the workspace, the listener above has already acted.
-    if (root.contains(event.target)) return;
-    // ⌘↵ sends code to a real judge, and this workspace stays mounted under the report,
-    // Settings and the reference drawer. So only with nothing focused or from the
-    // statement beside the code: every other box on the page has its own ⌘↵.
-    if (hasOpenOverlay() || isTextEntry(event.target) || event.altKey) return;
-    if (event.target !== document.body && !event.target.closest?.('.pcol, .ui-screen-header')) return;
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      if (claimActionKey(event)) doSubmit(); return;
-    }
-    if ((event.metaKey || event.ctrlKey) && event.key === "'") {
-      if (claimActionKey(event)) doRun(); return;
-    }
-    // No bare letters here any more. `f` and `p` toggled panes only while the cursor
-    // happened to be nowhere, and typed themselves the rest of the time; both moved to
-    // chords in shortcuts.js, which work whether or not you are typing.
-  }
-  document.addEventListener('keydown', onDocumentKey);
+  // ⌘' runs, ⌘↵ submits and ⌘S saves from anywhere on this screen: the shared editor
+  // registers them (onRun/onSubmit/onSave below) and keyboard.js decides when they apply.
+  // Escape in the code hands the keyboard to Run (onEscape). Nothing here listens for keys.
 
   const onToggleResults = () => setResultsHidden(!isResultsHidden());
   window.addEventListener('studio:toggle-results', onToggleResults);
@@ -689,7 +615,6 @@ export function mountWorkspace(entry, options = {}) {
     });
     const { error: failure } = await editor.ready;
     if (disposed) return;
-    paintNeetCodeNotice();
     tutor = editor.kind === 'monaco'
       ? createMonacoTutor(editor.raw.instance, editor.raw.monaco, { onMarksChange: paintMarks })
       : createTextareaTutor(editor.raw.area, { onEdit });
@@ -829,7 +754,6 @@ export function mountWorkspace(entry, options = {}) {
         try { writeDraft(slug, code); } catch { /* noop */ }
         if (code !== loaded) saveChain.catch(() => false).then(() => saveCode(slug, code)).catch(() => {});
       }
-      document.removeEventListener('keydown', onDocumentKey);
       for (const release of releaseChords) release();
       window.removeEventListener('studio:toggle-results', onToggleResults);
       document.removeEventListener('visibilitychange', onHide);

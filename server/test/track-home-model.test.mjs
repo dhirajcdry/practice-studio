@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ago, briefTitle, buildSessions, continueItem, dimensionTrend, filterSessions, headerSummary, practiceSettings, problemChoices, statusLine, OWN, SURPRISE } from '../../web/js/track-home-model.js';
+import { ago, briefTitle, buildSessions, continueItem, dimensionTrend, filterProblems, filterSessions, headerSummary, lastLine, modeOrDefault, practiceMinutes, practiceSettings, problemTone, statusLine, OWN, SURPRISE, TONE_LABELS } from '../../web/js/track-home-model.js';
 
 const NOW = new Date(2026, 10, 13, 15, 0).getTime();
 const daysAgo = n => NOW - n * 86400000;
@@ -53,13 +53,61 @@ test('status lines come only from records', () => {
   assert.equal(statusLine('lld-a', prose, NOW), 'Mocked 1 time · 2 days ago');
 });
 
-test('with no problem chosen, each way in starts on Surprise me, and on your own brief where the track can run it', () => {
-  assert.deepEqual(problemChoices('practise').map(c => c.id), [SURPRISE, OWN]);
-  assert.deepEqual(problemChoices('practise').map(c => c.label), ['Surprise me', 'My own problem']);
-  // Both tracks run a mock on a brief (LLD prepares a scenario for it); a track that cannot opts out.
-  assert.deepEqual(problemChoices('mock').map(c => c.id), [SURPRISE, OWN]);
-  assert.deepEqual(problemChoices('mock', { ownMock: false }).map(c => c.id), [SURPRISE]);
-  assert.deepEqual(problemChoices('practise', { ownMock: false }).map(c => c.id), [SURPRISE, OWN]);
+test('the stage opens on Practise unless this viewer last used Mock', () => {
+  assert.equal(modeOrDefault(undefined), 'practise');
+  assert.equal(modeOrDefault('mock'), 'mock');
+  assert.equal(modeOrDefault('something-else'), 'practise');
+});
+
+test('each problem chip carries the status its records give it, never an invented one', () => {
+  const items = buildSessions({
+    interviews: [{ id: 'm1', slug: 'lld-a', startedAt: daysAgo(3), debriefed: true }, { id: 'm2', slug: 'lld-c', startedAt: daysAgo(1), debriefed: false },
+      { id: 'm4', slug: 'lld-d', startedAt: daysAgo(2), debriefed: true }, { id: 'm5', slug: 'lld-e', startedAt: daysAgo(2), debriefed: true },
+      { id: 'm6', slug: 'lld-f', startedAt: daysAgo(2), debriefed: true }],
+    sessions: [{ id: 'p1', slug: 'lld-b', updatedAt: daysAgo(1) }, { id: 'p2', slug: 'lld-a', updatedAt: daysAgo(0) }],
+    assessments: [report('m1', 'lld-a', 3, 'Hire'), report('m4', 'lld-d', 2, 'Lean no'), report('m5', 'lld-e', 2, 'No hire')],
+    problems,
+  });
+  assert.equal(problemTone('lld-a', items), 'success', 'the newest finished mock decides, even after later practice');
+  assert.equal(problemTone('lld-b', items), 'practised');
+  assert.equal(problemTone('lld-c', items), 'unfinished');
+  assert.equal(problemTone('lld-d', items), 'warn');
+  assert.equal(problemTone('lld-e', items), 'danger');
+  assert.equal(problemTone('lld-f', items), 'mocked', 'a mock without a structured report has no grade');
+  assert.equal(problemTone('lld-z', items), 'new');
+  assert.deepEqual(Object.keys(TONE_LABELS), ['new', 'practised', 'unfinished', 'success', 'warn', 'danger', 'mocked']);
+});
+
+test('the filter matches every typed word in a title', () => {
+  const list = [{ slug: 'a', title: 'Parking garage' }, { slug: 'b', title: 'Parcel lockers' }, { slug: 'c', title: 'Rate limiter' }];
+  assert.deepEqual(filterProblems(list, 'par').map(p => p.slug), ['a', 'b']);
+  assert.deepEqual(filterProblems(list, 'PARK gar').map(p => p.slug), ['a']);
+  assert.deepEqual(filterProblems(list, '  ').length, 3);
+  assert.deepEqual(filterProblems(list, 'queue'), []);
+});
+
+test('the last practice and last mock lines come from the newest records, or say there are none', () => {
+  assert.equal(lastLine('practise', [], NOW), 'No practice yet');
+  assert.equal(lastLine('mock', [], NOW), 'No mock yet');
+  const items = buildSessions({
+    interviews: [{ id: 'm1', slug: 'lld-a', startedAt: daysAgo(3), debriefed: true }, { id: 'm0', slug: 'lld-b', startedAt: daysAgo(6), debriefed: true }],
+    sessions: [{ id: 'p1', slug: 'lld-b', title: 'Problem B', updatedAt: daysAgo(5), timer: { elapsedMs: 41 * 60000, runningSince: null } }],
+    assessments: [report('m1', 'lld-a', 3, 'Lean no')],
+    problems,
+  });
+  assert.equal(lastLine('practise', items, NOW), 'Last practice: Problem B · 41 min · 5 days ago');
+  assert.equal(lastLine('mock', items, NOW), 'Last mock: Problem A · Lean no · 3 days ago');
+  const open = buildSessions({ interviews: [{ id: 'x', slug: 'lld-a', startedAt: daysAgo(0), debriefed: false }], problems });
+  assert.equal(lastLine('mock', open, NOW), 'Last mock: Problem A · Unfinished · today');
+  const prose = buildSessions({ interviews: [{ id: 'x', slug: 'lld-a', startedAt: daysAgo(1), debriefed: true }], problems });
+  assert.equal(lastLine('mock', prose, NOW), 'Last mock: Problem A · No grade · yesterday');
+  // A stopwatch that never ran, ran under a minute, or is running elsewhere names no time.
+  assert.equal(practiceMinutes(undefined), '');
+  assert.equal(practiceMinutes({ elapsedMs: 0, runningSince: null }), '');
+  assert.equal(practiceMinutes({ elapsedMs: 59000, runningSince: null }), '');
+  assert.equal(practiceMinutes({ elapsedMs: 600000, runningSince: 1 }), '');
+  assert.equal(practiceMinutes({ elapsedMs: 65 * 60000, runningSince: null }), '1 h 5 min');
+  assert.equal(practiceMinutes({ elapsedMs: 120 * 60000, runningSince: null }), '2 h');
 });
 
 test('practice offers only the settings it honours, and never a clock', () => {

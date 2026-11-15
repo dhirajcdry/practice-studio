@@ -14,7 +14,7 @@ function complete(spec) {
   assert.equal(typeof spec.display.doing, 'string', spec.name);
   assert.ok(spec.display.doing.length > 5, spec.name);
   assert.ok(spec.display.done.length > 5, spec.name);
-  assert.ok(['read', 'change', 'note', 'handoff'].includes(spec.display.effect), spec.name);
+  assert.ok(['read', 'change', 'note', 'handoff', 'meta'].includes(spec.display.effect), spec.name);
 }
 test('every shared and workspace-exposed tool has explicit complete display metadata', async t => {
   TOOL_SPECS.forEach(complete);

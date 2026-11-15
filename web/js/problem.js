@@ -15,10 +15,16 @@ import { loadProblem, loadSolution, loadArticle, logSessionEvent, api } from './
 import { mountWorkspace, enableWideLayout } from './editor.js';
 import { mountCoach } from './coach.js';
 import { workspaceRail } from './workspace.js';
+import { createVideoTab } from './video-player.js';
 
 // One tab view per open problem. The statement is rendered once and only hidden while
 // Solution or Article shows, so coming back to it costs no fetch and keeps its scroll.
 let tabs = null;
+
+// Leaving for another route unloads the player with the page; its place is kept first.
+window.addEventListener('hashchange', () => setTimeout(() => {
+  if (tabs?.video && !tabs.pcol.isConnected) { tabs.video.dispose(); tabs.video = null; }
+}, 0));
 
 /* ------------------------------- small pieces ------------------------------- */
 
@@ -51,9 +57,9 @@ function licenseFooter(license, sourcePath) {
 
 /* ----------------------------------- tabs ----------------------------------- */
 
-const TAB_KINDS = ['problem', 'solution', 'article'];
+const TAB_KINDS = ['problem', 'solution', 'article', 'video'];
 
-/** The tab showing in the problem pane: 'problem', 'solution' or 'article'. */
+/** The tab showing in the problem pane: 'problem', 'solution', 'article' or 'video'. */
 export function currentTab(slug = null) {
   if (!tabs || !tabs.pcol.isConnected || (slug && tabs.slug !== slug)) return 'problem';
   return tabs.kind;
@@ -69,14 +75,28 @@ function syncTabs() {
   for (const button of tabs.pcol.querySelectorAll('.problem-tabs [role=tab]')) {
     button.setAttribute('aria-selected', String((button.dataset.panel || 'notes') === tabs.kind));
   }
+  tabs.strip?.reveal();
   const onProblem = tabs.kind === 'problem';
   tabs.tags.hidden = !onProblem;
   for (const node of tabs.statement) node.hidden = !onProblem;
   tabs.pcol.dataset.tab = tabs.kind;
-  for (const kind of ['solution', 'article']) {
+  for (const kind of ['solution', 'article', 'video']) {
     const panel = tabs.panels[kind];
     if (panel) panel.hidden = kind !== tabs.kind;
   }
+  // The player plays only while it can be seen: its tab, in a pane that is not collapsed.
+  tabs.video?.setShown(tabs.kind === 'video' && !document.body.classList.contains('hide-problem'));
+}
+
+/** The walkthrough player, created on the first open of the Video tab and kept mounted. */
+function videoPanel(entry) {
+  if (!tabs.video) {
+    tabs.video = createVideoTab(entry);
+    tabs.video.onPaneToggle(() => { if (tabs?.video && tabs.pcol.isConnected) syncTabs(); });
+    tabs.panels.video = tabs.video.panel;
+    tabs.pcol.append(tabs.video.panel);
+  }
+  return tabs.video;
 }
 
 /**
@@ -85,6 +105,7 @@ function syncTabs() {
  */
 export async function showTab(entry, kind, { toggle = false, retry = false } = {}) {
   if (!tabs || !tabs.pcol.isConnected || tabs.slug !== entry.slug || !TAB_KINDS.includes(kind)) return;
+  if (kind === 'video' && !entry.youtubeVideoId) return;
   // A reference opened while the problem pane is collapsed brings the pane back first.
   const collapsed = document.body.classList.contains('hide-problem');
   if (collapsed && kind !== 'problem') {
@@ -98,6 +119,18 @@ export async function showTab(entry, kind, { toggle = false, retry = false } = {
   const scroll = scroller();
   if (tabs.kind !== kind && !collapsed) tabs.scroll[tabs.kind] = scroll.scrollTop;
   tabs.kind = kind;
+  if (kind === 'video') {
+    const video = videoPanel(entry);
+    syncTabs();
+    restoreScroll(scroll, kind);
+    const owner = tabs, open = ++tabs.opens;
+    // Logged like a revealed solution, once per open, and only once the player is on
+    // screen: an embed that failed to load showed nothing.
+    if (await video.whenReady() && tabs === owner && tabs.kind === 'video' && tabs.opens === open) {
+      logSessionEvent(entry.slug, 'revealed_video', { title: entry.title || entry.slug, videoId: entry.youtubeVideoId }).catch(() => {});
+    }
+    return;
+  }
   // Kept once it has loaded; a panel still loading keeps its skeleton.
   if (kind !== 'problem' && !tabs.results[kind] && !tabs.loading[kind]) {
     const panel = tabs.panels[kind] || el('section', {
@@ -166,7 +199,7 @@ function renderSolutionInto(panel, entry, result) {
           entry.hasArticle
             ? 'The written article covers this problem, so start there.'
             : (entry.youtubeVideoId
-              ? 'There is no local article for this problem either. The video walkthrough (the Video link above) is the remaining reference.'
+              ? 'There is no local article for this problem either. The video walkthrough (the Video tab above) is the remaining reference.'
               : 'There is no local article for this problem either. You can check NeetCode using the NeetCode link above.'),
         ]
         : [result.message],
@@ -278,8 +311,6 @@ export function renderProblem(entry, context) {
       panelToggle(entry, 'solution', 'Solution', 's', entry.hasPythonSolution),
       panelToggle(entry, 'article', 'Article', 'a', entry.hasArticle),
       el('span', { class: 'plinks' }, [
-        entry.youtubeVideoId ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
-          href: `https://www.youtube.com/watch?v=${encodeURIComponent(entry.youtubeVideoId)}`, text: 'Video' }) : null,
         entry.neetcodeSlug ? el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
           href: `https://neetcode.io/problems/${encodeURIComponent(entry.neetcodeSlug)}`, text: 'NeetCode' }) : null,
         el('a', { class: 'plink', target: '_blank', rel: 'noopener noreferrer',
@@ -306,9 +337,9 @@ export function renderProblem(entry, context) {
   for (const link of links) {
     const name = link.textContent;
     link.className = 'btn btn--quiet pane-link plink';
-    link.setAttribute('aria-label', name === 'Video' ? 'Watch the video walkthrough (opens in a new tab)' : `Open on ${name} (opens in a new tab)`);
-    link.title = name === 'Video' ? 'Watch the video walkthrough' : `Open on ${name}`;
-    link.replaceChildren(icon(name === 'Video' ? 'play' : 'external', 13), el('span', { text: name }));
+    link.setAttribute('aria-label', `Open on ${name} (opens in a new tab)`);
+    link.title = `Open on ${name}`;
+    link.replaceChildren(icon('external', 13), el('span', { text: name }));
   }
   const header = screenHeader({ back: { href: '#/', label: 'Back to problems' },
     crumb: context.listLabel || 'Problems', title: titleEl,
@@ -321,6 +352,10 @@ export function renderProblem(entry, context) {
   toggles.setAttribute('role', 'tablist');
   toggles.querySelector('.plinks')?.remove();
   toggles.prepend(el('button', { class: 'btn btn--quiet ui-tab', type: 'button', role: 'tab', 'aria-selected': 'true', 'aria-controls': 'ref-problem', dataset: { panel: 'problem' }, text: 'Problem', onclick: () => showTab(entry, 'problem') }));
+  // The walkthrough plays in the pane; nothing is asked of YouTube until this is opened.
+  if (entry.youtubeVideoId) {
+    toggles.append(el('button', { class: 'btn btn--quiet ui-tab', type: 'button', role: 'tab', 'aria-selected': 'false', 'aria-controls': 'ref-video', dataset: { panel: 'video' }, text: 'Video', onclick: () => showTab(entry, 'video') }));
+  }
   // Notes is a larger surface of its own, so it stays a dialog rather than a tab body.
   toggles.append(el('button', { class: 'btn btn--quiet ui-tab', type: 'button', role: 'tab', 'aria-selected': 'false', text: 'Notes', onclick: () => openLearningNotes(entry.slug, entry.title) }));
   hero.replaceChildren(paneHeader({ tabs: toggles, tools: [el('nav', { class: 'pane-links', 'aria-label': 'This problem elsewhere' }, links)] }), tags);
@@ -330,9 +365,11 @@ export function renderProblem(entry, context) {
   descCard.setAttribute('role', 'tabpanel');
   descCard.setAttribute('aria-label', 'Problem');
   const pcol = el('div', { class: 'pcol', dataset: { tab: 'problem' } }, [hero, prepCard, descCard]);
+  tabs?.video?.dispose();
+  tabs?.strip?.dispose();
   tabs = {
     slug: entry.slug, kind: 'problem', pcol, hero, tags, statement: [prepCard, descCard].filter(Boolean),
-    panels: {}, results: {}, loading: {}, scroll: {}, opens: 0,
+    panels: {}, results: {}, loading: {}, scroll: {}, opens: 0, strip: tabStrip(toggles),
   };
   view.append(el('div', { class: 'pbody with-workspace' }, [
     pcol,
@@ -346,6 +383,30 @@ export function renderProblem(entry, context) {
   });
 
   return view;
+}
+
+/**
+ * A tab row too narrow for its tabs scrolls sideways (see statement.css): mark which edge
+ * it continues past, so that edge fades, and keep the selected tab in view.
+ */
+function tabStrip(strip) {
+  const update = () => {
+    const max = strip.scrollWidth - strip.clientWidth;
+    const overflow = max <= 1 ? '' : strip.scrollLeft <= 1 ? 'end' : strip.scrollLeft >= max - 1 ? 'start' : 'both';
+    if (overflow) strip.dataset.overflow = overflow; else delete strip.dataset.overflow;
+  };
+  const sizes = new ResizeObserver(() => { reveal(); update(); });
+  function reveal() {
+    const selected = strip.querySelector('[role=tab][aria-selected=true]');
+    if (!selected || strip.scrollWidth <= strip.clientWidth + 1) return;
+    const s = strip.getBoundingClientRect(), t = selected.getBoundingClientRect(), edge = 24;
+    if (t.left < s.left + edge) strip.scrollLeft -= s.left + edge - t.left;
+    else if (t.right > s.right - edge) strip.scrollLeft += t.right - (s.right - edge);
+    update();
+  }
+  sizes.observe(strip);
+  strip.addEventListener('scroll', update, { passive: true });
+  return { reveal, dispose: () => sizes.disconnect() };
 }
 
 function interviewPrepCard(entry) {

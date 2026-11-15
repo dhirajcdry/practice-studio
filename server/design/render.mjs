@@ -18,6 +18,8 @@ import { DesignStore } from './store.mjs';
 import { sceneToGraph, renderGraph, diffGraphs, describeDiff } from './graph.mjs';
 import { PHASES } from './interview.mjs';
 import { buildDesignReport } from './report.mjs';
+import { designClock } from './clock.mjs';
+import { awayText, LEGACY_GAP_MS } from '../mock-clock.mjs';
 import { reportMarkdown, reportDifficultyLabel } from '../interview/report.mjs';
 
 const labelOf = (id) => PHASES.find((p) => p.id === id)?.label ?? id;
@@ -60,7 +62,9 @@ export function renderInterview(interview) {
   out.push(`- **Bar** ${state.level}`);
   if (reportDifficultyLabel(state.reportDifficulty)) out.push(`- **Report graded at** ${reportDifficultyLabel(state.reportDifficulty)}`);
   if (state.endedAt && startMs) {
-    out.push(`- **Took** ${Math.round((state.endedAt - state.startedAt) / 60000)} minutes of ${state.minutes}`);
+    // Attended time: an older record's silent stretches are left out, and it says so.
+    const taken = designClock(state, turns, scenes);
+    out.push(`- **Took** ${Math.round(taken.elapsedMs / 60000)} minutes of ${state.minutes}${taken.awayMs > 0 ? ` (attended time; ${awayText(taken.awayMs)} with nothing recorded for over ${Math.round(LEGACY_GAP_MS / 60000)} minutes left out)` : ''}`);
   }
   out.push(`- **Questions** ${asked.length}, of which ${answered.length} got an answer`);
   out.push(`- **Talk share** the interviewer spoke ${Math.round(share * 100)}% of the words (target 20%)`);
@@ -123,7 +127,7 @@ export function renderInterview(interview) {
   }
 
   if (debrief) {
-    const report = buildDesignReport(state, turns);
+    const report = buildDesignReport(state, turns, scenes);
     out.push('', '## The debrief', '', (report && reportMarkdown(report)) || String(debrief.asked ?? '').trim() || '*(empty)*', '');
   }
 

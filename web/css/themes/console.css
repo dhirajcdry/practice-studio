@@ -80,6 +80,7 @@ body.theme-console:not(#_) .segmented .btn:is([aria-pressed=true],[aria-selected
 body.theme-console:not(#_) .ui-tabs{height:38px;margin-block:-5px;gap:0;align-items:center;border:0}
 /* A tab keeps the shared 38px hit area; only the 18px block in its middle is painted. */
 body.theme-console:not(#_) .btn.btn.ui-tab,body.theme-console:not(#_) .ui-tab{height:38px;min-height:38px;padding:0 8px;border-radius:0;font:500 11px/1 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-70);box-shadow:none}
+@container pane-head (max-width:380px){body.theme-console:not(#_) .pcol .problem-tabs .btn.btn.ui-tab{padding:0 5px;letter-spacing:.02em}}
 body.theme-console:not(#_) .btn.btn.ui-tab:is([aria-pressed=true],[aria-selected=true]),body.theme-console:not(#_) .ui-tab:is([aria-pressed=true],[aria-selected=true]){background:linear-gradient(var(--solid-bg),var(--solid-bg)) center/100% 18px no-repeat!important;color:var(--solid-fg);font-weight:700;box-shadow:none}
 body.theme-console:not(#_) .btn.btn.ui-tab:hover:not([aria-pressed=true],[aria-selected=true]),body.theme-console:not(#_) .ui-tab:hover:not([aria-pressed=true],[aria-selected=true]){background:linear-gradient(var(--bar),var(--bar)) center/100% 18px no-repeat!important;color:var(--ink)}
 body.theme-console:not(#_) .tag{padding:0;border:0;border-radius:0;background:transparent;font:500 10.5px/1.5 var(--ui);letter-spacing:.06em;text-transform:uppercase}
@@ -263,6 +264,7 @@ body.theme-console:not(#_) .psec-more{border-top:var(--rule)}
    sits before the value whether the label is beside it or above it. ---- */
 body.theme-console:not(#_) .tc-tab{padding:0 8px}
 body.theme-console:not(#_) .tc-tab.is-on{background:var(--solid-bg);color:var(--solid-fg);font-weight:700;border:0}
+body.theme-console:not(#_) .rr .rr-casetab.is-on:is(.s-pass,.s-wrong,.s-error,.s-look){background:var(--rr-tone)}
 body.theme-console:not(#_) :is(.tc-label,.submission-label){font:500 10.5px/1.4 var(--ui);letter-spacing:.06em;text-transform:uppercase}
 body.theme-console:not(#_) .tc-label{padding-top:5px}
 body.theme-console:not(#_) .tc-field.is-expected{border-top:var(--rule)}
@@ -303,9 +305,10 @@ body.theme-console:not(#_) :is(.problem-state,.ui-live-dot,.streak-dot){border-r
 
 /* ---- Track homes and Progress: titled frames, dashed rows. ---- */
 body.theme-console:not(#_) .th .th-label,body.theme-console:not(#_) .dash-sec>header h2{font:700 11px/16px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
-body.theme-console:not(#_) .th-problem.ui-action-row[aria-pressed=true]{background:var(--solid-bg);color:var(--solid-fg)}
-body.theme-console:not(#_) .th-problem[aria-pressed=true] *{color:inherit}
-body.theme-console:not(#_) :is(.th-item+.th-item,.th-past+.th-past){border-top:var(--rule)}
+body.theme-console:not(#_) .th-chip[aria-pressed=true],body.theme-console:not(#_) .th-sw[aria-selected=true]{background:var(--solid-bg);color:var(--solid-fg)}
+body.theme-console:not(#_) .th-sw[aria-selected=true] :is(.th-sw-tag,.th-sw-icon){color:inherit}
+body.theme-console:not(#_) .th-stage .btn.th-go::after{width:auto;height:auto;background:none;-webkit-mask:none;mask:none}
+body.theme-console:not(#_) .th-item+.th-item{border-top:var(--rule)}
 body.theme-console:not(#_) .dash-body{padding-top:16px;gap:20px}
 body.theme-console:not(#_) .dash-layout{gap:20px 24px}
 body.theme-console:not(#_) .dash-sec{box-sizing:border-box;padding:0 14px 12px;background:var(--frame),var(--canvas)}

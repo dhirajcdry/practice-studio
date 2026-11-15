@@ -53,6 +53,20 @@
 .fx-flame-inner{fill:var(--med)}
 .fx-toast.is-in:not(.is-still) .fx-flame{animation:fx-flicker 1.1s ease-in-out infinite alternate}
 
+/* A note (ui/toast.js): the same card, anchored in the bottom corner of the pane it is
+   about, so it never covers the first lines of code, Run or Submit. Quiet ink, no mark. */
+.fx-toast.fx-toast--note{
+  position:absolute;top:auto;left:auto;right:var(--space-3);bottom:var(--space-3);z-index:60;
+  min-width:0;gap:var(--space-2);padding:var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  cursor:default;transform:translateY(var(--space-2));
+}
+.fx-toast.fx-toast--note.is-in{transform:none}
+.fx-toast.fx-toast--note.is-leaving{opacity:0;transform:translateY(var(--space-1))}
+.fx-toast--note .fx-toast-head{font:600 var(--text-sm)/var(--line-sm) var(--ui);letter-spacing:0;color:var(--ink)}
+.fx-toast--note .fx-toast-meta{font-size:var(--text-xs)}
+.fx-toast--note .fx-toast-action{flex:none}
+.fx-toast--note .fx-toast-x{flex:none;color:var(--ink-50)}
+
 @keyframes fx-draw{to{stroke-dashoffset:0}}
 @keyframes fx-flicker{
   0%{transform:scale(1, 1) rotate(-2deg)}
@@ -62,6 +76,7 @@
 
 @media (prefers-reduced-motion: reduce){
   .fx-toast,.fx-toast.is-leaving{transform:translate(-50%, 0);transition:opacity 150ms ease}
+  .fx-toast.fx-toast--note,.fx-toast.fx-toast--note.is-leaving{transform:none}
   .fx-toast-mark path{animation:none !important;stroke-dashoffset:0}
   .fx-flame{animation:none !important}
 }

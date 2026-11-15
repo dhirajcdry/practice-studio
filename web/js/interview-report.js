@@ -15,7 +15,9 @@ import { el, replace } from './dom.js';
 import { icon } from './ui/icon.js';
 import { dialogHeader, paneHeader } from './ui/headers.js';
 import { highlightPython } from './highlight.js';
-import { formatClock } from './recorder.js';
+import { formatClock as clockText } from './ui/clock-format.js';
+// Report times read as prose: "5:03", "45:00", "1:02:34" (the shared clock format).
+const formatClock = ms => clockText(ms, { pad: false });
 import { ratingTone, relativeInterviewDate, reportDifficultyLabel } from './interview-format.js';
 import { renderMarkdown } from './markdown.js';
 import { appendDraft, readDraft, saveDraft, clearDraft } from './drafts.js';
@@ -67,6 +69,17 @@ export function defaultDimensionIndex(dimensions) {
   const weak = dimensions.findIndex(d => d.rating === 'Weak');
   const mixed = dimensions.findIndex(d => d.rating === 'Mixed');
   return weak >= 0 ? weak : mixed >= 0 ? mixed : 0;
+}
+
+/** "41 days", "3 h 12 min", "45 min" (the server's awayText). */
+function awayLength(ms) {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${Math.max(1, minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ''}` : `${Math.round(hours / 24)} days`;
+}
+export function attendedNote(away) {
+  return `Time counts only while you were there. This interview began before Studio checked for that, so gaps of over ${Math.round(away.thresholdMs / 60000)} minutes with nothing recorded (${awayLength(away.ms)} in all) are left out.`;
 }
 
 function timeLink(at, jump) {
@@ -234,7 +247,7 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
   const difficulty = reportDifficultyLabel(record.reportDifficulty);
   const mode = facts.mode === 'voice' ? 'Voice' : facts.mode === 'typed' ? 'Typed' : 'Input mode not recorded';
   const stats = el('div', { class: 'rp-stats' }, [
-    stat('Time', formatClock(facts.durationMs), `of ${formatClock(facts.plannedMs)}`),
+    stat('Time', formatClock(facts.durationMs), `of ${formatClock(facts.plannedMs)}${facts.away ? ' · attended' : ''}`),
     record.discipline === 'design' ? stat('Board', boardDrawn ? 'Drawn' : 'Empty') : stat('Hints', facts.hints.length ? `${facts.hints.length} ${facts.hints.length === 1 ? (facts.hints[0].level === 'nudge' ? 'nudge' : 'hint') : 'hints'}` : 'None'),
     record.discipline === 'design' ? null : stat('Runs', String(facts.runs.length), facts.runs.length ? (facts.runs.at(-1).passed ? (record.discipline === 'lld' ? 'Last exited normally' : 'Last passed') : `${runsFailed} failed`) : 'No runs'),
     record.discipline === 'lld' || record.discipline === 'design' ? null : stat('Submission', verdict ? (verdict.accepted ? 'Accepted' : verdict.label) : 'Not submitted', verdict ? `at ${formatClock(verdict.at)}` : ''),
@@ -250,6 +263,8 @@ export function renderReport({ title, record, report, transcript, onAsk = null, 
       j.headline ? el('p', { class: 'rp-headline', text: j.headline }) : null,
     ]), stats]),
     report.regraded ? el('p', { class: 'rp-regraded rp-note', text: regradedText(report.regraded) }) : null,
+    // Said plainly rather than shown as a silently smaller number (server/mock-clock.mjs).
+    facts.away ? el('p', { class: 'rp-attended rp-note', text: attendedNote(facts.away) }) : null,
     el('p', { class: 'rp-assessment rp-note', text: 'Practice assessment · model judgments should be checked against the recorded evidence.' }),
   ]);
   return el('div', { class: 'rp-body' }, [

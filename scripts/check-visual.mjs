@@ -10,6 +10,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { newState } from '../server/interview/state.mjs';
 import { InterviewStore } from '../server/interview/store.mjs';
 import { runVisualAudit } from './visual-audit.mjs';
+import { startFakeYouTube } from './fake-youtube.mjs';
 import { fixtureReport } from '../server/interview/test/report-fixture.mjs';
 import { buildReport } from '../server/interview/report.mjs';
 import { conversationTurns, formattedReply, mockFeedback } from './conversation-fixture.mjs';
@@ -24,7 +25,7 @@ const debugPort = serverPort + 5263;
 const origin = `http://127.0.0.1:${serverPort}`;
 const debugOrigin = `http://127.0.0.1:${debugPort}`;
 const code = 'class Solution:\n    def canJump(self, nums):\n        # Try the next reachable position.\n        return True\n';
-let server, chrome;
+let server, chrome, fakeVideo;
 let serverLog = '';
 
 async function json(file, value) {
@@ -92,7 +93,8 @@ async function seed() {
   ];
   for (const [i, [slug, days, signal, headline, moveUp, ratings]] of graded.entries()) {
     const id = `1760000000000-000000${20 + i}`, startedAt = Date.now() - days * 86400000;
-    await store.create(slug, id, { ...newState({ slug, startedAt }), discipline: 'lld', targetLevel: 'L4', minutes: 45, debriefed: true, endedAt: startedAt + 2700000 });
+    // Heartbeat-era records (lastSeenAt): their 45 minutes are attended time, not a legacy gap.
+    await store.create(slug, id, { ...newState({ slug, startedAt }), lastSeenAt: startedAt + 2700000, discipline: 'lld', targetLevel: 'L4', minutes: 45, debriefed: true, endedAt: startedAt + 2700000 });
     await store.append(slug, id, { kind: 'turn', said: 'I will keep each state change in one method.', asked: 'Walk me through the main flow.', elapsedMs: 5000 });
     await store.append(slug, id, { kind: 'debrief', elapsedMs: 2700000, asked: JSON.stringify({ signal, headline, moveUp, summary: headline,
       dimensions: LLD_RUBRIC.map((name, d) => ({ name, rating: ratings[d] || 'Mixed', summary: ratings[d] ? { Strong: 'Led this without a prompt.', Solid: 'Covered, with small gaps.', Mixed: 'Partly covered after a prompt.', Weak: 'Missed until the interviewer raised it.' }[ratings[d]] : '', evidence: ratings[d] ? [{ note: `Observed during the ${name.toLowerCase()} discussion.` }] : [] })),
@@ -206,10 +208,25 @@ async function seed() {
     });
     await fsp.writeFile(path.join(dir, row.codeFile), code);
   }
-  await fsp.writeFile(path.join(dir, 'chats.jsonl'), JSON.stringify({
-    at: '2026-10-18T01:00:00Z', sessionId: 'visual-past-chat', kind: 'question',
-    ask: 'Both are good, right?', answer: 'Compare how far each choice lets you reach. Then try a case with a zero.',
-  }) + '\n');
+  // Made-up chats in every naming state: named by the coach, renamed by the learner,
+  // unnamed (labelled by a cleaned first question), a long title and an attempt review.
+  const hoursAgo = hours => new Date(Date.now() - hours * 3600_000).toISOString();
+  const chat = (sessionId, at, asks, extra = {}) => asks.map((ask, index) => JSON.stringify({
+    at, askedAt: at, sessionId, kind: 'question', ask, answer: index ? 'Try it on the case with a zero.' : 'Compare how far each choice lets you reach. Then try a case with a zero.', ...extra,
+  }));
+  await fsp.writeFile(path.join(dir, 'chats.jsonl'), [
+    ...chat('visual-past-chat', hoursAgo(4), ['Both are good, right?']),
+    ...chat('visual-greedy-chat', hoursAgo(50), ['is greedy enough here or do i need dp?', 'what about [0]?', 'and [2,0,0]?']),
+    ...chat('visual-long-chat', hoursAgo(26), ['I am struggling to understand why the furthest index is enough']),
+    ...chat('visual-review-chat', hoursAgo(120), [''], { kind: 'attempt-review' }),
+    ...chat('visual-hints-chat', hoursAgo(0.5), ['help me with this.. just minor hints.. what am i doing incorrect here?', 'ok and the loop bound?']),
+    ...chat('visual-named-chat', hoursAgo(2), ['why does my loop stop early', 'so i should keep going while i <= reach?', 'got it']),
+  ].join('\n') + '\n');
+  await fsp.writeFile(path.join(dir, 'chat-titles.json'), JSON.stringify({ version: 1, titles: {
+    'visual-named-chat': { title: 'Hints on the loop bound', by: 'coach', at: hoursAgo(2) },
+    'visual-greedy-chat': { title: 'Greedy or dynamic programming', by: 'learner', at: hoursAgo(30) },
+    'visual-long-chat': { title: 'Why the furthest reachable index is always enough here', by: 'coach', at: hoursAgo(50) },
+  } }));
 }
 
 async function ready(read, child, label) {
@@ -248,7 +265,8 @@ try {
     `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--window-size=1600,1000', 'about:blank'], { stdio: 'ignore' });
   chrome.on('error', error => { serverLog += error.message; });
   const target = await ready(async () => (await (await fetch(`${debugOrigin}/json`)).json()).find(tab => tab.type === 'page'), chrome, 'headless Chrome');
-  const findings = await runVisualAudit({ origin, target, output });
+  fakeVideo = await startFakeYouTube();
+  const findings = await runVisualAudit({ origin, target, output, videoOrigin: fakeVideo.origin });
   for (const row of findings) console.error(`${row.theme}/${row.mode}/${row.state} | ${row.kind} | ${row.where || 'page'} | ${row.what || ''} ${row.detail}`);
   console.log(`${findings.length} findings. Screenshots and JSON: ${output}`);
   if (findings.length) process.exitCode = 1;
@@ -258,6 +276,7 @@ try {
 } finally {
   await stop(chrome);
   await stop(server);
+  await fakeVideo?.close();
   await cleanupChrome(chrome, profile);
   await fsp.rm(home, { recursive: true, force: true });
 }

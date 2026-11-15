@@ -20,8 +20,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { startScratch } from './check-scratch.mjs';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9347;
-const scratch = await startScratch(4197);
+const PORT = process.env.STUDIO_CHECK_PORT ? Number(process.env.STUDIO_CHECK_PORT) + 5255 : 9347;
+const scratch = await startScratch(Number(process.env.STUDIO_CHECK_PORT) || 4197);
 const PROFILE = await fsp.mkdtemp(`${os.tmpdir()}/studio-submit-keys-profile-`);
 const URL_UNDER_TEST = `${scratch.origin}/?simsubmit=accepted&simrun=pass#/p/contains-duplicate`;
 
@@ -83,15 +83,22 @@ const CASES = [
   { what: 'the report, clicked on its text', fires: false, setup: `${OPEN_REPORT}.then(() => ${blur})`, expect: `Boolean(document.querySelector('.rp-sheet[open]')) && document.activeElement === document.body` },
   // Everything else that sits over or beside a mounted workspace.
   { what: 'the settings panel', fires: false, setup: `${openSettings}; ${blur}`, expect: `Boolean(document.querySelector('aside.settings'))` },
-  { what: 'the header search box', fires: false, setup: focus('#q'), expect: active('#q') },
-  { what: 'the coach composer', fires: false, setup: `${openCoach}; ${focus('.coach-input')}`, expect: active('.coach-input') },
-  { what: 'a test-case field', fires: false, setup: focus('.tc-input'), expect: active('.tc-input') },
-  { what: 'Monaco Find', fires: false, setup: `window.monaco.editor.getEditors()[0].getAction('actions.find').run()`, expect: `!!document.activeElement.closest('.find-widget')` },
+  // A field outside the code keeps ⌘↵ (the composer sends, search has none); Run is a
+  // command chord no field uses, so it works from every one of them (docs/UI.md).
+  { what: 'the header search box', fires: { submit: false, run: true }, setup: focus('#q'), expect: active('#q') },
+  { what: 'the coach composer', fires: { submit: false, run: true }, setup: `${openCoach}; ${focus('.coach-input')}`, expect: active('.coach-input') },
+  // A test case belongs to the code, and so does its Find box: both keys work there.
+  // Ctrl+↵ in Find is Monaco's own (a newline in the search).
+  { what: 'a test-case field', fires: true, setup: focus('.tc-input'), expect: active('.tc-input') },
+  { what: 'Monaco Find', fires: { submit: true, run: true, ctrlSubmit: false }, setup: `window.monaco.editor.getEditors()[0].getAction('actions.find').run()`, expect: `!!document.activeElement.closest('.find-widget')` },
+  { what: 'Monaco Find after it closed', fires: true, setup: `(async () => { const e = window.monaco.editor.getEditors()[0]; await e.getAction('actions.find').run(); e.trigger('check', 'closeFindWidget'); e.focus(); })()`, expect: `!document.querySelector('.find-widget.visible') && window.monaco.editor.getEditors()[0].hasTextFocus()` },
   { what: 'a held key in the editor', fires: false, repeat: true, setup: `window.monaco.editor.getEditors()[0].focus()`, expect: `window.monaco.editor.getEditors()[0].hasTextFocus()` },
   { what: 'a held key on Submit', fires: false, repeat: true, setup: focus('.ws-submit'), expect: active('.ws-submit') },
   { what: 'a held key with nothing focused', fires: false, repeat: true, setup: blur, expect: `document.activeElement === document.body` },
   { what: 'Settings with focus left on the editor', fires: false, setup: `${openSettings}; window.monaco.editor.getEditors()[0].focus()`, expect: `!!document.querySelector('aside.settings') && window.monaco.editor.getEditors()[0].hasTextFocus()` },
-  { what: 'an already-handled key on Submit', fires: false, setup: `${focus('.ws-submit')}; document.querySelector('.ws-submit').addEventListener('keydown', e => e.preventDefault())`, expect: active('.ws-submit') },
+  // Command chords are claimed in the capture phase, before any control (docs/UI.md
+  // "Keyboard shortcuts"), so a control's own ⌘↵/⌘' handler never also runs: one action, never two.
+  { what: 'a control with its own key handler', fires: true, never: 'window.controlHandled > 0', setup: `${focus('.ws-submit')}; window.controlHandled = 0; document.querySelector('.ws-submit').addEventListener('keydown', e => { if (e.metaKey || e.ctrlKey) { window.controlHandled++; e.preventDefault(); } })`, expect: active('.ws-submit') },
   { what: 'held plain Enter on Submit', fires: false, repeat: true, plain: true, setup: focus('.ws-submit'), expect: active('.ws-submit') },
 ];
 
@@ -124,7 +131,7 @@ try {
       || document.querySelector('.ws-submit')?.classList.contains('busy');
   })()`);
 
-  for (const action of ['submit', 'run']) for (const modifiers of [4, 2]) for (const { what, fires, setup, expect, repeat, plain } of CASES) {
+  for (const action of ['submit', 'run']) for (const modifiers of [4, 2]) for (const { what, fires, setup, expect, repeat, plain, never } of CASES) {
     if (plain && (action !== 'submit' || modifiers !== 4)) continue;
     await send('Page.navigate', { url: 'about:blank' });
     await send('Page.navigate', { url: URL_UNDER_TEST });
@@ -145,7 +152,10 @@ try {
     await pressActionKey(action, repeat, plain ? 0 : modifiers);
     await sleep(600);
     const did = await acted(action);
-    const pass = did === fires;
+    const want = typeof fires === 'object'
+      ? (modifiers === 2 && `ctrl${action[0].toUpperCase()}${action.slice(1)}` in fires ? fires[`ctrl${action[0].toUpperCase()}${action.slice(1)}`] : fires[action])
+      : fires;
+    const pass = did === want && !(never && await evaluate(never));
     console.log(`  ${pass ? 'ok  ' : 'FAIL'} ${modifiers === 4 ? '⌘' : 'Ctrl+'}${action === 'submit' ? '↵' : "'"} from ${what}: ${did ? action : 'no action'}`);
     if (!pass) problems.push(`${action}: ${what}`);
   }

@@ -524,10 +524,11 @@ test('disconnect and pause keep the full in-flight question and paused clock on 
     assert.ok(state.pausedAt, 'completion must preserve the navigation pause');
     const turns = await svc.store.readTurns(id);
     assert.deepEqual(turns.slice(0, before.length), before);
-    assert.equal(turns.at(-1).asked, CLEAN);
-    assert.equal(turns.at(-1).said, 'Use a cache.');
+    // Pause and resume are records too now; the reply is the last thing said.
+    assert.equal(turns.findLast(t => t.kind === 'turn').asked, CLEAN);
+    assert.equal(turns.findLast(t => t.kind === 'turn').said, 'Use a cache.');
     const resumed = await (await post(origin, '/api/design/resume', { interviewId: id })).json();
-    assert.equal(resumed.turns.at(-1).asked, CLEAN);
+    assert.equal(resumed.turns.findLast(t => t.kind === 'turn').asked, CLEAN);
   } finally {
     delete process.env.STUDIO_FAKE_CHUNK_DELAY;
     await close();

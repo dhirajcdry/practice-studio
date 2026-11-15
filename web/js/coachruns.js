@@ -116,9 +116,11 @@ export function stopRun(slug) {
   try { run.controller.abort(); } catch { /* already gone */ }
 }
 
-function newRun({ slug, title, message, kind, lead, startedAt = new Date().toISOString() }) {
+function newRun({ slug, title, message, kind, lead, chatId = null, startedAt = new Date().toISOString() }) {
   return {
     slug,
+    // The saved chat this turn belongs to, when known (a resumed chat, or the server said).
+    chatId,
     title: title || slug,
     ask: message,
     kind,
@@ -149,6 +151,7 @@ function consume(run, open) {
     onRun: (info) => {
       run.serverId = info.id;
       if (info.startedAt) run.startedAt = info.startedAt;
+      if (typeof info.chatId === 'string' && info.chatId) run.chatId = info.chatId;
       if (run.seen || run.dismissed) seenRuns.remember(info.id);
     },
     onToken: (chunk) => { run.text += chunk; emit(run, 'token'); },
@@ -214,7 +217,7 @@ export function startRun({
   const existing = runs.get(slug);
   if (existing && !existing.done) return existing;
 
-  const run = newRun({ slug, title, message, kind, lead });
+  const run = newRun({ slug, title, message, kind, lead, chatId: resumeSessionId || null });
   runs.set(slug, run);
   announce();
 
@@ -247,6 +250,7 @@ export async function adopt() {
       message: summary.ask ?? '',
       kind: summary.kind,
       lead: summary.lead,
+      chatId: typeof summary.chatId === 'string' ? summary.chatId : null,
       startedAt: summary.startedAt,
     });
     run.serverId = summary.id;

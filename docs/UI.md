@@ -51,6 +51,7 @@ and use row spacing with inset content rather than stretching cards beyond their
 - `createSelect({ label, options | groups, value, onChange, compact })`: the only dropdown. Anchored menu, keyboard, type-ahead. Exposes `value`, `disabled`, `setOptions`, `setGroups`, `dispose`, and emits `change`.
 - `createMenu`: the anchored popover the select is built on, for action menus.
 - `createPopover`: a small nonmodal editor in the browser top layer; outside click and Escape dismiss it without expanding its toolbar anchor.
+- `showToast({ host, head, body, action, ms, onDismiss })` (`ui/toast.js`): a brief note about something that just happened, on the Accepted card's `.fx-toast` surface, anchored in the bottom corner of the pane it is about (`host`). Four seconds, held while hovered or focused, with its own Dismiss and at most one action. `role="status"` (polite). Its buttons never take focus from where it was, so a toast can never cost the cursor or a shortcut. Use it for confirmations; a lasting state (Browser only, Plain editor, Draft restored) stays a `.ws-notice`.
 - `createMockSessionControls({ clock, extend, onPause, onFinish })` (`mock-session.js`): the one
   session cluster for every timed mock (coding, LLD, system design): the clock as the Add time
   trigger, one Pause/Resume icon toggle that stays in the header in both states, Finish, and a
@@ -65,6 +66,13 @@ and use row spacing with inset content rather than stretching cards beyond their
   header on a state tick.
 - `createTabs` / `createBadge` (`primitives.js`): tab bars with roving focus; status chips.
 - `createActionRow({ content, trailing, onClick, className })`: clickable content rows. Uses shared row/inset geometry and grows with its content. Never apply `.btn` to a multiline content row: `.btn` deliberately has compact toolbar geometry.
+- `chatRow(thread, …)` (`history.js`): one saved chat, the same row in the landing's Recent
+  chats and the history popover. A `sidebar-record` like interview and submission rows: the
+  title on one line with an ellipsis (tooltip only when cut), `Current` as an accent badge
+  only for the chat on screen, and a quiet meta line (`relativeInterviewDate` · turns ·
+  Review). Five rows, then a full-width "Show all N". `threadStrip({ onRename })` renames
+  the open chat in place. Visual states `chat*` measure one-line titles, equal row heights
+  and containment down to 280px.
 - `icon(name, size)` (`icon.js`): stroke icons in `currentColor`. Add a path there; never use Unicode glyphs (♫ ⌨ ▷ ◈) as icons.
 - `button({ label, icon, kbd, variant, size, pressed, disabled, danger, ariaLabel,
   title, onClick, className })` in `ui/button.js`: `.btn` with exactly one of
@@ -350,9 +358,9 @@ The action placement contract for the redesign is:
 | Coding workspace | Submit with shortcut | Previous/next/shuffle icons; Run with shortcut | External resources |
 
 Reset sits in the editor's file row beside the file it resets. It is immediate and
-undoable (⌘Z, or Undo on the notice it shows) and is absent while the buffer is the
-starter: prefer undo to a confirm step wherever the work can be put back. Problem, Solution
-and Article are real tabs of the problem pane (S/A switch, the same key or Esc returns). The coding screen rail replaces the old editor run bar. The case row
+undoable (⌘Z, or Undo on the brief toast it shows) and is absent while the buffer is the
+starter: prefer undo to a confirm step wherever the work can be put back. Problem, Solution,
+Article and Video are real tabs of the problem pane (S/A switch, the same key or Esc returns). The coding screen rail replaces the old editor run bar. The case row
 owns Duplicate; there is only one Run control.
 
 Conversation controls use the UI font even in themes with serif prose. Show one
@@ -563,17 +571,75 @@ All chat, practice, mock and report inputs use `web/js/ui/composer.js`:
 - A desktop idle practice composer has a 132px height budget. Narrow controls wrap
   without hiding model selection, mode switching, errors or the send action.
 
-Keyboard actions belong to their visible surface. Use `web/js/keyboard.js` to
-claim action keys once, respecting handled events, IME composition and key repeat.
-Global workspace, navigation and recorder shortcuts stop while a dialog or menu is
-open, even if focus falls back to the page or remains behind the overlay. Submit/Run
-keys apply to the code buffer or workspace controls, not test-case inputs or Monaco
-Find. Chat Send belongs only to its visible composer; nested interview answers must
-never send a hidden Chat draft. Held Enter on action buttons must not repeat a
-submission, reset code, or start/finish another session.
+### Keyboard shortcuts
 
-`check:submit-keys`, `check:shortcuts` and `check:interview` exercise these boundaries
-with simulated judges, fake providers and disposable workspaces.
+Every app shortcut is registered with `registerShortcut` in `web/js/keyboard.js`, and that
+file alone decides whether one applies. Screens never add their own "is something open?"
+guard. The decision is read from the live DOM and focus at the moment of the key press:
+no flag that can be left set, and registrations belong to the screen (the Python editor's
+host, the route), never to a Monaco instance, so re-creating an editor, a theme change,
+wrapping or the textarea→Monaco upgrade cannot lose a shortcut.
+
+1. **A modal holds the keyboard.** While a modal dialog (report, learning notes, context
+   inspector, coaching instructions, Settings, the picture lightbox) or an open app menu or
+   popover is showing, no app shortcut acts, wherever focus is, including focus left on the
+   editor behind it. Editor widgets (Find/Replace, suggestions, the palette, the context
+   menu) are part of the editor, never an overlay, open or closed. (Monaco's find widget is
+   a `role="dialog"` that stays laid out after it closes; counting it is what used to kill
+   every shortcut after one ⌘F.)
+2. **Command chords work wherever focus is.** ⌘/Ctrl and ⌥ chords are claimed in the
+   capture phase on `window`, before Monaco or any panel: in the code, in Find, in a test
+   case, in the composer, on a button, with nothing focused.
+3. **Plain keys yield.** Letters, `/`, `↵`, arrows and Escape are offered last, in the bubble
+   phase: a text field (or anywhere inside the editor) types them, a focused control keeps
+   the keys it uses (Enter/Space on buttons, links, tabs and menu items; arrows on tabs,
+   splitters, menus, options and the conversation log), and an already-handled key is left alone.
+4. **Escape closes the innermost thing.** Monaco's widgets and a selection take Escape first;
+   only an Escape nothing in the editor used leaves the code, moving focus to Run. Menus
+   return focus to their anchor, Settings to its button, dialogs to their opener. On the page
+   itself Escape steps back one level: Solution/Article to the statement, a query to the
+   whole list, a problem to the list.
+5. **A held key acts once**, except J/K list movement.
+6. **The one exception: focus inside the Video tab's player.** It is a cross-origin iframe,
+   so the browser delivers every key to the player and Studio never sees it: no shortcut
+   (command chord, plain key or Esc) acts while the player has focus, and one reaching
+   Studio there would be a bug. The tab says "The player has the keyboard. Click outside
+   it to use Studio shortcuts."; one click outside the player gives every shortcut back,
+   and hiding the player (tab switch, Esc, the coach's open_panel, collapsing the pane,
+   leaving the problem) moves focus out of it.
+
+| Keys | Does | Where | Yields to (the stated exceptions to rule 2) |
+| --- | --- | --- | --- |
+| ⌘' | Run | any screen with a Python editor (coding, LLD mock, practice) | nothing |
+| ⌘↵ (⌘⇧↵) | Submit | the coding workspace | Text fields outside the code: a composer's ⌘↵ sends, and search, notes and rename fields keep it. Monaco's replace box (⌘↵ is Replace All), its palette and rename inputs. Ctrl+↵ in Find/Replace (Monaco's newline in the search). It still submits from the code, the find box and a test case (`data-command-keys="app"`). |
+| ⌘S | Save now | any screen with a Python editor | nothing |
+| ⌘B / ⌘J / ⌘\ | Problem / results / sidebar | coding route | nothing (⌘⇧ and ⌘⌥ versions stay the browser's) |
+| ⌘← / ⌘→ | Previous / next problem | coding route | typing (line start/end) |
+| ⌥R | Start/stop an attempt | coding route, or a live attempt | typing (⌥R types ®) |
+| J/K, ↓/↑ | Next/previous problem; catalog selection | problem page; catalog | typing, controls |
+| S / A | Solution / Article tab (again: Problem) | problem page | typing |
+| R | Shuffle | problem page, catalog | typing |
+| / | Search | coding routes | typing |
+| ↵ | Open the selected problem | catalog | buttons, links, tabs |
+| Esc | Back one level (rule 4) | coding routes | anything open, typing |
+
+Surface keys are not app shortcuts and are not registered: they belong to the visible
+control and use `claimActionKey` once matched (composer ⌘↵ Send, Escape to interrupt a
+speaking interviewer, menu/select/tab/splitter arrows, the submissions list's `[`/`]`).
+Chat Send belongs only to its visible composer; nested interview answers must never send a
+hidden Chat draft. Held Enter on action buttons must not repeat a submission, reset code,
+or start/finish another session.
+
+`npm run check:shortcut-matrix` (`scripts/check-shortcut-matrix.mjs`) drives every state
+(Find open/closed by each route, suggestions, the palette, the context menu, test cases,
+composer, menus, Settings, report, Solution tab, the Video tab and focus inside its player,
+the toast, after a run/submit, route changes, re-theming, the plain-textarea editor, LLD
+mock and practice, and the system-design whiteboard) against every shortcut
+with real CDP key events, from one table. It reads `listShortcuts()` and fails on a
+registered shortcut that has no row: a new shortcut adds a row to `SHORTCUTS`, a new
+overlay or focus target adds one to `STATES`. `check:submit-keys`, `check:shortcuts` and
+`check:interview` exercise the judge, browser-reserved and interview boundaries with
+simulated judges, fake providers and disposable workspaces.
 
 These choices adapt T3 Code's [composer surface](https://github.com/pingdotgg/t3code/blob/main/apps/web/src/components/chat/ComposerSurface.tsx)
 and [compact composer](https://github.com/pingdotgg/t3code/blob/main/docs/user/composer.md)
@@ -664,52 +730,69 @@ Menus accept `icon` on an item or group as text or as a function returning a fre
 
 `#/lld` and `#/design` share `web/js/track-home.js` and `web/css/track-home.css`, fed by
 `GET /api/track-home?discipline=` (`server/learning/track-home.mjs`) plus the track's own
-interview and practice lists. The shaping (status lines, default selection, counts, the
-skill trend) is pure, in `web/js/track-home-model.js`, tested by
+interview and practice lists. The shaping (status lines, chip tones, the last-session
+lines, the default mode, counts, the skill trend) is pure, in `web/js/track-home-model.js`, tested by
 `server/test/track-home-model.test.mjs`. One centred column up to 1320px, in this order:
 
 - **Header.** The track title in the display font, and one quiet line of counts from the
   records ("3 problems · 2 mocks finished · 1 unfinished · last session yesterday"). A part
   that is zero or unknown is left out.
 - **Continue.** The newest unfinished mock, else the latest practice session, as one slim
-  card: an accent dot, "Mock · <title>", a quiet "started today 12:56", and Resume (or
-  Continue) at the right. Absent when there is neither; no placeholder.
-- **Problems.** A list (36%, at least 320px) and a panel beside it. The list holds only
-  catalog problems, each with a status line built from its records ("Not tried yet",
-  "Mocked 2 times · last: Hire · 3 days ago", "Mock unfinished"). It is a group of
-  `aria-pressed` toggles with roving focus; arrows, Home and End move the selection, and
-  choosing the chosen row again, Escape, or the panel's Clear goes back to nothing chosen.
-  Nothing is chosen on arrival. The panel always offers both ways in, as two equal wells:
-  Practise (answer mode, the coach model, and the target level only where it changes
-  something: system design practice coaches to it, and a surprise problem is prepared for
-  it; never a clock) and Mock (the shared `createInterviewSetup`). Both wells are built
-  once and moved between panels, never rebuilt, so settings, a typed brief and a pending
-  start survive a change of problem. With a problem chosen the panel shows its title,
-  public statement (`publicProblem` only: never the interviewer's facts or curveball),
-  its own sessions and Clear, and both ways in act on it. With none chosen ("Start
-  something new") each well has a Problem picker: Surprise me (the default; Studio prepares
-  an unseen problem, and Practise then opens it untimed) or My own problem, which shows a
-  brief field in the shared composer surface (drafts are kept until the session has
-  started). Both tracks run a mock on your own brief through `startOwnMock`: system design
-  takes the brief as its prompt; LLD sends it to `POST /api/mock/prepare` as `brief`, where
-  Studio prepares the scenario for that problem (title, one-sentence statement, private
-  facts and curveball, the brief fenced as untrusted data) and the mock starts on it as a
-  surprise does. A brief is never refused as a repeat: one that names a problem you already
-  have (a library scenario or an earlier prepared one) runs on that saved problem, never
-  overwriting it, and one whose identity is taken by records without a definition gets a
-  numbered identity beside them. A practised surprise problem is saved like any prepared
-  one, so it joins the library and later surprises avoid it.
-- **Settings in the wells.** Every setting, Problem included, is a labelled field
-  (`setupField` in `interview.js`; `createInterviewSetup({ fields: true })` for the mock): a
-  small quiet name (Problem, Answer, Level, Length, Coach) above a full-width picker in a
-  hairline tile. Under a hairline, the short settings fill the well in equal columns
-  (Practise: Answer · Level; Mock: Answer · Level · Length; two columns in a very narrow
-  well) and Coach takes its own row, so the longest model name is never clipped. The wells
-  share the panel's rows through a subgrid (head, Problem, settings and Start), so their
-  Problem fields, settings rows and Start buttons line up side by side. Other setups keep
-  the compact inline row.
-  Side by side, the panel sticks under the app bar (`--th-bar`, measured) while the list
-  scrolls past, only when the whole panel fits in the window; one column never pins it.
+  card: an accent dot, "Mock · <title>", a quiet "started today 12:56", and a secondary
+  Resume (or Continue) at the right, so the stage's Start stays the one primary action. Absent when there is neither; no placeholder.
+- **Stage.** One wide card, "one stage, two modes". A two-button switch fills its top on
+  the well: **Practise** ("Untimed · coached", chat icon) and **Mock** ("Timed · graded",
+  clock icon), always two equal buttons; the chosen one is a raised card. It is a real
+  tablist (`role="tab"`, `aria-selected`, roving focus, arrow keys, Home and End). The mode
+  is remembered per track and per viewer (`readSidebar('<track>-home')`); a first visit
+  opens on Practise, the lower-stakes default. Below, two columns: on the left the mode's
+  name in the display face, its promise, three true lines of what it gives (practice: ask
+  for a hint, a check or a worked example; stop when you want, nothing is scored; save any
+  reply to your learning notes. Mock: an interviewer who stays quiet unless it needs to
+  step in; the clock runs for the length you set; a report that rates each skill from
+  evidence and gives a hire signal at your level), and a quiet line from the records
+  ("Last practice: News feed · 41 min · 5 days ago", the minutes only when the stopwatch
+  holds a whole stopped minute; "Last mock: URL shortener · Lean no · 3 days ago"; plainly
+  "No practice yet" / "No mock yet"). On the right, the mode's settings as labelled fields
+  in one row, the shared Problem row, then the page's one primary Start ("Start
+  practising" / "Start mock"). Both modes' controls are built once; the right column is one
+  flex column whose children are ordered by CSS while each mode's box is `display:contents`,
+  so flipping the switch only toggles `data-mode` on the stage: nothing is rebuilt, and the
+  other mode's settings, the problem, a typed brief and a pending start all survive.
+  Under 820px of column the left block stacks above the settings; under 560px the switch
+  drops its icons.
+- **Problem row.** Shared by both modes: pick once, then choose how to do it. A dashed row:
+  "Problem", a status mark, the choice and its status line ("Rate limiter · Mocked 1 time ·
+  last: Hire · Nov 2", "Surprise me · one you haven't seen"), Clear (only when something is
+  picked; back to Surprise me) and Change. Change opens, inside the row, chips with a status
+  dot (Surprise me, My own problem, then each library problem; the full title and status
+  line in the chip's title) and a legend of only the tones on screen (not tried, practised,
+  mock unfinished, the last mock's signal tone, or no grade), all from
+  `problemTone`/`statusLine` in the model. The chips wrap, cap at about four rows and scroll
+  inside the row; over 12 library problems a filter field appears (every typed word must be
+  in the title; Enter picks a lone match). Arrows move between chips; choosing one,
+  Escape, or a click outside folds the row. My own problem opens the brief in the same row
+  in the shared composer surface: one draft for both modes, kept until a start succeeds
+  (older per-mode drafts are read once). Practice takes a blank brief as open practice; a
+  mock refuses an empty one ("Write your problem first"). Both tracks run a mock on your
+  own brief through `startOwnMock`: system design takes the brief as its prompt; LLD sends
+  it to `POST /api/mock/prepare` as `brief`, where Studio prepares the scenario for that
+  problem (title, one-sentence statement, private facts and curveball, the brief fenced as
+  untrusted data) and the mock starts on it as a surprise does. A brief is never refused as
+  a repeat: one that names a problem you already have (a library scenario or an earlier
+  prepared one) runs on that saved problem, never overwriting it, and one whose identity is
+  taken by records without a definition gets a numbered identity beside them. A practised
+  surprise problem is saved like any prepared one, so it joins the library and later
+  surprises avoid it.
+- **Settings in the stage.** Every setting is a labelled field (`setupField` in
+  `interview.js`; `createInterviewSetup({ fields: true })` for the mock): a small uppercase
+  name above a full-width picker on the well. Practise: Answer, Level (only where it
+  changes something: system design practice coaches to it, and a surprise problem is
+  prepared for it; never a clock), Coach. Mock: Answer, Level, Length, Coach. The short
+  settings share equal columns and Coach takes the wider last one; when the column is
+  narrow (520px for the mock, 400px for practice) Coach takes its own row so the model name
+  is never clipped. Preparation and start errors show in the stage above Start; a retry
+  keeps the same request id. While the coach model picker is pending, Start is disabled.
 - **Where you stand** beside **History**. One row per rubric skill: the newest
   evidence-backed rating (or "No evidence yet") and one small square per report for the last
   five structured reports, oldest first, in the rating's tone. Above them, the
@@ -719,19 +802,23 @@ skill trend) is pure, in `web/js/track-home-model.js`, tested by
   a finished mock offers Practise it.
 
 Every part is a floating card (`--surface-card-*`), named by a small uppercase label inside
-it; titles and the report headline use `--display`; the chosen row takes `--accent-soft`.
-The look follows the approved Desk mockup and reaches the other families through tokens.
-Under 900px of column (a container query, not the viewport) the list sits above the panel
-and Where you stand above History. No averages or scores the records do not hold; a mock
-without a structured report shows "No grade". Each part shows a quiet line while reading
-and the real error if the read fails, and is drawn once when the records arrive. The page
-sets `data-state="ready"` or `"error"` on `.th` for checks. A page visit never starts a
-model turn. Visual states: `lld*` (library, nothing chosen, own brief, cleared, selected,
-pinned while scrolled, too short to pin, one column, lower half, filters, 720px and 390px,
-empty, error, own-brief mock, an open settings menu at 390px, the Problem menu) and
-`design*` (setup, own brief, selected, narrow) in `scripts/visual-audit.mjs`. Each asserts
-that the settings span the well in equal columns with nothing clipped and, side by side,
-that both wells' Start buttons and settings rows share a baseline.
+it or, for the stage, by its switch; titles, the switch and the mode name use `--display`;
+chosen chips take `--accent-soft`. The look follows the approved Desk mockup (Desk draws
+the chips as pills) and reaches the other families through tokens; Console inverts the
+chosen tab and chip. Under 900px of column (a container query, not the viewport) Where you
+stand sits above History. No averages or scores the records do not hold; a mock without a
+structured report shows "No grade". Each part shows a quiet line while reading and the
+real error if the read fails (the stage is not shown without records), and is drawn once
+when the records arrive. The page sets `data-state="ready"` or `"error"` on `.th` for
+checks. A page visit never starts a model turn. Visual states: `lld*` (default Practise,
+Mock, arrow keys, the row open in each mode, fold by Escape and outside click, a problem
+picked and carried across a switch each way, Clear, own brief in each mode, 30 problems
+with the filter and its scroll, 720px and 390px, lower half, filters, empty, error, a
+settings menu at 390px) and `design*` (default, Mock with the row open, picked across a
+switch, own brief in each mode, 720px, 390px, empty, error) in `scripts/visual-audit.mjs`.
+Each asserts exactly one primary Start, equal switch buttons, the shown mode consistent,
+settings, Problem row and Start spanning the right column, nothing clipped or outside the
+stage, and, where open, chips inside the row with a matching legend.
 
 ### Progress
 
@@ -765,6 +852,27 @@ the tags row and statement in place (`.pcol .ref-tab`, keeping the pane header),
 stays in the DOM hidden so Problem restores it without a refetch, and each tab keeps its own
 scroll while the problem is open. `s` / `a` switch tabs; the same key again, or Esc, returns to
 Problem. The coach's `open_panel` shows a collapsed pane first. Notes remains a dialog.
+
+Video (only when the catalog has a `youtubeVideoId`) plays the walkthrough in the pane
+(`web/js/video-player.js`, styles at the end of `statement.css`). Nothing is requested from
+YouTube until the tab is first opened; then one youtube-nocookie iframe stays mounted, hidden
+like the other tabs, so it never reloads. The player is 16:9, as large as the pane's visible
+height allows (`--video-fit-h`, measured), centred, at most 1200px, with a quiet line under it
+(duration, Open on YouTube). It is driven by `postMessage` with the frame's origin and window
+checked; no YouTube script runs in the page. It pauses whenever it is hidden (another tab, a
+collapsed pane, another problem) and is unloaded if a pause is not confirmed; it resumes on
+return only if it was playing when hidden, and never starts on its own. Position (per
+problem) and speed (global) live in localStorage; a finished video starts again. A refused
+(101/150), missing (100) or unreachable player says so in a warn state with Watch on YouTube.
+While focus is inside the player Studio cannot hear keys, so the line under it says so;
+leaving the tab or clicking outside the player gives the keyboard back. Checks and the visual
+audit use `scripts/fake-youtube.mjs`, a local player speaking the same protocol
+(`check:video`; visual states `video*`).
+
+The pane's tab row holds its tabs on one row at every width: its header is a size container
+(`pane-head`) so a family can tighten tab spacing (Broadsheet does under 440px), and at the
+280px minimum the row scrolls without a scrollbar, fades the edge it continues past
+(`data-overflow`) and keeps the selected tab in view.
 
 Twin Suns owns the only painting layer, a fixed contained pseudo-element behind
 opaque boards. Pane headers have only a bottom hairline. Avoid background attachment
@@ -820,5 +928,5 @@ lays them out from theme tokens.
   that case in the test panel.
 - Nothing is rewritten. Nodes are moved from the statement; a statement with no readable
   examples is shown exactly as it arrived.
-- The problem's outside links (video, NeetCode, LeetCode) sit at the right of the pane's tabs
+- The problem's outside links (NeetCode, LeetCode) sit at the right of the pane's tabs
   and take their own line under the tabs in a pane too narrow for both.

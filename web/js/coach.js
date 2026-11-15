@@ -27,7 +27,7 @@ import { icon } from './ui/icon.js';
 import { el, replace } from './dom.js';
 import { renderMarkdown, looksLikeCode } from './markdown.js';
 import { splitDiagramBlocks, renderDiagram } from './illustrator.js';
-import { loadHistory, api } from './api.js';
+import { loadHistory, renameChat, api } from './api.js';
 import { createVoicePanel } from './ui/voice-panel.js';
 import { createVoiceControl } from './voice.js';
 import { createCoachModelPicker } from './coach-model.js';
@@ -37,7 +37,8 @@ import {
   studioToolName, undoAction,
 } from './coach-actions.js';
 import { readAttempt, resumeDecision } from './attempt-state.js';
-import { renderHistory, threadDate } from './history.js';
+import { renderHistory, threadDate, chatTitle } from './history.js';
+import { fallbackChatTitle, TITLE_MAX } from './chat-title.js';
 import { createSubmissions } from './submissions.js';
 import { onChord, chordLabel } from './shortcuts.js';
 import { readDraft, saveDraft, clearDraft, appendDraft, watchDraft } from './drafts.js';
@@ -198,6 +199,14 @@ export function createCoachPanel(entry) {
   // Set when a past conversation is chosen from the history view; consumed by the next
   // turn, so continuing one is an explicit act rather than a lasting mode.
   let resumeSessionId = null;
+  // The landing screen is a new chat: a message sent from it never continues the last
+  // conversation by accident. Cleared once a saved chat is on screen.
+  let fresh = false;
+  // The saved chat on screen (its Studio identity), for the Current marker and renaming.
+  let onScreen = null;
+  // Runs this panel started itself; any other run arriving here is one to restore around.
+  const ownRuns = new WeakSet();
+  let starting = false;
 
   const log = el('div', { class: 'coach-log', tabindex: '0', role: 'log', 'aria-live': 'polite', 'aria-label': 'Coach conversation' });
   const stateLabel = el('span', { class: 'coach-state mono dim' });
@@ -345,7 +354,7 @@ export function createCoachPanel(entry) {
     if (!pastChats.hidden) {
       historyPopover.open();
       renderHistory(pastChats, {
-        slug, onResume: chooseThread, current: resumeSessionId || shownRun?.result?.sessionId,
+        slug, onResume: chooseThread, current: onScreen,
         disabled: streaming, heading: 'Past chats',
       });
     }
@@ -543,7 +552,18 @@ export function createCoachPanel(entry) {
   function updateThreadStrip(info = threadInfo) {
     threadInfo = info;
     stripHost.hidden = !info || selectedTab !== 'chat';
-    replace(stripHost, info ? threadStrip(info) : []);
+    const id = info?.sessionId;
+    replace(stripHost, info ? threadStrip({ ...info, maxLength: TITLE_MAX, onRename: id ? async title => {
+      const result = await renameChat(slug, id, title);
+      if (result.ok && threadInfo?.sessionId === id) threadInfo = { ...threadInfo, title: result.title };
+      return result;
+    } : null }) : []);
+  }
+  /** The coach named the chat on screen during this turn: show it without a receipt. */
+  function showChatName(actions) {
+    const named = actions.filter(action => studioToolName(action.tool) === 'name_chat' && action.chatTitle && action.status !== 'failed').at(-1);
+    if (!named || !threadInfo || threadInfo.title === named.chatTitle) return;
+    updateThreadStrip({ ...threadInfo, title: named.chatTitle, ...(named.sessionId ? { sessionId: named.sessionId } : {}) });
   }
   const progressWatches = new WeakMap();
   function watchChangeProgress(actions, card, repaint) {
@@ -585,10 +605,12 @@ export function createCoachPanel(entry) {
 
   function showEmptyState() {
     updateThreadStrip(null);
+    fresh = true;
+    onScreen = null;
     historyButton.hidden = true;
     newChatButton.hidden = true;
     const recent = el('div', { class: 'recent-chats' });
-    replace(log, el('div', { class: 'coach-empty' }, [
+    replace(log, el('div', { class: 'coach-empty', dataset: { landing: '' } }, [
       el('h3', { text: 'Ask about this problem' }),
       el('p', { class: 'coach-context', text: 'The coach can see your code and changes, run results, and saved speech.' }),
       el('div', { class: 'coach-starters' }, STARTERS.map(starter => el('button', {
@@ -660,7 +682,9 @@ export function createCoachPanel(entry) {
   function replayThread(thread) {
     historyButton.hidden = false;
     newChatButton.hidden = false;
-    updateThreadStrip({ title: thread.turns?.find(t => t.ask)?.ask, startedAt: thread.startedAt || thread.turns?.[0]?.askedAt || thread.turns?.[0]?.at, turns: thread.turns?.length || 0 });
+    fresh = false;
+    onScreen = thread.sessionId || null;
+    updateThreadStrip({ title: chatTitle(thread), sessionId: thread.sessionId || null, startedAt: thread.startedAt || thread.turns?.[0]?.askedAt || thread.turns?.[0]?.at, turns: thread.turns?.length || 0 });
     replace(log, threadNodes(thread));
     following = true;
     scrollDown(true);
@@ -705,17 +729,25 @@ export function createCoachPanel(entry) {
    * as a new chat, while it was really one more turn of a thread you could not see.
    * What is on screen and what the coach is continuing must be the same conversation.
    */
-  let restoreWanted = !thread.pending;
-  async function restoreCurrentThread() {
+  let restoreWanted = false;
+  // Only for a reply that is still arriving, or finished unseen: its conversation is put
+  // back around it so nothing the coach is saying is hidden. An idle chat is not reopened
+  // on load; it waits at the top of Recent chats.
+  async function restoreCurrentThread(chatId = null) {
     const data = await loadHistory(slug);
     if (disposed) return;
     const wanted = restoreWanted && !thread.pending && !resumeSessionId;
     restoreWanted = false;
-    const current = wanted && data.ok && data.currentSessionId
-      ? data.threads.find(past => past.sessionId === data.currentSessionId) : null;
+    const id = chatId || data.currentSessionId;
+    const current = wanted && data.ok && id
+      ? data.threads.find(past => past.sessionId === id) : null;
     // A turn already on screen as a run (in flight, or adopted after a reload) is not drawn twice.
     const shown = shownRun?.serverId;
-    if (current) updateThreadStrip({ title: current.turns?.find(t => t.ask)?.ask, startedAt: current.startedAt, turns: current.turns.length + (shownRun && !current.turns.some(t => t.requestId === shown) ? 1 : 0) });
+    if (current) {
+      onScreen = current.sessionId; fresh = false;
+      updateThreadStrip({ title: chatTitle(current), sessionId: current.sessionId, startedAt: current.startedAt, turns: current.turns.length + (shownRun && !current.turns.some(t => t.requestId === shown) ? 1 : 0) });
+      if (shownRun) showChatName([...(shownRun.actions?.values() || [])]);
+    }
     const nodes = current ? threadNodes({ ...current, turns: current.turns.filter(turn => !shown || turn.requestId !== shown) }) : [];
     if (!nodes.length) { if (!log.querySelector('.cmsg,.coach-session-note')) showEmptyState(); return; }
     historyButton.hidden = false;
@@ -732,7 +764,7 @@ export function createCoachPanel(entry) {
     streaming = on;
     newChatButton.disabled = on;
     newChatButton.title = on ? 'Wait for the current answer to finish before starting a new chat.' : 'New chat';
-    if (!pastChats.hidden) renderHistory(pastChats, { slug, onResume: chooseThread, disabled: on });
+    if (!pastChats.hidden) renderHistory(pastChats, { slug, onResume: chooseThread, current: onScreen, disabled: on, heading: 'Past chats' });
     sendButton.disabled = !input.value.trim() || on || voice.isBusy() || changingModel;
     sendButton.hidden = on;
     modelPicker.setBusy(on);
@@ -767,7 +799,8 @@ export function createCoachPanel(entry) {
     }
 
     updateThreadStrip(threadInfo ? { ...threadInfo, turns: log.querySelectorAll('.cmsg.reply').length + 1 }
-      : { title: run.ask || 'Attempt review', startedAt: run.startedAt, turns: 1 });
+      : { title: fallbackChatTitle(run.ask) || (run.review ? 'Attempt review' : 'Conversation'), sessionId: run.chatId || null, startedAt: run.startedAt, turns: 1 });
+    showChatName([...(run.actions?.values() || [])]);
     const { message: card, bodyEl, reply } = addMessage('reply', '', run.startedAt, run.model || run.provider || '');
     if (run.serverId) card.dataset.requestId = String(run.serverId);
     const receiptUi = new Map();
@@ -830,6 +863,8 @@ export function createCoachPanel(entry) {
       bodyEl.dataset.streaming = 'false';
       setBusy(false, outcome && outcome.tone === 'err' ? 'Not available' : thread.live ? 'Attempt in progress' : 'Ready');
       resumeSessionId = null;
+      const savedAs = run.result?.sessionId || run.chatId || null;
+      if (savedAs) { onScreen = savedAs; fresh = false; if (threadInfo && !threadInfo.sessionId) updateThreadStrip({ ...threadInfo, sessionId: savedAs }); }
       markSeen(slug);
       if (detachRun) { detachRun(); detachRun = null; }
       scrollDown();
@@ -848,7 +883,7 @@ export function createCoachPanel(entry) {
       if (disposed) return;
       if (event === 'token') { if (activityLive) paintTools(false); paint(); return; }
       if (event === 'tool') { paintTools(!run.done); scrollDown(); return; }
-      if (event === 'action') { paintReceipts(); watchHandoffs(); scrollDown(); return; }
+      if (event === 'action') { paintReceipts(); watchHandoffs(); showChatName([...(run.actions?.values() || [])]); scrollDown(); return; }
       if (event === 'done') finish();
     });
   }
@@ -886,19 +921,25 @@ export function createCoachPanel(entry) {
     // (2 s) and quiet inside flushEditorSave — a slow save cannot hold the question.
     await flushEditorSave(slug).catch(() => false);
 
-    const run = startRun({
+    // startRun announces synchronously and showPendingRun may attach before it returns;
+    // `starting` tells attach this is our own turn, not one to restore a chat around.
+    starting = true;
+    let run;
+    try { run = startRun({
       slug,
       title: entry.title || slug,
       message,
       kind,
       attemptId,
-      newThread: newThread || thread.pending,
+      newThread: newThread || thread.pending || (fresh && !resumeSessionId),
       resumeSessionId,
       attach: attachment,
       lead,
-    });
+    }); } finally { starting = false; }
     clearAttachment();
     thread.pending = false;
+    fresh = false;
+    ownRuns.add(run);
     attachRun(run, { printAsk: true });
   }
 
@@ -928,14 +969,19 @@ export function createCoachPanel(entry) {
     if (event.key === 'Escape' && document.activeElement === input) { event.preventDefault(); input.blur(); }
   });
 
-  // The empty screen only when there is nothing to continue; deciding first avoids
-  // flashing it before the thread.
-  if (restoreWanted) { historyButton.hidden = true; newChatButton.hidden = true; restoreCurrentThread(); }
-  else showEmptyState();
+  // Opening a problem, or reloading, lands on the new-chat screen with the last chat at
+  // the top of Recent chats. The one exception is a reply this page has not yet shown
+  // (still arriving, or finished unseen): `attach` puts its conversation back instead.
+  // Waiting for the reload's adoption first avoids flashing the landing before it.
+  historyButton.hidden = true; newChatButton.hidden = true;
+  if (!runFor(slug)) Promise.resolve(adoption).catch(() => {}).then(() => {
+    if (disposed || runFor(slug) || log.querySelector('.cmsg,.coach-session-note,.coach-empty')) return;
+    showEmptyState();
+  });
   submissions.refresh();
   const savedSidebar = readSidebar(slug);
   showTab(savedSidebar.tab || (activeInterview(slug) ? 'interviews' : 'chat'));
-  if (!savedSidebar.interviewId && activeInterview(slug)) interviews.open(activeInterview(slug).id || null);
+  if (activeInterview(slug)) interviews.open(activeInterview(slug).id || null);
   autosize();
 
   return {
@@ -946,7 +992,15 @@ export function createCoachPanel(entry) {
     setVisible(on) { interviews.show(on && selectedTab === 'interviews'); if (!on) voice.stop(); },
     openInterview(id = null) { showTab('interviews'); interviews.open(id); },
     slug,
-    attach: attachRun,
+    attach(run, options) {
+      if (starting) ownRuns.add(run);
+      if (shownRun !== run && !ownRuns.has(run) && !thread.pending) {
+        fresh = false;
+        restoreWanted = true;
+        restoreCurrentThread(run.chatId || null);
+      }
+      attachRun(run, options);
+    },
     turnCount: () => turns,
 
     /** A new attempt is a new conversation: clear the panel and drop the resumed thread. */
@@ -1114,17 +1168,16 @@ function ensureLauncher() {
 let adoption = null;
 export function mountCoach(entry) {
   if (active) active.dispose();
+  // The server may still be writing an answer this page has never seen — the tab was
+  // reloaded, or this is a second tab. Asked before the panel is built, so the panel can
+  // wait for it rather than flash the new-chat screen first.
+  if (!adoption) adoption = adopt().catch(() => { adoption = null; });
   const panel = createCoachPanel(entry);
   active = panel;
   ensureLauncher();
   ensureRunsChip();
   setOpen(Boolean(activeInterview(entry.slug)) || openOnMount || readOpen(), { focus: false });
   openOnMount = false;
-
-  // The server may still be writing an answer this page has never seen — the tab was
-  // reloaded, or this is a second tab. Ask once; anything found announces itself and
-  // arrives through showPendingRun.
-  if (!adoption) adoption = adopt().catch(() => { adoption = null; });
 
   // An answer that was still arriving when you left, or that finished while you were
   // away. It goes on screen once the panel is open — attaching into a hidden panel would

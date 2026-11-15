@@ -21,9 +21,12 @@ export function tooltip(button, label) {
     owner = button;
     timer = setTimeout(() => {
       if (!button.isConnected || owner !== button) return;
+      // A label function may decide there is nothing to add (a title that already fits).
+      const text = typeof label === 'function' ? label() : label;
+      if (!text) return;
       tip = document.createElement('div');
       tip.className = 'control-tooltip';
-      tip.textContent = typeof label === 'function' ? label() : label;
+      tip.textContent = text;
       tip.setAttribute('role', 'tooltip');
       document.body.append(tip);
       const box = button.getBoundingClientRect();

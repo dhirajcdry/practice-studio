@@ -104,8 +104,8 @@ try {
   ` });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: origin + '/#/lld' });
-  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-problem[data-slug]')"), 'LLD launcher');
-  await evaluate("document.querySelector('.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
+  await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-chip.th-problem[data-slug]')"), 'LLD launcher');
+  await evaluate("document.querySelector('.th-sw[data-mode=practise]').click(); document.querySelector('.th-qchange').click(); document.querySelector('.th-chip.th-problem[data-slug]').click(); document.querySelector('.th-practice').click()");
   await until(() => evaluate("return !!document.querySelector('.pr-coach') && !!document.querySelector('.editor-wrap') && !!window.monaco?.editor.getModels().length"), 'practice editor');
   const practiceHash = await evaluate('return location.hash');
   await checkEditorEdges('LLD practice');

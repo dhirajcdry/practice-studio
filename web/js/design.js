@@ -5,6 +5,7 @@ import { createCoachModelPicker } from './coach-model.js';
 import { screenHeader, paneHeader } from './ui/headers.js';
 import { practiseFromMock } from './ui/button.js';
 import { createMockSessionControls } from './ui/mock-session.js';
+import { createMockClock, createAttendance } from './mock-attendance.js';
 import { createPhaseStepper } from './ui/phase-stepper.js';
 import { createPinnedStatement } from './ui/pinned-statement.js';
 import { createComposer, composerSend, bindComposerInput, mountComposerDictation } from './ui/composer.js';
@@ -34,8 +35,8 @@ import { createInterviewMode } from './interview-mode.js';
 // AN INTERVIEW OUTLIVES THE TAB. A design interview is an hour of work, and nobody has
 // a spare hour at the moment they want to practise. So this screen opens on the library
 // of past interviews rather than on a new one: unfinished interviews are picked up where
-// they were left, finished ones are re-read, and leaving the screen stops the clock
-// instead of quietly charging you for the night.
+// they were left, finished ones are re-read, and the clock counts only attended time
+// (server/mock-clock.mjs), so a night away is never charged as interview time.
 
 import { el, replace } from './dom.js';
 import { tooltip } from './tooltip.js';
@@ -136,7 +137,8 @@ function replayTurns(turns, entry, log, beganAt) {
   let lastPhase = null, pendingActions = [];
   for (const turn of turns ?? []) {
     const start = typeof beganAt === 'number' ? beganAt : Date.parse(beganAt);
-    const elapsedMs = turn.elapsedMs ?? (Number.isFinite(start) && Number.isFinite(Date.parse(turn.at)) ? Math.max(0, Date.parse(turn.at) - start) : undefined);
+    // attendedMs: the server's attended-time reading of an older record's stamp.
+    const elapsedMs = turn.attendedMs ?? turn.elapsedMs ?? (Number.isFinite(start) && Number.isFinite(Date.parse(turn.at)) ? Math.max(0, Date.parse(turn.at) - start) : undefined);
     if (log && turn.phase && turn.phase !== lastPhase) {
       lastPhase = turn.phase;
       log.append(conversationSeparator(PHASE_LABELS.get(lastPhase) || lastPhase, { phase: true, value: lastPhase }));
@@ -328,11 +330,16 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
   let busy = false;
   let destroyed = false;
   let debriefed = false;
-  let paused = false;
+  // The server owns elapsed time (attended time, server/mock-clock.mjs); the clock on
+  // screen ticks locally from its last reading. An interview opened again comes back
+  // paused when it was stopped, including by nobody being there, and runs only on Resume.
+  const mockClock = createMockClock();
+  if (resumed?.clock) mockClock.set(resumed.clock);
+  let paused = Boolean(resumed?.clock && !resumed.clock.running);
+  let away = paused && resumed.clock.pauseReason === 'away';
   let changingPause = false, modeDrain = false, finishing = false, draining = false;
   let pauseWhenIdle = false;
   let sceneTimer = null, sceneWrites = Promise.resolve();
-  let startedAt = resumed?.startedAt ? Date.parse(resumed.startedAt) || Date.now() : null;
   let clockTimer = null;
   let speaker = null;
   let voice = null;
@@ -357,7 +364,6 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     if (log.scrollHeight - log.scrollTop - log.clientHeight <= 1) following = true;
     lastLogTop = log.scrollTop;
   });
-  let pausedElapsed = 0;
   const clock = el('span', { class: 'mono dz-clock' });
   // The same clock, Pause/Resume toggle, Finish and paused band as an LLD or coding mock.
   // Availability stays imperative here: every guard below is unchanged.
@@ -523,7 +529,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
   /** One entry in the transcript. Returns the node so tokens can stream into it. */
   let replaying = false;
   let lastEntryPhase = null;
-  function entry(kind, text = '', elapsedMs = replaying ? undefined : paused ? pausedElapsed : startedAt ? Math.max(0, Date.now() - startedAt) : undefined) {
+  function entry(kind, text = '', elapsedMs = replaying || !interviewId ? undefined : mockClock.elapsed()) {
     if (!replaying && kind !== 'd' && phase !== lastEntryPhase) {
       log.append(conversationSeparator(PHASE_LABELS.get(phase) || phase, { phase: true, value: phase }));
       lastEntryPhase = phase;
@@ -589,7 +595,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
             interviewId = payload.id; bindTools();
             if (input.value) saveDraft('design:' + interviewId, input.value);
             modeControl.sync(payload.mode);
-            startedAt = Date.parse(payload.startedAt) || Date.now();
+            mockClock.set(payload.clock || { elapsedMs: 0, running: true });
             tickClock();
           } else if (name === 'accepted') {
             lastActivity = Date.now();
@@ -738,13 +744,13 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     try {
       if (paused) {
         const result = await callJson('/api/design/resume', { interviewId });
-        startedAt = Date.parse(result.startedAt);
+        mockClock.set(result.clock);
         minutes = result.minutes;
-        paused = false;
+        paused = away = false;
       } else {
         const result = await callJson('/api/design/pause', { interviewId });
-        paused = true;
-        pausedElapsed = result.spentMs;
+        mockClock.set(result.clock);
+        paused = true; away = false;
       }
       if (!destroyed) paintPaused();
     } catch (error) { say(`Could not ${paused ? 'resume' : 'pause'}: ${error.message}`); }
@@ -752,13 +758,29 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     if (!paused) openMic();
   }
 
-  const onVisibility = () => {
-    if (!document.hidden || paused || debriefed || destroyed) return;
-    if (busy) pauseWhenIdle = true;
-    else togglePause();
-  };
+  // Leaving no longer pauses at once: a short absence keeps counting, as in every mock.
+  // The heartbeat stops while nobody is here, and the server stops the clock from the
+  // last one after the grace period (mock-attendance.js). Back sooner, it never stopped.
+  function applyHeartbeat(result) {
+    if (destroyed || !result?.clock) return;
+    // Only the clock comes from a heartbeat; an extension in flight owns the budget.
+    mockClock.set(result.clock);
+    if (!result.clock.running && !paused && !debriefed && !changingPause) {
+      paused = true; away = result.clock.pauseReason === 'away';
+      closeMic(); replySpeech?.cancel(); speaker?.cancel();
+      paintPaused();
+    } else paintClock();
+  }
+  const attendance = createAttendance({ clock: mockClock,
+    running: () => Boolean(interviewId) && !paused && !debriefed && !destroyed && mockClock.reading.running,
+    beat: async () => applyHeartbeat(await callJson('/api/design/heartbeat', { interviewId })),
+    beacon: () => {
+      const body = JSON.stringify({ interviewId });
+      if (!navigator.sendBeacon?.('/api/design/heartbeat', new Blob([body], { type: 'application/json' }))) {
+        fetch('/api/design/heartbeat', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      }
+    } });
   const onPageHide = () => destroy();
-  document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('pagehide', onPageHide);
 
   // Total quiet sends no turn, so offer the interviewer the chance a real one would have.
@@ -774,14 +796,15 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
     void runTurn('/api/design/turn', { interviewId, said: '', phase, elements, mode: mode === 'type' ? 'typed' : 'voice' }, { idle: true });
   }
   function paintClock() {
-    const reading = session.update({ minutes, elapsedMs: paused ? pausedElapsed : startedAt ? Math.max(0, Date.now() - startedAt) : 0, paused, ended: debriefed });
+    const reading = session.update({ minutes, elapsedMs: interviewId ? mockClock.elapsed() : 0, paused, away, ended: debriefed });
     clock.classList.toggle('over', reading.remaining <= 0);
   }
   function tickClock() {
     paintClock(); paintTimeControls();
     if (clockTimer) clearInterval(clockTimer);
+    // One text update a second while it is on screen; nothing at all while hidden.
     clockTimer = setInterval(() => {
-      if (destroyed || !startedAt || paused) return;
+      if (destroyed || !interviewId || paused || document.hidden) return;
       paintClock();
       offerStepIn();
     }, 1000);
@@ -923,7 +946,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       onLevel: value => {
         voiceView.level(value); const {sinceLoud,pending} = value;
         candidateLoud = Boolean(value.loud); phrasesPending = pending || 0;
-        if (candidateLoud) lastActivity = Date.now();
+        if (candidateLoud) { lastActivity = Date.now(); attendance.noteActivity(); }
         if (isVoice() && !destroyed && !paused && candidateLoud && (speaker?.speaking || (busy && !speechInterrupted))) interrupt();
         if (!voiceView.automatic || replyFailed || voice.hasTranscriptionError() || !isVoice() || modeControl.pending || destroyed || pendingDraft) return;
         const decision = turnDecision({
@@ -965,7 +988,7 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       canvasHost.querySelector('.dz-loading')?.remove();
       boardRoot.render(ex.createElement(ex.Excalidraw, {
         theme: document.body.classList.contains('is-dark') ? 'dark' : 'light',
-        excalidrawAPI: (instance) => { api = instance; bindTools(); },
+        excalidrawAPI: (instance) => { api = instance; bindTools(); if (paused) instance.updateScene({ appState: { viewModeEnabled: true } }); },
         onChange: (next, appState) => { boardControls.sync(appState?.zoom?.value); onSceneChange(next); },
         // Resuming means finding the room as you left it, so the saved scene is the
         // board's starting state rather than something drawn back onto an empty one.
@@ -997,8 +1020,9 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       log.scrollTop = log.scrollHeight;
       tickClock();
       session.setPauseDisabled(false);
-      input.focus();
-      openMic();
+      // Stopped while nobody was here (or paused): it waits for an explicit Resume.
+      if (paused) paintPaused();
+      else { input.focus(); openMic(); void attendance.now(); }
       return;
     }
 
@@ -1018,23 +1042,15 @@ function mountInterview(host, { level = 'L4', minutes = 45, prompt = null, title
       if (clockTimer) clearInterval(clockTimer);
       if (turnTimer) clearInterval(turnTimer);
       window.removeEventListener('keydown', onKey);
-      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
       // Leaving the screen must silence it. A voice still reading a question from a
       // page you have navigated away from is the worst bug this feature could have.
       unbindTools(); modeControl.dispose(); replySpeech?.cancel(); speaker?.dispose?.();
       voice?.dispose?.({ finish: true });
-      // Stop the clock on the way out. Without this an interview left open overnight
-      // comes back eighteen hours in, past the end of its own phase machine.
-      if (interviewId && !debriefed && !paused) {
-        const body = JSON.stringify({ interviewId });
-        const sent = navigator.sendBeacon?.('/api/design/pause', new Blob([body], { type: 'application/json' }));
-        if (!sent) {
-          fetch('/api/design/pause', {
-            method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true,
-          }).catch(() => { /* the clock is the only casualty */ });
-        }
-      }
+      // The last heartbeat on the way out, so time away starts exactly now. Without
+      // it an interview left open overnight would count until the grace period ran out
+      // from the previous heartbeat, never overnight (see mock-attendance.js).
+      attendance.dispose();
       stopTheme();
       boardRoot?.unmount();
       boardRoot = null;
@@ -1100,17 +1116,9 @@ export function initDesign(host, { level = 'L4', minutes = 45, interviewId = nul
       return;
     }
 
-    let resumed;
-    try {
-      // Resume before mounting: it is the call that shifts the clock, and a screen that
-      // painted first would spend its first seconds showing yesterday's elapsed time.
-      resumed = await callJson('/api/design/resume', { interviewId: id });
-    } catch (error) {
-      if (!gone) swap(() => failed(`That interview could not be resumed. ${error.message}`));
-      return;
-    }
-    if (gone) return;
-    swap(() => mountInterview(host, { level, minutes, resumed, onBack: showLibrary }));
+    // Opening never resumes. The server has already settled the clock (attended time);
+    // a running interview carries on, a stopped one shows as paused until Resume.
+    swap(() => mountInterview(host, { level, minutes, resumed: detail, onBack: showLibrary }));
   }
 
   const wanted = interviewId ?? designIdFromHash();

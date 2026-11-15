@@ -7,6 +7,19 @@ export const validId = id => typeof id === 'string' && /^[0-9]{13}-[a-f0-9]{8}$/
 export function validate(slug, id = null) {
   if (!isSafeSlug(slug) || (id !== null && !validId(id))) throw new HttpError(400, 'BAD_REQUEST', 'Invalid interview identity.');
 }
+// State writes to one file go one at a time, so a heartbeat's small patch can never land
+// between another write's read and rename. A full snapshot written by a long turn keeps the
+// newer heartbeat already on disk: `lastSeenAt` only ever moves forward.
+const writes = new Map();
+function serialized(file, operation) {
+  const next = (writes.get(file) || Promise.resolve()).catch(() => {}).then(operation);
+  writes.set(file, next);
+  next.finally(() => { if (writes.get(file) === next) writes.delete(file); }).catch(() => {});
+  return next;
+}
+async function readJson(file) {
+  try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
 export class InterviewStore {
   constructor({ root }) { this.root = root; }
   base(slug) { validate(slug); return path.join(problemDir(this.root, slug), 'interviews'); }
@@ -18,9 +31,25 @@ export class InterviewStore {
   }
   async writeState(slug, id, state) {
     const file = path.join(this.dir(slug, id), 'interview.json');
-    const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-    try { await fs.writeFile(temporary, JSON.stringify(state, null, 2) + '\n'); await fs.rename(temporary, file); }
-    finally { await fs.rm(temporary, { force: true }); }
+    return serialized(file, async () => {
+      const disk = await readJson(file);
+      if (Number.isFinite(disk?.lastSeenAt) && Number.isFinite(state.lastSeenAt) && disk.lastSeenAt > state.lastSeenAt) state.lastSeenAt = disk.lastSeenAt;
+      const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+      try { await fs.writeFile(temporary, JSON.stringify(state, null, 2) + '\n'); await fs.rename(temporary, file); }
+      finally { await fs.rm(temporary, { force: true }); }
+    });
+  }
+  /** Read, change and write the state as one step; `change` returning false writes nothing. */
+  async patchState(slug, id, change) {
+    const file = path.join(this.dir(slug, id), 'interview.json');
+    return serialized(file, async () => {
+      const state = await readJson(file);
+      if (!state || change(state) === false) return state;
+      const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+      try { await fs.writeFile(temporary, JSON.stringify(state, null, 2) + '\n'); await fs.rename(temporary, file); }
+      finally { await fs.rm(temporary, { force: true }); }
+      return state;
+    });
   }
   async readState(slug, id) {
     try { return JSON.parse(await fs.readFile(path.join(this.dir(slug, id), 'interview.json'), 'utf8')); }

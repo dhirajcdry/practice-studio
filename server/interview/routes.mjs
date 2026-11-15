@@ -12,7 +12,8 @@ import { readJsonBody } from '../coach/http.mjs';
 import { SseStream } from '../coach/sse.mjs';
 import { readCoachChoice, runProviderTurn, stoppedProviderExit } from '../coach/provider.mjs';
 import { createNarrationFilter } from '../design/narration.mjs';
-import { newState, pause, resume, elapsed, advance, recordHints, observe, shouldInterject } from './state.mjs';
+import { newState, pause, resume, elapsed, advance, recordHints, observe, shouldInterject, touch, settleClock, interviewClock, clockGaps } from './state.mjs';
+import { attendedRecords, isTracked, lapseAt } from '../mock-clock.mjs';
 import { data, systemPrompt, lldSystemPrompt, turnPrompt, rehydratePrompt, debriefPrompt, REGRADE_NOTE } from './prompt.mjs';
 import { createSessionContext } from '../coach/session-context.mjs';
 import { contextPacket } from '../coach/context-packet.mjs';
@@ -46,13 +47,16 @@ function service(ctx) {
   return services.get(root);
 }
 const keyOf = (slug, id) => `${slug}/${id}`;
-function publicState(state, busy = false) {
+function publicState(state, busy = false, turns = null) {
   const { statement, scenario, lastCode, requests, claudeSessionId, notes, ...rest } = state;
+  // Attended time, from the server: the page ticks its clock from this, never from startedAt.
+  const clock = interviewClock(state, turns);
   const generation = Object.values(requests || {}).filter(r => ['accepted', 'failed', 'completed'].includes(r.status));
   const latest = generation.at(-1) || null;
   const latestCompleted = [...generation].reverse().find(r => r.status === 'completed');
   const needsAttention = !busy && Boolean(latest && ['accepted', 'failed'].includes(latest.status) && (!latestCompleted || generation.lastIndexOf(latest) > generation.lastIndexOf(latestCompleted)));
-  return { ...rest, status: state.debriefed ? 'completed' : state.pausedAt !== null ? 'paused' : needsAttention ? 'needs_attention' : 'in_progress', needsAttention, lastRequestStatus: latest?.status || null };
+  const paused = state.pausedAt !== null || (!clock.running && state.endedAt === null);
+  return { ...rest, clock, status: state.debriefed ? 'completed' : paused ? 'paused' : needsAttention ? 'needs_attention' : 'in_progress', needsAttention, lastRequestStatus: latest?.status || null };
 }
 function extensionMinutes(body) {
   if (!Number.isInteger(body.minutes) || body.minutes < 1 || body.minutes > 240) throw new HttpError(400, 'BAD_REQUEST', 'Minutes must be a positive integer from 1 to 240.');
@@ -72,6 +76,7 @@ async function extend(req, res, ctx) {
     if (state.debriefed || state.endedAt !== null) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
     state.originalMinutes ??= state.minutes;
     state.minutes += body.minutes;
+    touch(state);
     state.requests ??= {};
     state.requests[body.requestId] = { status: 'completed', kind: 'time_extended', minutes: body.minutes };
     await record(svc, state, body.interviewId, { kind: 'time_extended', minutes: body.minutes, requestId: body.requestId });
@@ -144,6 +149,19 @@ async function pauseOtherInterviews(svc, slug, exceptId) {
 }
 async function record(svc, state, id, entry) {
   await svc.store.append(state.slug, id, { at: new Date().toISOString(), elapsedMs: elapsed(state), phase: state.phase, ...entry });
+}
+/**
+ * Puts an unfinished session's clock on the attended-time rule before anything reads it:
+ * a lapsed heartbeat becomes an explicit away pause, and a record from before heartbeats
+ * gets its silent stretches taken out once (see server/mock-clock.mjs). True when the
+ * state changed and must be saved.
+ */
+async function settle(svc, state, id) {
+  if (state.debriefed || state.endedAt !== null) return false;
+  const tracked = isTracked(state);
+  const entry = settleClock(state, tracked ? [] : await svc.store.readTurns(state.slug, id));
+  if (entry) await record(svc, state, id, entry);
+  return Boolean(entry) || !tracked;
 }
 async function persist(svc, state, id) {
   await svc.store.writeState(state.slug, id, state);
@@ -349,7 +367,7 @@ async function start(req, res, ctx) {
     state.coachProvider = choice.provider; state.coachModel = choice.model; state.coachReasoningEffort = choice.reasoningEffort || null;
     if (body.fresh) await pauseOtherInterviews(svc, body.slug, null);
     // Waiting for an already-opened problem is preparation, not interview time.
-    state.startedAt = state.lastSpeechAt = state.lastTypingAt = Date.now();
+    state.startedAt = state.lastSpeechAt = state.lastTypingAt = state.lastSeenAt = Date.now();
     const id = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     if (body.requestId) state.requests[body.requestId] = { status: 'accepted', kind: 'opening', said: '' };
     await svc.store.create(body.slug, id, state);
@@ -410,7 +428,12 @@ async function action(req, res, ctx, kind) {
     }
     if (state.endedAt !== null && kind !== 'debrief') throw new HttpError(409, 'ENDED', 'The interview has ended. Finish its debrief first.');
     if (state.debriefed) throw new HttpError(409, 'FINISHED', 'This interview is already finished.');
+    if (await settle(svc, state, id)) await persist(svc, state, id);
+    // A poll that finds the clock stopped answers with the paused state rather than an error.
+    if (state.pausedAt !== null && kind === 'event') return sendJson(res, 200, { interjected: false, state: publicState(state) });
     if (state.pausedAt !== null && !['resume', 'debrief', 'mode'].includes(kind)) throw new HttpError(409, 'PAUSED', 'Resume the interview first.');
+    // Anything the candidate sends while the clock runs is itself evidence they are there.
+    touch(state);
     if (kind === 'mode') {
       if (!['typed', 'voice'].includes(body.mode)) throw new HttpError(400, 'BAD_REQUEST', 'Choose Typed or Voice.');
       if (state.mode !== body.mode) {
@@ -498,12 +521,20 @@ async function get(req, res, ctx) {
   await svc.live.get(keyOf(slug, id))?.completion;
   const state = await svc.store.readState(slug, id);
   if (!state) throw new HttpError(404, 'NOT_FOUND', 'Interview not found.');
-  const turns = await svc.store.readTurns(slug, id);
+  // Opening an unfinished interview settles its clock first, so it never comes back
+  // showing weeks of overtime (see settle).
+  if (!state.debriefed && state.endedAt === null && !svc.live.has(keyOf(slug, id))) {
+    const slot = reserve(svc, keyOf(slug, id));
+    try { if (await settle(svc, state, id)) await persist(svc, state, id); } finally { slot.release(); }
+  }
+  const raw = await svc.store.readTurns(slug, id);
+  const { gaps, beforeIndex } = clockGaps(state, raw);
+  const turns = attendedRecords(raw, gaps, beforeIndex);
   // A question still being answered is `pending`, so a reopened sheet waits for it.
   const answering = svc.live.get(`review/${keyOf(slug, id)}`)?.requestId;
   const followups = pairFollowups(await svc.store.readFollowups(slug, id))
     .map(f => f.requestId === answering ? { ...f, pending: true } : f);
-  return sendJson(res, 200, { id, ...publicState(state), turns, report: svc.buildReport ? svc.buildReport(state, turns) : buildReport(state, turns), followups, busy: false });
+  return sendJson(res, 200, { id, ...publicState(state, false, raw), turns, report: svc.buildReport ? svc.buildReport(state, raw) : buildReport(state, raw), followups, busy: false });
 }
 async function list(req, res, ctx) {
   const svc = service(ctx), slug = new URL(req.url, 'http://localhost').searchParams.get('slug'); validate(slug);
@@ -511,7 +542,8 @@ async function list(req, res, ctx) {
   for (const id of await svc.store.list(slug)) {
     const state = await svc.store.readState(slug, id);
     if (state) {
-      interviews.push({ id, ...publicState(state, Boolean(svc.live.get(keyOf(slug, id)))) });
+      // Records from before heartbeats are read with their turns, so a list shows attended time too.
+      interviews.push({ id, ...publicState(state, Boolean(svc.live.get(keyOf(slug, id))), isTracked(state) ? null : await svc.store.readTurns(slug, id)) });
     }
   }
   return sendJson(res, 200, { interviews });
@@ -588,6 +620,33 @@ export async function askRecordedInterview(body, res, svc) {
   } catch (error) { if (stream) stream.error(error.message); else throw error; }
   finally { await agentTools?.dispose(); slot.release(); }
 }
+/**
+ * POST /api/interview/heartbeat: the open, visible page saying someone is there. It only
+ * renews a running clock's lease; it never restarts one that has stopped. Cheap on
+ * purpose: one small state patch, no record line, no model, at most every 30 seconds.
+ */
+async function heartbeat(req, res, ctx) {
+  const body = await readJsonBody(req); validate(body.slug, body.interviewId);
+  const svc = service(ctx), key = keyOf(body.slug, body.interviewId);
+  let state = await svc.store.readState(body.slug, body.interviewId);
+  if (!state) throw new HttpError(404, 'NOT_FOUND', 'Interview not found.');
+  const busy = svc.live.has(key);
+  if (!state.debriefed && state.endedAt === null) {
+    const due = !isTracked(state) || (state.pausedAt === null && lapseAt(state, true) !== null);
+    if (due && !busy) {
+      // Rare: the first contact after an absence. Reserve so no action writes over it.
+      const slot = reserve(svc, key);
+      try {
+        state = await svc.store.readState(body.slug, body.interviewId);
+        if (await settle(svc, state, body.interviewId)) await persist(svc, state, body.interviewId);
+      } finally { slot.release(); }
+    } else if (!due && state.pausedAt === null) {
+      // A turn in flight holds its own copy of the state; this patch never overwrites it.
+      state = await svc.store.patchState(body.slug, body.interviewId, current => touch(current));
+    }
+  }
+  return sendJson(res, 200, { state: publicState(state, busy) });
+}
 async function stop(req, res, ctx) {
   const body = await readJsonBody(req); validate(body.slug, body.interviewId);
   const slot = service(ctx).live.get(keyOf(body.slug, body.interviewId));
@@ -603,6 +662,7 @@ export const interviewRoutes = {
   'POST /api/interview/mode': (q, r, c) => action(q, r, c, 'mode'),
   'POST /api/interview/resume': (q, r, c) => action(q, r, c, 'resume'),
   'POST /api/interview/stop': stop,
+  'POST /api/interview/heartbeat': heartbeat,
   'POST /api/interview/retry': (q, r, c) => action(q, r, c, 'retry'),
   'POST /api/interview/regrade': (q, r, c) => action(q, r, c, 'regrade'),
   'POST /api/interview/extend': extend,

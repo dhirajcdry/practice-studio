@@ -159,6 +159,12 @@ body[class] .ci-embedded>.ui-composer{margin-inline:0}
 .mock-add-time{gap:var(--space-1)}
 .mock-add-time .ci-clock,.mock-add-time .dz-clock{font:400 var(--text-sm)/var(--line-sm) var(--mono);letter-spacing:normal}
 .mock-add-time>svg{color:var(--ink-50)}
+/* One look per clock state on every track (data-clock, set by mock-session.js): running is
+   plain, overtime takes the hard colour, paused is dim. A fixed, end-aligned box of tabular
+   digits, so the tick and the switch into overtime never move the controls beside it. */
+.mock-add-time [data-clock]{display:inline-block;min-width:6ch;text-align:end;font-variant-numeric:tabular-nums}
+.mock-add-time [data-clock=over]{color:var(--hard)}
+.mock-add-time [data-clock=paused]{color:var(--ink-50)}
 .mock-time-popover{min-width:12rem}
 .mock-time-custom{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2)}
 .mock-time-input{width:4em;min-width:0;height:var(--control-sm);font:inherit;color:var(--ink);background:var(--bg);border:var(--control-border);border-radius:var(--radius-sm);padding-inline:var(--space-1)}

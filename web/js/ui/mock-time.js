@@ -1,12 +1,12 @@
 import { el } from '../dom.js';
 import { createPopover } from './popover.js';
 import { icon } from './icon.js';
+import { formatClock } from './clock-format.js';
 
+/** "32:10" remaining, then "+12:34" and "+1:02:34" in overtime (formatClock). */
 export function mockTimeReading(minutes, elapsedMs) {
   const remaining = minutes * 60000 - elapsedMs;
-  const seconds = Math.floor(Math.abs(remaining) / 1000);
-  const value = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-  return { text: `${remaining <= 0 ? '+' : ''}${value}`, label: remaining <= 0 ? 'overtime' : 'remaining', remaining };
+  return { text: `${remaining <= 0 ? '+' : ''}${formatClock(Math.abs(remaining))}`, label: remaining <= 0 ? 'overtime' : 'remaining', remaining };
 }
 
 // Only the clock lives in the header. Choices, editing and errors stay in its popover.

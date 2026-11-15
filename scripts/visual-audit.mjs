@@ -6,7 +6,7 @@ import path from 'node:path';
 import { visualLint } from './visual-lint.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-export async function runVisualAudit({ origin, target, output }) {
+export async function runVisualAudit({ origin, target, output, videoOrigin = null }) {
   // check:visual copies this neutral fixture into the scratch STUDIO_HOME as collection.json.
   const collectionFixture = JSON.parse(await fsp.readFile(new URL('../server/test/fixtures/collection.json', import.meta.url), 'utf8'));
   const collectionCount = new Set(collectionFixture.problems.map(problem => problem.slug)).size;
@@ -35,7 +35,8 @@ export async function runVisualAudit({ origin, target, output }) {
     }
     if (message.method === 'Fetch.requestPaused') {
       const { requestId, request: paused } = message.params;
-      const allowed = paused.url.startsWith(`${origin}/`) || /^(data:|blob:|about:)/.test(paused.url);
+      // The local fake YouTube player (scripts/fake-youtube.mjs) is the one other origin.
+      const allowed = paused.url.startsWith(`${origin}/`) || (videoOrigin && paused.url.startsWith(`${videoOrigin}/`)) || /^(data:|blob:|about:)/.test(paused.url);
       void send(allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest', {
         requestId, ...(allowed ? {} : { errorReason: 'BlockedByClient' }),
       }).catch(() => {}); // Closing the browser may cancel an outstanding request.
@@ -175,103 +176,126 @@ export async function runVisualAudit({ origin, target, output }) {
       if (Math.abs((arrow.top+arrow.bottom)/2-center)>1) throw Error('History arrow is not centered within the row borders');
     }
   `;
+  // Every Recent chats row: one unclipped title line, a quiet relative date and turn count,
+  // the same height as its siblings, and nothing wider than the sidebar.
+  const recentRows = `
+    const rows = [...document.querySelectorAll('.recent-chat')].filter(visible);
+    if (rows.length < 2) throw Error('Expected several chats');
+    const host = rows[0].closest('.coach').getBoundingClientRect();
+    const heights = new Set(rows.map(r => Math.round(r.getBoundingClientRect().height)));
+    if (heights.size > 1) throw Error('Chat rows differ in height: ' + [...heights].join(','));
+    for (const row of rows) {
+      const title = row.querySelector('.recent-title'), t = title.getBoundingClientRect(), line = parseFloat(getComputedStyle(title).lineHeight);
+      if (t.height > line * 1.5) throw Error('A chat title wraps: ' + title.textContent);
+      if (title.scrollHeight > title.clientHeight + 1) throw Error('A chat title is clipped vertically: ' + title.textContent);
+      if (getComputedStyle(title).textOverflow !== 'ellipsis') throw Error('A long chat title is not cut with an ellipsis');
+      const meta = row.querySelector('.recent-meta');
+      if (!visible(meta) || !/\\d+ turns?/.test(meta.textContent)) throw Error('A chat row lacks its date and turn count');
+      if (/\\d{4}-\\d{2}-\\d{2}|T\\d{2}:/.test(meta.textContent)) throw Error('A chat row shows an ISO date');
+      const r = row.getBoundingClientRect();
+      if (r.left < host.left - 0.5 || r.right > host.right + 0.5) throw Error('A chat row overflows the sidebar');
+      if (row.scrollWidth > row.clientWidth + 1) throw Error('A chat row scrolls sideways');
+      const m = meta.getBoundingClientRect();
+      if (m.top < t.bottom - 0.5) throw Error('Chat meta overlaps its title');
+    }`;
+  // Narrow states show the end of the list, where the rows meet the composer.
+  const narrowSidebar = width => `const pane = need('.coach'); pane.style.width = pane.style.maxWidth = pane.style.minWidth = '${width}px'; pane.style.flex = 'none'; await sleep(200); need('.coach-log').scrollTop = 1e6; await sleep(100);`;
   // The track home renders once its three saved-record requests arrive; every state
-  // waits for that paint before it clicks, so a late render cannot move a target.
+  // waits for that paint before it clicks, so a late render cannot move a target. The
+  // stage remembers the last mode per viewer, so each state starts from Practise.
   const homeLoaded = `for (let i=0; i<100 && !document.querySelector('.th[data-state]'); i++) await sleep(50);
+    const practiseTab = document.querySelector('.th-sw[data-mode="practise"]'); if (practiseTab && practiseTab.getAttribute('aria-selected') !== 'true') practiseTab.click();
     await document.fonts.ready; await new Promise(requestAnimationFrame);`;
-  // The settings in each well are labelled fields that fill it: equal columns for the short
-  // settings, the coach model across the whole row, nothing clipped (the longest model name
-  // included), Problem as wide as the settings. Side by side, the two wells share their rows:
-  // Start buttons and coach-model fields on one baseline.
-  const optionsSpan = `{
-    const wells = [...document.querySelectorAll('.th-detail .th-act')], box = n => n.getBoundingClientRect();
-    for (const well of wells) {
-      const grid = well.querySelector('.ci-setup-fields'), g = box(grid), w = box(well), cs = getComputedStyle(well);
-      const contentRight = w.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight), contentLeft = w.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
-      if (Math.abs(g.right - contentRight) > 2 || Math.abs(g.left - contentLeft) > 2) throw Error('The settings do not span the well: ' + [g.left, g.right, contentLeft, contentRight].map(Math.round));
-      const fields = [...grid.querySelectorAll(':scope > .ci-field')].filter(visible), short = fields.filter(f => f.dataset.field !== 'model');
-      if (!fields.length || fields.some(f => !f.querySelector('.ci-field-label')?.textContent)) throw Error('A setting has no label');
-      const model = box(grid.querySelector('[data-field="model"]'));
-      if (Math.abs(model.left - g.left) > 1 || Math.abs(model.right - g.right) > 1) throw Error('The coach model does not take the whole row');
-      const rows = new Map(); for (const f of short) { const r = box(f), key = Math.round(r.top); rows.set(key, [...(rows.get(key) || []), r]); }
-      const first = [...rows.values()][0];
-      if (first.length > 1 && Math.max(...first.map(r => r.width)) - Math.min(...first.map(r => r.width)) > 1) throw Error('The settings columns are not equal: ' + first.map(r => Math.round(r.width)));
-      if (Math.abs(Math.max(...first.map(r => r.right)) - g.right) > 2) throw Error('The last setting stops short of the well edge: ' + Math.round(Math.max(...first.map(r => r.right))) + ' vs ' + Math.round(g.right));
-      for (const b of well.querySelectorAll('.ci-field .ui-select-button, .ci-field .coach-model-name')) if (visible(b) && b.scrollWidth > b.clientWidth + 1) throw Error('A setting is clipped: ' + b.textContent);
-      const pick = [...well.querySelectorAll('.th-pick > .ci-field')].find(visible);
-      if (pick && (Math.abs(box(pick).left - g.left) > 1 || Math.abs(box(pick).right - g.right) > 1)) throw Error('Problem is not as wide as the settings');
-    }
-    if (wells.length === 2 && Math.abs(box(wells[0]).top - box(wells[1]).top) < 2) {
-      const start = w => box(w.querySelector('.th-practice, .ci-start')), coach = w => box(w.querySelector('[data-field="model"]'));
-      if (Math.abs(start(wells[0]).bottom - start(wells[1]).bottom) > 1 || Math.abs(start(wells[0]).top - start(wells[1]).top) > 1) throw Error('The Start buttons are not on one baseline: ' + start(wells[0]).bottom + ' vs ' + start(wells[1]).bottom);
-      if (Math.abs(coach(wells[0]).top - coach(wells[1]).top) > 1) throw Error('The settings rows do not line up');
-      const picks = wells.map(w => [...w.querySelectorAll('.th-pick > .ci-field')].find(visible));
-      if (picks.every(Boolean) && Math.abs(box(picks[0]).top - box(picks[1]).top) > 1) throw Error('The Problem fields do not line up');
-    }
-  }`;
-  // A dropdown in the start card opens wholly on screen.
+  const toMock = `need('.th-sw[data-mode="mock"]').click(); await sleep(60);`;
+  const toPractise = `need('.th-sw[data-mode="practise"]').click(); await sleep(60);`;
+  const openRow = `need('.th-qchange').click(); await sleep(60);`;
+  const pickChip = selector => `${openRow} need(${JSON.stringify(selector)}).click(); await sleep(60);`;
+  // Typed briefs never reach storage, so no later state starts with them.
+  const typeBrief = text => `Storage.prototype.setItem = () => {}; const t = need('.th-brief textarea'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input')); await sleep(80);`;
+  // The stage, measured: one primary Start, the switch's two buttons equal, the shown mode
+  // consistent everywhere, the settings and the Problem row spanning the right column in
+  // one row of labelled fields (the coach's own row when narrow), nothing clipped and
+  // nothing outside the card.
+  const stageFits = `if (document.documentElement.scrollWidth > innerWidth) throw Error('The track home scrolls sideways');
+    { const box = n => n.getBoundingClientRect();
+    const wrap = box(need('.th-wrap')); if (wrap.width > 1321) throw Error('The track home is wider than its column');
+    if (document.querySelector('.th-picker, .th-detail, .th-act')) throw Error('The old list-and-panel layout is still on the page');
+    const primaries = [...document.querySelectorAll('.th .btn--primary')].filter(visible);
+    if (primaries.length !== 1 || !primaries[0].classList.contains('th-go')) throw Error('Exactly one primary Start must show: ' + primaries.map(b => b.textContent).join(' | '));
+    const stage = need('.th-stage'), st = box(stage), mode = stage.dataset.mode, go = primaries[0];
+    const tabs = [...document.querySelectorAll('.th-sw')];
+    if (tabs.length !== 2) throw Error('The switch must have two buttons');
+    const [a, b] = tabs.map(box);
+    if (Math.abs(a.width - b.width) > 1 || Math.abs(a.height - b.height) > 1 || Math.abs(a.top - b.top) > 1) throw Error('The switch buttons are not equal: ' + [a.width, b.width, a.height, b.height].map(Math.round));
+    const sw = box(need('.th-switch')); if (a.left - sw.left > 12 || sw.right - b.right > 12) throw Error('The switch does not fill the width');
+    if (document.querySelectorAll('.th-sw[aria-selected="true"]').length !== 1 || need('.th-sw[aria-selected="true"]').dataset.mode !== mode) throw Error('The switch does not show the mode');
+    const shown = [...document.querySelectorAll('.th-mode')].filter(visible);
+    if (shown.length !== 1 || shown[0].dataset.mode !== mode) throw Error('The left block does not match the mode');
+    if (!shown[0].querySelector('.th-last').textContent.trim()) throw Error('The last-session line is empty');
+    if ((mode === 'mock') !== go.classList.contains('ci-start')) throw Error('Start does not match the mode: ' + go.textContent);
+    if (!/^(Start practising|Start mock)$/.test(go.textContent.trim())) throw Error('Start is labelled ' + go.textContent);
+    const right = box(need('.th-stage-right')), left = box(need('.th-stage-left'));
+    if (left.right > right.left + 1 && left.bottom > right.top + 1) throw Error('The left block overlaps the settings');
+    const grids = [...document.querySelectorAll('.th-stage .ci-setup-fields')].filter(visible);
+    if (grids.length !== 1) throw Error('One settings row must show, found ' + grids.length);
+    const g = box(grids[0]);
+    for (const [name, r] of [['settings', g], ['Problem row', box(need('.th-qrow'))], ['Start', box(go)]])
+      if (Math.abs(r.left - right.left) > 1 || Math.abs(r.right - right.right) > 1) throw Error('The ' + name + ' does not span the right column: ' + [r.left, r.right, right.left, right.right].map(Math.round));
+    const fields = [...grids[0].querySelectorAll(':scope > .ci-field')].filter(visible).sort((x, y) => box(x).top - box(y).top || box(x).left - box(y).left);
+    const want = mode === 'mock' ? ['answer', 'level', 'length', 'model'] : null;
+    if (want && fields.map(f => f.dataset.field).join() !== want.join()) throw Error('Mock settings: ' + fields.map(f => f.dataset.field));
+    if (fields.some(f => !f.querySelector('.ci-field-label')?.textContent)) throw Error('A setting has no label');
+    const rows = new Map(); for (const f of fields) { const r = box(f), key = Math.round(r.top); rows.set(key, [...(rows.get(key) || []), r]); }
+    const firstRow = [...rows.values()][0];
+    if (Math.abs(Math.max(...firstRow.map(r => r.right)) - g.right) > 2) throw Error('The settings stop short of the column edge');
+    const shortOnes = fields.filter(f => f.dataset.field !== 'model').map(box).filter(r => Math.round(r.top) === Math.round(firstRow[0].top));
+    if (shortOnes.length > 1 && Math.max(...shortOnes.map(r => r.width)) - Math.min(...shortOnes.map(r => r.width)) > 1) throw Error('The short settings are not equal');
+    if (rows.size > 1 && box(grids[0].querySelector('[data-field="model"]')).width < g.width - 2) throw Error('On two rows the coach must take its own row');
+    for (const n of document.querySelectorAll('.th-stage .ci-field .ui-select-button, .th-stage .coach-model-name, .th-sw-name, .th-sw-tag, .th-mode-name, .th-go, .th-qchange, .th-qclear'))
+      if (visible(n) && n.scrollWidth > n.clientWidth + 1) throw Error('Clipped: ' + n.textContent);
+    for (const n of stage.querySelectorAll('*')) { if (!visible(n)) continue; const r = box(n); if (r.width && (r.left < st.left - 1 || r.right > st.right + 1)) throw Error('Outside the stage: ' + n.className); }
+    if (need('.th-qtitle').textContent !== (document.querySelector('.th-chip[aria-pressed="true"]')?.textContent || 'Surprise me')) throw Error('The Problem row and the chosen chip disagree');
+    if (!!visible(document.querySelector('.th-qclear')) !== (need('.th-qrow').dataset.choice !== 'surprise')) throw Error('Clear shows only when something is picked'); }`;
+  // The chips are open, inside the row, with a legend of the tones on screen.
+  const rowOpen = `{ const box = n => n.getBoundingClientRect(), row = box(need('.th-qrow')), chips = need('.th-chips');
+    if (need('.th-qchange').getAttribute('aria-expanded') !== 'true' || need('.th-qchange').textContent.trim() !== 'Done') throw Error('Change does not say the row is open');
+    const c = box(chips); if (c.top < row.top || c.bottom > row.bottom || c.left < row.left || c.right > row.right) throw Error('The chips leave the Problem row');
+    need('.th-chip[data-choice="surprise"]'); need('.th-chip[data-choice="own"]');
+    for (const chip of chips.querySelectorAll('.th-problem')) { if (!chip.querySelector('.th-sd[data-tone]')) throw Error('A problem chip has no status'); if (!chip.title.includes(' · ')) throw Error('A chip has no full title and status'); }
+    const tones = new Set([...chips.querySelectorAll('.th-problem .th-sd')].map(n => n.dataset.tone)), legend = [...document.querySelectorAll('.th-legend .th-sd')].map(n => n.dataset.tone);
+    if (legend.length !== tones.size || legend.some(t => !tones.has(t))) throw Error('The legend does not list exactly the tones on screen'); }`;
+  // A longer made-up library, for the filter and the chips' own scroll.
+  const longList = (discipline = 'lld') => remount(`if (String(url).startsWith('/api/track-home')) { const d = await (await real(url, ...rest)).json();
+      for (let i = 1; i <= 30; i++) d.problems.push({ slug: '${discipline}-sample-' + i, title: 'Sample problem ' + i + (i % 4 ? '' : ' with a much longer made-up title'), statement: 'A made-up problem for layout checks.', discipline: '${discipline}' });
+      return json(d); }`, discipline) + ` for (let i=0; i<100 && !document.querySelector('.th[data-state="ready"] .th-chip[data-slug="${discipline}-sample-30"]'); i++) await sleep(50); await new Promise(requestAnimationFrame);`;
+  const manyAssert = `{ const chips = need('.th-chips'); need('.th-qfilter');
+    if (chips.scrollHeight <= chips.clientHeight + 4) throw Error('Many chips must scroll inside the row');
+    if (getComputedStyle(chips).overflowY !== 'auto') throw Error('The chip area does not scroll on its own');
+    if (chips.getBoundingClientRect().height > 200) throw Error('The chip area is not capped: ' + chips.getBoundingClientRect().height);
+    for (const chip of chips.querySelectorAll('.th-chip')) if (visible(chip) && chip.getBoundingClientRect().right > chips.getBoundingClientRect().right + 1) throw Error('A chip is wider than the row'); }`;
+  const reveal = selector => `{ const n = need(${JSON.stringify(selector)}); document.scrollingElement.scrollTo({ top: n.getBoundingClientRect().top + scrollY - (document.querySelector('.topbar')?.getBoundingClientRect().height || 0) - 40, behavior: 'instant' }); await sleep(80); }`;
+  // A dropdown in the stage opens wholly on screen.
   const menuOnScreen = selector => `need(${JSON.stringify(selector)}).click(); await sleep(160);
     const m = [...document.querySelectorAll('.ui-menu')].find(visible); if (!m) throw Error('The menu did not open');
     const r = m.getBoundingClientRect(); if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) throw Error('The menu is cut off: ' + [r.left, r.top, r.right, r.bottom].map(Math.round));`;
-  const homeFits = `if (document.documentElement.scrollWidth > innerWidth) throw Error('The track home scrolls sideways');
-    const wrap = need('.th-wrap').getBoundingClientRect(); if (wrap.width > 1321) throw Error('The track home is wider than its column');
-    if (document.querySelectorAll('.th-problem[aria-pressed="true"]').length > 1) throw Error('At most one problem may be chosen');
-    if (document.querySelectorAll('.th-detail .th-act').length !== 2) throw Error('The panel must always offer both Practise and Mock');
-    if (document.querySelector('.th-problem[data-open]')) throw Error('The list holds only real problems');
-    ${optionsSpan}`;
-  // Nothing chosen: both ways in, each with its Problem choice (LLD mocks offer Surprise me alone).
-  const nothingChosen = track => `if (document.querySelector('.th-problem[aria-pressed="true"]')) throw Error('A problem is chosen on arrival');
-    if (need('.th-detail-title').textContent !== 'Start something new') throw Error('The panel does not offer something new');
-    need('.th-practice'); need('.th-mock .ci-start');
-    if (need('.th-pick[data-kind="practise"] .ui-select-button').getAttribute('aria-label') !== 'Problem: Surprise me') throw Error('Practice does not default to Surprise me');
-    if (need('.th-pick[data-kind="mock"] .ui-select-button').getAttribute('aria-label') !== 'Problem: Surprise me') throw Error('The ${track} mock does not default to Surprise me');
-    need('.th-pick[data-kind="mock"] .th-pick-hint');
-    for (const a of document.querySelectorAll('.th-act')) if (a.querySelector('.th-brief:not([hidden])')) throw Error('A brief field shows before My own problem is chosen');
-    need('.th-act--practise [aria-label="Answer mode: Voice"]'); need('.th-act--practise .coach-model-picker');
-    if (document.querySelector('.th-act--practise [aria-label^="Interview length"]')) throw Error('Practice offers a clock');`;
-  const chooseProblem = (kind, text) => `need('.th-pick[data-kind="${kind}"] .ui-select-button').click(); await sleep(80); clickText('.ui-menu:not([hidden]) .ui-menu-item', '${text}'); await sleep(120);`;
-  // Many made-up problems so the list is longer than the panel, for the pinned-card states.
-  const longList = () => remount(`if (String(url).startsWith('/api/track-home')) { const d = await (await real(url, ...rest)).json();
-      for (let i = 1; i <= 16; i++) d.problems.push({ slug: 'lld-sample-' + i, title: 'Sample problem ' + i, statement: 'A made-up problem for layout checks.', discipline: 'lld' });
-      return json(d); }`) + ` for (let i=0; i<100 && !document.querySelector('.th[data-state="ready"] .th-problem[data-slug="lld-sample-16"]'); i++) await sleep(50); await new Promise(requestAnimationFrame);`;
-  // Scrolled half way down the list: the panel stays whole on screen under the app bar and overlaps nothing.
-  const cardPinned = `const bar = need('.topbar').getBoundingClientRect(), d = need('.th-detail').getBoundingClientRect(), list = need('.th-picker').getBoundingClientRect();
-    if (getComputedStyle(need('.th-detail')).position !== 'sticky') throw Error('The panel is not pinned');
-    if (scrollY < 200) throw Error('The page did not scroll');
-    if (d.top < bar.bottom + 8) throw Error('The panel runs under the app bar: ' + d.top + ' vs ' + bar.bottom);
-    if (d.bottom > innerHeight) throw Error('The pinned panel is cut off at the bottom');
-    if (d.left < list.right) throw Error('The panel overlaps the list');
-    const lower = need('.th-lower').getBoundingClientRect(); if (d.bottom > lower.top) throw Error('The panel overlaps Where you stand');
-    const cont = document.querySelector('.th-continue')?.getBoundingClientRect(); if (cont && cont.bottom > d.top && cont.top < d.bottom) throw Error('The panel overlaps Continue');`;
-  const reveal = selector => `{ const n = need(${JSON.stringify(selector)}); document.scrollingElement.scrollTo({ top: n.getBoundingClientRect().top + scrollY - (document.querySelector('.topbar')?.getBoundingClientRect().height || 0) - 40, behavior: 'instant' }); await sleep(80); }`;
-  const stacked = `const l = need('.th-picker').getBoundingClientRect(), d = need('.th-detail').getBoundingClientRect(); if (d.top < l.bottom) throw Error('Narrow: the panel does not sit under the list');`;
-  const pick = selector => ({
-    url: '/#/lld',
-    setup: `${homeLoaded} need(${JSON.stringify(selector)}).click(); await sleep(50);`,
-    ready: `${selector}[aria-pressed="true"]`,
-  });
-  const lldSelection = { ...pick('.th-problem[data-slug="lld-vending-machine"]'), assert: homeFits + `
-      for (const s of ['.th-mock .ci-start', '.th-practice']) { const n = need(s); document.scrollingElement.scrollTo({ top: n.getBoundingClientRect().top + scrollY - innerHeight / 2, behavior: 'instant' }); await sleep(50); const c = n.getBoundingClientRect();
-        if (c.left<0 || c.right>innerWidth || c.top<0 || c.bottom>innerHeight) throw Error(s + ' is outside the viewport'); }
-      if (!need('.th-detail-title').textContent.includes('Vending')) throw Error('The panel does not show the chosen problem');
-      need('.th-past-list .th-past'); need('.th-clear');
-      if (document.querySelector('.th-pick:not([hidden])')) throw Error('A chosen problem still offers Surprise me');` };
-  // A workspace with no records at all: the real catalog, nothing done on it.
-  const remount = override => `${homeLoaded}
+  // A freshly mounted home over overridden records (empty, error, many problems).
+  const remount = (override, discipline = 'lld') => `${homeLoaded}
     const real = window.fetch, json = value => new Response(JSON.stringify(value), { status: value.error ? 500 : 200, headers: { 'content-type': 'application/json' } });
     window.fetch = async (url, ...rest) => { ${override} return real(url, ...rest); };
     const { mountTrackHome } = await import('/js/track-home.js');
-    mountTrackHome(need('.lld-view'), { discipline: 'lld', title: 'Low-level design', loadInterviews: async () => ({ interviews: [] }), openInterview() {}, startMock: async () => {} });
+    mountTrackHome(need('.th-host'), { discipline: '${discipline}', title: '${discipline === 'lld' ? 'Low-level design' : 'System design'}', loadInterviews: async () => ({ interviews: [] }), openInterview() {}, startMock: async () => {}, startOwnMock: async () => {} });
     await sleep(50);
     window.fetch = real;`;
-  const lldEmpty = { url: '/#/lld', ready: '.th[data-state="ready"] .th-stand-empty',
-    setup: remount(`const u = String(url); if (u.startsWith('/api/track-home')) { const d = await (await real(url, ...rest)).json(); d.assessments = []; return json(d); } if (u.startsWith('/api/practice?')) return json({ sessions: [] });`),
-    assert: homeFits + `if (document.querySelector('.th-continue')) throw Error('Continue shows with nothing to continue');
-      if (!need('.th-summary').textContent.startsWith('3 problems') || need('.th-summary').textContent.includes('·')) throw Error('Empty header counts: ' + need('.th-summary').textContent);
-      need('.th-rubric-names li'); need('.th-mock .ci-start'); need('.th-practice');` };
-  const lldError = { url: '/#/lld', ready: '.th[data-state="error"]',
-    setup: remount(`if (String(url).startsWith('/api/track-home')) return json({ error: { message: 'The saved records could not be read.' } });`),
-    assert: `if (!need('.th-picker .th-quiet').textContent.includes('could not be read')) throw Error('The read error is not shown'); if (document.querySelector('.th-detail:not(:empty)')) throw Error('A panel shows without records');` };
+  const homeEmpty = discipline => ({ url: '/#/' + discipline, ready: '.th[data-state="ready"] .th-stand-empty',
+    setup: remount(`const u = String(url); if (u.startsWith('/api/track-home')) { const d = await (await real(url, ...rest)).json(); d.assessments = []; return json(d); } if (u.startsWith('/api/practice?')) return json({ sessions: [] });`, discipline),
+    assert: stageFits + `if (document.querySelector('.th-continue')) throw Error('Continue shows with nothing to continue');
+      if (need('.th-summary').textContent.includes('·')) throw Error('Empty header counts: ' + need('.th-summary').textContent);
+      if (need('.th-mode[data-mode="practise"] .th-last').textContent !== 'No practice yet') throw Error('No practice is not said plainly');
+      if (document.querySelector('.th-mode[data-mode="mock"] .th-last').textContent !== 'No mock yet') throw Error('No mock is not said plainly');
+      need('.th-rubric-names li');` });
+  const homeError = discipline => ({ url: '/#/' + discipline, ready: '.th[data-state="error"]',
+    setup: remount(`if (String(url).startsWith('/api/track-home')) return json({ error: { message: 'The saved records could not be read.' } });`, discipline),
+    assert: `if (!need('.th-stage-slot .th-quiet').textContent.includes('could not be read')) throw Error('The read error is not shown'); if (document.querySelector('.th-stage')) throw Error('A stage shows without records');` });
   const editorEdges = {
     url:'/#/lld/practice/lld-locker/visual-practice-lld', ready:'.pr-editor .monaco-editor',
     setup:`for(let i=0;i<120&&!document.querySelector('.pr-editor .monaco-editor');i++)await sleep(50);const editor=window.monaco.editor.getEditors()[0];editor.setValue(['class Booking:','    def verify(self):',...Array.from({length:1240},(_,i)=>'        value_'+i+' = '+i)].join(String.fromCharCode(10)));editor.updateOptions({fontSize:20,wordWrap:'off'});editor.setPosition({lineNumber:1110,column:9});editor.revealLineInCenter(1110);await sleep(180);need('.pr-work').scrollIntoView({block:'center'});`,
@@ -445,12 +469,16 @@ export async function runVisualAudit({ origin, target, output }) {
       { kind: 'turn', phase: 'requirements', elapsedMs: 240000, said: 'Reads dominate, so I will plan for about a hundred reads per write.', asked: 'Good. What does the write path look like?' },
       { kind: 'turn', phase: 'api', elapsedMs: 600000, said: 'A POST that takes the long URL and returns the short code.', asked: 'How do you generate codes without collisions?' },
     ];
-    const record = { id: 'visual-live-design', prompt: 'URL shortener', topicSlug: 'design-url-shortener', level: 'L4', minutes: 45, phase: 'api', mode: 'typed', startedAt, debriefed: false, resumable: true, rebuilt: false, turns, elements: [], ...${JSON.stringify(overrides)} };
+    // The server's clock reading (attended time); \`clock\` in overrides sets another one.
+    const record = { id: 'visual-live-design', prompt: 'URL shortener', topicSlug: 'design-url-shortener', level: 'L4', minutes: 45, phase: 'api', mode: 'typed', startedAt, debriefed: false, resumable: true, rebuilt: false, turns, elements: [], clock: { elapsedMs: 780000, running: true, pauseReason: null, awayMs: 0 }, ...${JSON.stringify(overrides)} };
+    let clock = record.clock;
     window.fetch = async (url, init) => {
       const u = String(url);
       if (u === '/api/design/visual-live-design') return json(record);
-      if (u === '/api/design/resume') return json({ ...record, resumed: true, startedAt });
-      if (u === '/api/design/pause') return json({ spentMs: 780000 });
+      if (u === '/api/design/heartbeat') return json({ clock, minutes: record.minutes });
+      if (u === '/api/design/scene') return json({ ok: true, scenes: 1 });
+      if (u === '/api/design/resume') return json({ ...record, resumed: true, startedAt, clock: clock = { ...clock, running: true, pauseReason: null } });
+      if (u === '/api/design/pause') return json({ spentMs: clock.elapsedMs, clock: clock = { ...clock, running: false, pauseReason: 'pause' } });
       if (u.startsWith('/api/design/')) return json({ error: { message: 'Visual audit: no turns' } }, 409);
       return real(url, init);
     };
@@ -466,7 +494,7 @@ export async function runVisualAudit({ origin, target, output }) {
     const band = document.querySelector('.mock-paused');
     if (!band) throw Error('Missing the paused band');
     if (${paused} !== Boolean(visible(band))) throw Error('Paused band visibility is wrong');
-    if (${paused} && !/^Paused · \\d+:\\d\\d (left|over)Resume$/.test(band.textContent.trim())) throw Error('Paused band does not read in remaining time: ' + band.textContent);
+    if (${paused} && !/^Paused( while you were away)? · \\d+(:\\d\\d)+ (left|over)Resume$/.test(band.textContent.trim())) throw Error('Paused band does not read in remaining time: ' + band.textContent);
     if (${paused} && toggle.getAttribute('aria-label') !== 'Resume interview') throw Error('The header toggle does not offer Resume');
     if (document.querySelector('.voice-panel')?.textContent.includes('Voice paused') && ${paused}) throw Error('The composer repeats the paused state');
     const steps = [...document.querySelectorAll('.ui-phase-stepper .ui-phase-step')].filter(visible).map(n => n.getBoundingClientRect());
@@ -476,6 +504,41 @@ export async function runVisualAudit({ origin, target, output }) {
     if (document.querySelectorAll('.ui-phase-stepper [aria-current=step]').length !== 1) throw Error('Exactly one current phase');
     if (document.documentElement.scrollWidth > innerWidth) throw Error('Mock screen overflows sideways');`;
   const mockCustomSetup = `${mockTimeSetup} [...document.querySelectorAll('.ui-menu-item')].find(n=>n.textContent.includes('Custom')).click();`;
+  // The screen header under pressure (headers.js screenHeader): the controls stay inside
+  // it, the title never runs under them, metadata goes before the title is cut, and the
+  // clock reads mm:ss or h:mm:ss, never a three-digit minute count.
+  const headerLayoutAssert = `{
+    const header = need('.ui-screen-header'), rail = need('.ui-screen-header .ui-header-actions');
+    const hr = header.getBoundingClientRect(), rr = rail.getBoundingClientRect();
+    if (rr.left < hr.left - .5 || rr.right > hr.right + .5) throw Error('Session controls leave the header');
+    for (const b of rail.querySelectorAll('button')) if (visible(b)) { const r = b.getBoundingClientRect(); if (r.top < hr.top - .5 || r.bottom > hr.bottom + .5) throw Error('A header control falls out of the header'); }
+    const id = header.querySelector('.ui-workspace-identity');
+    if (visible(id)) {
+      const ir = id.getBoundingClientRect(), h1 = id.querySelector('h1'), meta = id.querySelector('.ui-header-meta');
+      if (ir.right > rr.left + .5) throw Error('The title runs under the session controls');
+      const cut = h1.scrollWidth > h1.clientWidth + 1, metaShown = visible(meta) && meta.getBoundingClientRect().width > 1;
+      if (cut && metaShown) throw Error('The title is cut while its metadata still shows: ' + h1.clientWidth + '/' + h1.scrollWidth);
+      if (h1.clientWidth < Math.min(h1.scrollWidth, 64)) throw Error('The title is squeezed below a readable width: ' + h1.clientWidth);
+    }
+    const text = need('.mock-add-time [data-clock]').textContent;
+    if (!/^\\+?(\\d+:)?\\d\\d:\\d\\d$/.test(text) || /^\\+?\\d{3,}:/.test(text)) throw Error('Clock text is not mm:ss or h:mm:ss: ' + text); }`;
+  // A mock nobody attended: the server stopped its clock at the last heartbeat.
+  const awayAssert = (left) => `{
+    const band = need('.mock-paused'), clock = need('.mock-add-time [data-clock]');
+    if (!band.textContent.startsWith('Paused while you were away · ${left} left')) throw Error('Away band: ' + band.textContent);
+    if (clock.dataset.clock !== 'paused') throw Error('A stopped clock does not look paused: ' + clock.dataset.clock);
+    const before = clock.textContent; await sleep(1200);
+    if (clock.textContent !== before) throw Error('A stopped clock kept ticking'); }`;
+  const overtimeAssert = (pattern) => `{
+    const clock = need('.mock-add-time [data-clock]');
+    if (!${pattern}.test(clock.textContent)) throw Error('Long overtime reads ' + clock.textContent);
+    if (clock.dataset.clock !== 'over') throw Error('Overtime does not look like overtime: ' + clock.dataset.clock);
+    const width = clock.getBoundingClientRect().width; await sleep(1100);
+    if (Math.abs(clock.getBoundingClientRect().width - width) > .5) throw Error('The ticking clock changes width'); }`;
+  // An LLD mock served from the real record with its clock reading replaced; heartbeats
+  // answer with the same reading, so the page cannot wake the real (paused) record.
+  const lldClock = (clock, extra = '') => `const real = window.fetch; window.fetch = async (...args) => { if (['/api/interview/heartbeat', '/api/interview/event'].includes(String(args[0])) && window.__visualLive) return new Response(JSON.stringify({ interjected: false, state: { ...window.__visualLive, turns: undefined } }), { headers: { 'content-type': 'application/json' } }); const response = await real(...args); if (String(args[0]).startsWith('/api/interview/lld-locker/1760000000000-00000009')) { const data = await response.json(); const clock = ${JSON.stringify(clock)}; data.pausedAt = clock.running ? null : Date.now(); data.pauseReason = clock.pauseReason; data.clock = { ...data.clock, ...clock }; window.__visualLive = data; return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; location.hash = '#/lld/lld-locker/1760000000000-00000009';${extra}`;
+  const LONG_TITLE = 'Distributed rate limiter for a public API';
   const importPreview = `need('#problem-url').value='https://leetcode.com/problems/import-sample/description/'; need('.import-form').requestSubmit(); for(let i=0;i<100&&!document.querySelector('.import-save');i++)await sleep(100);need('.import-save');`;
   // Solution and Article are tabs of the problem pane: the solution replaces the statement
   // inside .pcol, the statement stays in the DOM, and Problem brings it back without a fetch.
@@ -496,6 +559,56 @@ export async function runVisualAudit({ origin, target, output }) {
       if (window.__stmtFetches) throw Error('Switching back refetched the statement');
       tab('solution').click(); await sleep(50);
       if (!visible(solution) || visible(stmt)) throw Error('Solution did not come back');` };
+  // The Video tab plays the walkthrough in the pane, from the local fake player. The player
+  // is 16:9, as large as the pane allows, and visible without scrolling the wide pane; the
+  // five pane tabs stay whole on one row at every pane width (none clipped or scrolled away).
+  const problemTabsWhole = `
+      const strip = need('.problem-tabs'), s = strip.getBoundingClientRect();
+      const tabsShown = [...strip.querySelectorAll('[role=tab]')];
+      if (tabsShown.map(n => n.firstChild.textContent.trim()).join('|') !== 'Problem|Solution|Article|Video|Notes') throw Error('Pane tabs are not Problem, Solution, Article, Video, Notes');
+      if (strip.scrollWidth > strip.clientWidth + 1) throw Error('Pane tabs overflow their row: ' + strip.scrollWidth + 'px in ' + strip.clientWidth + 'px');
+      for (const t of tabsShown) { const r = t.getBoundingClientRect(); if (r.left < s.left - 0.5 || r.right > s.right + 0.5 || Math.abs(r.top - tabsShown[0].getBoundingClientRect().top) > 1) throw Error('Pane tab not whole on the row: ' + t.textContent); }
+      const header = need('.pcol .ui-pane-header').getBoundingClientRect();
+      if (s.right > header.right + 0.5) throw Error('Pane tabs run past the pane header');`;
+  // At the pane's 280px minimum the row cannot hold five tabs in every family: it scrolls,
+  // fades the edge it continues past, and keeps the selected tab whole and in view.
+  const problemTabsScroll = `
+      const strip = need('.problem-tabs'), s = strip.getBoundingClientRect();
+      if (need('.pcol').getBoundingClientRect().width > 281) throw Error('The pane is not at its 280px minimum');
+      const sel = need('.problem-tabs [aria-selected=true]').getBoundingClientRect();
+      if (sel.left < s.left - 0.5 || sel.right > s.right + 0.5) throw Error('The selected tab is not in view');
+      if (strip.scrollWidth > strip.clientWidth + 1 && !strip.dataset.overflow) throw Error('An overflowing tab row does not mark the edge it continues past');
+      if (strip.scrollWidth <= strip.clientWidth + 1 && strip.dataset.overflow) throw Error('A tab row that fits is marked as overflowing');
+      if (s.height > 38.5) throw Error('The tab row wrapped or grew');
+      if (getComputedStyle(strip).scrollbarWidth !== 'none') throw Error('The tab row shows a scrollbar');`;
+  const videoTab = ({ width = 1600, path = '/embed/', ready = '.video-player.is-ready', assert = '', tabs = problemTabsWhole, pane = '', coachOpen = false } = {}) => ({ url: problem, width, ready,
+    setup: `{ const coach = await import('/js/coach.js'); if (coach.isOpen() !== ${coachOpen}) { coach.setOpen(${coachOpen}, { focus: false }); await sleep(200); } }
+      ${pane}for (let i = 0; i < 100 && !document.querySelector('[data-panel="video"]'); i++) await sleep(50);
+      if (!window.__STUDIO_VIDEO_EMBED__) throw Error('The fake player is not configured');
+      window.__STUDIO_VIDEO_EMBED__.path = '${path}'; localStorage.removeItem('studio.video.v1:jump-game');
+      if (document.querySelector('iframe')) throw Error('A player exists before the Video tab is opened');
+      need('[data-panel="video"]').click();`,
+    assert: tabs + `
+      if (need('[data-panel="video"]').getAttribute('aria-selected') !== 'true') throw Error('Video tab is not selected');
+      const stmt = document.querySelector('#ref-problem');
+      if (!stmt?.isConnected || visible(stmt)) throw Error('Statement must stay in the DOM, hidden');
+      const pane = need('.pcol'), p = pane.getBoundingClientRect();
+      if (pane.scrollWidth > pane.clientWidth + 1) throw Error('The problem pane scrolls sideways');
+      if (document.documentElement.scrollWidth > innerWidth) throw Error('The page overflows sideways');
+      ${assert}` });
+  const videoPlayerFits = `
+      const body = need('.video-body'), bs = getComputedStyle(body), f = need('.video-frame').getBoundingClientRect(), outer = body.getBoundingClientRect();
+      const b = { left: outer.left + parseFloat(bs.paddingLeft), right: outer.right - parseFloat(bs.paddingRight) }; b.width = b.right - b.left;
+      if (Math.abs(f.width / f.height - 16 / 9) > 0.02) throw Error('The player is not 16:9: ' + f.width + 'x' + f.height);
+      if (f.left < b.left - 0.5 || f.right > b.right + 0.5) throw Error('The player overflows the pane');
+      if (Math.abs((f.left - b.left) - (b.right - f.right)) > 1.5) throw Error('The player is not centred');
+      if (f.width > 1200.5) throw Error('The player is wider than its 1200px cap');
+      const wide = /auto|scroll/.test(getComputedStyle(pane).overflowY);
+      if (wide && f.bottom > p.bottom + 0.5) throw Error('The player does not fit the pane height: bottom ' + f.bottom + ' > ' + p.bottom);
+      if (wide && f.width < b.width - 1 && f.bottom < p.bottom - need('.video-bar').getBoundingClientRect().height - 80) throw Error('The player is smaller than the pane allows');
+      const out = need('.video-out'), o = out.getBoundingClientRect();
+      if (!out.textContent.includes('Open on YouTube') || o.right > b.right + 0.5) throw Error('Open on YouTube is missing or clipped');
+      if (o.top < f.bottom) throw Error('The bar overlaps the player');`;
   // Practice tabs: Coach, Problem and Mock feedback, each its own scroller.
   const practiceTab = ({ id, tab, width = 1440, ready, scroll = 0, assert = '' }) => ({
     url: `/#/lld/practice/lld-locker/${id}`, width, height: 900, ready,
@@ -672,7 +785,7 @@ export async function runVisualAudit({ origin, target, output }) {
   // voice bar shows) without an input event, so nothing is saved.
   const LIVE_ANSWER = 'So the plan is to keep a single furthest-reach value and walk the array once. '.repeat(9).trim();
   const liveVoiceMock = ({ scrolled = false, phone = false, narrow = false } = {}) => ({ url: problem,
-    setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/1760000000000-00000004')) { const data = await response.json(); data.startedAt = Date.now() - 1260000; data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; };
+    setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { if (['/api/interview/heartbeat', '/api/interview/event'].includes(String(args[0])) && window.__visualLive) return new Response(JSON.stringify({ interjected: false, state: { ...window.__visualLive, turns: undefined } }), { headers: { 'content-type': 'application/json' } }); const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/1760000000000-00000004')) { const data = await response.json(); data.startedAt = Date.now() - 1260000; data.pausedAt = null; data.pauseReason = null; data.clock = { ...data.clock, elapsedMs: 1260000, running: true, pauseReason: null }; window.__visualLive = data; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; };
       // A reading position saved by an earlier state would (rightly) be restored; start fresh.
       const back = document.querySelector('.interview-back'); if (visible(back)) { back.click(); await sleep(50); }
       (await import('/js/sidebar-state.js')).saveSidebar('jump-game', { interviewScroll: {} });
@@ -784,58 +897,90 @@ export async function runVisualAudit({ origin, target, output }) {
     practiceTimerUntimed: { url: '/#/lld/practice/lld-locker/visual-practice-long', ready: '.pr-timer', assert: `if(need('.pr-timer-label').textContent!=='Untimed'||visible(document.querySelector('.pr-timer-value')))throw Error('A never-started timer must read Untimed with no time');if(need('.pr-timer button').getAttribute('aria-label')!=='Start practice timer')throw Error('Untimed timer offers Start');` },
     learningNotes: { url: '/#/lld', setup: `(await import('/js/learning.js')).openLearningNotes('lld-locker','Locker system');`, ready: '.ln-sheet[open] .ln-evidence' },
     learningNotesNarrow: { url: '/#/lld', width: 390, setup: `(await import('/js/learning.js')).openLearningNotes('lld-locker','A much longer problem title: reservations, ownership, and concurrent allocation');`, ready: '.ln-sheet[open] .ln-evidence' },
-    lldLibrary: { url: '/#/lld', setup: homeLoaded, ready: '.th-continue .th-resume', assert: homeFits + `
+    // Track homes: one stage with a Practise | Mock switch, the shared Problem row, one Start.
+    lldLibrary: { url: '/#/lld', setup: homeLoaded, ready: '.th-continue .th-resume', assert: stageFits + `
       if (!need('.th-continue').textContent.includes('Locker system')) throw Error('Continue is not the newest unfinished mock');
-      ${nothingChosen('lld')}
+      if (need('.th-stage').dataset.mode !== 'practise') throw Error('A first visit does not open on Practise');
+      if (need('.th-qtitle').textContent !== 'Surprise me' || visible(document.querySelector('.th-qpanel')) || visible(document.querySelector('.th-brief'))) throw Error('The Problem row does not start folded on Surprise me');
+      if (!need('.th-mode[data-mode="practise"] .th-last').textContent.startsWith('Last practice: ')) throw Error('The last practice is not named');
+      if (!visible(need('.th-set--practise [aria-label^="Target level:"]'))) throw Error('A surprise practice problem is prepared for a level, so the level shows');
+      if (document.querySelector('.th-set--practise [aria-label^="Interview length"]')) throw Error('Practice offers a clock');
       if (document.querySelectorAll('.th-history .th-item').length !== 8 || !need('.th-history .th-all').textContent.startsWith('Show all')) throw Error('History shows 8 rows then Show all');` },
-    lldLower: { url: '/#/lld', setup: `${homeLoaded} ${reveal('.th-lower')}`, ready: '.th-dim .th-marks', assert: homeFits + `
+    lldMock: { url: '/#/lld', setup: `${homeLoaded} ${toMock}`, ready: '.th-stage[data-mode="mock"] .ci-start', assert: stageFits + `
+      if (!need('.th-mode[data-mode="mock"] .th-last').textContent.startsWith('Last mock: ')) throw Error('The last mock is not named');
+      need('.th-mock [aria-label="Answer mode: Voice"]'); need('.th-mock [aria-label^="Target level:"]'); need('.th-mock [aria-label^="Interview length"]');` },
+    // Arrow keys move along the switch, and the choice is remembered for the next visit.
+    lldMockKeys: { url: '/#/lld', setup: `${homeLoaded} need('.th-sw[data-mode="practise"]').focus(); need('.th-switch').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); await sleep(60);`, ready: '.th-stage[data-mode="mock"]', assert: stageFits + `
+      if (document.activeElement !== need('.th-sw[data-mode="mock"]')) throw Error('ArrowRight does not move focus to Mock');
+      if (JSON.parse(localStorage.getItem('studio.sidebar.v1:lld-home') || '{}').mode !== 'mock') throw Error('The mode is not remembered');` },
+    lldProblemOpen: { url: '/#/lld', setup: `${homeLoaded} ${toMock} ${openRow}`, ready: '.th-qpanel .th-chip', assert: stageFits + rowOpen },
+    lldProblemOpenPractise: { url: '/#/lld', setup: `${homeLoaded} ${openRow}`, ready: '.th-qpanel .th-chip', assert: stageFits + rowOpen },
+    // Escape and a click elsewhere fold the chips.
+    lldProblemFold: { url: '/#/lld', setup: `${homeLoaded} ${openRow} need('.th-chip[data-choice="own"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(40);
+        if (visible(document.querySelector('.th-qpanel')) || document.activeElement !== need('.th-qchange')) throw Error('Escape does not fold the row back to Change');
+        ${openRow} need('.th-title').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); await sleep(40);`, ready: '.th-qchange[aria-expanded="false"]', assert: stageFits + `
+      if (visible(document.querySelector('.th-qpanel'))) throw Error('A click elsewhere does not fold the row');` },
+    // A library problem chosen in Practise stays chosen in Mock, and Clear goes back to Surprise me.
+    lldPicked: { url: '/#/lld', setup: `${homeLoaded} ${pickChip('.th-chip[data-slug="lld-vending-machine"]')} ${toMock}`, ready: '.th-stage[data-mode="mock"] .th-qclear', assert: stageFits + `
+      if (!/Vending/.test(need('.th-qtitle').textContent)) throw Error('The chosen problem is lost on a mode switch');
+      if (document.querySelector('.th-chip[data-slug="lld-vending-machine"]').getAttribute('aria-pressed') !== 'true' || document.querySelectorAll('.th-chip[aria-pressed="true"]').length !== 1) throw Error('One chip is chosen');
+      if (visible(document.querySelector('.th-qpanel'))) throw Error('Choosing a chip does not fold the row');
+      if (!need('.th-qsub').textContent) throw Error('The chosen problem has no status');` },
+    lldPickedPractise: { url: '/#/lld', setup: `${homeLoaded} ${toMock} ${pickChip('.th-chip[data-slug="lld-vending-machine"]')} ${toPractise}`, ready: '.th-stage[data-mode="practise"] .th-qclear', assert: stageFits + `
+      if (!/Vending/.test(need('.th-qtitle').textContent)) throw Error('The chosen problem is lost on a mode switch');
+      if (visible(document.querySelector('.th-set--practise [aria-label^="Target level:"]'))) throw Error('LLD practice on a chosen problem offers a level it ignores');` },
+    lldCleared: { url: '/#/lld', setup: `${homeLoaded} ${pickChip('.th-chip[data-slug="lld-vending-machine"]')} need('.th-qclear').click(); await sleep(60);`, ready: '.th-qrow[data-choice="surprise"]', assert: stageFits + `
+      if (document.activeElement !== need('.th-qchange')) throw Error('Clear leaves focus nowhere');` },
+    lldOwnPractise: { url: '/#/lld', setup: `${homeLoaded} ${pickChip('.th-chip[data-choice="own"]')}`, ready: '.th-brief textarea', assert: stageFits + `
+      if (document.activeElement !== need('.th-brief textarea')) throw Error('Choosing My own problem does not put the cursor in the brief');
+      if (visible(document.querySelector('.th-set--practise [aria-label^="Target level:"]'))) throw Error('LLD practice offers a level it ignores');
+      if (!/leave this blank/.test(need('.th-brief textarea').placeholder)) throw Error('Practice does not say a blank brief is fine');` },
+    lldOwnMock: { url: '/#/lld', setup: `${homeLoaded} ${pickChip('.th-chip[data-choice="own"]')} ${typeBrief('Design a library book hold queue.')} ${toMock}`, ready: '.th-stage[data-mode="mock"] .th-brief textarea', assert: stageFits + `
+      if (need('.th-brief textarea').value !== 'Design a library book hold queue.') throw Error('The brief is lost on a mode switch');
+      if (!need('.th-brief-hint').textContent.includes('notes for your problem')) throw Error('The LLD mock does not say it prepares your problem');` },
+    lldOwnMockNarrow: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${toMock} ${pickChip('.th-chip[data-choice="own"]')} ${typeBrief('Design a library book hold queue.')} ${reveal('.th-qrow')}`, ready: '.th-brief textarea', assert: stageFits },
+    lldMany: { url: '/#/lld', setup: longList() + ` ${openRow}`, ready: '.th-qfilter-input', assert: stageFits + rowOpen + manyAssert },
+    lldManyFiltered: { url: '/#/lld', setup: longList() + ` ${openRow} const f = need('.th-qfilter-input'); f.value = 'LONGER sample'; f.dispatchEvent(new Event('input')); await sleep(60);`, ready: '.th-qfilter-input', assert: stageFits + `
+      const shown = [...document.querySelectorAll('.th-chip.th-problem')].filter(visible).map(n => n.dataset.slug);
+      if (shown.join() !== [4, 8, 12, 16, 20, 24, 28].map(i => 'lld-sample-' + i).join()) throw Error('The filter shows ' + shown);
+      need('.th-chip[data-choice="surprise"]');` },
+    lldManyNarrow: { url: '/#/lld', width: 390, setup: longList() + ` ${openRow} ${reveal('.th-qrow')}`, ready: '.th-qfilter-input', assert: stageFits + rowOpen + manyAssert },
+    lldLower: { url: '/#/lld', setup: `${homeLoaded} ${reveal('.th-lower')}`, ready: '.th-dim .th-marks', assert: stageFits + `
       if (document.querySelectorAll('.th-dim').length !== 10) throw Error('One row per LLD rubric skill');
       if (need('.th-dim .th-marks').children.length !== 5) throw Error('Five marks for the last five reports');
       need('.th-moveup');` },
     lldHistoryMocks: { url: '/#/lld', setup: `${homeLoaded} clickText('.th-filter .btn', 'Mocks'); await sleep(50); document.scrollingElement.scrollTo({ top: document.scrollingElement.scrollHeight - innerHeight - 12, behavior: 'instant' }); await sleep(80);`, ready: '.th-filter [aria-pressed="true"]', assert: `
       if ([...document.querySelectorAll('.th-history .th-item')].some(r => r.dataset.kind !== 'mock')) throw Error('The Mocks filter shows practice');` },
-    lldNarrow: { url: '/#/lld', width: 720, setup: homeLoaded, ready: '.th-continue .th-resume', assert: homeFits + stacked },
-    lldNarrowLower: { url: '/#/lld', width: 720, setup: `${homeLoaded} ${reveal('.th-stand')}`, ready: '.th-dim', assert: homeFits },
-    lldPhone: { url: '/#/lld', width: 390, setup: homeLoaded, ready: '.th-continue .th-resume', assert: homeFits + stacked },
-    lldPhoneDetail: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-detail')}`, ready: '.th-mock .ci-start', assert: homeFits },
-    lldPhoneLower: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-history')}`, ready: '.th-history .th-item', assert: homeFits },
-    lldNewMock: { url: '/#/lld', setup: homeLoaded, ready: '.th-mock .ci-start', assert: homeFits },
-    lldMockNarrow: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')}`, ready: '.th-mock .ci-start', assert: homeFits + `need('.th-mock [aria-label="Answer mode: Voice"]'); need('.th-mock [aria-label^="Target level:"]');` },
-    lldSelected: lldSelection,
-    lldSelectedNarrow: { ...lldSelection, width: 720 },
-    lldNothing: { url: '/#/lld', setup: homeLoaded, ready: '.th[data-state="ready"] .th-detail .th-practice', assert: homeFits + nothingChosen('lld') + `
-      if (!visible(need('.th-act--practise [aria-label^="Target level:"]'))) throw Error('A surprise practice problem is prepared for a level, so the level shows');` },
-    // Mock on your own brief: LLD prepares a scenario for it, so the choice is offered.
-    lldOwnMock: { url: '/#/lld', setup: `${homeLoaded} ${chooseProblem('mock', 'My own problem')}`, ready: '.th-mock .th-brief textarea', assert: homeFits + `
-      if (document.activeElement !== need('.th-mock .th-brief textarea')) throw Error('Choosing My own problem does not put the cursor in the brief');
-      if (!need('.th-mock .th-pick-hint').textContent.includes('notes for your problem')) throw Error('The LLD mock does not say it prepares your problem');
-      need('.th-mock [aria-label="Problem: My own problem"]');` },
-    lldOwnMockNarrow: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')} ${chooseProblem('mock', 'My own problem')} ${reveal('.th-mock')}`, ready: '.th-mock .th-brief textarea', assert: homeFits },
-    lldOptionsMenuNarrow: { url: '/#/lld', width: 390, height: 844, setup: `${homeLoaded} ${reveal('.th-mock [data-field="model"]')}`, ready: '.th-mock [data-field="model"] button:not(:disabled)', assert: homeFits + menuOnScreen('.th-mock [data-field="model"] button') },
-    lldProblemMenu: { url: '/#/lld', setup: homeLoaded, ready: '.th-mock .ci-start', assert: homeFits + menuOnScreen('.th-mock .th-pick [data-field="problem"] button') },
-    lldOwnPractice: { url: '/#/lld', setup: `${homeLoaded} ${chooseProblem('practise', 'My own problem')}`, ready: '.th-act--practise .th-brief textarea', assert: homeFits + `
-      if (document.activeElement !== need('.th-act--practise .th-brief textarea')) throw Error('Choosing My own problem does not put the cursor in the brief');
-      if (visible(document.querySelector('.th-act--practise [aria-label^="Target level:"]'))) throw Error('LLD practice offers a level it ignores');` },
-    lldClear: { ...pick('.th-problem[data-slug="lld-vending-machine"]'), setup: `${homeLoaded} need('.th-problem[data-slug="lld-vending-machine"]').click(); await sleep(50); need('.th-clear').click(); await sleep(50);`, ready: '.th-detail [data-chosen="none"]', assert: homeFits + nothingChosen('lld') },
-    lldPinned: { url: '/#/lld', height: 900, setup: longList() + ` document.scrollingElement.scrollTo({ top: need('.th-problem[data-slug="lld-sample-10"]').getBoundingClientRect().top + scrollY - innerHeight / 2, behavior: 'instant' }); await sleep(120);`, ready: '.th-detail.is-pinned', assert: homeFits + cardPinned },
-    lldPinnedSelected: { url: '/#/lld', height: 900, setup: longList() + ` need('.th-problem[data-slug="lld-sample-3"]').click(); await sleep(80); document.scrollingElement.scrollTo({ top: need('.th-problem[data-slug="lld-sample-12"]').getBoundingClientRect().top + scrollY - innerHeight / 2, behavior: 'instant' }); await sleep(120);`, ready: '.th-detail.is-pinned [data-chosen="lld-sample-3"]', assert: homeFits + cardPinned },
-    // Too short a window for the whole panel: it scrolls with the page, so Start stays reachable.
-    lldPinnedShort: { url: '/#/lld', height: 400, setup: longList() + ` document.scrollingElement.scrollTo({ top: 600, behavior: 'instant' }); await sleep(120);`, ready: '.th-detail', assert: homeFits + `
-      if (getComputedStyle(need('.th-detail')).position === 'sticky') throw Error('A panel taller than the window is pinned');` },
-    lldPinnedNarrow: { url: '/#/lld', width: 720, setup: longList() + ` document.scrollingElement.scrollTo({ top: need('.th-problem[data-slug="lld-sample-10"]').getBoundingClientRect().top + scrollY - 200, behavior: 'instant' }); await sleep(120);`, ready: '.th-picker', assert: homeFits + stacked + `
-      if (getComputedStyle(need('.th-detail')).position === 'sticky') throw Error('One column must not pin the panel');` },
-    lldEmpty,
-    lldEmptyNarrow: { ...lldEmpty, width: 720 },
-    lldError,
+    lldNarrow: { url: '/#/lld', width: 720, setup: homeLoaded, ready: '.th-continue .th-resume', assert: stageFits + `
+      const l = need('.th-stage-left').getBoundingClientRect(), r = need('.th-stage-right').getBoundingClientRect(); if (r.top < l.bottom) throw Error('Narrow: the settings do not sit under the promise');` },
+    lldNarrowMock: { url: '/#/lld', width: 720, setup: `${homeLoaded} ${toMock} ${pickChip('.th-chip[data-slug="lld-vending-machine"]')} ${reveal('.th-stage-right')}`, ready: '.th-stage[data-mode="mock"] .th-qclear', assert: stageFits },
+    lldNarrowLower: { url: '/#/lld', width: 720, setup: `${homeLoaded} ${reveal('.th-stand')}`, ready: '.th-dim', assert: stageFits },
+    lldPhone: { url: '/#/lld', width: 390, setup: homeLoaded, ready: '.th-continue .th-resume', assert: stageFits + `
+      if (visible(document.querySelector('.th-sw-icon'))) throw Error('The switch keeps its icons at phone width');` },
+    lldPhoneMock: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${toMock} ${openRow} ${reveal('.th-stage-right')}`, ready: '.th-qpanel .th-chip', assert: stageFits + rowOpen },
+    lldPhoneLower: { url: '/#/lld', width: 390, setup: `${homeLoaded} ${reveal('.th-history')}`, ready: '.th-history .th-item', assert: stageFits },
+    lldOptionsMenuNarrow: { url: '/#/lld', width: 390, height: 844, setup: `${homeLoaded} ${toMock} ${reveal('.th-mock [data-field="model"]')}`, ready: '.th-mock [data-field="model"] button:not(:disabled)', assert: stageFits + menuOnScreen('.th-mock [data-field="model"] button') },
+    lldEmpty: homeEmpty('lld'),
+    lldEmptyNarrow: { ...homeEmpty('lld'), width: 720 },
+    lldError: homeError('lld'),
     lldLongDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1024, height: 650, setup: `for(let i=0;i<100 && !document.querySelector('.ci-composer .ui-mode-switch:not(:disabled)');i++) await sleep(50); const log=need('.ci-log'); for(let i=0;i<20;i++){const p=document.createElement('p');p.textContent='Interviewer: How does reservation ownership prevent conflicting updates?';log.append(p);} log.scrollTop=log.scrollHeight;`, ready: '.ci-contained .ci-log' },
     lldDocumentNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.lld-workspace .ci-panel', setup: `for(let i=0;i<100 && !document.querySelector('.ci-panel');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'center'});` },
     lldDocument: { url: '/#/lld/lld-locker/1760000000000-00000009', ready: '.lld-workspace .ci-panel' },
     // The audit fixture is paused and not joined in this tab, so no idle tick can run.
     lldMockPaused: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 1440, height: 900, ready: '.ci-contained .mock-paused:not([hidden])', assert: mockSessionAssert('lld', true) },
     lldMockPausedNarrow: { url: '/#/lld/lld-locker/1760000000000-00000009', width: 390, ready: '.ci-contained .mock-paused:not([hidden])', setup: `for(let i=0;i<100&&!document.querySelector('.ci-contained .mock-paused:not([hidden])');i++)await sleep(50);need('.lld-interviewer').scrollIntoView({block:'start'});`, assert: mockSessionAssert('lld', true) },
-    lldMockLive: { url: '/#/lld', width: 1440, height: 900, setup: `const real = window.fetch; window.fetch = async (...args) => { const response = await real(...args); if (String(args[0]).startsWith('/api/interview/lld-locker/1760000000000-00000009')) { const data = await response.json(); data.startedAt = Date.now() - 600000; data.pausedAt = null; return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; location.hash = '#/lld/lld-locker/1760000000000-00000009';`, ready: '.ci-contained .ci-log .ui-turn', assert: mockSessionAssert('lld', false) },
+    lldMockLive: { url: '/#/lld', width: 1440, height: 900, setup: `const real = window.fetch; window.fetch = async (...args) => { if (['/api/interview/heartbeat', '/api/interview/event'].includes(String(args[0])) && window.__visualLive) return new Response(JSON.stringify({ interjected: false, state: { ...window.__visualLive, turns: undefined } }), { headers: { 'content-type': 'application/json' } }); const response = await real(...args); if (String(args[0]).startsWith('/api/interview/lld-locker/1760000000000-00000009')) { const data = await response.json(); data.startedAt = Date.now() - 600000; data.pausedAt = null; data.pauseReason = null; data.clock = { ...data.clock, elapsedMs: 600000, running: true, pauseReason: null }; window.__visualLive = data; return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; location.hash = '#/lld/lld-locker/1760000000000-00000009';`, ready: '.ci-contained .ci-log .ui-turn', assert: mockSessionAssert('lld', false) },
     designMockLive: { url: '/#/design', width: 1440, height: 900, setup: liveDesignMock(), ready: '.dz-side .dz-phase[aria-current=step]', assert: mockSessionAssert('design', false) + `if (document.querySelector('.dz-side :is(.ui-pane-header, .dz-phase-actions) :is(.ui-select, select)')) throw Error('The live mock still has a phase filter');` },
     designMockPaused: { url: '/#/design', width: 1440, height: 900, setup: liveDesignMock(true), ready: '.dz-side .mock-paused:not([hidden])', assert: mockSessionAssert('design', true) },
+    designMockAway: { url: '/#/design', width: 1440, height: 900, setup: liveDesignMock(false, { title: 'URL shortener', clock: { elapsedMs: 800000, running: false, pauseReason: 'away', awayMs: 0 } }), ready: '.dz-side .mock-paused:not([hidden])', assert: mockSessionAssert('design', true) + awayAssert('31:40') + headerLayoutAssert },
+    designMockAwayNarrow: { url: '/#/design', width: 390, setup: liveDesignMock(false, { title: 'URL shortener', clock: { elapsedMs: 800000, running: false, pauseReason: 'away', awayMs: 0 } }) + `document.scrollingElement.scrollTo({ top: 0, behavior: 'instant' });`, ready: '.dz-side .mock-paused:not([hidden])', assert: awayAssert('31:40') + headerLayoutAssert },
+    designMockOvertime: { url: '/#/design', width: 1440, height: 900, setup: liveDesignMock(false, { title: 'URL shortener', clock: { elapsedMs: 7054000, running: true, pauseReason: null, awayMs: 0 } }), ready: '.dz-side .dz-phase[aria-current=step]', assert: overtimeAssert('/^\\+1:12:3\\d$/') + headerLayoutAssert },
+    designMockHeader1024: { url: '/#/design', width: 1024, height: 800, setup: liveDesignMock(false, { title: LONG_TITLE, clock: { elapsedMs: 7054000, running: true, pauseReason: null, awayMs: 0 } }) + `document.scrollingElement.scrollTo({ top: 0, behavior: 'instant' }); await sleep(50);`, ready: '.dz-side .dz-phase[aria-current=step]', assert: headerLayoutAssert },
+    designMockHeader760: { url: '/#/design', width: 760, height: 800, setup: liveDesignMock(false, { title: LONG_TITLE, clock: { elapsedMs: 800000, running: false, pauseReason: 'away', awayMs: 0 } }) + `document.scrollingElement.scrollTo({ top: 0, behavior: 'instant' }); await sleep(50);`, ready: '.dz-side .mock-paused:not([hidden])', assert: headerLayoutAssert },
+    designMockHeader700: { url: '/#/design', width: 700, height: 800, setup: liveDesignMock(false, { title: LONG_TITLE, clock: { elapsedMs: 7054000, running: true, pauseReason: null, awayMs: 0 } }) + `document.scrollingElement.scrollTo({ top: 0, behavior: 'instant' }); await sleep(50);`, ready: '.dz-side .dz-phase[aria-current=step]', assert: headerLayoutAssert },
+    lldMockAway: { url: '/#/lld', width: 1440, height: 900, setup: lldClock({ elapsedMs: 600000, running: false, pauseReason: 'away', awayMs: 0 }), ready: '.ci-contained .mock-paused:not([hidden])', assert: mockSessionAssert('lld', true) + awayAssert('35:00') + headerLayoutAssert },
+    lldMockOvertime: { url: '/#/lld', width: 1440, height: 900, setup: lldClock({ elapsedMs: 6605000, running: true, pauseReason: null, awayMs: 0 }), ready: '.ci-contained .ci-log .ui-turn', assert: overtimeAssert('/^\\+1:05:0\\d$/') + headerLayoutAssert },
+    lldMockHeader820: { url: '/#/lld', width: 820, height: 800, setup: lldClock({ elapsedMs: 6605000, running: true, pauseReason: null, awayMs: 0 }, `for (let i = 0; i < 100 && !document.querySelector('.ci-contained .ci-log .ui-turn'); i++) await sleep(50); document.scrollingElement.scrollTo({ top: 0, behavior: 'instant' });`), ready: '.ci-contained .ci-log .ui-turn', assert: headerLayoutAssert },
     designMockNarrow: { url: '/#/design', width: 390, setup: liveDesignMock() + `need('.dz-side').scrollIntoView({block:'start'});`, ready: '.dz-side .dz-phase[aria-current=step]', assert: mockSessionAssert('design', false) },
     lldRunOutput: pythonRunState({ result: scriptRuns.output, ready: '.pyrun .rr-printed', assert: `
       if (need('.pyrun .rr-headline').textContent !== 'Ran · 42 ms · exit 0') throw Error('Wrong success verdict: ' + need('.pyrun .rr-headline').textContent);
@@ -857,14 +1002,36 @@ export async function runVisualAudit({ origin, target, output }) {
     referenceTab,
     // Stacked (below 1081px) the pane sits above the editor; the tabs switch the same way.
     referenceTabNarrow: { ...referenceTab, width: 900 },
-    interviewLive: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-panel[data-mode="typed"] .ci-input', assert: `need('.ci-phases');` },
-    interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-voice .voice-state');` },
+    videoTab: videoTab({ assert: videoPlayerFits }),
+    // The usual three columns: the coach open beside the editor still leaves all five tabs whole.
+    videoTabCoachOpen: videoTab({ coachOpen: true, assert: videoPlayerFits + `
+      const landing = document.querySelector('.coach-empty');
+      if (landing && landing.parentElement.scrollTop > 1) throw Error('The chat landing opened scrolled away from its top');` }),
+    // 1280 wide: the narrowest wide layout, where the pane is at its narrowest beside the editor.
+    videoTabNarrow: videoTab({ width: 1280, assert: videoPlayerFits }),
+    // Stacked below 1081px: the pane sits above the editor and the page scrolls.
+    videoTabStacked: videoTab({ width: 900, assert: videoPlayerFits }),
+    // The pane dragged to its 280px minimum beside the editor.
+    videoTabMinPane: videoTab({ tabs: problemTabsScroll, assert: videoPlayerFits,
+      pane: `for (let i = 0; i < 100 && !document.querySelector('.pbody .pcol'); i++) await sleep(50); need('.pbody').style.gridTemplateColumns = '280px minmax(420px, 1fr)'; await sleep(150);` }),
+    videoFallback: videoTab({ path: '/error/150/', ready: '.video-fallback', assert: `
+      if (document.querySelector('iframe')) throw Error('A refused embed left its player in the page');
+      const box = need('.video-fallback'), r = box.getBoundingClientRect(), b = need('.video-body').getBoundingClientRect();
+      if (need('.video-fallback h3').textContent !== 'This video only plays on YouTube') throw Error('The refusal is not stated');
+      const link = need('.video-fallback a');
+      if (!link.href.startsWith('https://www.youtube.com/watch?v=') || !link.textContent.includes('Watch on YouTube')) throw Error('No YouTube link in the fallback');
+      if (r.left < b.left - 0.5 || r.right > b.right + 0.5) throw Error('The fallback overflows the pane');` }),
+    videoFallbackNarrow: videoTab({ width: 1280, path: '/silent/', ready: '.video-fallback', assert: `
+      if (need('.video-fallback h3').textContent !== 'The player did not load') throw Error('The load failure is not stated');
+      if (![...document.querySelectorAll('.video-fallback button')].some(n => n.textContent === 'Try again')) throw Error('No Try again');` }),
+    interviewLive: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { if (['/api/interview/heartbeat', '/api/interview/event'].includes(String(args[0])) && window.__visualLive) return new Response(JSON.stringify({ interjected: false, state: { ...window.__visualLive, turns: undefined } }), { headers: { 'content-type': 'application/json' } }); const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.pauseReason = null; data.clock = { ...data.clock, elapsedMs: 0, running: true, pauseReason: null }; window.__visualLive = data; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000001');`, ready: '.ci-panel[data-mode="typed"] .ci-input', assert: `need('.ci-phases');` },
+    interviewVoice: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { if (['/api/interview/heartbeat', '/api/interview/event'].includes(String(args[0])) && window.__visualLive) return new Response(JSON.stringify({ interjected: false, state: { ...window.__visualLive, turns: undefined } }), { headers: { 'content-type': 'application/json' } }); const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/')) { const data = await response.json(); data.startedAt = Date.now(); data.pausedAt = null; data.pauseReason = null; data.clock = { ...data.clock, elapsedMs: 0, running: true, pauseReason: null }; window.__visualLive = data; data.lastSpeechAt = Date.now(); data.lastTypingAt = Date.now(); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; const m = await import('/js/interview.js'); m.openInterviewRecord('jump-game', '1760000000000-00000002');`, ready: '.ci-panel[data-mode="voice"] .ci-voice', assert: `if (visible(document.querySelector('.ci-input'))) throw Error('Voice mode exposes text box'); need('.ci-voice .voice-state');` },
     interviewVoiceLong: liveVoiceMock(),
     interviewVoiceLongScrolled: liveVoiceMock({ scrolled: true }),
     interviewVoiceLongNarrow: liveVoiceMock({ narrow: true }),
     interviewVoiceLongPhone: { ...liveVoiceMock({ phone: true }), width: 390, height: 844 },
     interviewVoiceLongShort: { ...liveVoiceMock({ scrolled: true }), height: 640 },
-    lldMockTranscript: surfaceClear({ url: '/#/lld', setup: `const real = window.fetch; window.fetch = async (...args) => { const response = await real(...args); if (String(args[0]).startsWith('/api/interview/lld-locker/1760000000000-00000009')) { const data = await response.json(); data.startedAt = Date.now() - 600000; data.pausedAt = null; return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; location.hash = '#/lld/lld-locker/1760000000000-00000009';`, ready: '.ci-contained .ci-log .ui-turn', panel: '.ci-contained', log: '.ci-log', header: '.ci-live-header', composer: '.ui-composer' }),
+    lldMockTranscript: surfaceClear({ url: '/#/lld', setup: `const real = window.fetch; window.fetch = async (...args) => { if (['/api/interview/heartbeat', '/api/interview/event'].includes(String(args[0])) && window.__visualLive) return new Response(JSON.stringify({ interjected: false, state: { ...window.__visualLive, turns: undefined } }), { headers: { 'content-type': 'application/json' } }); const response = await real(...args); if (String(args[0]).startsWith('/api/interview/lld-locker/1760000000000-00000009')) { const data = await response.json(); data.startedAt = Date.now() - 600000; data.pausedAt = null; data.pauseReason = null; data.clock = { ...data.clock, elapsedMs: 600000, running: true, pauseReason: null }; window.__visualLive = data; return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; location.hash = '#/lld/lld-locker/1760000000000-00000009';`, ready: '.ci-contained .ci-log .ui-turn', panel: '.ci-contained', log: '.ci-log', header: '.ci-live-header', composer: '.ui-composer' }),
     designMockTranscript: surfaceClear({ url: '/#/design', setup: liveDesignMock(), ready: '.dz-side .dz-phase[aria-current=step]', panel: '.dz-side', log: '.dz-log', header: '.dz-phase-actions', composer: '.ui-composer' }),
     practiceTranscript: surfaceClear({ url: '/#/lld/practice/lld-locker/visual-practice-lld', ready: '.pr-coach .pr-answer', panel: '.pr-coach', log: '.pr-thread', header: '.pr-coach-head', composer: '.pr-compose' }),
     interviewNoResponse: { url: problem, setup: `const originalFetch = window.fetch; window.fetch = async (...args) => { const response = await originalFetch(...args); if (String(args[0]).includes('/api/interview/jump-game/1760000000000-00000003')) { const data = await response.json(); data.completionReason = 'no-response'; data.report = null; delete data.hireSignal; data.turns = data.turns.filter(t => t.kind === 'opening'); return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } }); } return response; }; (await import('/js/interview.js')).openInterviewRecord('jump-game', '1760000000000-00000003');`, ready: '.ci-empty-session', assert: `if (document.querySelector('.ci-open-report,.ci-mini-dim')) throw Error('Empty interview displays a report');` },
@@ -945,15 +1112,21 @@ export async function runVisualAudit({ origin, target, output }) {
     roadmap: { url: '/#/roadmap', ready: '.roadmap' },
     progress: { url: '/#/progress', ready: '.dash-patterns', assert: `const b=need('.dash-body').getBoundingClientRect();if(b.width>1201)throw Error('Progress is not a bounded column');if(document.querySelector('.dash [title]'))throw Error('Native title tooltip on Progress');` },
     progressNarrow: { url: '/#/progress', width: 390, ready: '.dash-patterns', assert: `if(document.documentElement.scrollWidth>innerWidth)throw Error('Progress overflows the phone width');` },
-    design: { url: '/#/design', setup: homeLoaded, ready: '.th-history .th-item', assert: homeFits + `need('.th-stand-empty'); need('.th-rubric-names li');` },
-    designSetup: { url: '/#/design', setup: homeLoaded, ready: '.th-mock .ci-start', assert: homeFits + nothingChosen('design') + `need('.th-mock [aria-label="Answer mode: Voice"]'); need('.th-act--practise [aria-label^="Target level:"]');` },
-    designOwn: { url: '/#/design', setup: `${homeLoaded} ${chooseProblem('practise', 'My own problem')} ${chooseProblem('mock', 'My own problem')}`, ready: '.th-mock .th-brief textarea', assert: homeFits + `
-      need('.th-act--practise .th-brief textarea'); need('.th-act--practise [aria-label^="Target level:"]');
-      if (document.querySelector('.th-pick-hint:not([hidden])')) throw Error('My own problem still describes Surprise me');` },
-    designOwnNarrow: { url: '/#/design', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')} ${chooseProblem('mock', 'My own problem')}`, ready: '.th-mock .th-brief textarea', assert: homeFits },
-    designSelected: { url: '/#/design', setup: `${homeLoaded} need('.th-problem[data-slug]').click(); await sleep(60);`, ready: '.th-problem[aria-pressed="true"]', assert: homeFits + `need('.th-clear'); need('.th-act--practise [aria-label^="Target level:"]'); if (document.querySelector('.th-pick:not([hidden])')) throw Error('A chosen problem still offers Surprise me');` },
-    designSetupNarrow: { url: '/#/design', width: 390, setup: `${homeLoaded} ${reveal('.th-mock')}`, ready: '.th-mock .ci-start', assert: homeFits },
-    designNarrow: { url: '/#/design', width: 720, setup: homeLoaded, ready: '.th-history .th-item', assert: homeFits },
+    design: { url: '/#/design', setup: homeLoaded, ready: '.th-history .th-item', assert: stageFits + `need('.th-stand-empty'); need('.th-rubric-names li');
+      if (!visible(need('.th-set--practise [aria-label^="Target level:"]'))) throw Error('System design practice coaches to a level, so the level shows');` },
+    designMock: { url: '/#/design', setup: `${homeLoaded} ${toMock} ${openRow}`, ready: '.th-qpanel .th-chip', assert: stageFits + rowOpen + `need('.th-mock [aria-label="Answer mode: Voice"]');` },
+    designPicked: { url: '/#/design', setup: `${homeLoaded} ${toMock} ${pickChip('.th-chip.th-problem')} ${toPractise}`, ready: '.th-stage[data-mode="practise"] .th-qclear', assert: stageFits + `
+      if (need('.th-qtitle').textContent !== document.querySelector('.th-chip.th-problem').textContent) throw Error('The chosen problem is lost on a mode switch');
+      if (!visible(need('.th-set--practise [aria-label^="Target level:"]'))) throw Error('System design practice keeps its level on a chosen problem');` },
+    designOwn: { url: '/#/design', setup: `${homeLoaded} ${pickChip('.th-chip[data-choice="own"]')} ${typeBrief('A ticketing system for a stadium where a show sells out in minutes.')} ${toMock}`, ready: '.th-stage[data-mode="mock"] .th-brief textarea', assert: stageFits + `
+      if (!/stadium/.test(need('.th-brief textarea').value)) throw Error('The brief is lost on a mode switch');
+      if (!/interviewer works from/.test(need('.th-brief-hint').textContent)) throw Error('The design mock does not say the brief is its prompt');` },
+    designOwnPractise: { url: '/#/design', setup: `${homeLoaded} ${pickChip('.th-chip[data-choice="own"]')} ${typeBrief('A ticketing system for a stadium where a show sells out in minutes.')}`, ready: '.th-stage[data-mode="practise"] .th-brief textarea', assert: stageFits + `need('.th-set--practise [aria-label^="Target level:"]');` },
+    designNarrow: { url: '/#/design', width: 720, setup: homeLoaded, ready: '.th-history .th-item', assert: stageFits },
+    designPhone: { url: '/#/design', width: 390, setup: `${homeLoaded} ${toMock} ${reveal('.th-stage')}`, ready: '.th-stage[data-mode="mock"] .ci-start', assert: stageFits },
+    designOwnNarrow: { url: '/#/design', width: 390, setup: `${homeLoaded} ${pickChip('.th-chip[data-choice="own"]')} ${reveal('.th-qrow')}`, ready: '.th-brief textarea', assert: stageFits },
+    designEmpty: homeEmpty('design'),
+    designError: homeError('design'),
     problem: { url: problem, ready: '.ui-screen-header .ws-run', setup: `if (document.body.classList.contains('coach-open')) need('.coach-hide').click();` },
     // Between the docked layout and the phone layout the coach is a floating button; it must
     // never sit on a header, tab or the test panel's controls.
@@ -968,11 +1141,15 @@ export async function runVisualAudit({ origin, target, output }) {
         }
       }
       if (!visible(document.querySelector('.editor-open-sidebar')) && !visible(document.querySelector('[data-pane="coach"]'))) throw Error('No visible control opens the coach');` },
-    chat: { url: problem, setup: coach, ready: '.recent-chat', assert: historySpacing },
-    chatNarrow: { url: problem, setup: `${coach} need('.recent-chats').style.width='260px'; need('.recent-title').textContent='I am struggling to understand how these overlapping intervals should merge, especially when the new interval spans several existing intervals.';`, ready: '.recent-chat', assert: historySpacing },
+    // Recent chats: named, renamed, unnamed (cleaned first question), long and review chats.
+    chat: { url: problem, setup: coach, ready: '.recent-chat', assert: historySpacing + recentRows + `if (document.querySelectorAll('.recent-chats .recent-chat').length !== 5) throw Error('Recent chats shows five then Show all'); if (!need('.recent-all').textContent.includes('Show all 6')) throw Error('Missing Show all'); if (!need('.recent-chat .recent-title').textContent.startsWith('Help me with this. Just minor hints')) throw Error('An unnamed chat is not labelled by its cleaned first question'); if (![...document.querySelectorAll('.recent-title')].some(t => t.textContent === 'Hints on the loop bound')) throw Error('A named chat lost its title'); if (document.querySelector('.recent-chats [aria-current]')) throw Error('The landing marks a chat current although the next message starts a new one');` },
+    chatAll: { url: problem, setup: `${coach} need('.recent-all').click(); await sleep(100);`, ready: '.recent-chat', assert: historySpacing + recentRows + `if (document.querySelectorAll('.recent-chats .recent-chat').length !== 6 || document.querySelector('.recent-all')) throw Error('Show all did not list every chat');` },
+    chatNarrow: { url: problem, setup: `${coach} ${narrowSidebar(290)}`, ready: '.recent-chat', assert: historySpacing + recentRows },
+    chatNarrowest: { url: problem, setup: `${coach} need('.recent-all').click(); await sleep(100); ${narrowSidebar(280)}`, ready: '.recent-chat', assert: historySpacing + recentRows },
+    chatRename: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Hints on the loop bound')); if (!chat) throw Error('Missing named chat fixture'); chat.click(); await sleep(300); need('.ui-thread-title').click(); await sleep(100);`, ready: '.ui-thread-title-input', assert: `const field = need('.ui-thread-title-input'), strip = need('.ui-thread-strip').getBoundingClientRect(), f = field.getBoundingClientRect(); if (field.value !== 'Hints on the loop bound') throw Error('Rename does not start from the current title'); if (document.activeElement !== field) throw Error('Rename field is not focused'); if (f.left < strip.left - 0.5 || f.right > strip.right + 0.5 || f.top < strip.top - 0.5 || f.bottom > strip.bottom + 0.5) throw Error('Rename field escapes the strip');` },
     chatThreadNarrow: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); const pane = need('.coach'); pane.style.width = pane.style.maxWidth = pane.style.minWidth = '290px'; pane.style.flex = 'none'; await sleep(200);`, ready: '.ui-thread-strip', assert: `const bar = need('.coach-bar').getBoundingClientRect(), strip = need('.ui-thread-strip').getBoundingClientRect(); for (const n of document.querySelectorAll('.coach-chat-tools button')) { const r = n.getBoundingClientRect(); if (!r.width) continue; if (r.bottom > bar.bottom + 0.5 || r.top < bar.top - 0.5) throw Error('A chat tool hangs outside the sidebar header'); if (r.bottom > strip.top + 0.5 && r.top < strip.bottom - 0.5) throw Error('A chat tool covers the conversation strip'); }` },
     composerFocus: { url: problem, setup: `${coach} let input = null; for (let i = 0; i < 40 && !input; i++) { input = [...document.querySelectorAll('textarea.ui-composer-input')].find(visible); if (!input) await sleep(100); } if (!input) throw Error('Missing the coach composer'); input.focus(); await sleep(250);`, ready: '.ui-composer:focus-within', assert: `const c = getComputedStyle(need('.ui-composer:focus-within')); if (c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) > 0) throw Error('The focused composer draws a second ring'); if (c.boxShadow === 'none') throw Error('The focused composer shows no focus halo');` },
-    chatActive: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); need('.coach-chat-tools [aria-label="History"]').click();`, ready: '.chat-history-popover .recent-chat', assert: historySpacing },
+    chatActive: { url: problem, setup: `${coach} const chat = [...document.querySelectorAll('.recent-chat')].find(n => n.textContent.includes('Both are good')); if (!chat) throw Error('Missing coach chat fixture'); chat.click(); await sleep(300); need('.coach-chat-tools [aria-label="History"]').click();`, ready: '.chat-history-popover .recent-chat', assert: historySpacing + recentRows.replaceAll('.coach', '.chat-history-popover') + `const current = [...document.querySelectorAll('.chat-history-popover .recent-chat[aria-current]')]; if (current.length !== 1 || !current[0].textContent.includes('Both are good')) throw Error('The open chat is not the one marked Current'); if (!need('.ui-thread-strip strong').textContent.includes('Both are good')) throw Error('Thread strip lost the chat name');` },
     subsNarrow: { url: problem, setup: `${submissions} need('.submissions').style.width='260px';`, ready: '.submission-row' },
     interviewsNarrow: { url: problem, setup: `${coach} clickText('.coach-tab', 'Interviews'); document.querySelector('.interview-back')?.click(); need('.interviews-view').style.width='280px';`, ready: '.interviews-overview .interview-row' },
     catalogScrolled: { url: '/#/', setup: `for (let i=0; i<100 && !document.querySelector('.catalog .psec .prow'); i++) await sleep(50); document.scrollingElement.scrollTo({ top: 520, behavior: 'instant' }); await sleep(200);`, ready: '.catalog .filterbar' },
@@ -1018,8 +1195,29 @@ export async function runVisualAudit({ origin, target, output }) {
     subsList: { url: problem, setup: submissions, ready: '.submission-row' },
     subsAccepted: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Accepted')); if (!row) throw Error('No accepted fixture'); row.click();`, ready: '.submission-hero.accepted', assert: `need('.submission-chart');` },
     subsTle: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Time Limit Exceeded')); if (!row) throw Error('No TLE fixture'); row.click();`, ready: '.submission-hero.rejected' },
-    resetNotice: { url: problem, setup: `${editor} inst.setValue('# something of my own\\nclass Solution:\\n    pass\\n'); await sleep(600); need('.ws-reset').click(); await sleep(300);`, ready: '.ws-notice:not([hidden])', assert: `
-      if (![...document.querySelectorAll('.ws-notice button')].some(b => b.textContent.trim() === 'Undo')) throw Error('Reset must offer Undo');` },
+    // The Reset toast is brief; hovering holds it for the capture.
+    resetToast: { url: problem, setup: `${editor} inst.setValue('# something of my own\\nclass Solution:\\n    pass\\n'); await sleep(600); need('.ws-reset').click(); await sleep(300); document.querySelector('.fx-toast--note')?.dispatchEvent(new PointerEvent('pointerenter'));`, ready: '.fx-toast--note.is-in', assert: `
+      const t = need('.fx-toast--note'), r = t.getBoundingClientRect();
+      if (![...t.querySelectorAll('button')].some(b => b.textContent.trim() === 'Undo')) throw Error('Reset must offer Undo');
+      if (t.getAttribute('role') !== 'status') throw Error('The Reset toast must be a polite status');
+      if (t.contains(document.activeElement)) throw Error('The Reset toast took focus');
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      for (const n of document.querySelectorAll('.ws-run, .ws-submit')) if (n.getClientRects().length && hit(r, n.getBoundingClientRect())) throw Error('The Reset toast covers ' + n.className);
+      const lines = [...document.querySelectorAll('.ws-host .view-line')].map(l => l.getBoundingClientRect()).filter(b => b.height).sort((x, y) => x.top - y.top).slice(0, 3);
+      for (const l of lines) if (hit(r, l)) throw Error('The Reset toast covers the first lines of code');
+      const box = need('.ws-host').getBoundingClientRect();
+      if (r.left < box.left || r.right > box.right || r.top < box.top || r.bottom > box.bottom) throw Error('The Reset toast escapes the editor');` },
+    resetToastNarrow: { url: problem, width: 390, setup: `${editor} inst.setValue('# something of my own\\nclass Solution:\\n    pass\\n'); await sleep(600); need('.ws-reset').click(); await sleep(300); document.querySelector('.fx-toast--note')?.dispatchEvent(new PointerEvent('pointerenter'));`, ready: '.fx-toast--note.is-in', assert: `
+      const t = need('.fx-toast--note'), r = t.getBoundingClientRect();
+      if (![...t.querySelectorAll('button')].some(b => b.textContent.trim() === 'Undo')) throw Error('Reset must offer Undo');
+      if (t.getAttribute('role') !== 'status') throw Error('The Reset toast must be a polite status');
+      if (t.contains(document.activeElement)) throw Error('The Reset toast took focus');
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      for (const n of document.querySelectorAll('.ws-run, .ws-submit')) if (n.getClientRects().length && hit(r, n.getBoundingClientRect())) throw Error('The Reset toast covers ' + n.className);
+      const lines = [...document.querySelectorAll('.ws-host .view-line')].map(l => l.getBoundingClientRect()).filter(b => b.height).sort((x, y) => x.top - y.top).slice(0, 3);
+      for (const l of lines) if (hit(r, l)) throw Error('The Reset toast covers the first lines of code');
+      const box = need('.ws-host').getBoundingClientRect();
+      if (r.left < box.left || r.right > box.right || r.top < box.top || r.bottom > box.bottom) throw Error('The Reset toast escapes the editor');` },
     moreMenu: { url: problem, width: 600, setup: `need('.ui-screen-header .ui-header-more').click(); await sleep(200);`, ready: '.ui-menu-item', assert: `
       for (const item of document.querySelectorAll('.ui-menu-item')) if (item.querySelector('button, a, input')) throw Error('A menu item contains another control: ' + item.textContent.trim());` },
     subsWrong: { url: problem, setup: `${submissions} const row = [...document.querySelectorAll('.submission-row')].find(n => n.textContent.includes('Wrong Answer')); if (!row) throw Error('No wrong-answer fixture'); row.click(); await sleep(400); const pane = need('.submissions'); pane.scrollTop = 220;`, ready: '.failure-block pre', assert: `
@@ -1102,6 +1300,9 @@ export async function runVisualAudit({ origin, target, output }) {
     await send('Network.setCacheDisabled', { cacheDisabled: true });
     // Only this scratch origin may load resources, including plain-HTTP requests.
     await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+    // The Video tab loads the local fake player, never YouTube; a short wait for a player
+    // that never answers keeps the load-failure state quick.
+    if (videoOrigin) await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__STUDIO_VIDEO_EMBED__ = ${JSON.stringify({ origin: videoOrigin, readyMs: 2000 })};` });
     await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
     await send('Page.navigate', { url: `${origin}/` });
     await until("document.querySelector('.catalog')", 'catalog');

@@ -33,6 +33,10 @@ const PATHS = {
   wrap: 'M4 6h16 M4 12h13a3 3 0 0 1 0 6h-5 M14 15.5 11.5 18l2.5 2.5 M4 18h4',
   reset: 'M4 12a8 8 0 1 0 2.4-5.7 M4 4v4.5h4.5',
   shuffle: 'M16 3h5v5 M4 20 21 3 M21 16v5h-5 M15 15l6 6 M4 4l5 5',
+  chat: 'M5 17.5V6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H9l-4 2.5Z M9 9.5h6 M9 12h3.5',
+  clock: 'M4.5 13a7.5 7.5 0 1 0 15 0a7.5 7.5 0 1 0-15 0 M12 9v4l2.5 2 M9.5 3h5',
+  dice: 'M7.5 4h9A3.5 3.5 0 0 1 20 7.5v9a3.5 3.5 0 0 1-3.5 3.5h-9A3.5 3.5 0 0 1 4 16.5v-9A3.5 3.5 0 0 1 7.5 4Z M9 9h.01 M15 9h.01 M9 15h.01 M15 15h.01',
+  search: 'M5 11a6 6 0 1 0 12 0a6 6 0 1 0-12 0 M20 20l-4.5-4.5',
 };
 export function icon(name, size = 16) {
   const svg = document.createElementNS(NS, 'svg');

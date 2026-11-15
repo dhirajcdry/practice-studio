@@ -22,6 +22,7 @@ import { armAttemptWriter } from './attempts/watch.mjs';
 import { routes as ttsRoutes } from './tts/routes.mjs';
 import { routes as practiceRoutes } from './practice/routes.mjs';
 import { problemImportRoutes } from './problem-import.mjs';
+import { testClockRoutes } from './test-clock.mjs';
 
 // Modules are built independently and each exports a plain route table; the router is the
 // single place they meet. Keys are 'METHOD /path/with/:params'.
@@ -40,6 +41,8 @@ const MODULE_ROUTES = {
   ...lldRoutes,
   ...ttsRoutes,
   ...practiceRoutes,
+  // Empty unless STUDIO_TEST_CLOCK=1 (browser checks on a scratch server only).
+  ...testClockRoutes,
 };
 
 const sessionLog = new SessionLog({ root: HOME_ROOT });

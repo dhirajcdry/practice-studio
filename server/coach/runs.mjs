@@ -69,6 +69,8 @@ export class CoachRuns {
       review,
       title,
       lead,
+      // The Studio chat identity, once the route has decided it (never a native ID).
+      chatId: null,
       startedAt: new Date(startedAt).toISOString(),
       text: '',
       tools: [],
@@ -143,6 +145,7 @@ export class CoachRuns {
       review: run.review,
       startedAt: run.startedAt,
       status: run.status,
+      ...(run.chatId ? { chatId: run.chatId } : {}),
     });
     if (run.text) stream.token(run.text);
     for (const t of run.tools) stream.tool(t.name, t.summary, t);
@@ -182,6 +185,7 @@ export class CoachRuns {
       review: run.review,
       title: run.title,
       lead: run.lead,
+      chatId: run.chatId,
       startedAt: run.startedAt,
       status: run.status,
       // Enough to paint the chip without opening a stream for every one of them.

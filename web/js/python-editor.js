@@ -1,7 +1,7 @@
 // One Python editor for coding, LLD interviews and untimed practice. Workspaces
 // own saving/running; this module owns editing, preferences and lifecycle.
 import { el } from './dom.js';
-import { claimActionKey, hasOpenOverlay } from './keyboard.js';
+import { hasOpenOverlay, registerShortcut } from './keyboard.js';
 import { getSettings, isDark, onSettingsChange } from './settings.js';
 import { THEMES, editorThemeName } from './themes.js';
 import { attachTypingFx } from './typing-fx.js';
@@ -451,22 +451,29 @@ export function mountPythonEditor(host, initial = '', options = {}) {
   const onStorage = event => { if (event.key === WRAP_KEY || event.key === null) applyWrap(readWrap()); };
   window.addEventListener(WRAP_EVENT, onWrap); window.addEventListener('storage', onStorage);
   const unsettings = onSettingsChange(applySettings);
-  // The host boundary catches commands in both adapters. Capture keeps Monaco and
-  // outer app shortcuts from executing the same Run/Save twice. Find/undo/folding
-  // remain Monaco's native commands; no global shortcuts consume typed letters.
+  // Run, Submit and Save belong to the screen that mounted this editor, not to editor
+  // focus: keyboard.js claims them from anywhere on that screen (the code, Monaco's Find,
+  // a test case, the composer), before Monaco sees them. They are registered against the
+  // host, not the Monaco instance, so the textarea → Monaco upgrade cannot lose them.
+  const live = () => !disposed && host.isConnected;
+  const releaseKeys = [
+    onRun && registerShortcut({ id: 'run', label: "⌘'", keys: [{ key: "'", mod: 'cmd', shift: true }], when: live, run: () => onRun() }),
+    onSubmit && registerShortcut({ id: 'submit', label: '⌘↵', keys: [{ key: 'Enter', mod: 'cmd', shift: true }], owns: 'enter', when: live, run: () => onSubmit() }),
+    onSave && registerShortcut({ id: 'save', label: '⌘S', keys: [{ key: 's', mod: 'cmd' }, { key: 'S', mod: 'cmd', shift: true }], when: live, run: () => onSave() }),
+  ].filter(Boolean);
+  // Escape leaves the code only when the editor did not want it. Monaco claims Escape for
+  // its own widgets (Find, suggestions, a selection, the palette) by stopping it at its
+  // textarea, so an Escape that bubbles up to the host is one nothing inside used. (Monaco
+  // marks every Escape defaultPrevented, used or not, so that flag says nothing here.)
   function onKey(event) {
-    // Find/replace, quick input, and other Monaco widgets own their keys. Being
-    // somewhere inside the editor host is not enough intent to run or submit code.
-    if (hasOpenOverlay() || !current.hasFocus()) return;
-    const meta = (event.metaKey || event.ctrlKey) && !event.altKey;
-    const action = meta && event.key === 'Enter' ? onSubmit
-      : meta && event.key === "'" ? onRun
-      : meta && event.key.toLowerCase() === 's' ? onSave
-      : event.key === 'Escape' && (current.kind === 'textarea' || !host.querySelector('.find-widget.visible')) ? onEscape : null;
-    if (action && claimActionKey(event)) action();
+    if (event.key === 'Escape' && onEscape && !event.isComposing && !event.repeat && !hasOpenOverlay() && current.hasFocus()) {
+      event.preventDefault();
+      onEscape();
+    }
+    // main.js's plain keys (j/k/s/a/r, /) must never act while typing here.
+    event.stopPropagation();
   }
-  const stopKey = event => event.stopPropagation();
-  host.addEventListener('keydown', onKey, true); host.addEventListener('keydown', stopKey);
+  host.addEventListener('keydown', onKey);
   const api = {
     get kind() { return current.kind; }, get raw() { return current.raw; },
     getValue: () => current.getValue(), setValue: value => current.setValue(value),
@@ -482,7 +489,7 @@ export function mountPythonEditor(host, initial = '', options = {}) {
       if (disposed) return; disposed = true;
       cancelAnimationFrame(frame); unsettings();
       window.removeEventListener(WRAP_EVENT, onWrap); window.removeEventListener('storage', onStorage);
-      host.removeEventListener('keydown', onKey, true); host.removeEventListener('keydown', stopKey);
+      host.removeEventListener('keydown', onKey); for (const release of releaseKeys) release();
       controls?.dispose(); cursors.clear(); current.dispose(); viewport.remove();
       host.classList.remove('python-editor-frame');
     },

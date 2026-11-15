@@ -104,6 +104,7 @@ export function eventLabel(type) {
     run_result: 'test result',
     revealed_solution: 'revealed the solution',
     revealed_article: 'opened the article',
+    revealed_video: 'opened the video',
     asked_coach: 'asked the coach',
     recorded_audio: 'recorded audio',
     submitted: 'submitted',

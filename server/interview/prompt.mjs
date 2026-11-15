@@ -83,7 +83,7 @@ export function turnPrompt(state, { kind = 'turn', said = '', code, now = Date.n
     lines.push(lldCurveballLine(state, spec, now));
   }
   if (kind === 'event') lines.push('You may step in now. Decide as a real interviewer would, given the events and how long they have been quiet. If you speak, ask one brief, relevant question and give them the floor again. Otherwise reply with only the phase tag.');
-  if (!state.warningGiven && state.minutes * 60000 - (now - state.startedAt - state.pausedMs) <= 120000) lines.push('There are at most two minutes remaining. Mention this once, briefly.');
+  if (!state.warningGiven && state.minutes * 60000 - elapsed(state, now) <= 120000) lines.push('There are at most two minutes remaining. Mention this once, briefly.');
   return lines.join('\n\n');
 }
 // Without a stated bar, reports measured candidates against an ideal answer: mostly No hire,

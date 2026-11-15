@@ -37,7 +37,7 @@ body.theme-broadsheet.is-dark{
 body.theme-broadsheet :is(.navlink,.ui-tab,.ui-badge,.ui-count,.tag,.ui-header-crumb,.ui-header-meta,.ui-pane-header>strong,.ui-menu-heading,
   .tc-label,.tc-origin,.rr-tabmark,.editor-file,.editor-cursor,.ui-turn-head,.ui-turn-stamp,.ui-conversation-separator,.ui-phase-divider,
   .ui-thread-strip>span,.tree-heading,.tree-legend,.ov-kicker,.ov-ring-label,.ov-ring-of,.plist-note,.countpill,.chat-history-heading,
-  .submission-tag,.graph-caption,.node-meta,.map-start,.th-problem-line,.th-item-sub,.th-item-date,.th-past-date,.th-note,.th-eyebrow,.th-detail-label,.th-moveup-label,.dash-sec .note,.ptag){
+  .submission-tag,.graph-caption,.node-meta,.map-start,.th-item-date,.th-qlabel,.th-legend,.dash-sec .note,.ptag){
   font:600 10.5px/1.4 var(--ui);text-transform:uppercase;letter-spacing:.14em}
 body.theme-broadsheet .btn.btn,body.theme-broadsheet .ui-select-button{border-radius:0;font:700 10.5px/1 var(--ui);text-transform:uppercase;letter-spacing:.14em;color:var(--ink)}
 body.theme-broadsheet .btn.btn kbd{font:600 10px/1 var(--ui);letter-spacing:.04em;border:0;padding:0;background:transparent;color:inherit;opacity:.6}
@@ -59,6 +59,8 @@ body.theme-broadsheet .ui-tabs{gap:18px;border-bottom:0}
 body.theme-broadsheet .btn.btn.ui-tab{font:600 10.5px/1 var(--ui);color:var(--ink-50);padding:0}
 body.theme-broadsheet .btn.btn.ui-tab:is([aria-pressed="true"],[aria-selected="true"]){color:var(--ink);box-shadow:inset 0 3px 0 var(--ink)}
 body.theme-broadsheet .btn.btn.ui-tab:hover:not(:is([aria-pressed="true"],[aria-selected="true"])){background:transparent;color:var(--accent)}
+/* The problem pane's five tabs keep one row in its narrowest wide layout (1280px window). */
+@container pane-head (max-width:440px){body.theme-broadsheet .pcol .problem-tabs.ui-tabs{gap:12px}}
 
 /* ---- Labels have no box. Status is the colour of the word. ---- */
 body.theme-broadsheet :is(.ui-badge,.tag,.ui-count,.submission-tag){height:auto;padding:0;border:0;border-radius:0;background:transparent}
@@ -144,6 +146,7 @@ body.theme-broadsheet .ws-results{border-top:1px solid var(--ink)}
 body.theme-broadsheet .tc-tabs{gap:16px;padding-inline:var(--bs-g)}
 body.theme-broadsheet .btn.btn.tc-tab{padding:0;border:0;background:transparent;color:var(--ink-50);font-weight:600}
 body.theme-broadsheet .btn.btn.tc-tab.is-on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+body.theme-broadsheet .rr .btn.btn.rr-casetab.is-on{background:transparent;box-shadow:inset 0 -2px 0 var(--rr-tone,var(--accent))}
 body.theme-broadsheet .tc-panel{padding-inline:var(--bs-g)}
 
 /* ---- The Testcase tab: a form set like the statement's examples. Small-caps names in the
@@ -195,7 +198,7 @@ body.theme-broadsheet .ui-menu-item:is(:hover,:focus-visible):not(:disabled){bac
 body.theme-broadsheet .ui-menu-heading{color:var(--ink-50)}
 body.theme-broadsheet .ui-menu [role=group]+[role=group]{border-top:1px solid var(--ink)}
 body.theme-broadsheet .ui-action-row:hover{background:transparent}
-body.theme-broadsheet .ui-action-row:hover :is(.recent-title,.ptitle,.th-problem-title,.th-item-title,.node-title,.ov-next-title,.pname){color:var(--accent)}
+body.theme-broadsheet .ui-action-row:hover :is(.recent-title,.ptitle,.th-item-title,.node-title,.ov-next-title,.pname){color:var(--accent)}
 
 /* ---- The statement's parts (examples, constraints, follow-up) between rules, never in boxes. ---- */
 body.theme-broadsheet .stmt .stmt-h{font:600 10.5px/1.4 var(--ui);letter-spacing:.14em;color:var(--ink-50)}
@@ -409,3 +412,10 @@ body.theme-broadsheet :is(.pr-empty p,.pr-launch p,.pr-problem,.ln-scroll,.ln-sa
 body.theme-broadsheet .ref-tab .dfoot{margin:8px var(--bs-g) 0;padding:8px 0 16px;border-top:1px solid var(--bs-line);background:transparent;font:italic 12px/1.5 var(--serif);letter-spacing:0;color:var(--ink-50)}
 body.theme-broadsheet .ref-tab .dfoot a{color:inherit}
 body.theme-broadsheet pre.solutioncode{border:0;border-top:1px solid var(--bs-line);border-bottom:1px solid var(--bs-line);border-radius:0;background:transparent}
+
+/* ---- Track home stage: the switch is two printed tabs under an ink rule, nothing boxed. ---- */
+body.theme-broadsheet .th-switch{background:transparent;border-radius:0}
+body.theme-broadsheet .th-stage .btn.btn.th-sw[data-mode],body.theme-broadsheet .th-stage .btn.btn.th-sw[data-mode][aria-selected="true"]{border-color:transparent;border-radius:0;background:transparent;box-shadow:none}
+body.theme-broadsheet .th-stage .btn.btn.th-sw[data-mode][aria-selected="true"]{box-shadow:inset 0 3px 0 var(--ink)}
+body.theme-broadsheet .th-sw-icon{background:transparent}
+body.theme-broadsheet .th-qrow{border-width:1px 0;border-radius:0;padding-inline:2px}

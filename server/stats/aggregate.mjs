@@ -38,6 +38,7 @@ const EVENT_TYPES_WE_READ = new Set([
   'run_result',
   'revealed_solution',
   'revealed_article',
+  'revealed_video',
   'asked_coach',
   'recorded_audio',
   'submitted',
@@ -199,6 +200,7 @@ export async function readProblemDir(root, slug) {
     rejectedCount: 0,
     verdicts: [],
     revealedArticleAt: null,
+    revealedVideoAt: null,
     askedCoach: 0,
     runs: 0,
     keystrokeSamples: [],    // ms from problem_opened to first_keystroke, per session
@@ -260,6 +262,9 @@ export async function readProblemDir(root, slug) {
             break;
           case 'revealed_article':
             if (record.revealedArticleAt === null) record.revealedArticleAt = at;
+            break;
+          case 'revealed_video':
+            if (record.revealedVideoAt === null) record.revealedVideoAt = at;
             break;
           case 'asked_coach':
             record.askedCoach += 1;
@@ -554,6 +559,7 @@ export async function buildStats({ root, catalog = null, now = new Date() }) {
       localPassAt: record.localPassAt,
       revealedSolutionAt: record.revealedSolutionAt,
       revealedArticleAt: record.revealedArticleAt,
+      revealedVideoAt: record.revealedVideoAt,
       hasNotes: record.hasNotes,
       hasMeta: record.hasMeta,
       thinkingTimeMs: record.keystrokeSamples.length ? record.keystrokeSamples[0] : null,

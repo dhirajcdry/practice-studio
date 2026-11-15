@@ -474,6 +474,16 @@ export async function loadHistory(slug) {
   };
 }
 
+/** The learner renames one saved chat. The server validates and keeps it as theirs. */
+export async function renameChat(slug, sessionId, title) {
+  if (api.mode !== 'live') return { ok: false, message: 'The studio server is not answering.' };
+  const result = await sendJson(`/api/problems/${encodeURIComponent(slug)}/chats/${encodeURIComponent(sessionId)}/title`, {
+    method: 'PUT', body: { title }, timeoutMs: 8000,
+  });
+  if (result.ok) return { ok: true, title: result.data?.title ?? title };
+  return { ok: false, message: result.message || 'That title could not be saved.' };
+}
+
 /** The cases a local run will use, fetched without running anything. */
 export async function loadTestcases(slug) {
   if (api.mode !== 'live') return { ok: false, reason: 'The studio server is not answering.' };

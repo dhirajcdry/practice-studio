@@ -123,6 +123,9 @@ export function buildEntries(attempt) {
       case 'revealed_article':
         entries.push({ at, kind: 'note', text: 'Opened the article.' });
         break;
+      case 'revealed_video':
+        entries.push({ at, kind: 'note', text: 'Opened the video walkthrough.' });
+        break;
       default:
         break;   // ran_locally is the pair of run_result; recorded_audio is already speech
     }

@@ -35,6 +35,7 @@ import { gatherContext, buildPrompt } from './context.mjs';
 import { writerSessionStatus } from '../writer-handoff.mjs';
 import { readRecallState } from '../recall/sync.mjs';
 import { normalizeTurnActivity, appendTurn, readThreads, readTurns } from './transcript.mjs';
+import { readChatTitles, setChatTitle, displayTitle } from './chat-titles.mjs';
 import { readCoachChoice, runProviderTurn, providerRoutes, coachSystemPrompt } from './provider.mjs';
 import { conversationTurns } from './provider-context.mjs';
 import { buildConversation } from './native-sessions.mjs';
@@ -209,13 +210,15 @@ export async function handleCoachMessage(req, res, ctx) {
     if (newThread) await svc.coachSessions.forget(slug).catch(() => {});
     const stored = newThread ? null : await svc.coachSessions.read(slug);
     const logicalSessionId = resumeThread ?? stored?.sessionId ?? crypto.randomUUID();
+    run.chatId = logicalSessionId;
     const turns = conversationTurns(await readTurns({ root: svc.root, slug }), logicalSessionId);
     const sessionRecords = async () => [...conversationTurns(await readTurns({root:svc.root,slug}),logicalSessionId),{requestId:run.id,ask:message}];
     const sessionContext = createSessionContext({root:svc.root,target:`coding:${slug}:${logicalSessionId}`,records:sessionRecords});
     toolSession = svc.tools ? createToolSession({
       root: svc.root, slug, catalogEntry, leetcode: ctx?.leetcode ?? null, store: svc.actions,
       runs: svc.runs, run, sessionLog: svc.sessionLog, log: svc.log,
-      capabilities: { sessionContext, sessionRecords, readContext: contextReader({session:sessionRecords}) },
+      capabilities: { sessionContext, sessionRecords, readContext: contextReader({session:sessionRecords}),
+        nameChat: async title => ({ ...await setChatTitle(svc.root, slug, logicalSessionId, title, { by: 'coach' }), sessionId: logicalSessionId }) },
       ...(svc.runner ? { runner: svc.runner } : {}),
     }) : null;
     const { instructions, request } = buildPrompt({ context, message, includeCode, review, tools: Boolean(toolSession), structured:true });
@@ -231,7 +234,7 @@ export async function handleCoachMessage(req, res, ctx) {
         ...(includeCode ? [['Current workspace',{code:context.buffer}]] : []),
         ['Last run',context.lastRun],['Submissions',context.submissions],['Attached submission',context.attachedSubmission],
         ['Session activity',context.events],['Candidate speech',context.transcripts],
-        ['Attempt',context.attempt],['Session metadata',{review,includeCode,elapsedMs:context.elapsedMs,timeToFirstKeystrokeMs:context.timeToFirstKeystrokeMs,eventCount:context.eventCount,lastRunCodeMatchesCurrent:context.snapshot ? !context.diff : null,runCount:context.runCount,coachRunCount:context.coachRunCount,lastVerdict:context.lastVerdict,revealedSolution:context.revealedSolution,revealedArticle:context.revealedArticle}]],
+        ['Attempt',context.attempt],['Session metadata',{review,includeCode,elapsedMs:context.elapsedMs,timeToFirstKeystrokeMs:context.timeToFirstKeystrokeMs,eventCount:context.eventCount,lastRunCodeMatchesCurrent:context.snapshot ? !context.diff : null,runCount:context.runCount,coachRunCount:context.coachRunCount,lastVerdict:context.lastVerdict,revealedSolution:context.revealedSolution,revealedArticle:context.revealedArticle,...(context.revealedVideo?{revealedVideo:true}:{})}]],
       bootstrap:{instructions,sessionTools:Boolean(toolSession),sections:[
         ['Full saved conversation',handoffRecords(evidenceRecords(turns),{query:message})],
       ]},
@@ -540,6 +543,10 @@ export async function handleHistory(req, res, ctx) {
   const slug = slugFrom(req, ctx);
 
   const threads = await readThreads({ root: svc.root, slug }).catch(() => []);
+  // Titles are read-time metadata: a named chat shows its name, any other its cleaned
+  // first question. The stored transcript is never rewritten for either.
+  const titles = await readChatTitles(svc.root, slug);
+  for (const thread of threads) Object.assign(thread, displayTitle(thread, titles));
   for (const thread of threads) for (const turn of thread.turns ?? []) {
     turn.activity = normalizeTurnActivity(turn);
     if (Array.isArray(turn.actions)) turn.actions = turn.actions.map(action => ({ ...action, display: toolDisplay(action.tool) }));
@@ -548,6 +555,22 @@ export async function handleHistory(req, res, ctx) {
   // handleCoachMessage uses, so the page can draw what the coach will actually resume.
   const stored = await svc.coachSessions.read(slug).catch(() => null);
   return sendJson(res, 200, { slug, threads, currentSessionId: stored?.sessionId ?? null });
+}
+
+// ---------------------------------------------------------------------------------------
+// PUT /api/problems/:slug/chats/:sessionId/title — the learner renames a chat
+// ---------------------------------------------------------------------------------------
+
+export async function handleRenameChat(req, res, ctx) {
+  const svc = serviceFor(ctx);
+  const slug = slugFrom(req, ctx);
+  const sessionId = String(ctx?.params?.sessionId ?? '');
+  const body = await readJsonBody(req);
+  const threads = await readThreads({ root: svc.root, slug }).catch(() => []);
+  if (!threads.some(thread => thread.sessionId === sessionId)) throw new HttpError(404, 'NOT_FOUND', 'There is no saved chat with that identity.');
+  const result = await setChatTitle(svc.root, slug, sessionId, body?.title, { by: 'learner' });
+  if (!result.ok) throw new HttpError(result.status, 'BAD_REQUEST', result.message);
+  return sendJson(res, 200, { ok: true, sessionId, title: result.title, titleSource: 'learner' });
 }
 
 export const routes = {
@@ -572,6 +595,7 @@ export const routes = {
   'POST /api/coach/actions/:id/undo': handleActionUndo,
   'POST /api/coach/tools/call': handleToolCall,
   'GET /api/problems/:slug/history': handleHistory,
+  'PUT /api/problems/:slug/chats/:sessionId/title': handleRenameChat,
   'POST /api/sessions/event': handleSessionEvent,
   'GET /api/sessions/:slug': handleGetSessions,
 };

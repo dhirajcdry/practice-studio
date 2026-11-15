@@ -584,6 +584,8 @@ body.hide-results .ws-results{display:none}
 .tc-tabs.rr-casetabs{padding:var(--space-3) var(--space-4) 0}
 .rr-casetab .rr-dot{width:7px;height:7px;color:var(--rr-tone)}
 .rr-casetab{gap:var(--space-2)}
+/* The chosen case wears its own result: green when it passed, red when it did not. */
+body .rr .btn.btn.rr-casetab.is-on:is(.s-pass,.s-wrong,.s-error,.s-look){background:var(--rr-soft);border-color:transparent;color:var(--rr-tone)}
 
 /* The selected case reads like an example in the statement: a reason, labelled rows with
    values starting at one edge, nothing boxed like an input, and a quiet footer. */

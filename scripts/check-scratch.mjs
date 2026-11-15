@@ -32,7 +32,7 @@ export async function seedProblem(home, slug) {
   await fsp.writeFile(path.join(home, 'problems', slug, 'solution.py'), code);
 }
 
-export async function startScratch(port, slug = 'contains-duplicate', extraEnv = {}) {
+export async function startScratch(port, slug = 'contains-duplicate', extraEnv = {}, { beforeStart = null } = {}) {
   await requireFreePort(port);
   const home = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-check-home-'));
   let server;
@@ -49,6 +49,7 @@ export async function startScratch(port, slug = 'contains-duplicate', extraEnv =
   };
   try {
     await seedProblem(home, slug);
+    if (beforeStart) await beforeStart(home);
     if (extraEnv.STUDIO_COACH_PROVIDER) {
       await fsp.writeFile(path.join(home, 'coach-settings.json'), JSON.stringify({ provider: extraEnv.STUDIO_COACH_PROVIDER, model: 'default' }));
     }

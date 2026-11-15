@@ -29,8 +29,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { startScratch, requireFreePort } from './check-scratch.mjs';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9336;
-const SERVER_PORT = 4179;
+const SERVER_PORT = Number(process.env.STUDIO_CHECK_PORT) || 4179;
+const PORT = process.env.STUDIO_CHECK_PORT ? SERVER_PORT + 5255 : 9336;
 const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 
 await requireFreePort(PORT);
@@ -167,12 +167,12 @@ try {
   else bad('Reset appears once you have written something', 'the button is hidden — it does not know the starter');
 
   if (visible) {
-    // One click resets, and nothing is lost: the notice offers Undo and the editor's
+    // One click resets, and nothing is lost: a brief toast offers Undo and the editor's
     // own undo stack holds what was written.
     await evaluate(`${resetSel}.click()`);
     await sleep(300);
     const after = await evaluate(`window.monaco.editor.getEditors()[0].getValue()`);
-    const undo = `[...document.querySelectorAll('.ws-notice:not([hidden]) button')].find(b => b.textContent.trim() === 'Undo')`;
+    const undo = `[...document.querySelectorAll('.fx-toast--note:not(.is-leaving) button')].find(b => b.textContent.trim() === 'Undo')`;
     const offered = await evaluate(`!!${undo}`);
     if (!after.includes('something of my own') && after.includes('class Solution') && offered) ok('one click on Reset puts the starter back and offers Undo');
     else bad('one click on Reset restores the starter and offers Undo', `undoOffered=${offered} ${JSON.stringify(after.slice(0, 80))}`);
@@ -181,10 +181,21 @@ try {
       await evaluate(`${undo}.click()`);
       await sleep(300);
       const restored = await evaluate(`window.monaco.editor.getEditors()[0].getValue().includes('something of my own')`);
-      const cleared = await evaluate(`!document.querySelector('.ws-notice:not([hidden])')`);
+      const cleared = await evaluate(`!document.querySelector('.fx-toast--note')`);
       if (restored && cleared) ok('Undo brings back exactly what was written');
       else bad('Undo restores the code and clears the notice', `restored=${restored} noticeCleared=${cleared}`);
     }
+
+    // The toast says what happened and goes: a few seconds, not until the next edit.
+    // After it has gone, ⌘Z still holds what Reset replaced.
+    await evaluate(`${resetSel}.click()`);
+    await sleep(5000);
+    const lingering = await evaluate(`!!document.querySelector('.fx-toast--note')`);
+    await evaluate(`window.monaco.editor.getEditors()[0].trigger('check', 'undo', null)`);
+    await sleep(200);
+    const undone = await evaluate(`window.monaco.editor.getEditors()[0].getValue().includes('something of my own')`);
+    if (!lingering && undone) ok('the Reset toast leaves on its own, and ⌘Z still undoes the reset');
+    else bad('the Reset toast is brief and the reset stays undoable', `stillShowing=${lingering} undone=${undone}`);
   }
 
   /* ---- 3b. The file row's wrap toggle and the way back to a hidden sidebar ---- */
@@ -232,7 +243,8 @@ try {
     const nav = [...document.querySelectorAll('.ui-screen-header .pnav-btn')];
     if (nav.length !== 3 || nav.some(n => box(n).width !== 28 || n.querySelectorAll('svg').length !== 1 || n.childNodes[0].nodeType === 3)) issues.push('previous/next/shuffle must be three SVG buttons');
     const tabs = [...document.querySelectorAll('.problem-tabs [role=tab]')];
-    if (tabs.map(n=>n.textContent.replace(/[sa]$/, '').trim()).length !== 4 || tabs.some(n=>Math.abs(box(n).top-box(tabs[0]).top)>1 || box(n).height!==38)) issues.push('problem tabs must share a 38px row');
+    // Problem, Solution, Article, Video (this problem has a walkthrough) and Notes.
+    if (tabs.map(n=>n.firstChild.textContent.trim()).join('|') !== 'Problem|Solution|Article|Video|Notes' || tabs.some(n=>Math.abs(box(n).top-box(tabs[0]).top)>1 || box(n).height!==38)) issues.push('problem tabs must share a 38px row');
     const meta = document.querySelector('.editor-meta'), original = meta.style.cssText;
     try {
       for (const width of [220, 320, 600]) {

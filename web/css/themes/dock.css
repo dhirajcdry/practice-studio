@@ -116,7 +116,7 @@ body.theme-dock.layout-docked .tc-why{border:0;border-radius:var(--r-md);padding
 /* ---- Run results: open ground, soft wells, dot-marked case pills ---- */
 body.theme-dock.layout-docked .rr-summary{border-bottom:0;background:transparent}
 /* A status dot stays legible on the solid pill of the selected case, light or dark. */
-body.theme-dock.layout-docked .rr-casetab.is-on .rr-dot{box-shadow:0 0 0 1.5px var(--dock-on-solid)}
+body.theme-dock.layout-docked .rr-casetab.is-on .rr-dot{box-shadow:none}
 body.theme-dock.layout-docked .rr-trace-text,body.theme-dock.layout-docked .rr-trace{border:0;border-radius:var(--r-md);background:var(--dock-hair)}
 body.theme-dock.layout-docked .rr-mark{border-radius:6px}
 body.theme-dock.layout-docked :is(.rr-body,.rr-tutorbody)>.state{border:0;border-radius:var(--r-md)}

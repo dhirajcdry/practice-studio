@@ -109,7 +109,7 @@ async function checkAway() {
   await until(() => evaluate("return location.href==='about:blank' && document.readyState==='complete'"), 'blank');
   await send('Page.navigate', { url: ORIGIN + '/#/lld' });
   await until(() => evaluate("return !!document.querySelector('.th-practice')"), 'away: lld launcher');
-  await evaluate("if(!document.querySelector('.th-problem[aria-pressed=true]'))document.querySelector('.th-problem')?.click();document.querySelector('.th-practice').click()");  // a catalog problem: the fake model prepares none
+  await evaluate("document.querySelector('.th-sw[data-mode=practise]').click();if(!document.querySelector('.th-chip.th-problem[aria-pressed=true]')){document.querySelector('.th-qchange').click();document.querySelector('.th-chip.th-problem')?.click();}document.querySelector('.th-practice').click()");  // a catalog problem: the fake model prepares none
   await until(() => evaluate("return voiceFixture.captures===1 && document.querySelector('.pr-voice .voice-panel')?.dataset.capture==='recording'"), 'away: practice listening');
   const practiceState = "document.querySelector('.pr-voice .voice-state').textContent";
   await sleep(700);  // mid-phrase: words are being heard when you leave
@@ -199,7 +199,7 @@ try {
     await until(()=>evaluate("return location.href==='about:blank' && document.readyState==='complete'"),'blank');
     await send('Page.navigate', {url:ORIGIN+route});
     await until(()=>evaluate("return !!document.querySelector('.th-practice')"), name+' launcher');
-    await evaluate("if(!document.querySelector('.th-problem[aria-pressed=true]'))document.querySelector('.th-problem')?.click();document.querySelector('.th-practice').click()");  // a catalog problem: the fake model prepares none
+    await evaluate("document.querySelector('.th-sw[data-mode=practise]').click();if(!document.querySelector('.th-chip.th-problem[aria-pressed=true]')){document.querySelector('.th-qchange').click();document.querySelector('.th-chip.th-problem')?.click();}document.querySelector('.th-practice').click()");  // a catalog problem: the fake model prepares none
     await until(()=>evaluate("return !!document.querySelector('.pr-actions')"), name+' composer');
     await until(()=>evaluate("return voiceFixture.captures===1 && document.querySelector('.voice-panel').textContent.includes('Listening')"), name+' Start practice joins voice');
     await sleep(1100); await evaluate("voiceFixture.level=0");

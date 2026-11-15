@@ -12,8 +12,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const origin = 'http://127.0.0.1:4198';
-const debugPort = 9358;
+const serverPort = Number(process.env.STUDIO_CHECK_PORT) || 4198;
+const origin = `http://127.0.0.1:${serverPort}`;
+const debugPort = process.env.STUDIO_CHECK_PORT ? serverPort + 5255 : 9358;
 const scratch = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-submissions-'));
 const profile = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-submissions-profile-'));
 const originalCode = '# current buffer\n';
@@ -258,7 +259,7 @@ try {
   server = spawn(process.execPath, ['server/index.mjs'], {
     cwd: ROOT,
     env: {
-      ...process.env, STUDIO_HOME: scratch, STUDIO_PORT: '4198',
+      ...process.env, STUDIO_HOME: scratch, STUDIO_PORT: String(serverPort),
       STUDIO_COACH_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-claude.mjs'),
       STUDIO_CODEX_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-codex.mjs'),
     },

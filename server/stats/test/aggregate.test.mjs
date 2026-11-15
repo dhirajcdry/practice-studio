@@ -400,6 +400,19 @@ test('a reveal with no solve counts as revealed-before-solving', async () => {
   assert.equal(stats.signals.reveals.meaningful, false, 'one problem is not a reveal rate');
 });
 
+test('opening the video walkthrough is read, recorded, and is not a solution reveal', async () => {
+  const root = await tempRoot();
+  await writeSession(root, 'number-of-islands', 's1',
+    line('2026-07-25T10:00:00.000-04:00', 'problem_opened') +
+    line('2026-07-25T10:03:00.000-04:00', 'revealed_video', { title: 'Number of Islands', videoId: 'demo-video' }));
+
+  const stats = await buildStats({ root, catalog: CATALOG });
+  assert.equal(stats.workspace.skippedLines, 0, 'a known event type is not a skipped line');
+  assert.equal(stats.signals.reveals.revealedBeforeSolve, 0);
+  assert.equal(stats.problems[0].revealedVideoAt, '2026-07-25T10:03:00.000-04:00');
+  assert.equal(stats.problems[0].revealedSolutionAt, null);
+});
+
 test('a reveal after an accepted verdict is not counted against the solve', async () => {
   const root = await tempRoot();
   await writeSession(root, 'number-of-islands', 's1',

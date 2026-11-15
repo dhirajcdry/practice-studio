@@ -3,6 +3,8 @@
 // unknown rather than being reconstructed from wall-clock times.
 import { parseReport, DESIGN_DIMENSIONS } from '../interview/report.mjs';
 import { PHASE_IDS } from './interview.mjs';
+import { designClock, designClockGaps } from './clock.mjs';
+import { attendedRecords, LEGACY_GAP_MS } from '../mock-clock.mjs';
 
 const REPLIES = new Set(['opening', 'turn', 'interviewer_silent', 'suppressed_filler']);
 
@@ -32,12 +34,20 @@ export function designPhaseTimes(turns = []) {
   return PHASE_IDS.map(phase => ({ phase, ms: totals.has(phase) ? totals.get(phase) : null }));
 }
 
-export function buildDesignReport(state, turns) {
+/**
+ * Times are attended time (server/mock-clock.mjs). A record from before heartbeats has
+ * its silent stretches taken out of the duration and the phase times, from the stamps
+ * already in it; `away` says how much and on what basis, so the report can say so.
+ */
+export function buildDesignReport(state, turns, scenes = []) {
   const debrief = [...turns].reverse().find(t => t.kind === 'debrief');
   if (!state.debriefed || !debrief) return null;
-  const durationMs = Math.max(0, state.pausedAt ? state.spentMs || 0 : (state.endedAt || state.startedAt) - state.startedAt);
+  const clock = designClock(state, turns, scenes);
+  const durationMs = clock.elapsedMs;
+  const { gaps, beforeIndex } = designClockGaps(state, turns, scenes);
+  const timed = gaps.length ? attendedRecords(turns, gaps, beforeIndex).map(t => Number.isFinite(t.attendedMs) ? { ...t, elapsedMs: t.attendedMs } : t) : turns;
   const count = text => String(text || '').match(/\S+/g)?.length || 0;
   const candidateWords = turns.reduce((n, t) => n + count(t.said), 0);
   const interviewerWords = turns.filter(t => t.kind !== 'debrief').reduce((n, t) => n + count(t.asked), 0);
-  return { facts: { durationMs, plannedMs: (state.minutes || 45) * 60000, mode: state.mode || 'unknown', phases: designPhaseTimes(turns), hints: [], runs: [], verdicts: [], candidateWords, interviewerWords, candidateTurns: turns.filter(t => t.said?.trim()).length, talkShare: candidateWords + interviewerWords ? candidateWords / (candidateWords + interviewerWords) : null, finalCode: null, finalBoard: state.graph && (state.graph.nodes?.length || state.graph.notes?.length || state.graph.edges?.length || state.graph.unattached) ? state.graph : null }, judgement: parseReport(debrief.asked, turns, { dimensions: DESIGN_DIMENSIONS, durationMs }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}) };
+  return { facts: { durationMs, ...(clock.awayMs > 0 ? { away: { ms: clock.awayMs, basis: 'recorded activity', thresholdMs: LEGACY_GAP_MS } } : {}), plannedMs: (state.minutes || 45) * 60000, mode: state.mode || 'unknown', phases: designPhaseTimes(timed), hints: [], runs: [], verdicts: [], candidateWords, interviewerWords, candidateTurns: turns.filter(t => t.said?.trim()).length, talkShare: candidateWords + interviewerWords ? candidateWords / (candidateWords + interviewerWords) : null, finalCode: null, finalBoard: state.graph && (state.graph.nodes?.length || state.graph.notes?.length || state.graph.edges?.length || state.graph.unattached) ? state.graph : null }, judgement: parseReport(debrief.asked, timed, { dimensions: DESIGN_DIMENSIONS, durationMs }), ...(state.reportDifficulty ? { difficulty: state.reportDifficulty } : {}) };
 }

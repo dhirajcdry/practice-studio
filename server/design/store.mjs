@@ -37,6 +37,25 @@ export function isSafeInterviewId(id) {
   return typeof id === 'string' && SAFE_ID.test(id);
 }
 
+// State writes to one file go one at a time, so a heartbeat's small patch can never land
+// between another write's read and rename. A full snapshot written by a long turn keeps the
+// newer heartbeat already on disk: `lastSeenAt` only ever moves forward.
+const stateWrites = new Map();
+function serialized(file, operation) {
+  const next = (stateWrites.get(file) || Promise.resolve()).catch(() => {}).then(operation);
+  stateWrites.set(file, next);
+  next.finally(() => { if (stateWrites.get(file) === next) stateWrites.delete(file); }).catch(() => {});
+  return next;
+}
+async function readStateFile(file) {
+  try { return JSON.parse(await fsp.readFile(file, 'utf8')); } catch { return null; }
+}
+async function replaceStateFile(file, state) {
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`;
+  await fsp.writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  await fsp.rename(tmp, file);   // a torn state file would lose the interview
+}
+
 export class DesignStore {
   /** @param {{root: string}} opts root is `~/LeetCodeTutor` */
   constructor({ root }) {
@@ -67,9 +86,22 @@ export class DesignStore {
 
   async writeState(id, state) {
     const file = path.join(this.dir(id), 'interview.json');
-    const tmp = `${file}.${crypto.randomUUID()}.tmp`;
-    await fsp.writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-    await fsp.rename(tmp, file);   // a torn state file would lose the interview
+    return serialized(file, async () => {
+      const disk = await readStateFile(file);
+      if (Number.isFinite(disk?.lastSeenAt) && Number.isFinite(state.lastSeenAt) && disk.lastSeenAt > state.lastSeenAt) state.lastSeenAt = disk.lastSeenAt;
+      await replaceStateFile(file, state);
+    });
+  }
+
+  /** Read, change and write the state as one step; `change` returning false writes nothing. */
+  async patchState(id, change) {
+    const file = path.join(this.dir(id), 'interview.json');
+    return serialized(file, async () => {
+      const state = await readStateFile(file);
+      if (!state || change(state) === false) return state;
+      await replaceStateFile(file, state);
+      return state;
+    });
   }
 
   async readState(id) {

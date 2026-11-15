@@ -20,6 +20,9 @@ export const EVENT_TYPES = Object.freeze([
   'run_result',
   'revealed_solution',
   'revealed_article',
+  // Opened the Video tab and the walkthrough player loaded. Not counted as a reveal in
+  // the stats (the reveal rate is about the reference solution); shown to the coach.
+  'revealed_video',
   'asked_coach',
   'recorded_audio',
   'submitted',

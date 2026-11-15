@@ -38,6 +38,7 @@ import { createRunControl, runCode } from '../runner/run.mjs';
 import { readCachedProblem } from './problem-cache.mjs';
 import { isoWithOffset } from './sessions.mjs';
 import { enqueueWriterSession, writerSessionStatus } from '../writer-handoff.mjs';
+import { TITLE_MIN, TITLE_MAX } from './chat-titles.mjs';
 
 export const LIMITS = Object.freeze({
   text: 4000,          // any free-text argument
@@ -157,6 +158,7 @@ export const TOOL_SPECS = Object.freeze([
   { name: 'update_memory', display: { doing: 'Updating its private notes', done: 'Updated its private notes', effect: 'note' }, description: 'Update private tutor memory by one exact unique replacement. Record coaching observations, not learner study documents; use start_notes_session for requested study notes or handouts. Use problem for problem-specific lessons; coding/lld/design for that discipline’s skills and evidence. Reserve learner for shared preferences and transferable habits. Keep notes concise, dated and grounded; replace stale beliefs instead of appending duplicate summaries. Describe progress with source/date and whether performance was independent, assisted, or unverified. Correct stale weaknesses when evidence improves. Never copy whole transcripts or problem inventories into memory.', inputSchema: object({ scope: { type: 'string', enum: ['problem','learner','coding','lld','design'] }, find: text('Exact existing text; empty only for an empty file.', LIMITS.code), replace: text('Replacement text.', LIMITS.code), why: text('Why this evidence is durable.') }, ['scope','find','replace','why']) },
   { name: 'edit_board', display: { doing: 'Editing your board', done: 'Edited your board', effect: 'change' }, description: 'Replace the design board elements after verifying its expected revision.', inputSchema: object({ elements: { type: 'array', maxItems: 2000, items: { type: 'object' } }, expected: text('SHA256 revision of current serialized elements.', 100), why: text('Why this board edit was requested.') }, ['elements','expected','why']) },
   { name:'search_context', display: { doing: 'Looking for saved context', done: 'Looked for saved context', effect: 'read' }, description:'Search saved evidence in this discipline by question or concept. Returns exact-source excerpts and evidence resource IDs for read_context. Search before paging through long archives; assessments and memory are interpretations, not independent performance evidence.', inputSchema:object({query:text('The question or concepts to locate.',1000),limit:{type:'integer',minimum:1,maximum:8}},['query']) },
+  { name:'name_chat', display: { doing: 'Naming this chat', done: 'Named this chat', effect: 'meta' }, description:`Title this chat as the learner sees it in Recent chats: ${TITLE_MIN}-${TITLE_MAX} characters, one line of plain words, no markdown or quotes, saying what the chat is about (e.g. Hints on the two-pointer bug). Call it once, as soon as the topic is clear, usually on the first reply. Rename only if the topic clearly changes. Never claim more than the conversation shows. A title the learner gave is kept. Do not mention naming in your reply.`, inputSchema:object({title:text('The chat title.',TITLE_MAX)},['title']) },
   { name:'record_session', display: { doing: 'Recording a session note', done: 'Recorded a session note', effect: 'note' }, description:'Maintain a compact session decision record with exact source quotes. Use a stable key to correct or supersede an earlier entry. Never invent sources or infer agreement from an unaccepted suggestion. Read source IDs from search_context/session evidence.', inputSchema:object({key:text('Stable short key for this decision.',80),kind:{type:'string',enum:['requirement','decision','open_question','probe','assistance','self_correction']},summary:text('Concise interpretation; preserve uncertainty.',600),status:{type:'string',enum:['active','resolved','superseded']},evidence:{type:'array',minItems:1,maxItems:4,items:object({sourceId:text('Source ID returned by Studio.',100),quote:text('Exact supporting quote.',700)},['sourceId','quote'])}},['key','kind','summary','evidence']) },
 ]);
 
@@ -643,6 +645,18 @@ export function createToolSession({
       const rec = record('set_practice_problem', args, { summary: `Practice topic: ${topic.title}`, refresh: 'practice_topic' });
       await emit(rec);
       return { ok: true, text: JSON.stringify({ saved: true, ...topic }) };
+    },
+    // Studio's metadata about the chat, not an action on the learner's work: the title
+    // itself is what the learner sees, so the action carries no receipt card ('meta').
+    async name_chat(args) {
+      if (!capabilities.nameChat) return { ok: false, text: 'This conversation cannot be named here.' };
+      const result = await capabilities.nameChat(args.title);
+      if (!result.ok) return { ok: false, text: result.message };
+      if (result.changed) {
+        const rec = record('name_chat', args, { summary: `Named this chat: ${result.title}`, chatTitle: result.title, ...(result.sessionId ? { sessionId: result.sessionId } : {}) });
+        await emit(rec);
+      }
+      return { ok: true, text: result.changed ? `Chat titled "${result.title}".` : `The chat is already titled "${result.title}".` };
     },
     async search_context(args) { return {ok:true,text:JSON.stringify((await indexedEvidence()).search(args))}; },
     async record_session(args) {

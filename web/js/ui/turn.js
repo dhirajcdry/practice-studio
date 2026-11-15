@@ -114,9 +114,45 @@ export function questionNode({ text, at, stamp } = {}) {
   const body = conversationText(text, { user: true });
   return el('article', { class: 'ui-message ui-question', dataset: { speaker: 'You', question: text || '' }, tabindex: '0' }, [body, el('span', { class: 'ui-turn-stamp', text: stamp ?? clock(at) })]);
 }
-export function threadStrip({ title = '', startedAt, turns = 0 } = {}) {
+/**
+ * The open conversation's name and age. With `onRename`, the name is a button that turns
+ * into a one-line field: Enter or leaving it saves, Escape keeps the old name. `onRename`
+ * resolves `{ok, title?, message?}`; a refusal keeps the field open with its reason.
+ */
+export function threadStrip({ title = '', startedAt, turns = 0, onRename = null, maxLength = 60 } = {}) {
   const date = startedAt && Number.isFinite(Date.parse(startedAt)) ? new Date(startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + clock(startedAt) : null;
-  return el('div', { class: 'ui-thread-strip' }, [el('strong', { text: title || 'Conversation' }), el('span', { text: [date ? `Started ${date}` : null, `${turns} ${turns === 1 ? 'turn' : 'turns'}`].filter(Boolean).join(' · ') })]);
+  const name = title || 'Conversation';
+  const label = el('strong', { text: name });
+  const meta = el('span', { text: [date ? `Started ${date}` : null, `${turns} ${turns === 1 ? 'turn' : 'turns'}`].filter(Boolean).join(' · ') });
+  const strip = el('div', { class: 'ui-thread-strip' }, [label, meta]);
+  if (!onRename) return strip;
+  let current = name;
+  const show = () => replace(label, el('button', { type: 'button', class: 'ui-thread-title', text: current, 'aria-label': `Rename chat: ${current}`, onclick: edit }));
+  function edit() {
+    const field = el('input', { class: 'ui-thread-title-input', type: 'text', value: current, maxlength: String(maxLength), 'aria-label': 'Chat name', spellcheck: 'true' });
+    let settled = false;
+    const finish = async save => {
+      if (settled) return;
+      const next = field.value.replace(/\s+/g, ' ').trim();
+      if (!save || !next || next === current) { settled = true; show(); label.querySelector('button')?.focus(); return; }
+      settled = true; field.disabled = true;
+      const result = await onRename(next).catch(() => ({ ok: false, message: 'That name could not be saved.' }));
+      if (!strip.isConnected) return;
+      if (result?.ok) { current = result.title || next; show(); label.querySelector('button')?.focus(); strip.dataset.error = ''; meta.textContent = meta.dataset.text || meta.textContent; return; }
+      settled = false; field.disabled = false; field.focus();
+      meta.dataset.text ||= meta.textContent; meta.textContent = result?.message || 'That name could not be saved.';
+      strip.dataset.error = 'true';
+    };
+    field.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+    });
+    field.addEventListener('blur', () => finish(true));
+    replace(label, field);
+    field.focus(); field.select();
+  }
+  show();
+  return strip;
 }
 /**
  * The latest question, pinned while it is scrolled out of view.

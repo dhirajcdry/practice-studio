@@ -36,8 +36,8 @@ try {
   socket.addEventListener('message', e => { const m = JSON.parse(e.data), p = pending.get(m.id); if (p) { clearTimeout(p.timer); pending.delete(m.id); m.error ? p.reject(Error(m.error.message)) : p.resolve(m.result); } });
   await send('Page.enable'); await send('Runtime.enable');
   await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{throw new DOMException('No mic','NotAllowedError')}});" });
-  await send('Page.navigate', { url: ORIGIN + '/#/lld' }); await until(() => evaluate("return !!document.querySelector('.th-problem[data-slug=lld-locker]')"), 'LLD library');
-  await evaluate("document.querySelector('.th-problem[data-slug=lld-locker]').click(); document.querySelector('.th-mock .ci-start').click()"); await until(() => evaluate("return !!document.querySelector('.ci-log') && !!window.monaco?.editor.getModels().length"), 'LLD live');
+  await send('Page.navigate', { url: ORIGIN + '/#/lld' }); await until(() => evaluate("return !!document.querySelector('.th[data-state=ready] .th-chip[data-slug=lld-locker]')"), 'LLD library');
+  await evaluate("document.querySelector('.th-sw[data-mode=mock]').click(); document.querySelector('.th-qchange').click(); document.querySelector('.th-chip[data-slug=lld-locker]').click(); document.querySelector('.th-mock .ci-start').click()"); await until(() => evaluate("return !!document.querySelector('.ci-log') && !!window.monaco?.editor.getModels().length"), 'LLD live');
   // Seed a long transcript through the rendered DOM: this exercises the same scroll owner
   // and keeps the check deterministic without a model, microphone, or fabricated API data.
   await evaluate("const log=document.querySelector('.ci-log'); log.insertAdjacentHTML('beforeend', '<div class=ci-msg>'+('<p>Earlier interviewer context and constraints. </p>'.repeat(260))+'</div>'); log.scrollTop=log.scrollHeight;");

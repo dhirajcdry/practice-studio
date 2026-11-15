@@ -297,13 +297,9 @@ company-tag blocks are dropped. Meeting problems receive `Interval`
 objects with `.start` and `.end`; string encode/decode runs `decode(encode(strs))` on one
 `Solution` instance.
 
-Existing saved solutions are never rewritten. The workspace and submit panel flag a
-missing NeetCode method before any submission is sent. For a single renamed method,
-**Use NeetCode's name** changes only the definition's name in one undoable editor edit;
-parameter names and the body stay intact. Class-shape differences and detected list-based
-Interval code require manual edits and have no rename button. This textual guard catches
-signature mismatches and common old Interval code; it does not prove arbitrary Python
-implementations compatible with the judge.
+Existing saved solutions are never rewritten. Studio does not inspect the code for
+NeetCode's shape before submitting: local runs use the same signature and inputs, so a
+wrong method name or list-based Interval code fails there first.
 
 If NeetCode is Pro-only or its definition cannot be fetched, Studio keeps the existing
 LeetCode/doocs behavior. Missing premium statements and Python signatures are fetched lazily from

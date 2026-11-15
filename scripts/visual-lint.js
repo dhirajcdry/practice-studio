@@ -261,8 +261,8 @@ export function visualLint() {
     for (let x = n.parentElement; x && x !== document.body; x = x.parentElement) {
       if (!/auto|scroll/.test(getComputedStyle(x).overflowY) || x.scrollHeight <= x.clientHeight + 1) continue;
       const sr = x.getBoundingClientRect();
-      if (r.top < sr.top - .5) edges.Top = false;
-      if (r.bottom > sr.bottom + .5) edges.Bottom = false;
+      if (r.top < sr.top - .5 || r.top > sr.bottom - .5) edges.Top = false;
+      if (r.bottom > sr.bottom + .5 || r.bottom < sr.top + .5) edges.Bottom = false;
       break;
     }
     if (!Object.values(edges).some(Boolean)) continue;

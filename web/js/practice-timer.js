@@ -1,13 +1,10 @@
 import { el, replace } from './dom.js';
 import { icon } from './ui/icon.js';
 
-export function formatPracticeTime(ms) {
-  const seconds = Math.floor(Math.max(0, ms) / 1000);
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor(seconds / 60) % 60;
-  const pair = n => String(n).padStart(2, '0');
-  return hours ? `${hours}:${pair(minutes)}:${pair(seconds % 60)}` : `${pair(minutes)}:${pair(seconds % 60)}`;
-}
+import { formatClock } from './ui/clock-format.js';
+
+// The shared clock format (mock clocks use the same one).
+export const formatPracticeTime = ms => formatClock(ms);
 
 // Both disciplines use this control. Ticks only change the time text, not the
 // workspace DOM; pause/resume is persisted before acknowledging the transition.

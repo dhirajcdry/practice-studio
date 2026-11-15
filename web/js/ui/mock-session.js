@@ -2,11 +2,12 @@ import { el } from '../dom.js';
 import { icon } from './icon.js';
 import { tooltip } from '../tooltip.js';
 import { createMockTimeControls, mockTimeReading } from './mock-time.js';
+import { formatClock } from './clock-format.js';
 
-// "02:00" reads as "2:00": the band is a sentence, the header clock is a readout.
-export function pausedBandText(reading) {
-  const [minutes, seconds] = reading.text.replace(/^\+/, '').split(':');
-  return `Paused · ${Number(minutes)}:${seconds} ${reading.remaining <= 0 ? 'over' : 'left'}`;
+// "02:00" reads as "2:00": the band is a sentence, the header clock is a readout. A
+// clock the server stopped because nobody was there says so (server/mock-clock.mjs).
+export function pausedBandText(reading, away = false) {
+  return `Paused${away ? ' while you were away' : ''} · ${formatClock(Math.abs(reading.remaining), { pad: false })} ${reading.remaining <= 0 ? 'over' : 'left'}`;
 }
 
 // The session controls every timed mock shares: the clock (which is the Add time
@@ -40,10 +41,13 @@ export function createMockSessionControls({ clock, extend, onTimeChange = () => 
      * resumable: the toggle offers Resume (paused, or not yet joined in this tab).
      * A disabled flag left undefined leaves that control to the screen's own updates.
      */
-    update({ minutes, elapsedMs, paused = false, resumable = paused, ended = false, pauseDisabled, resumeDisabled = pauseDisabled, finishDisabled, timeDisabled }) {
+    update({ minutes, elapsedMs, paused = false, away = false, resumable = paused, ended = false, pauseDisabled, resumeDisabled = pauseDisabled, finishDisabled, timeDisabled }) {
       const reading = mockTimeReading(minutes, elapsedMs);
       setText(clock, reading.text);
-      clock.setAttribute('aria-label', `${reading.text} ${reading.label}`);
+      // One state attribute styles every track's clock the same way (interview.css).
+      const look = paused ? 'paused' : reading.remaining <= 0 ? 'over' : 'running';
+      if (clock.dataset.clock !== look) clock.dataset.clock = look;
+      clock.setAttribute('aria-label', `${reading.text} ${reading.label}${paused ? ', paused' : ''}`);
       timeControls.root.querySelector('button').setAttribute('aria-label', `${reading.text} ${reading.label}. Add time`);
       if (timeDisabled !== undefined) timeControls.update({ disabled: timeDisabled, hidden: ended });
       paintToggle(resumable);
@@ -53,7 +57,7 @@ export function createMockSessionControls({ clock, extend, onTimeChange = () => 
       if (resumeDisabled !== undefined) resume.disabled = resumeDisabled;
       if (finishDisabled !== undefined) finishButton.disabled = finishDisabled;
       band.hidden = !paused || ended;
-      if (!band.hidden) setText(bandText, pausedBandText(reading));
+      if (!band.hidden) setText(bandText, pausedBandText(reading, away));
       return reading;
     },
     /** For screens that drive Pause/Resume availability imperatively. */

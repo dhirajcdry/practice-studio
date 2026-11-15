@@ -1,5 +1,5 @@
 import { cleanupChrome } from './chrome-cleanup.mjs';
-import { checkMockTime } from './mock-time-fixture.mjs';
+import { checkMockTime, checkMockAway } from './mock-time-fixture.mjs';
 // The design screen mounts, and the whiteboard is really there.
 //
 //   node scripts/check-design.mjs
@@ -122,7 +122,7 @@ for (const entry of SEED) {
 const server = spawn(process.execPath, ['server/index.mjs'], {
   cwd: ROOT,
   env: { ...process.env, STUDIO_HOME: HOME, STUDIO_PORT: String(SERVER_PORT),
-    STUDIO_MIRROR_DIR: '',
+    STUDIO_MIRROR_DIR: '', STUDIO_TEST_CLOCK: '1',
     STUDIO_COACH_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-claude.mjs'),
     STUDIO_CODEX_BINARY: path.join(ROOT, 'server/coach/test/bin/fake-codex.mjs'),
     STUDIO_TTS_PYTHON: path.join(ROOT, 'server/tts/test/fake-helper.mjs'),
@@ -286,12 +286,12 @@ try {
           kinds: rows.map((r) => r.querySelector('.th-item-kind')?.textContent.trim()),
           outcomes: rows.map((r) => r.querySelector('.th-pill')?.textContent.trim() ?? null),
           again: rows.filter((r) => r.querySelector('.th-again')).length,
-          open: [...document.querySelectorAll('.th-problem[data-open]')].map(n => n.dataset.open),
-          picks: document.querySelectorAll('.th-problem[data-slug]').length,
-          chosen: document.querySelectorAll('.th-problem[aria-pressed=true]').length,
-          actions: [...document.querySelectorAll('.th-detail .th-act h3')].map(n => n.textContent.trim()),
+          picks: document.querySelectorAll('.th-chip.th-problem[data-slug]').length,
+          chosen: document.querySelectorAll('.th-chip.th-problem[aria-pressed=true]').length,
+          modes: [...document.querySelectorAll('.th-switch .th-sw')].map(n => n.querySelector('.th-sw-name').textContent.trim()),
+          mode: document.querySelector('.th-stage')?.dataset.mode,
+          problem: document.querySelector('.th-qtitle')?.textContent,
           newButton: document.querySelector('.th-mock .ci-start')?.textContent.trim() ?? null,
-          problemChoices: [...document.querySelectorAll('.th-pick .ui-select-button')].map(n => n.getAttribute('aria-label')),
         };
       }
       await sleep(100);
@@ -310,8 +310,8 @@ try {
   if (library.again === 1) ok('only the debriefed interview offers practice from it');
   else bad('the debriefed interview offers practice', JSON.stringify(library));
 
-  if (library.open.length === 0 && library.picks >= 4 && library.chosen === 0 && library.actions.join() === 'Practise,Mock' && library.problemChoices.join() === 'Problem: Surprise me,Problem: Surprise me') ok('the list holds only the catalog, nothing is chosen on arrival, and both ways in start on Surprise me');
-  else bad('the problem list renders', JSON.stringify(library));
+  if (library.picks >= 4 && library.chosen === 0 && library.modes.join() === 'Practise,Mock' && library.mode === 'practise' && library.problem === 'Surprise me') ok('the chips hold only the catalog, nothing is chosen on arrival, and the stage opens on Practise with Surprise me');
+  else bad('the stage renders', JSON.stringify(library));
 
   if (library.newButton) ok(`"${library.newButton}" is one click away`);
   else bad('a new interview can be started from the home', 'no .th-mock .ci-start');
@@ -373,14 +373,27 @@ try {
     else bad('a resumed interview has an answer box', JSON.stringify(resumed));
   }
 
-  // The clock is shifted by the server so time away is not time in the room: this was
-  // paused eleven minutes in, and must come back at eleven minutes, not at a day.
-  const reading = await evaluate(
-    `new Promise(r => setTimeout(() => r(document.querySelector('.dz-clock')?.textContent ?? ''), 1300))`,
-  );
-  if (/^3[23]:/.test(reading)) ok(`the countdown excludes time away (${reading})`);
-  else bad('the resumed countdown excludes time away', `reads ${reading}, expected about 34:00 remaining`);
+  // Opening never resumes: this was paused eleven minutes in, so it comes back paused at
+  // 34:00 left, frozen, and only Resume starts it again, from the same reading.
+  const reopened = await evaluate(`(async () => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const clock = document.querySelector('.dz-clock'), band = document.querySelector('.dz-side .mock-paused');
+    const first = clock.textContent; await sleep(1200);
+    const paused = { clock: first, frozen: clock.textContent === first, look: clock.dataset.clock, band: band.hidden ? null : band.textContent.replace('Resume', '').trim(), input: document.querySelector('.dz-input').disabled };
+    band.querySelector('button').click();
+    for (let i = 0; i < 100 && clock.dataset.clock === 'paused'; i++) await sleep(25);
+    await sleep(1300);
+    return { paused, running: clock.textContent, look: clock.dataset.clock };
+  })()`);
+  if (reopened.paused.clock === '34:00' && reopened.paused.frozen && reopened.paused.look === 'paused' && reopened.paused.band === 'Paused · 34:00 left' && reopened.paused.input) ok('a paused interview reopens paused at 34:00, frozen and dimmed, until Resume');
+  else bad('a paused interview reopens paused', JSON.stringify(reopened));
+  if (/^3[34]:/.test(reopened.running) && reopened.look === 'running') ok(`Resume carries on from the same reading (${reopened.running})`);
+  else bad('Resume continues the clock', JSON.stringify(reopened));
   console.log('Design mock time controls', await evaluate(`(${checkMockTime.toString()})('design', '/api/design/${SEED[1].id}')`));
+  try {
+    const away = await evaluate(`(${checkMockAway.toString()})('design')`);
+    ok('left running without a pause: a short absence counts, ten minutes away comes back paused at the moment of leaving, heartbeats never restart it, Resume continues: ' + JSON.stringify(away));
+  } catch (error) { bad('the attended-time rule', error.message); }
 
   const fontLoaded = await evaluate(`(async () => {
     for (let i = 0; i < 100; i++) {
@@ -585,6 +598,30 @@ try {
     if (/board was empty/.test(review.board ?? '')) ok('an interview that drew nothing says the board was empty');
     else bad('an empty board says so', String(review.board).slice(0, 120));
   }
+
+  /* ---- 7b. an interview abandoned weeks ago, before heartbeats (the owner's case) ---- */
+
+  // Seeded with no pause and no heartbeat, started 29 July. Opening it must not show
+  // months of overtime: it comes back paused while you were away at its last recorded
+  // activity (here only the opening, so 45:00 left), and the record gains one labelled
+  // correction line while every earlier line stays exactly as it was.
+  const abandonedTurns = await fsp.readFile(path.join(HOME, 'design', SEED[2].id, 'turns.jsonl'), 'utf8');
+  const abandoned = await evaluate(`(async () => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    document.querySelector('.dz-back')?.click();
+    for (let i = 0; i < 200 && !document.querySelector('.th[data-state=ready] .th-item'); i++) await sleep(50);
+    const row = [...document.querySelectorAll('.th-item')].find(r => r.querySelector('.th-item-title')?.textContent.includes('photo-sharing'));
+    row?.querySelector('.th-item-open')?.click();
+    for (let i = 0; i < 300 && !document.querySelector('.dz-side .mock-paused:not([hidden])'); i++) await sleep(50);
+    const clock = document.querySelector('.dz-clock'), band = document.querySelector('.dz-side .mock-paused');
+    return { clock: clock?.textContent, look: clock?.dataset.clock, band: band && !band.hidden ? band.textContent.replace('Resume', '').trim() : null };
+  })()`);
+  if (abandoned.clock === '45:00' && abandoned.look === 'paused' && abandoned.band === 'Paused while you were away · 45:00 left') ok('an interview abandoned in July reopens paused while you were away, not in overtime (' + abandoned.clock + ')');
+  else bad('an abandoned interview reopens paused', JSON.stringify(abandoned));
+  const after = await fsp.readFile(path.join(HOME, 'design', SEED[2].id, 'turns.jsonl'), 'utf8');
+  const added = after.slice(abandonedTurns.length).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+  if (after.startsWith(abandonedTurns) && added.length === 1 && added[0].kind === 'clock_correction' && added[0].basis === 'recorded activity') ok('the record keeps every line and gains one labelled clock correction');
+  else bad('the abandoned record is only appended to', JSON.stringify(added).slice(0, 300));
 
   /* ---- 8. nothing threw ---- */
 

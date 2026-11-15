@@ -135,7 +135,7 @@ Body `{ slug, type, data? }`. Appends one line to
 `~/LeetCodeTutor/problems/<slug>/sessions/<id>.jsonl`. Append-only, never rewritten.
 
 Types: `problem_opened`, `first_keystroke`, `ran_locally`, `run_result`, `revealed_solution`,
-`revealed_article`, `asked_coach`, `recorded_audio`, `submitted`, `verdict`.
+`revealed_article`, `revealed_video`, `asked_coach`, `recorded_audio`, `submitted`, `verdict`.
 
 This log is what turns "I solved 40 problems" into "you take 4× longer to write the first
 line on graph problems." Timestamps are ISO-8601 with a timezone.

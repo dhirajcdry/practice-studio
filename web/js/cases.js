@@ -177,6 +177,8 @@ export function createCaseEditor({ slug, onRun = null, onChange = () => {} }) {
   function field(label, value, { readOnly, onInput, placeholder = '', className = '' }) {
     const input = el('textarea', {
       class: 'tc-input mono', rows: '1', spellcheck: 'false', placeholder,
+      // A case belongs to the code: ⌘↵ submits from here, as it does from the editor.
+      'data-command-keys': 'app',
       ...(readOnly ? { readonly: 'readonly' } : {}),
     });
     input.value = value ?? '';
