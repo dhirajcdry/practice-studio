@@ -249,6 +249,17 @@ test('a case with no published expected answer is shown, never scored as a pass'
   assert.match(r.cases[0].note, /does not publish an expected answer/i);
 });
 
+test('a problem that accepts any valid answer says so instead of calling the answer missing', async () => {
+  const r = await runCode({
+    code: GOOD_TWO_SUM,
+    metaData: { ...TWO_SUM.metaData, anyAnswer: true },
+    exampleTestcases: TWO_SUM.exampleTestcases,
+    descriptionHtml: '',
+  });
+  assert.equal(r.cases[0].passed, null);
+  assert.match(r.cases[0].note, /accepts any valid answer/i);
+});
+
 // ------------------------------------------------------------------ nodes
 //
 // LeetCode prints a linked list as an array of its values and a tree as its level-order
@@ -649,6 +660,34 @@ test('a wrong design solution fails honestly', async () => {
   const r = await runCode({ code, ...LRU });
   assert.equal(r.cases[0].passed, false);
   assert.equal(r.cases[0].actual, '[null,null,null,99,null,-1,99]');
+});
+
+test('a design statement whose "Output" has no colon is compared, not left for you to check', async () => {
+  // The shape LeetCode prints for design problems: a bold "Output" label, no colon, the
+  // list on the next line. Made-up values.
+  const html = '<pre><strong>Input</strong>\n["LRUCache","put","get"]\n[[1],[5,6],[5]]\n'
+    + '<strong>Output</strong>\n[null, null, 6]\n\n<strong>Explanation</strong>\nnothing\n</pre>';
+  const problem = { ...LRU, exampleTestcases: '["LRUCache","put","get"]\n[[1],[5,6],[5]]', descriptionHtml: html };
+  const good = await runCode({ code: GOOD_LRU, ...problem });
+  assert.equal(good.ok, true, JSON.stringify(good.error));
+  assert.equal(good.cases[0].passed, true);
+  const bad = await runCode({ code: GOOD_LRU.replace('return self.d[key]', 'return 99'), ...problem });
+  assert.equal(bad.cases[0].passed, false);
+  assert.equal(bad.cases[0].actual, '[null,null,99]');
+});
+
+test('a multi-line expected output is compared like a one-line one', async () => {
+  const r = await runCode({
+    code: 'class Solution:\n    def pairs(self, n):\n        return [[1, 2], [3]] if n == 3 else []\n',
+    metaData: { name: 'pairs', params: [{ name: 'n', type: 'integer' }], return: { type: 'list<list<integer>>' } },
+    exampleTestcases: '3\n4',
+    descriptionHtml: '<pre><strong>Output:</strong> \n[\n[1,2],\n[3]\n]\n</pre><pre><strong>Output:</strong>\n[[5],\n [6]]\n</pre>',
+  });
+  assert.equal(r.ok, true, JSON.stringify(r.error));
+  assert.equal(r.cases[0].expected, '[[1,2],[3]]');
+  assert.equal(r.cases[0].passed, true);
+  assert.equal(r.cases[1].expected, '[[5],[6]]');
+  assert.equal(r.cases[1].passed, false);
 });
 
 test('a design problem the runner cannot drive returns unsupported, never a pass', async () => {

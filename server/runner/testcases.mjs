@@ -106,17 +106,68 @@ export function expectedOutputsFromHtml(html) {
 
 function scanOutputs(html) {
   const out = [];
-  const re = /Output:\s*<\/(?:strong|b)>|<(?:strong|b)>\s*Output:\s*<\/(?:strong|b)>|Output:/gi;
+  // Design problems label the field `<strong>Output</strong>` with no colon and put the
+  // value on the next line, so a bold "Output" counts as the label with or without one.
+  // Bare text needs the colon: prose says "output" far too often.
+  const re = /<(?:strong|b)>\s*Output\s*:?\s*<\/(?:strong|b)>\s*:?|Output:\s*<\/(?:strong|b)>|Output:/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
     const rest = html.slice(m.index + m[0].length);
-    // The value runs to the end of the line, or to the next tag that starts a new field.
-    const stop = rest.search(/\n|<\/pre>|<strong|<b>|<br/i);
-    let value = stop === -1 ? rest : rest.slice(0, stop);
-    value = decodeEntities(value.replace(/<[^>]*>/g, '')).trim();
+    // The field runs to the next tag that starts a new field (Explanation, the next
+    // example) or the end of the block.
+    const end = rest.search(/<\/pre>|<strong|<b>/i);
+    const field = decodeEntities(
+      (end === -1 ? rest : rest.slice(0, end)).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, ''),
+    );
+    const value = fieldValue(field);
     if (value !== '') out.push(value);
   }
   return out;
+}
+
+/**
+ * The value of one Output field. Usually the rest of its line. When that line is empty or
+ * opens a bracket it does not close, the value is printed across lines —
+ * `[\n[1,1,6],\n[1,2,5]\n]` — and runs to the bracket that closes it, joined back onto one
+ * line. Anything else stays the single line it always was.
+ */
+function fieldValue(field) {
+  const text = field.replace(/^[ \t]+/, '');
+  const nl = text.indexOf('\n');
+  const line = (nl === -1 ? text : text.slice(0, nl)).trim();
+  if (line !== '' && closingIndex(line) !== -1) return line;
+  const body = text.trimStart();
+  if (!/^[[{]/.test(body)) return line;
+  const close = closingIndex(body);
+  if (close === -1) return line;
+  return body
+    .slice(0, close + 1)
+    .split('\n')
+    .map((l) => l.trim())
+    .join('');
+}
+
+/**
+ * Where the bracket opening `s` closes, or -1 if it never does. A `s` that does not open
+ * with a bracket counts as closed at once (0), so a scalar line is "complete".
+ */
+function closingIndex(s) {
+  if (!/^[[{]/.test(s)) return 0;
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (inString) {
+      if (c === '\\') i += 1;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '[' || c === '{') depth += 1;
+    else if (c === ']' || c === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
 }
 
 /**

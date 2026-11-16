@@ -83,8 +83,6 @@ body .pane-links .pane-link:hover{color:var(--ink)}
 .video-bar{display:flex;align-items:center;flex-wrap:wrap;gap:0 var(--space-3);width:var(--video-w);min-width:0}
 .video-bar[hidden]{display:none}
 .video-status{display:flex;flex-direction:column;flex:1 1 10rem;min-width:0;color:var(--ink-50);font:var(--text-xs)/var(--line-md) var(--ui)}
-.video-focus-note{color:var(--accent)}
-.video-focus-note:empty{display:none}
 .video-bar .pane-links{flex:none;margin-left:auto}
 
 /* The pane's tabs (up to five) keep one row at every pane width. The header is a size

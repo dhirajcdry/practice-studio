@@ -603,8 +603,7 @@ wrapping or the textarea→Monaco upgrade cannot lose a shortcut.
 6. **The one exception: focus inside the Video tab's player.** It is a cross-origin iframe,
    so the browser delivers every key to the player and Studio never sees it: no shortcut
    (command chord, plain key or Esc) acts while the player has focus, and one reaching
-   Studio there would be a bug. The tab says "The player has the keyboard. Click outside
-   it to use Studio shortcuts."; one click outside the player gives every shortcut back,
+   Studio there would be a bug. One click outside the player gives every shortcut back,
    and hiding the player (tab switch, Esc, the coach's open_panel, collapsing the pane,
    leaving the problem) moves focus out of it.
 

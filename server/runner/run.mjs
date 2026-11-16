@@ -349,7 +349,11 @@ export async function runCode({
           actual,
           callMs,
           passed: null,
-          note: `${parseMetaData(metaData)?.neetcode ? 'NeetCode' : 'LeetCode'} does not publish an expected answer for this case — compare it yourself.`,
+          // A problem that accepts any valid answer has no single one to publish; say so
+          // rather than suggest the answer is missing.
+          note: parseMetaData(metaData)?.anyAnswer
+            ? 'This problem accepts any valid answer, so there is no single expected one. Check yours against the rules.'
+            : `${parseMetaData(metaData)?.neetcode ? 'NeetCode' : 'LeetCode'} does not publish an expected answer for this case — compare it yourself.`,
         });
         continue;
       }

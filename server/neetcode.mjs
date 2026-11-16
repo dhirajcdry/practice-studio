@@ -79,8 +79,12 @@ export function cleanStatement(markdown) {
 // Those are the expected values, published by NeetCode itself. They are used only when
 // every example has exactly one that reads as JSON, and never when the statement says
 // several answers are accepted (a fixed string would fail a valid one).
+const ANY_ANSWER = /one possible|return any|any of them|any valid/i;
+/** True when the statement accepts several answers, so no single expected value exists. */
+export function acceptsAnyAnswer(text) { return ANY_ANSWER.test(String(text ?? '')); }
+
 export function statementOutputs(markdown, count) {
-  if (!markdown || /one possible|return any|any of them|any valid/i.test(markdown)) return null;
+  if (!markdown || acceptsAnyAnswer(markdown)) return null;
   const outputs = [...markdown.matchAll(/^Output:\s*([\s\S]*?)\s*^```/gm)].map(m => m[1]);
   if (outputs.length !== count) return null;
   try { return outputs.map(text => JSON.stringify(JSON.parse(text))); } catch { return null; }
@@ -114,6 +118,7 @@ export function neetcodeDefinition(problem) {
   catch { return null; } // Never run a guessed argument list.
   const expected = statementOutputs(problem.description, examples.length);
   if (expected) metaData.neetcodeExpected = expected;
+  if (acceptsAnyAnswer(problem.description)) metaData.anyAnswer = true;
   const statement = cleanStatement(problem.description);
   return {
     title: problem.name, descriptionMarkdown: statement,

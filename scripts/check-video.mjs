@@ -122,12 +122,11 @@ try {
   expect('opening the tab logs one revealed_video once the player is on screen', await evaluate('window.__reveals') === 1, await evaluate('window.__reveals'));
   expect('opening the tab does not start playback', await evaluate(lastState) !== 1, await evaluate(lastState));
 
-  /* ---- 3. the learner plays; focus inside the player is stated ---- */
+  /* ---- 3. the learner plays; the player then has the keyboard ---- */
   await clickOn('.video-player');
   await sleep(1600);
-  const playing = await evaluate(`({ state: ${lastState}, active: document.activeElement?.tagName, note: document.querySelector('.video-focus-note')?.textContent || '' })`);
+  const playing = await evaluate(`({ state: ${lastState}, active: document.activeElement?.tagName })`);
   expect('a click in the player plays it, and the player then has the keyboard', playing.state === 1 && playing.active === 'IFRAME', playing);
-  expect('while the player has the keyboard, the tab says so', /Click outside it to use Studio shortcuts/.test(playing.note) && await evaluate(`document.querySelector('.video-focus-note').getClientRects().length > 0`), playing);
 
   /* ---- 4. switching tabs pauses, keeps the same iframe, saves the place, takes focus back ---- */
   await clickOn(tab('solution'));
@@ -171,8 +170,8 @@ try {
   const inside = await evaluate(`document.activeElement?.tagName`);
   await clickOn('.video-meta');
   await sleep(200);
-  const outside = await evaluate(`({ active: document.activeElement?.tagName, focus: document.hasFocus(), note: document.querySelector('.video-focus-note').textContent })`);
-  expect('clicking outside the player returns the keyboard to Studio and clears the note', inside === 'IFRAME' && outside.active !== 'IFRAME' && outside.focus && !outside.note, { inside, ...outside });
+  const outside = await evaluate(`({ active: document.activeElement?.tagName, focus: document.hasFocus() })`);
+  expect('clicking outside the player returns the keyboard to Studio', inside === 'IFRAME' && outside.active !== 'IFRAME' && outside.focus, { inside, ...outside });
   // ⌘B now reaches Studio: collapsing the pane pauses, reopening resumes.
   if (await evaluate(lastState) !== 1) { await clickOn('.video-player'); await sleep(500); await clickOn('.video-meta'); await sleep(200); }
   const chord = async () => {

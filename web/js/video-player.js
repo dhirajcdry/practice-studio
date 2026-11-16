@@ -120,12 +120,11 @@ export function createVideoTab(entry) {
   const panel = el('section', { class: 'card ref-tab video-tab', role: 'tabpanel', id: 'ref-video', 'aria-label': 'Video', dataset: { panel: 'video' } });
   const stage = el('div', { class: 'video-stage' });
   const meta = el('span', { class: 'video-meta', text: 'Video walkthrough' });
-  const focusNote = el('span', { class: 'video-focus-note', role: 'status' });
   const link = el('a', {
     class: 'btn btn--quiet pane-link video-out', target: '_blank', rel: 'noopener noreferrer',
     href: watchUrl(videoId), 'aria-label': 'Open on YouTube (opens in a new tab)',
   }, [icon('external', 13), el('span', { text: 'Open on YouTube' })]);
-  const bar = el('div', { class: 'video-bar' }, [el('div', { class: 'video-status' }, [meta, focusNote]), el('nav', { class: 'pane-links', 'aria-label': 'This video elsewhere' }, link)]);
+  const bar = el('div', { class: 'video-bar' }, [el('div', { class: 'video-status' }, [meta]), el('nav', { class: 'pane-links', 'aria-label': 'This video elsewhere' }, link)]);
   const body = el('div', { class: 'desc ref-body video-body' }, [stage, bar]);
   panel.append(body);
 
@@ -162,14 +161,6 @@ export function createVideoTab(entry) {
     link.href = watchUrl(videoId, player.state === STATE.ENDED ? 0 : player.time);
   }
 
-  // The player holds the keyboard while focus is inside it: Studio's shortcuts cannot
-  // hear a key pressed in another origin's frame. Say so while it is true.
-  function syncFocusNote() {
-    const inside = !!iframe && document.activeElement === iframe;
-    focusNote.textContent = inside ? 'The player has the keyboard. Click outside it to use Studio shortcuts.' : '';
-  }
-  const onWindowBlur = () => setTimeout(syncFocusNote, 0);
-  const onWindowFocus = () => syncFocusNote();
 
   function onMessage(event) {
     if (!iframe || event.source !== iframe.contentWindow || event.origin !== target.origin) return;
@@ -246,7 +237,6 @@ export function createVideoTab(entry) {
     iframe?.remove(); iframe = null; frame = null;
     player = { state: null, time: 0, duration: 0, rate: player.rate };
     rateSettled = false;
-    syncFocusNote();
   }
 
   function mount() {
@@ -322,7 +312,6 @@ export function createVideoTab(entry) {
     }
     // Hidden: pause, remember, and take the keyboard back.
     if (iframe && document.activeElement === iframe) returnFocus();
-    syncFocusNote();
     if (status !== 'ready') return;
     const playing = player.state === STATE.PLAYING || player.state === STATE.BUFFERING;
     resumeOnShow = playing;
@@ -350,8 +339,6 @@ export function createVideoTab(entry) {
   let onPaneChange = null;
   observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   window.addEventListener('message', onMessage);
-  window.addEventListener('blur', onWindowBlur);
-  window.addEventListener('focus', onWindowFocus);
   window.addEventListener('pagehide', onPageHide);
   document.addEventListener('visibilitychange', onVisibility);
 
@@ -373,8 +360,6 @@ export function createVideoTab(entry) {
       clearInterval(handshake); clearTimeout(readyTimer); clearTimeout(pauseTimer); clearTimeout(settleTimer);
       observer.disconnect(); sizer?.disconnect();
       window.removeEventListener('message', onMessage);
-      window.removeEventListener('blur', onWindowBlur);
-      window.removeEventListener('focus', onWindowFocus);
       window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('visibilitychange', onVisibility);
       iframe?.remove(); iframe = null;

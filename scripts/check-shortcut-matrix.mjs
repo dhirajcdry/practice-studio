@@ -85,8 +85,7 @@ const PROFILE = {
   // A modal dialog or an open menu holds the keyboard; nothing behind it acts.
   modal: [],
   // Focus inside the Video tab's cross-origin player: the browser delivers keys to that
-  // frame and Studio never sees them. The one legitimate exception (docs/UI.md); the tab
-  // says "The player has the keyboard. Click outside it to use Studio shortcuts."
+  // frame and Studio never sees them. The one legitimate exception (docs/UI.md).
   player: [],
 };
 
@@ -157,7 +156,7 @@ const STATES = [
   // The Video tab's player (the local fake, never YouTube).
   { id: 'video-tab', what: 'the Video tab, its tab button focused', steps: [...openVideo, focusVideoTab], expect: `${activeIs(VIDEO_TAB)} && !!document.querySelector('.video-player.is-ready')`, fires: 'free' },
   { id: 'video-esc', what: 'Esc from the Video tab (back to Problem)', steps: [...openVideo, focusVideoTab, ESC], expect: `!document.querySelector('#ref-problem').hidden && ${activeIs('.problem-tabs [role=tab]')}`, fires: 'free' },
-  { id: 'video-iframe', what: 'focus inside the video player (iframe)', steps: [...openVideo, { click: 'iframe.video-player', wait: 300 }], expect: `document.activeElement?.tagName === 'IFRAME' && /Click outside it/.test(document.querySelector('.video-focus-note')?.textContent || '')`, fires: 'player' },
+  { id: 'video-iframe', what: 'focus inside the video player (iframe)', steps: [...openVideo, { click: 'iframe.video-player', wait: 300 }], expect: `document.activeElement?.tagName === 'IFRAME'`, fires: 'player' },
   { id: 'video-clicked-out', what: 'the player, then one click outside it', steps: [...openVideo, { click: 'iframe.video-player', wait: 300 }, { click: '.video-meta' }], expect: `document.activeElement?.tagName !== 'IFRAME'`, fires: 'free' },
   { id: 'video-left-by-tab', what: 'the player, then the Problem tab clicked', steps: [...openVideo, { click: 'iframe.video-player', wait: 300 }, { click: '.problem-tabs [data-panel=problem]' }], expect: `!document.querySelector('#ref-problem').hidden && document.activeElement?.tagName !== 'IFRAME'`, fires: 'free' },
   { id: 'video-pane-collapsed', what: 'the player, then the problem pane collapsed', steps: [...openVideo, { click: 'iframe.video-player', wait: 300 }, { click: '.workspace-rail [data-pane=problem]' }], expect: `document.body.classList.contains('hide-problem') && document.activeElement?.tagName !== 'IFRAME'`, fires: 'free' },

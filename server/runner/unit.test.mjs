@@ -156,6 +156,53 @@ test('the word "Output:" in prose does not shift the expected values by one', ()
   assert.deepEqual(expectedOutputsFromHtml(html), ['[1]', '[2]']);
 });
 
+test('a design statement labels the field "Output" with no colon and puts the value on the next line', () => {
+  const html =
+    '<pre><strong>Input</strong>\n["Box", "add", "peek"]\n[[], [4], []]\n' +
+    '<strong>Output</strong>\n[null, null, 4]\n\n<strong>Explanation</strong>\nBox box = new Box();\n</pre>';
+  assert.deepEqual(expectedOutputsFromHtml(html), ['[null, null, 4]']);
+});
+
+test('an output printed across several lines is joined back into one value', () => {
+  const html =
+    '<pre><strong>Input:</strong> n = 3\n<strong>Output:</strong> \n[\n[1,2],\n[3]\n]\n</pre>' +
+    '<pre><strong>Input:</strong> n = 2\n<strong>Output:</strong>\n[[1,1],\n [2,0]]\n</pre>' +
+    '<pre><strong>Input:</strong> n = 1\n<strong>Output:</strong> [[1]]\n</pre>';
+  assert.deepEqual(expectedOutputsFromHtml(html), ['[[1,2],[3]]', '[[1,1],[2,0]]', '[[1]]']);
+});
+
+test('a multi-line answer in the first block keeps the second answer on the second case', () => {
+  // Before multi-line outputs were read, the first block yielded nothing and the second
+  // block's answer was paired with the first case.
+  const html =
+    '<pre><strong>Output:</strong>\n[[7],\n [8]]\n</pre><pre><strong>Output:</strong> [[9]]\n</pre>';
+  assert.deepEqual(expectedOutputsFromHtml(html), ['[[7],[8]]', '[[9]]']);
+});
+
+test('a value inside a span whose attributes span lines is read, not the tag', () => {
+  const html =
+    '<p><strong>Output:</strong> <span class="io" style="\nfont-size: 1rem;\n">5</span></p>' +
+    '<p><strong>Explanation:</strong> five</p>';
+  assert.deepEqual(expectedOutputsFromHtml(html), ['5']);
+});
+
+test('a bracket that never closes keeps only its own line, and prose "output" is not a label', () => {
+  assert.deepEqual(expectedOutputsFromHtml('<pre><strong>Output:</strong> [1,2\nmore words\n</pre>'), ['[1,2']);
+  assert.deepEqual(expectedOutputsFromHtml('<p>The output is shown below.</p><pre><b>Output</b>\n"ok"\n</pre>'), ['"ok"']);
+  assert.deepEqual(expectedOutputsFromHtml('<pre><strong>Output:</strong> "[a"\n</pre>'), ['"[a"']);
+});
+
+test('a design case built from a colonless Output carries a comparable expected value', () => {
+  const built = buildCases({
+    perCase: 2,
+    testcases: '["Box","add","peek"]\n[[],[4],[]]',
+    descriptionHtml: '<pre><strong>Output</strong>\n[null, null, 4]\n</pre>',
+  });
+  assert.equal(built.ok, true);
+  assert.equal(built.cases[0].hasExpected, true);
+  assert.deepEqual(built.cases[0].expectedValue, [null, null, 4]);
+});
+
 test('a JSON value followed by prose still parses', () => {
   assert.deepEqual(parseLeadingJson('[[1,2],[3]] (order does not matter)').value, [[1, 2], [3]]);
   assert.equal(parseLeadingJson('true').value, true);
