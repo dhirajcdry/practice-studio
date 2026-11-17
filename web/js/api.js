@@ -326,6 +326,17 @@ export function clearDraft(slug) {
   try { localStorage.removeItem(DRAFT_PREFIX + slug); } catch { /* noop */ }
 }
 
+/** Move a draft out of the editor's way without destroying it: a tracker reset started a
+ *  fresh round, so code typed before it should not reopen, but it is still somebody's work. */
+export function setDraftAside(slug) {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFIX + slug);
+    if (raw === null) return;
+    localStorage.setItem(`studio.code.set-aside.v1.${slug}`, raw);
+    localStorage.removeItem(DRAFT_PREFIX + slug);
+  } catch { /* noop */ }
+}
+
 /** A last-resort starting point when no server and no draft can supply one. */
 export function fallbackStub(slug, entry) {
   const method = String(slug || 'solve')
@@ -361,6 +372,7 @@ export async function loadCode(slug, entry) {
         // LeetCode's starter, sent whether or not there is a buffer — it is what Reset
         // puts back, and Reset only matters once there IS a buffer.
         stub: typeof data.stub === 'string' && data.stub !== '' ? data.stub : null,
+        roundStartedAt: typeof data.roundStartedAt === 'string' ? data.roundStartedAt : null,
       };
     }
     return { ...result, source: 'live' };

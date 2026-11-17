@@ -10,6 +10,7 @@ import path from 'node:path';
 import { HttpError, sendJson } from '../http-util.mjs';
 import { HOME_ROOT } from '../paths.mjs';
 import { problemDir as storageProblemDir } from '../storage-layout.mjs';
+import { trackerResetAt } from '../stats/tracker.mjs';
 
 const MAX_CODE_BYTES = 1024 * 1024; // a solution file is never a megabyte; refuse the pathological case
 
@@ -134,6 +135,8 @@ async function handleGetCode(req, res, ctx) {
     updatedAt: null,
     isStub: true,
     stubSource: stub ? 'leetcode' : 'generic',
+    // A tracker reset shelved the old code; the browser drops drafts older than this.
+    roundStartedAt: await trackerResetAt(rootOf(ctx)),
   });
 }
 

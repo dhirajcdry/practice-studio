@@ -82,6 +82,15 @@ try {
   await sleep(1500); // longer than the save debounce: following the server must not save the starter back
   check(!(await exists(codeFile)), 'the starter was not saved back as typing');
 
+  // An unsynced browser draft from before the round must not reopen over the starter.
+  await evaluate(`localStorage.setItem('studio.code.v1.contains-duplicate', JSON.stringify({ code: ${JSON.stringify(MINE)}, savedAt: '2020-01-01T00:00:00.000Z', syncedAt: null }))`);
+  await send('Page.reload', { ignoreCache: true });
+  await until(`(${buffer} || '').includes('return len(nums) != len(set(nums))')`, 'starter after reload with an old draft');
+  check(!(await evaluate(`document.body.textContent.includes('Draft restored')`)), 'an old browser draft does not reopen after a reset');
+  check(await evaluate(`(localStorage.getItem('studio.code.set-aside.v1.contains-duplicate') || '').includes('my earlier attempt') && !localStorage.getItem('studio.code.v1.contains-duplicate')?.includes('my earlier attempt')`), 'the old draft is set aside in the browser, not deleted');
+  await evaluate(`document.querySelector('.set-settings').click()`);
+  await until(`!!document.querySelector('.tracker-restore-all:not(:disabled)')`, 'tracker controls after reload');
+
   await evaluate(`document.querySelector('.tracker-restore-all').click()`);
   await until(`(${buffer} || '').includes('my earlier attempt')`, 'editor follows the undo');
   check(true, 'Undo reset put the code back in the open editor');

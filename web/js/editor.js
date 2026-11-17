@@ -20,7 +20,7 @@
 import { el, clear, replace } from './dom.js';
 import { createPythonEditorControls, mountPythonEditor } from './python-editor.js';
 export { loadMonaco, monacoThemeFor } from './python-editor.js';
-import { loadCode, saveCode, readDraft, writeDraft, fallbackStub, logSessionEvent, api } from './api.js';
+import { loadCode, saveCode, readDraft, writeDraft, setDraftAside, fallbackStub, logSessionEvent, api } from './api.js';
 import { registerActionHandlers, createMonacoTutor, createTextareaTutor } from './coach-actions.js';
 import { createRunPanel, summaryLine } from './run.js';
 import { createSubmitPanel, submitLine } from './submit.js';
@@ -595,7 +595,14 @@ export function mountWorkspace(entry, options = {}) {
       const starter = problem?.content?.codeSnippets?.find(s => s.langSlug === 'python3')?.code;
       if (starter) { result.code = starter; result.stub = starter; }
     }
-    const draft = readDraft(slug);
+    let draft = readDraft(slug);
+    // A draft from before the current tracker round belongs to code the reset shelved;
+    // the problem opens on its starter. The draft is set aside in this browser, not deleted.
+    if (draft && result.ok && result.isStub && result.roundStartedAt
+      && !(Date.parse(draft.savedAt) > Date.parse(result.roundStartedAt))) {
+      setDraftAside(slug);
+      draft = null;
+    }
     let text = '';
     let restored = false;
 

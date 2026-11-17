@@ -23,6 +23,11 @@ async function readState(root) {
   }
 }
 
+/** When the current tracker round began, or null (no round, or unreadable state). */
+export async function trackerResetAt(root) {
+  try { return (await readState(root)).resetAt; } catch { return null; }
+}
+
 async function saveState(root, state) {
   await fsp.mkdir(root, { recursive: true });
   const file = path.join(root, FILE);

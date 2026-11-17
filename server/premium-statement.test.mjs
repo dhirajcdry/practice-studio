@@ -111,6 +111,10 @@ test('workspace offers the mirrored starter without overwriting a saved solution
   const getCode = routes['GET /api/problems/:slug/code'];
   await getCode({}, res, ctx);
   assert.equal(response.code, stub); assert.equal(response.isStub, true);
+  assert.equal(response.roundStartedAt, null);
+  await fsp.writeFile(path.join(homeRoot, 'tracker.json'), JSON.stringify({ resetAt: '2026-01-02T03:04:05.000Z' }));
+  await getCode({}, res, ctx);
+  assert.equal(response.roundStartedAt, '2026-01-02T03:04:05.000Z', 'the starter says when the round began, so older drafts stay away');
   const file = path.join(homeRoot, 'problems', entry.slug, 'solution.py');
   await assert.rejects(fsp.stat(file), { code: 'ENOENT' });
   await fsp.mkdir(path.dirname(file), { recursive: true });
